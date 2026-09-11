@@ -126,12 +126,12 @@ export async function POST(request: Request) {
       try {
         const admin = createAdminClient()
         let b64: string | null = rawBase64 ?? null
-        let mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'sticker' ? 'image/webp' : mediaType === 'audio' ? 'audio/ogg' : mediaType === 'video' ? 'video/mp4' : 'application/octet-stream'
-        const ext = mediaType === 'image' ? 'jpg' : mediaType === 'sticker' ? 'webp' : mediaType === 'audio' ? 'ogg' : mediaType === 'video' ? 'mp4' : 'bin'
+        let mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'sticker' ? 'image/webp' : mediaType === 'audio' ? 'audio/mp4' : mediaType === 'video' ? 'video/mp4' : 'application/octet-stream'
+        const ext = mediaType === 'image' ? 'jpg' : mediaType === 'sticker' ? 'webp' : mediaType === 'audio' ? 'mp4' : mediaType === 'video' ? 'mp4' : 'bin'
 
         // Repassa o mimetype real do payload se disponível
         const msgMime = msg?.imageMessage?.mimetype ?? msg?.stickerMessage?.mimetype ?? msg?.audioMessage?.mimetype ?? msg?.videoMessage?.mimetype ?? msg?.documentMessage?.mimetype
-        if (msgMime) mimeType = msgMime
+        if (msgMime && mediaType !== 'audio') mimeType = msgMime
 
         // Se não veio base64 no payload, baixa da Evolution com o msgData completo
         if (!b64 && rawUrl && messageId) {
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
                   method: 'POST',
                   headers: { 'apikey': orgSettings.evo_api_key, 'Content-Type': 'application/json' },
                   // Envia o msgData completo — formato exigido pela Evolution v1/v2
-                  body: JSON.stringify({ message: msgData.message ?? msg, convertToMp4: false }),
+                  body: JSON.stringify({ message: msgData.message ?? msg, convertToMp4: mediaType === 'audio' }),
                 }
               )
               if (dlRes.ok) {
@@ -207,6 +207,7 @@ export async function POST(request: Request) {
     } else if (msgData?.messageStubType) {
       fallbackText = `[Sistema: ${msgData.messageStubType}]`
     }
+    if ((msg as any)?.secretEncryptedMessage) fallbackText = '[Status / Mensagem Protegida]'
     const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : fallbackText)
 
     // Deduplicação genérica

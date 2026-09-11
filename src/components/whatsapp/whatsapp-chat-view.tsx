@@ -61,9 +61,10 @@ function MediaContent({ mediaUrl, mediaType, mediaFilename }: { mediaUrl: string
   if (mediaType === 'audio') {
     return (
       <audio controls className="min-w-[220px] max-w-[280px] h-10 w-full">
+        <source src={mediaUrl} type="audio/mp4" />
+        <source src={mediaUrl} type="audio/mpeg" />
         <source src={mediaUrl} type="audio/ogg; codecs=opus" />
         <source src={mediaUrl} type="audio/ogg" />
-        <source src={mediaUrl} type="audio/mpeg" />
         Seu navegador não suporta áudio.
       </audio>
     )
