@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase } from 'lucide-react'
+import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck } from 'lucide-react'
 
 const BASE_NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -18,12 +18,13 @@ const BASE_NAV_ITEMS = [
   { href: '/surveys-dashboard', label: 'Pesquisas & NPS', icon: BarChart3 },
 ]
 
-export function SidebarNav({ isAdmin }: { isAdmin: boolean }) {
+export function SidebarNav({ isAdmin, isSuperAdmin }: { isAdmin: boolean; isSuperAdmin?: boolean }) {
   const pathname = usePathname()
 
   const items = [
     ...BASE_NAV_ITEMS,
     { href: '/settings', label: 'Configurações', icon: Settings },
+    ...(isSuperAdmin ? [{ href: '/super-admin', label: '⚙️ Super Admin', icon: ShieldCheck }] : []),
   ]
 
   return (
