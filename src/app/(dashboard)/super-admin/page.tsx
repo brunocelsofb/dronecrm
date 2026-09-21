@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive } from '@/lib/actions/super-admin'
+import { startImpersonation } from '@/lib/actions/impersonate'
 import { EditTenantRow } from './edit-tenant-row'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +39,7 @@ function TrialBadge({ trialEndsAt }: { trialEndsAt: string | null }) {
   const now = new Date()
   const active = end > now
   const label = active
-    ? `Trial até ${end.toLocaleDateString('pt-BR')}`
+    ? `Trial atÃ© ${end.toLocaleDateString('pt-BR')}`
     : `Trial expirado`
   return (
     <span
@@ -59,7 +60,7 @@ export default async function SuperAdminPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Super Admin</h1>
-        <p className="text-sm text-gray-500">Gerenciamento de tenants e licenças</p>
+        <p className="text-sm text-gray-500">Gerenciamento de tenants e licenÃ§as</p>
       </div>
 
       {/* Tabela de Tenants */}
@@ -72,10 +73,10 @@ export default async function SuperAdminPage() {
             <tr>
               <th className="px-6 py-3 text-left">Nome / Slug</th>
               <th className="px-6 py-3 text-left">Plano / Trial</th>
-              <th className="px-6 py-3 text-left">Usuários</th>
+              <th className="px-6 py-3 text-left">UsuÃ¡rios</th>
               <th className="px-6 py-3 text-left">Status</th>
               <th className="px-6 py-3 text-left">Criado em</th>
-              <th className="px-6 py-3 text-left">Ações</th>
+              <th className="px-6 py-3 text-left">AÃ§Ãµes</th>
             </tr>
           </thead>
           <tbody>
@@ -114,12 +115,24 @@ export default async function SuperAdminPage() {
                     {new Date(t.created_at).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-6 py-3">
-                    <label
-                      htmlFor={`edit-${t.id}`}
-                      className="cursor-pointer rounded border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-                    >
-                      Editar
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <form action={startImpersonation}>
+                        <input type="hidden" name="tenant_id" value={t.id} />
+                        <input type="hidden" name="tenant_name" value={t.name} />
+                        <button
+                          type="submit"
+                          className="rounded border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
+                        >
+                          👁 Acessar
+                        </button>
+                      </form>
+                      <label
+                        htmlFor={`edit-${t.id}`}
+                        className="cursor-pointer rounded border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                      >
+                        Editar
+                      </label>
+                    </div>
                   </td>
                 </tr>
                 <tr key={`edit-row-${t.id}`}>
@@ -142,11 +155,11 @@ export default async function SuperAdminPage() {
         </table>
       </div>
 
-      {/* Formulário de Criação */}
+      {/* FormulÃ¡rio de CriaÃ§Ã£o */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-800">Criar Nova Licença</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Cria um tenant + usuário admin inicial</p>
+          <h2 className="text-base font-semibold text-gray-800">Criar Nova LicenÃ§a</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Cria um tenant + usuÃ¡rio admin inicial</p>
         </div>
         <form action={createNewTenantAndUser} className="p-6 grid grid-cols-2 gap-4">
           <div>
@@ -154,7 +167,7 @@ export default async function SuperAdminPage() {
             <input name="name" required placeholder="Acme Corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Slug (único)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Slug (Ãºnico)</label>
             <input name="slug" required placeholder="acme-corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
@@ -163,11 +176,11 @@ export default async function SuperAdminPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Senha Admin</label>
-            <input name="password" type="password" required placeholder="••••••••" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="password" type="password" required placeholder="â¢â¢â¢â¢â¢â¢â¢â¢" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nome Completo Admin</label>
-            <input name="full_name" required placeholder="João Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="full_name" required placeholder="JoÃ£o Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Plano</label>
@@ -178,7 +191,7 @@ export default async function SuperAdminPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Máx. Usuários</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">MÃ¡x. UsuÃ¡rios</label>
             <input name="max_users" type="number" min="1" defaultValue="5" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
