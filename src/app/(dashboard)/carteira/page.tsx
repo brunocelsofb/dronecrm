@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { CarteiraSelectFilters } from '@/components/carteira/carteira-select-filters'
 
 const TYPE_LABEL: Record<string, string> = { fixo: 'Fixo', medicao: 'Por Medição' }
@@ -37,9 +37,11 @@ export default async function CarteiraPage({
   searchParams: Promise<{ tipo?: string; alerta?: string; q?: string; coord?: string; eng?: string }>
 }) {
   const { tipo, alerta, q, coord: coordFilter, eng: engFilter } = await searchParams
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
 
-  const { data: portfolioPipelines } = await supabase.from('pipelines').select('id').eq('type', 'gestao_contratos')
+  let portPipelinesQ = supabase.from('pipelines').select('id').eq('type', 'gestao_contratos')
+  if (tenantId) portPipelinesQ = portPipelinesQ.eq('tenant_id', tenantId)
+  const { data: portfolioPipelines } = await portPipelinesQ
   const pipelineIds = (portfolioPipelines ?? []).map(p => p.id)
 
   const { data: activeRuns } = pipelineIds.length
