@@ -39,7 +39,7 @@ function TrialBadge({ trialEndsAt }: { trialEndsAt: string | null }) {
   const now = new Date()
   const active = end > now
   const label = active
-    ? `Trial atÃÂ© ${end.toLocaleDateString('pt-BR')}`
+    ? `Trial até ${end.toLocaleDateString('pt-BR')}`
     : `Trial expirado`
   return (
     <span
@@ -60,7 +60,7 @@ export default async function SuperAdminPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Super Admin</h1>
-        <p className="text-sm text-gray-500">Gerenciamento de tenants e licenÃÂ§as</p>
+        <p className="text-sm text-gray-500">Gerenciamento de tenants e licenças</p>
       </div>
 
       {/* Tabela de Tenants */}
@@ -73,10 +73,10 @@ export default async function SuperAdminPage() {
             <tr>
               <th className="px-6 py-3 text-left">Nome / Slug</th>
               <th className="px-6 py-3 text-left">Plano / Trial</th>
-              <th className="px-6 py-3 text-left">UsuÃÂ¡rios</th>
+              <th className="px-6 py-3 text-left">Usuários</th>
               <th className="px-6 py-3 text-left">Status</th>
               <th className="px-6 py-3 text-left">Criado em</th>
-              <th className="px-6 py-3 text-left">AÃÂ§ÃÂµes</th>
+              <th className="px-6 py-3 text-left">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -105,7 +105,8 @@ export default async function SuperAdminPage() {
                     {new Date(t.created_at).toLocaleDateString('pt-BR')}
                   </td>
                   <td className="px-6 py-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {/* Botão Acessar: inicia impersonation */}
                       <form action={startImpersonation}>
                         <input type="hidden" name="tenant_id" value={t.id} />
                         <input type="hidden" name="tenant_name" value={t.name} />
@@ -113,15 +114,17 @@ export default async function SuperAdminPage() {
                           type="submit"
                           className="rounded border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
                         >
-                          ð Acessar
+                          Acessar
                         </button>
                       </form>
+                      {/* Botão Editar: abre form inline */}
                       <label
                         htmlFor={`edit-${t.id}`}
                         className="cursor-pointer rounded border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
                       >
                         Editar
                       </label>
+                      {/* Botão Desativar/Ativar: toggle de status */}
                       <form action={async () => {
                         'use server'
                         await toggleTenantActive(t.id, !t.is_active)
@@ -160,11 +163,11 @@ export default async function SuperAdminPage() {
         </table>
       </div>
 
-      {/* FormulÃÂ¡rio de CriaÃÂ§ÃÂ£o */}
+      {/* Formulário de Criação */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-800">Criar Nova LicenÃÂ§a</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Cria um tenant + usuÃÂ¡rio admin inicial</p>
+          <h2 className="text-base font-semibold text-gray-800">Criar Nova Licença</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Cria um tenant + usuário admin inicial</p>
         </div>
         <form action={createNewTenantAndUser} className="p-6 grid grid-cols-2 gap-4">
           <div>
@@ -172,7 +175,7 @@ export default async function SuperAdminPage() {
             <input name="name" required placeholder="Acme Corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Slug (ÃÂºnico)</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Slug (único)</label>
             <input name="slug" required placeholder="acme-corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
@@ -181,11 +184,11 @@ export default async function SuperAdminPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Senha Admin</label>
-            <input name="password" type="password" required placeholder="Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢Ã¢ÂÂ¢" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="password" type="password" required placeholder="••••••••" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nome Completo Admin</label>
-            <input name="full_name" required placeholder="JoÃÂ£o Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="full_name" required placeholder="João Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Plano</label>
@@ -196,7 +199,7 @@ export default async function SuperAdminPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">MÃÂ¡x. UsuÃÂ¡rios</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Máx. Usuários</label>
             <input name="max_users" type="number" min="1" defaultValue="5" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
           </div>
           <div>
@@ -205,7 +208,7 @@ export default async function SuperAdminPage() {
           </div>
           <div className="col-span-2">
             <button type="submit" className="rounded-lg bg-[#1e6b8f] px-6 py-2 text-sm font-medium text-white hover:bg-[#154459] transition-colors">
-              Criar Tenant e Usuario Admin
+              Criar Tenant e Usuário Admin
             </button>
           </div>
         </form>
