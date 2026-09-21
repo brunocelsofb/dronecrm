@@ -109,6 +109,31 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
   redirect('/super-admin')
 }
 
+export async function updateTenantData(formData: FormData): Promise<void> {
+  await assertSuperAdmin()
+  const admin = createAdminClient()
+
+  const tenantId = formData.get('tenant_id') as string
+  const name = formData.get('name') as string
+  const slug = formData.get('slug') as string
+  const plan = formData.get('plan') as string
+  const maxUsers = parseInt(formData.get('max_users') as string) || 5
+
+  if (!tenantId || !name || !slug || !plan) {
+    throw new Error('Campos obrigatorios ausentes')
+  }
+
+  const { error } = await admin
+    .schema('contract_crm')
+    .from('tenants')
+    .update({ name, slug, plan, max_users: maxUsers })
+    .eq('id', tenantId)
+
+  if (error) throw new Error('Erro ao atualizar tenant: ' + error.message)
+
+  revalidatePath('/super-admin')
+}
+
 export async function toggleTenantActive(tenantId: string, isActive: boolean): Promise<void> {
   await assertSuperAdmin()
   const admin = createAdminClient()
