@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { ContractsTable } from '@/components/contracts/contracts-table'
 
 function fmt(v: number) {
@@ -12,12 +12,14 @@ export default async function ContractsPage({
   searchParams: Promise<{ q?: string; status?: string }>
 }) {
   const { q, status } = await searchParams
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
 
   // Busca só pipelines de tipo 'vendas' — Oportunidades são exclusivamente
   // negócios em negociação, não contratos de gestão de carteira.
-  const { data: salesPipelines } = await supabase
+  let salesPipelinesQ = supabase
     .from('pipelines').select('id, is_default').eq('type', 'vendas')
+  if (tenantId) salesPipelinesQ = salesPipelinesQ.eq('tenant_id', tenantId)
+  const { data: salesPipelines } = await salesPipelinesQ
   const salesPipelineIds = (salesPipelines ?? []).map(p => p.id)
   const defaultSalesPipeline = salesPipelines?.find(p => p.is_default)?.id ?? salesPipelineIds[0]
 
