@@ -84,7 +84,32 @@ const MIGRATIONS = [
       `create table if not exists contract_crm.zapsign_documents (id uuid primary key default gen_random_uuid(), contract_id uuid not null references contract_crm.contracts(id) on delete cascade, template_id uuid references contract_crm.zapsign_templates(id) on delete set null, name text not null, zapsign_doc_token text, pdf_url text, signed_pdf_url text, status text not null default 'pendente', sent_at timestamptz, signed_at timestamptz, error_message text, created_by uuid references contract_crm.profiles(id), created_at timestamptz not null default now())`,
       `do $do$ begin if not exists (select 1 from pg_policies where schemaname='contract_crm' and tablename='zapsign_documents' and policyname='zapsign_documents_all') then alter table contract_crm.zapsign_documents enable row level security; create policy "zapsign_documents_all" on contract_crm.zapsign_documents for all using (auth.role() = 'authenticated'); end if; end $do$`,
     ],
-  },
+  },,
+  {
+    id: 'impersonation-tenant-isolation-v1',
+    description: 'Adiciona tenant_id em pipelines, companies, contracts e lost_reasons para isolamento correto no modo impersonation (admin client sem RLS)',
+    sqls: [
+      // --- pipelines ---
+      `alter table contract_crm.pipelines add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.pipelines p set tenant_id = (select pr.tenant_id from contract_crm.profiles pr join contract_crm.pipeline_runs r on r.created_by = pr.id where r.pipeline_id = p.id limit 1) where tenant_id is null`,
+
+      // --- companies ---
+      `alter table contract_crm.companies add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.companies c set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = c.owner_id limit 1) where tenant_id is null and owner_id is not null`,
+
+      // --- contracts ---
+      `alter table contract_crm.contracts add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.contracts c set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = c.owner_id limit 1) where tenant_id is null`,
+
+      // --- lost_reasons ---
+      `alter table contract_crm.lost_reasons add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.lost_reasons lr set tenant_id = (select p.tenant_id from contract_crm.profiles p where p.role = 'admin' limit 1) where tenant_id is null`,
+
+      // --- activities ---
+      `alter table contract_crm.activities add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.activities a set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = a.user_id limit 1) where tenant_id is null and user_id is not null`,
+    ],
+  }
 ]
 
 export async function GET() {
