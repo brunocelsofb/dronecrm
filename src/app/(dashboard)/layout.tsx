@@ -27,7 +27,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-   select('role, full_name, is_super_admin')
+   .select('role, full_name, is_super_admin')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -37,8 +37,8 @@ export default async function DashboardLayout({
     .eq('id', 'default')
     .maybeSingle()
 
-  const isAdmin = profile?.role === 'admin'
-  const isSuperAdmin = (profile as any)?.is_super_admin === true
+ const isAdmin = profile?.role === 'admin'
+const isSuperAdmin = (profile as any)?.is_super_admin === true
   const orgName = orgSettings?.name ?? 'DRONE'
 
   // Logo dinâmica: storage path -> URL pública, fallback /drone.png
@@ -64,7 +64,7 @@ export default async function DashboardLayout({
           />
         </div>
         <div className="flex-1">
-          <SidebarNav isAdmin="{isAdmin}" isSuperAdmin="{isSuperAdmin}"/>
+         <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />
         </div>
         <div className="mt-4 border-t border-white/10 pt-3">
           <div className="flex items-center gap-1.5 px-2.5 pb-2">
