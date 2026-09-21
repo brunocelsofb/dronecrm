@@ -47,10 +47,13 @@ export default async function DashboardLayout({
   const orgName = orgSettings?.name ?? 'DRONE'
 
   // Plano efetivo: se ainda estiver em trial, libera enterprise
-  const effectivePlan = getEffectivePlan(
-    tenantData?.plan ?? 'starter',
-    tenantData?.trial_ends_at ?? null
-  )
+  // Super Admin tem passe livre: acesso total a todos os módulos
+  const effectivePlan = isSuperAdmin
+    ? 'enterprise'
+    : getEffectivePlan(
+        tenantData?.plan ?? 'starter',
+        tenantData?.trial_ends_at ?? null
+      )
 
   // Estado de impersonation
   const impersonation = await getImpersonationState()
@@ -75,7 +78,7 @@ export default async function DashboardLayout({
           <div className="flex items-center gap-2">
             <Eye size={16} strokeWidth={2} />
             <span>
-              Você está visualizando como:{' '}
+              VocÃª estÃ¡ visualizando como:{' '}
               <strong>{impersonation.tenantName}</strong>
             </span>
           </div>
