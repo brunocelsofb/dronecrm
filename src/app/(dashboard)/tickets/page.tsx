@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { getSlaStatus, SLA_LABELS } from '@/lib/utils/sla'
 import { PRIORITY_LABELS } from '@/lib/utils/gut-matrix'
 
@@ -27,9 +27,11 @@ const SLA_STYLE: Record<string, { bg: string; color: string }> = {
 
 export default async function TicketsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status: statusFilter } = await searchParams
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
 
-  const { data: tickets } = await supabase.from('tickets').select('id, ticket_number, subject, status, priority, requester_name, contract_id, sla_due_at, resolved_at, created_at').order('created_at', { ascending: false })
+  let ticketsQ = supabase.from('tickets').select('id, ticket_number, subject, status, priority, requester_name, contract_id, sla_due_at, resolved_at, created_at').order('created_at', { ascending: false })
+  if (tenantId) ticketsQ = ticketsQ.eq('tenant_id', tenantId)
+  const { data: tickets } = await ticketsQ
 
   const contractIds = [...new Set((tickets ?? []).map(t => t.contract_id).filter((id): id is string => !!id))]
   const { data: linkedContracts } = contractIds.length
