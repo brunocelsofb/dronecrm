@@ -1,11 +1,11 @@
 // Middleware: renova a sessão do Supabase a cada request e
 // redireciona usuários não autenticados para /login.
-//
-// NOTA: mesma ressalva do server.ts — confirme a assinatura atual
-// de createServerClient/getAll/setAll na documentação do Supabase.
+// Também propaga o header de impersonation quando ativo.
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+
+const COOKIE_TENANT_ID = 'orbis_imp_tid'
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
@@ -56,6 +56,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Propaga o tenant de impersonation como header interno
+  const impTenantId = request.cookies.get(COOKIE_TENANT_ID)?.value
+  if (impTenantId) {
+    response.headers.set('x-orbis-imp-tenant-id', impTenantId)
+  }
+
   return response
 }
 
@@ -65,7 +71,6 @@ export const config = {
      * Aplica o middleware em todas as rotas, exceto:
      * - arquivos estáticos do Next (_next/static, _next/image)
      * - favicon
-     * Ajuste esse padrão se adicionar outras pastas públicas (ex: /api/webhooks)
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
