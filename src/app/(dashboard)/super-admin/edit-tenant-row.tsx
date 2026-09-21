@@ -10,6 +10,7 @@ interface Props {
     slug: string
     plan: string
     max_users: number
+    trial_ends_at: string | null
   }
 }
 
@@ -17,10 +18,14 @@ export function EditTenantRow({ tenant }: Props) {
   const checkRef = useRef<HTMLInputElement>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Formata para input type=datetime-local (YYYY-MM-DDTHH:mm)
+  const trialForInput = tenant.trial_ends_at
+    ? new Date(tenant.trial_ends_at).toISOString().slice(0, 16)
+    : ''
+
   async function handleSubmit(formData: FormData) {
     startTransition(async () => {
       await updateTenantData(formData)
-      // Fecha o form apos salvar com sucesso
       if (checkRef.current) checkRef.current.checked = false
     })
   }
@@ -37,7 +42,7 @@ export function EditTenantRow({ tenant }: Props) {
         <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">
           Editando: {tenant.name}
         </p>
-        <form action={handleSubmit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <form action={handleSubmit} className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <input type="hidden" name="tenant_id" value={tenant.id} />
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
@@ -45,8 +50,7 @@ export function EditTenantRow({ tenant }: Props) {
               name="name"
               defaultValue={tenant.name}
               required
-              disabled={isPending}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none disabled:opacity-60"
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
           <div>
@@ -55,9 +59,7 @@ export function EditTenantRow({ tenant }: Props) {
               name="slug"
               defaultValue={tenant.slug}
               required
-              pattern="[a-z0-9-]+"
-              disabled={isPending}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none disabled:opacity-60"
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
           <div>
@@ -65,8 +67,7 @@ export function EditTenantRow({ tenant }: Props) {
             <select
               name="plan"
               defaultValue={tenant.plan}
-              disabled={isPending}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none disabled:opacity-60"
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             >
               <option value="starter">Starter</option>
               <option value="professional">Professional</option>
@@ -74,31 +75,40 @@ export function EditTenantRow({ tenant }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Max. usuarios</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Máx. Usuários</label>
             <input
               name="max_users"
               type="number"
+              min="1"
               defaultValue={tenant.max_users}
-              min={1}
-              max={500}
-              disabled={isPending}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none disabled:opacity-60"
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
-          <div className="md:col-span-4 flex justify-end gap-2 pt-1">
-            <label
-              htmlFor={`edit-${tenant.id}`}
-              className="text-xs px-4 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer font-medium"
-            >
-              Cancelar
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Fim do Trial (deixe vazio para remover)
             </label>
+            <input
+              name="trial_ends_at"
+              type="datetime-local"
+              defaultValue={trialForInput}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          <div className="col-span-3 flex gap-2 pt-1">
             <button
               type="submit"
               disabled={isPending}
-              className="text-xs px-4 py-1.5 rounded bg-[#1B556B] text-white hover:bg-[#154459] font-medium transition-colors disabled:opacity-60"
+              className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isPending ? 'Salvando...' : 'Salvar alteracoes'}
+              {isPending ? 'Salvando...' : 'Salvar alterações'}
             </button>
+            <label
+              htmlFor={`edit-${tenant.id}`}
+              className="cursor-pointer rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </label>
           </div>
         </form>
       </div>
