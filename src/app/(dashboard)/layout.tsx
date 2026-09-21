@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
 import { signOut } from '@/lib/actions/auth'
@@ -36,18 +37,35 @@ export default async function DashboardLayout({
     .eq('id', 'default')
     .maybeSingle()
 
-  // Busca plano e trial do tenant atual
-  const { data: tenantData } = await supabase
-    .from('tenants')
-    .select('plan, trial_ends_at')
-    .maybeSingle()
-
   const isAdmin = profile?.role === 'admin'
   const isSuperAdmin = (profile as any)?.is_super_admin === true
   const orgName = orgSettings?.name ?? 'DRONE'
 
-  // Plano efetivo: se ainda estiver em trial, libera enterprise
-  // Super Admin tem passe livre: acesso total a todos os módulos
+  // Le estado de impersonation ANTES de buscar tenantData
+  const impersonation = await getImpersonationState()
+
+  const adminSupa = createAdminClient()
+
+  // Busca plano e trial do tenant correto
+  let tenantData: { plan: string | null; trial_ends_at: string | null } | null = null
+  if (impersonation.active && impersonation.tenantId) {
+    const { data } = await adminSupa
+      .schema('contract_crm')
+      .from('tenants')
+      .select('plan, trial_ends_at')
+      .eq('id', impersonation.tenantId)
+      .single()
+    tenantData = data
+  } else {
+    const { data } = await supabase
+      .from('tenants')
+      .select('plan, trial_ends_at')
+      .maybeSingle()
+    tenantData = data
+  }
+
+  // Plano efetivo: se em trial, libera enterprise
+  // Super Admin tem passe livre
   const effectivePlan = isSuperAdmin
     ? 'enterprise'
     : getEffectivePlan(
@@ -55,11 +73,7 @@ export default async function DashboardLayout({
         tenantData?.trial_ends_at ?? null
       )
 
-  // Estado de impersonation
-  const impersonation = await getImpersonationState()
-
-  // Logo dinamica: storage path -> URL publica, fallback /drone.png
-  const adminSupa = (await import('@/lib/supabase/admin')).createAdminClient()
+  // Logo dinamica
   const rawLogo = (orgSettings as any)?.logo_storage_path
   let sidebarLogoUrl = '/drone.png'
   if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
@@ -78,7 +92,7 @@ export default async function DashboardLayout({
           <div className="flex items-center gap-2">
             <Eye size={16} strokeWidth={2} />
             <span>
-              VocÃª estÃ¡ visualizando como:{' '}
+              Voce esta visualizando como:{' '}
               <strong>{impersonation.tenantName}</strong>
             </span>
           </div>
