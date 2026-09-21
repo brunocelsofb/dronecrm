@@ -2,29 +2,38 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck, ClipboardList } from 'lucide-react'
+import { canAccess, type PlanId } from '@/lib/config/plans'
 
-const BASE_NAV_ITEMS = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/pipeline', label: 'Funil', icon: KanbanSquare },
-  { href: '/leads', label: 'Leads', icon: Target },
-  { href: '/contracts', label: 'Oportunidades', icon: FileText },
-  { href: '/propostas', label: 'Propostas', icon: FileText },
-  { href: '/carteira', label: 'Gestão de Carteira', icon: Briefcase },
-  { href: '/companies', label: 'Empresas', icon: Building2 },
-  { href: '/tickets', label: 'Atendimento', icon: LifeBuoy },
-  { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
-  { href: '/whatsapp/relatorios', label: 'Relatórios WPP', icon: BarChart3 },
-  { href: '/surveys-dashboard', label: 'Pesquisas & NPS', icon: BarChart3 },
+const ALL_NAV_ITEMS = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
+  { href: '/pipeline', label: 'Funil', icon: KanbanSquare, feature: 'pipeline' },
+  { href: '/leads', label: 'Leads', icon: Target, feature: 'leads' },
+  { href: '/contracts', label: 'Oportunidades', icon: FileText, feature: 'contracts' },
+  { href: '/propostas', label: 'Propostas', icon: FileText, feature: 'propostas' },
+  { href: '/carteira', label: 'Gestão de Carteira', icon: Briefcase, feature: 'carteira' },
+  { href: '/companies', label: 'Empresas', icon: Building2, feature: 'companies' },
+  { href: '/tickets', label: 'Atendimento', icon: LifeBuoy, feature: 'tickets' },
+  { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, feature: 'whatsapp' },
+  { href: '/whatsapp/relatorios', label: 'Relatórios WPP', icon: BarChart3, feature: 'whatsapp-relatorios' },
+  { href: '/surveys-dashboard', label: 'Pesquisas & NPS', icon: ClipboardList, feature: 'surveys' },
 ]
 
-export function SidebarNav({ isAdmin, isSuperAdmin }: { isAdmin: boolean; isSuperAdmin?: boolean }) {
+export function SidebarNav({
+  isAdmin,
+  isSuperAdmin,
+  effectivePlan = 'starter',
+}: {
+  isAdmin: boolean
+  isSuperAdmin?: boolean
+  effectivePlan?: PlanId
+}) {
   const pathname = usePathname()
 
   const items = [
-    ...BASE_NAV_ITEMS,
-    { href: '/settings', label: 'Configurações', icon: Settings },
-    ...(isSuperAdmin ? [{ href: '/super-admin', label: '⚙️ Super Admin', icon: ShieldCheck }] : []),
+    ...ALL_NAV_ITEMS.filter((item) => canAccess(effectivePlan, item.feature)),
+    { href: '/settings', label: 'Configurações', icon: Settings, feature: 'settings' },
+    ...(isSuperAdmin ? [{ href: '/super-admin', label: '⚙️ Super Admin', icon: ShieldCheck, feature: 'settings' }] : []),
   ]
 
   return (
