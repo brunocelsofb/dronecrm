@@ -28,7 +28,7 @@ export async function getSuperAdminData() {
   const { data: tenants, error } = await admin
     .schema('contract_crm')
     .from('tenants')
-    .select('id, name, slug, plan, is_active, max_users, created_at')
+    .select('id, name, slug, plan, is_active, max_users, trial_ends_at, created_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -58,6 +58,8 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
   const fullName = formData.get('full_name') as string
   const plan = (formData.get('plan') as string) || 'starter'
   const maxUsers = parseInt(formData.get('max_users') as string) || 5
+  const trialEndsAtRaw = formData.get('trial_ends_at') as string | null
+  const trialEndsAt = trialEndsAtRaw && trialEndsAtRaw.trim() ? new Date(trialEndsAtRaw).toISOString() : null
 
   if (!name || !slug || !email || !password || !fullName) {
     throw new Error('Todos os campos sao obrigatorios')
@@ -66,7 +68,7 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
   const { data: tenant, error: tenantError } = await admin
     .schema('contract_crm')
     .from('tenants')
-    .insert({ name, slug, plan, max_users: maxUsers, is_active: true })
+    .insert({ name, slug, plan, max_users: maxUsers, is_active: true, trial_ends_at: trialEndsAt })
     .select('id')
     .single()
 
@@ -96,9 +98,7 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
       role: 'admin',
     })
 
-  if (profileError) {
-    throw new Error('Perfil falhou: ' + profileError.message)
-  }
+  if (profileError) throw new Error('Perfil falhou: ' + profileError.message)
 
   await admin
     .schema('contract_crm')
@@ -118,15 +118,15 @@ export async function updateTenantData(formData: FormData): Promise<void> {
   const slug = formData.get('slug') as string
   const plan = formData.get('plan') as string
   const maxUsers = parseInt(formData.get('max_users') as string) || 5
+  const trialEndsAtRaw = formData.get('trial_ends_at') as string | null
+  const trialEndsAt = trialEndsAtRaw && trialEndsAtRaw.trim() ? new Date(trialEndsAtRaw).toISOString() : null
 
-  if (!tenantId || !name || !slug || !plan) {
-    throw new Error('Campos obrigatorios ausentes')
-  }
+  if (!tenantId || !name || !slug || !plan) throw new Error('Campos obrigatorios ausentes')
 
   const { error } = await admin
     .schema('contract_crm')
     .from('tenants')
-    .update({ name, slug, plan, max_users: maxUsers })
+    .update({ name, slug, plan, max_users: maxUsers, trial_ends_at: trialEndsAt })
     .eq('id', tenantId)
 
   if (error) throw new Error('Erro ao atualizar tenant: ' + error.message)
