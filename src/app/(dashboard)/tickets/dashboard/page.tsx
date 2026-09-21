@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { PeriodSelector } from '@/components/dashboard/period-selector'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { TicketBreakdownChart } from '@/components/tickets/ticket-breakdown-chart'
@@ -29,13 +29,15 @@ export default async function TicketsDashboardPage({
   const from = params.from ?? defaultRange.from
   const to = params.to ?? defaultRange.to
 
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
 
-  const { data: tickets } = await supabase
+  let ticketsDashQ = supabase
     .from('tickets')
     .select('id, ticket_number, subject, status, priority, category, assigned_to, contract_id, sla_due_at, resolved_at, created_at, satisfaction_rating, satisfaction_comment, satisfaction_responded_at')
     .gte('created_at', `${from}T00:00:00`)
     .lte('created_at', `${to}T23:59:59`)
+  if (tenantId) ticketsDashQ = ticketsDashQ.eq('tenant_id', tenantId)
+  const { data: tickets } = await ticketsDashQ
 
   const { data: allProfiles } = await supabase.from('profiles').select('id, full_name')
   const profileById = new Map((allProfiles ?? []).map((p) => [p.id, p.full_name]))
