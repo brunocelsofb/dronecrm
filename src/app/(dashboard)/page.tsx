@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { PremiumDashboard } from '@/components/dashboard/premium-dashboard'
 
 function getPeriodRange(period: string) {
@@ -26,11 +26,13 @@ function getPeriodRange(period: string) {
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   const { period = 'month' } = await searchParams
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
   const { from: periodFrom, to: periodTo } = getPeriodRange(period)
 
   // Funil — busca o pipeline de vendas padrão
-  const { data: pipelines } = await supabase.from('pipelines').select('id, type, is_default').order('name')
+  let dashPipelinesQ = supabase.from('pipelines').select('id, type, is_default').order('name')
+  if (tenantId) dashPipelinesQ = dashPipelinesQ.eq('tenant_id', tenantId)
+  const { data: pipelines } = await dashPipelinesQ
   const salesPipeline = pipelines?.find(p => p.type === 'vendas' && p.is_default) ?? pipelines?.find(p => p.type === 'vendas') ?? pipelines?.[0]
   const gestaoPipeline = pipelines?.find(p => p.type === 'gestao_contratos' && p.is_default) ?? pipelines?.find(p => p.type === 'gestao_contratos')
   const mainPipelineId = salesPipeline?.id ?? gestaoPipeline?.id
@@ -58,9 +60,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     allSalesPipelineIds.length ? supabase.from('pipeline_runs').select('value').in('pipeline_id', allSalesPipelineIds).eq('status', 'lost').gte('ended_at', `${periodFrom}T00:00:00`).lte('ended_at', `${periodTo}T23:59:59`) : Promise.resolve({ data: [] as any[] }),
     // Histórico completo de ganhos/perdidos (últimos 6 meses para o gráfico)
     allSalesPipelineIds.length ? supabase.from('pipeline_runs').select('value, started_at, ended_at, created_by').in('pipeline_id', allSalesPipelineIds).in('status', ['won', 'lost']).gte('ended_at', new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString().slice(0, 10)) : Promise.resolve({ data: [] as any[] }),
-    supabase.from('activities').select('user_id, type, created_at').not('type', 'eq', 'system').not('user_id', 'is', null).gte('created_at', `${periodFrom}T00:00:00`).lte('created_at', `${periodTo}T23:59:59`),
+    (() => { let aQ = supabase.from('activities').select('user_id, type, created_at').not('type', 'eq', 'system').not('user_id', 'is', null).gte('created_at', `${periodFrom}T00:00:00`).lte('created_at', `${periodTo}T23:59:59`); if (tenantId) aQ = aQ.eq('tenant_id', tenantId); return aQ })(),
     supabase.from('profiles').select('id, full_name'),
-    supabase.from('leads').select('source'),
+    (() => { let lQ = supabase.from('leads').select('source'); if (tenantId) lQ = lQ.eq('tenant_id', tenantId); return lQ })(),
     // MRR da carteira de contratos ativos
     gestaoPipeline ? supabase.from('pipeline_runs').select('contract_id, value').eq('pipeline_id', gestaoPipeline.id).eq('status', 'open') : Promise.resolve({ data: [] as any[] }),
   ])
