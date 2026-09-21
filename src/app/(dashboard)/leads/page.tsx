@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { DeleteLeadButton } from '@/components/leads/delete-lead-button'
 
@@ -28,11 +28,13 @@ function scoreBar(score: number) {
 
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status: statusFilter } = await searchParams
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
 
-  const { data: leads } = await supabase.from('leads').select('id, name, email, phone, company_name, status, score, source, created_at').order('score', { ascending: false })
+  let leadsQ = supabase.from('leads').select('id, name, email, phone, company_name, status, score, source, created_at').order('score', { ascending: false })
+  if (tenantId) leadsQ = leadsQ.eq('tenant_id', tenantId)
+  const { data: leads } = await leadsQ
 
   const filtered = statusFilter ? (leads ?? []).filter(l => l.status === statusFilter) : leads ?? []
   const countByStatus: Record<string, number> = {}
