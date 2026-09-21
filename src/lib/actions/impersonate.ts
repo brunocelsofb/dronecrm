@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 const COOKIE_TENANT_ID   = 'orbis_imp_tid'
@@ -18,7 +18,7 @@ const COOKIE_OPTS = {
 async function assertSuperAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
+  if (!user) throw new Error('Nao autenticado')
 
   const { data: profile } = await supabase
     .schema('contract_crm')
@@ -40,7 +40,6 @@ export async function startImpersonation(formData: FormData): Promise<void> {
 
   if (!tenantId || !tenantName) throw new Error('Dados do tenant ausentes')
 
-  // Verifica que o tenant existe e está ativo
   const admin = createAdminClient()
   const { data: tenant, error } = await admin
     .schema('contract_crm')
@@ -49,7 +48,7 @@ export async function startImpersonation(formData: FormData): Promise<void> {
     .eq('id', tenantId)
     .single()
 
-  if (error || !tenant) throw new Error('Tenant não encontrado')
+  if (error || !tenant) throw new Error('Tenant nao encontrado')
   if (!tenant.is_active) throw new Error('Tenant inativo')
 
   const cookieStore = await cookies()
@@ -67,14 +66,25 @@ export async function stopImpersonation(): Promise<void> {
   redirect('/super-admin')
 }
 
-/** Lê o estado atual de impersonation (para uso em Server Components) */
+/**
+ * Le o estado atual de impersonation.
+ * Usa o header x-orbis-imp-tenant-id injetado pelo middleware (proxy.ts)
+ * via NextResponse.next({ request: { headers } }), visivel em Server
+ * Components pelo headers() do next/headers.
+ */
 export async function getImpersonationState(): Promise<{
   active: boolean
   tenantId: string | null
   tenantName: string | null
 }> {
-  const cookieStore = await cookies()
-  const tenantId   = cookieStore.get(COOKIE_TENANT_ID)?.value   ?? null
-  const tenantName = cookieStore.get(COOKIE_TENANT_NAME)?.value ?? null
-  return { active: !!tenantId, tenantId, tenantName }
+  const headersList = await headers()
+  const tenantId = headersList.get('x-orbis-imp-tenant-id') ?? null
+
+  if (tenantId) {
+    const cookieStore = await cookies()
+    const tenantName = cookieStore.get(COOKIE_TENANT_NAME)?.value ?? null
+    return { active: true, tenantId, tenantName }
+  }
+
+  return { active: false, tenantId: null, tenantName: null }
 }
