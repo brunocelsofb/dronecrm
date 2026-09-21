@@ -1,23 +1,28 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { CompanyRowActions, InativoDaysSelector } from '@/components/companies/company-row-actions'
 
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<{ q?: string; inativo?: string }> }) {
   const { q, inativo } = await searchParams
   const inativoDias = Math.max(30, Math.min(730, parseInt(inativo ?? '180') || 180))
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
 
   let query = supabase.from('companies').select('id, name, cnpj, created_at').order('name')
+  if (tenantId) query = query.eq('tenant_id', tenantId)
   if (q?.trim()) query = query.ilike('name', `%${q.trim().replace(/[%_]/g, '')}%`)
 
   const { data: companies, error } = await query
   const companyIds = (companies ?? []).map(c => c.id)
   // Conta contratos ATIVOS em funil de gestão de contratos (não oportunidades em vendas)
   const gestaoPipelineIds = (companyIds.length
-    ? await supabase.from('pipelines').select('id').eq('type', 'gestao_contratos')
+    ? await (() => {
+        let pQ = supabase.from('pipelines').select('id').eq('type', 'gestao_contratos')
+        if (tenantId) pQ = pQ.eq('tenant_id', tenantId)
+        return pQ
+      })()
     : { data: [] as any[] }
   ).data?.map((p: any) => p.id) ?? []
 
