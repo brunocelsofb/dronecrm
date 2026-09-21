@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive, updateTenantData } from '@/lib/actions/super-admin'
+import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive } from '@/lib/actions/super-admin'
+import { EditTenantRow } from './edit-tenant-row'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +85,6 @@ export default async function SuperAdminPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        {/* Toggle ativo/inativo */}
                         <form action={async () => {
                           'use server'
                           await toggleTenantActive(t.id, !t.is_active)
@@ -100,7 +100,6 @@ export default async function SuperAdminPage() {
                             {t.is_active ? 'Desativar' : 'Reativar'}
                           </button>
                         </form>
-                        {/* Botao editar — abre form inline via details/summary */}
                         <label
                           htmlFor={`edit-${t.id}`}
                           className="text-xs px-3 py-1 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 font-medium cursor-pointer transition-colors"
@@ -110,72 +109,10 @@ export default async function SuperAdminPage() {
                       </div>
                     </td>
                   </tr>
-                  {/* Inline edit row — toggled by checkbox trick (no JS needed) */}
+                  {/* Edit row gerenciada pelo Client Component */}
                   <tr key={`edit-row-${t.id}`}>
                     <td colSpan={6} className="px-0 py-0">
-                      <input type="checkbox" id={`edit-${t.id}`} className="hidden peer/edit" />
-                      <div className="hidden peer-checked/edit:block bg-blue-50 border-b border-blue-100 px-6 py-4">
-                        <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">Editando: {t.name}</p>
-                        <form action={updateTenantData} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <input type="hidden" name="tenant_id" value={t.id} />
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
-                            <input
-                              name="name"
-                              defaultValue={t.name}
-                              required
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Slug</label>
-                            <input
-                              name="slug"
-                              defaultValue={t.slug}
-                              required
-                              pattern="[a-z0-9-]+"
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Plano</label>
-                            <select
-                              name="plan"
-                              defaultValue={t.plan}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none"
-                            >
-                              <option value="starter">Starter</option>
-                              <option value="professional">Professional</option>
-                              <option value="enterprise">Enterprise</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Max. usuarios</label>
-                            <input
-                              name="max_users"
-                              type="number"
-                              defaultValue={t.max_users}
-                              min={1}
-                              max={500}
-                              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-[#1B556B] focus:outline-none"
-                            />
-                          </div>
-                          <div className="md:col-span-4 flex justify-end gap-2 pt-1">
-                            <label
-                              htmlFor={`edit-${t.id}`}
-                              className="text-xs px-4 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer font-medium"
-                            >
-                              Cancelar
-                            </label>
-                            <button
-                              type="submit"
-                              className="text-xs px-4 py-1.5 rounded bg-[#1B556B] text-white hover:bg-[#154459] font-medium transition-colors"
-                            >
-                              Salvar alteracoes
-                            </button>
-                          </div>
-                        </form>
-                      </div>
+                      <EditTenantRow tenant={{ id: t.id, name: t.name, slug: t.slug, plan: t.plan, max_users: t.max_users }} />
                     </td>
                   </tr>
                 </>
