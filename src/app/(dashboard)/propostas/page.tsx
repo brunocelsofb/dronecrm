@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, getActiveTenantId } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PropostasTable } from '@/components/proposals/propostas-table'
 
@@ -6,6 +6,7 @@ import { PropostasTable } from '@/components/proposals/propostas-table'
 export default async function PropostasPage() {
   const supabase = await createClient()
   const admin = createAdminClient()
+  const impTenantId = await getActiveTenantId()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -14,12 +15,24 @@ export default async function PropostasPage() {
     .from('profiles').select('role').eq('id', user.id).maybeSingle()
 
   // Query 1: todas as propostas
-  const { data: proposals, error } = await admin
+  let tenantContractIds: string[] | null = null
+  if (impTenantId) {
+    const { data: tenantContracts } = await admin.from('contracts').select('id').eq('tenant_id', impTenantId)
+    tenantContractIds = (tenantContracts ?? []).map(c => c.id)
+  }
+
+  let proposalsQ = admin
     .from('proposals')
     .select('id, control_code, version, workflow_status, proposal_value, created_at, updated_at, proposal_validity_days, client_review_token, client_approved_by_name, contract_id')
     .is('deleted_at', null)
     .order('updated_at', { ascending: false })
     .limit(300)
+  if (tenantContractIds !== null) {
+    proposalsQ = tenantContractIds.length
+      ? proposalsQ.in('contract_id', tenantContractIds)
+      : proposalsQ.in('contract_id', ['00000000-0000-0000-0000-000000000000'])
+  }
+  const { data: proposals, error } = await proposalsQ
 
   const contractIds = [...new Set((proposals ?? []).map(p => p.contract_id).filter(Boolean))]
   const proposalIds = (proposals ?? []).map(p => p.id)
