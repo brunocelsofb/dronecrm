@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createClientForTenant } from '@/lib/supabase/server'
 import { KanbanBoard, type RunCard } from '@/components/pipeline/kanban-board'
 import { PipelineSelect } from '@/components/pipeline/pipeline-select'
 import { PipelineDashboard } from '@/components/pipeline/pipeline-dashboard'
@@ -15,7 +15,7 @@ export default async function PipelinePage({
 }) {
   const { pipeline: pipelineIdParam, dash, tag: tagFilter } = await searchParams
   const showDash = dash === '1'
-  const supabase = await createClient()
+  const { client: supabase, tenantId } = await createClientForTenant()
   const isAdmin = await isCurrentUserAdmin()
 
   // Roda "no fundo" (sem await) — antes isso travava o carregamento da
@@ -25,10 +25,12 @@ export default async function PipelinePage({
   // atualizado na hora" por "tela rápida agora".
   void checkAndTriggerRenewals()
 
-  const { data: pipelinesRaw } = await supabase
+  let pipelinesQ = supabase
     .from('pipelines')
     .select('id, name, is_default, type, won_label, lost_label')
     .order('name')
+  if (tenantId) pipelinesQ = pipelinesQ.eq('tenant_id', tenantId)
+  const { data: pipelinesRaw } = await pipelinesQ
 
   // Ordena: funis de vendas primeiro (Novos Negócios), gestao_contratos depois
   const TYPE_ORDER: Record<string, number> = { vendas: 0, gestao_contratos: 1, servico_avulso: 2 }
@@ -74,7 +76,7 @@ export default async function PipelinePage({
     salesPipelineIds.length
       ? supabase.from('pipeline_runs').select('id, contract_id, stage_id, stage_entered_at, value, status, pipeline_id').in('pipeline_id', salesPipelineIds).in('status', ['open', 'won', 'lost'])
       : Promise.resolve({ data: [] as any[] }),
-    supabase.from('lost_reasons').select('id, name').eq('active', true).order('display_order'),
+    (() => { let lrQ = supabase.from('lost_reasons').select('id, name').eq('active', true).order('display_order'); if (tenantId) lrQ = lrQ.eq('tenant_id', tenantId); return lrQ })(),
   ])
 
   const allContractIds = [...new Set([
