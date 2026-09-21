@@ -7,7 +7,8 @@
 // você for instalar o pacote.
 
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -36,4 +37,30 @@ export async function createClient() {
       },
     }
   )
+}
+
+/** Retorna o tenant_id ativo de impersonation (do request header injetado pelo middleware), ou null */
+export async function getActiveTenantId(): Promise<string | null> {
+  const headersList = await headers()
+  return headersList.get('x-orbis-imp-tenant-id') ?? null
+}
+
+/**
+ * Retorna o cliente Supabase adequado + o tenantId ativo.
+ * - Normal: client = cliente com RLS, tenantId = null (RLS filtra automaticamente)
+ * - Impersonando: client = admin (sem RLS), tenantId = ID do tenant alvo
+ *
+ * Quando tenantId for não-nulo, adicione .eq('tenant_id', tenantId)
+ * nas queries de tabelas com escopo de tenant.
+ */
+export async function createClientForTenant(): Promise<{
+  client: ReturnType<typeof createAdminClient>
+  tenantId: string | null
+}> {
+  const tenantId = await getActiveTenantId()
+  if (tenantId) {
+    return { client: createAdminClient() as any, tenantId }
+  }
+  const regularClient = await createClient()
+  return { client: regularClient as any, tenantId: null }
 }
