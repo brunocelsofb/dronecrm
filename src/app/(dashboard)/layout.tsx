@@ -7,6 +7,7 @@ import { NotificationBell } from '@/components/layout/notification-bell'
 import { AssistantPanel } from '@/components/assistant/assistant-panel'
 import { RealtimeWatcher } from '@/components/layout/realtime-watcher'
 import { LogOut } from 'lucide-react'
+import { getEffectivePlan } from '@/lib/config/plans'
 
 export default async function DashboardLayout({
   children,
@@ -18,16 +19,13 @@ export default async function DashboardLayout({
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Camada extra de proteção além do middleware — redundante de
-  // propósito, pois middleware + layout juntos cobrem casos de
-  // cache/edge diferentes. Não é desperdício, é defesa em profundidade.
   if (!user) {
     redirect('/login')
   }
 
   const { data: profile } = await supabase
     .from('profiles')
-   .select('role, full_name, is_super_admin')
+    .select('role, full_name, is_super_admin')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -37,11 +35,23 @@ export default async function DashboardLayout({
     .eq('id', 'default')
     .maybeSingle()
 
- const isAdmin = profile?.role === 'admin'
-const isSuperAdmin = (profile as any)?.is_super_admin === true
+  // Busca plano e trial do tenant atual
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('plan, trial_ends_at')
+    .maybeSingle()
+
+  const isAdmin = profile?.role === 'admin'
+  const isSuperAdmin = (profile as any)?.is_super_admin === true
   const orgName = orgSettings?.name ?? 'DRONE'
 
-  // Logo dinâmica: storage path -> URL pública, fallback /drone.png
+  // Plano efetivo: se ainda estiver em trial, libera enterprise
+  const effectivePlan = getEffectivePlan(
+    tenantData?.plan ?? 'starter',
+    tenantData?.trial_ends_at ?? null
+  )
+
+  // Logo dinamica: storage path -> URL publica, fallback /drone.png
   const adminSupa = (await import('@/lib/supabase/admin')).createAdminClient()
   const rawLogo = (orgSettings as any)?.logo_storage_path
   let sidebarLogoUrl = '/drone.png'
@@ -64,7 +74,7 @@ const isSuperAdmin = (profile as any)?.is_super_admin === true
           />
         </div>
         <div className="flex-1">
-         <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />
+          <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} effectivePlan={effectivePlan} />
         </div>
         <div className="mt-4 border-t border-white/10 pt-3">
           <div className="flex items-center gap-1.5 px-2.5 pb-2">
