@@ -108,6 +108,15 @@ const MIGRATIONS = [
       // --- activities ---
       `alter table contract_crm.activities add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
       `update contract_crm.activities a set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = a.user_id limit 1) where tenant_id is null and user_id is not null`,
+      // --- leads (backfill via assigned_to -> profiles.tenant_id) ---
+      `alter table contract_crm.leads add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.leads l set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = l.assigned_to) where tenant_id is null and assigned_to is not null`,
+      `update contract_crm.leads l set tenant_id = (select pr.tenant_id from contract_crm.profiles pr join contract_crm.contracts c on c.owner_id = pr.id where c.id = l.converted_contract_id) where tenant_id is null and converted_contract_id is not null`,
+
+      // --- tickets (backfill via assigned_to or contract_id) ---
+      `alter table contract_crm.tickets add column if not exists tenant_id uuid references contract_crm.tenants(id) on delete cascade`,
+      `update contract_crm.tickets tk set tenant_id = (select pr.tenant_id from contract_crm.profiles pr where pr.id = tk.assigned_to) where tenant_id is null and assigned_to is not null`,
+      `update contract_crm.tickets tk set tenant_id = (select pr.tenant_id from contract_crm.profiles pr join contract_crm.contracts c on c.owner_id = pr.id where c.id = tk.contract_id) where tenant_id is null and contract_id is not null`,
     ],
   }
 ]
