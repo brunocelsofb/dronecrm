@@ -6,8 +6,9 @@ import { RefreshButton } from '@/components/layout/refresh-button'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { AssistantPanel } from '@/components/assistant/assistant-panel'
 import { RealtimeWatcher } from '@/components/layout/realtime-watcher'
-import { LogOut } from 'lucide-react'
+import { LogOut, Eye, ArrowLeft } from 'lucide-react'
 import { getEffectivePlan } from '@/lib/config/plans'
+import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
 
 export default async function DashboardLayout({
   children,
@@ -51,6 +52,9 @@ export default async function DashboardLayout({
     tenantData?.trial_ends_at ?? null
   )
 
+  // Estado de impersonation
+  const impersonation = await getImpersonationState()
+
   // Logo dinamica: storage path -> URL publica, fallback /drone.png
   const adminSupa = (await import('@/lib/supabase/admin')).createAdminClient()
   const rawLogo = (orgSettings as any)?.logo_storage_path
@@ -65,7 +69,29 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="flex w-56 shrink-0 flex-col bg-brand-800 p-4">
+      {/* Banner de Impersonation */}
+      {impersonation.active && (
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-4 bg-amber-400 px-6 py-2 text-sm font-medium text-amber-900 shadow-md">
+          <div className="flex items-center gap-2">
+            <Eye size={16} strokeWidth={2} />
+            <span>
+              Você está visualizando como:{' '}
+              <strong>{impersonation.tenantName}</strong>
+            </span>
+          </div>
+          <form action={stopImpersonation}>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-800 transition-colors"
+            >
+              <ArrowLeft size={12} />
+              Voltar ao Super Admin
+            </button>
+          </form>
+        </div>
+      )}
+
+      <aside className={`flex w-56 shrink-0 flex-col bg-brand-800 p-4${impersonation.active ? ' mt-9' : ''}`}>
         <div className="mb-6 flex justify-center py-4">
           <img
             src={sidebarLogoUrl}
@@ -95,7 +121,7 @@ export default async function DashboardLayout({
           </form>
         </div>
       </aside>
-      <main className="flex-1 p-6">{children}</main>
+      <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>{children}</main>
       <RealtimeWatcher />
       {profile?.role === 'admin' && <AssistantPanel />}
     </div>
