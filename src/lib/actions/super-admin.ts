@@ -3,11 +3,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 async function assertSuperAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Não autenticado')
+  if (!user) throw new Error('Nao autenticado')
 
   const { data: profile } = await supabase
     .schema('contract_crm')
@@ -46,7 +47,7 @@ export async function getSuperAdminData() {
   return tenantsWithCount
 }
 
-export async function createNewTenantAndUser(formData: FormData) {
+export async function createNewTenantAndUser(formData: FormData): Promise<void> {
   await assertSuperAdmin()
   const admin = createAdminClient()
 
@@ -59,10 +60,9 @@ export async function createNewTenantAndUser(formData: FormData) {
   const maxUsers = parseInt(formData.get('max_users') as string) || 5
 
   if (!name || !slug || !email || !password || !fullName) {
-    return { error: 'Todos os campos são obrigatórios' }
+    throw new Error('Todos os campos sao obrigatorios')
   }
 
-  // 1. Cria tenant
   const { data: tenant, error: tenantError } = await admin
     .schema('contract_crm')
     .from('tenants')
@@ -70,9 +70,8 @@ export async function createNewTenantAndUser(formData: FormData) {
     .select('id')
     .single()
 
-  if (tenantError) return { error: `Erro ao criar tenant: ${tenantError.message}` }
+  if (tenantError) throw new Error('Erro ao criar tenant: ' + tenantError.message)
 
-  // 2. Cria usuário no Auth
   const { data: authData, error: authError } = await admin.auth.admin.createUser({
     email,
     password,
@@ -83,10 +82,9 @@ export async function createNewTenantAndUser(formData: FormData) {
 
   if (authError) {
     await admin.schema('contract_crm').from('tenants').delete().eq('id', tenant.id)
-    return { error: `Erro ao criar usuário: ${authError.message}` }
+    throw new Error('Erro ao criar usuario: ' + authError.message)
   }
 
-  // 3. Cria perfil
   const { error: profileError } = await admin
     .schema('contract_crm')
     .from('profiles')
@@ -99,20 +97,19 @@ export async function createNewTenantAndUser(formData: FormData) {
     })
 
   if (profileError) {
-    return { error: `Tenant e usuário criados, mas perfil falhou: ${profileError.message}` }
+    throw new Error('Perfil falhou: ' + profileError.message)
   }
 
-  // 4. Cria organization_settings para o novo tenant
   await admin
     .schema('contract_crm')
     .from('organization_settings')
     .insert({ id: 'default', tenant_id: tenant.id })
 
   revalidatePath('/super-admin')
-  return { success: true, tenantId: tenant.id, userId: authData.user.id }
+  redirect('/super-admin')
 }
 
-export async function toggleTenantActive(tenantId: string, isActive: boolean) {
+export async function toggleTenantActive(tenantId: string, isActive: boolean): Promise<void> {
   await assertSuperAdmin()
   const admin = createAdminClient()
 
@@ -122,7 +119,6 @@ export async function toggleTenantActive(tenantId: string, isActive: boolean) {
     .update({ is_active: isActive })
     .eq('id', tenantId)
 
-  if (error) return { error: error.message }
+  if (error) throw new Error(error.message)
   revalidatePath('/super-admin')
-  return { success: true }
 }
