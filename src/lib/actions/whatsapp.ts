@@ -976,19 +976,23 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   revalidatePath('/whatsapp')
   return {}
 }
-export async function unarchiveWhatsAppConversation(phone: string, instanceName?: string | null): Promise<void> {
+export async function unarchiveWhatsAppConversation(phone: string, instanceName?: string | null, tenantId?: string | null): Promise<void> {
   const admin = createAdminClient()
   const inst = instanceName ?? ''
 
-  const { error } = await admin
+  let updateQ = admin
     .from('whatsapp_conversation_status')
     .update({ is_archived: false, archived_at: null, archived_by: null, updated_at: new Date().toISOString() })
     .eq('phone', phone)
     .eq('instance_name', inst)
+  if (tenantId) updateQ = (updateQ as any).eq('tenant_id', tenantId)
+
+  const { error } = await updateQ
 
   if (error) {
     await admin.from('whatsapp_conversation_status').insert({
       phone, instance_name: inst, is_archived: false,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     })
   }
 }
