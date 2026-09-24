@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Lista de migrações consolidadas — cada uma é idempotente (add column if not exists, create table if not exists).
+// Lista de migraÃ§Ãµes consolidadas â cada uma Ã© idempotente (add column if not exists, create table if not exists).
 // Roda via POST /api/admin/run-migrations com header x-migration-key.
 // Cole no console do Supabase como alternativa.
-const MIGRATIONS = [
+const MIGRATIONS: Array<{ id: string; description: string; sqls: string[] }> = [
   {
     id: 'portfolio-fields-v1',
     description: 'Campos da carteira: contacts (cnpj, cargo), pipelines (revenue_type), contracts (contract_number, sankhya_code, monthly_value, valid_until, engineer_id, coordinator_id, abc_curve...)',
@@ -41,7 +41,7 @@ const MIGRATIONS = [
   },
   {
     id: 'pipeline-field-configs-v1',
-    description: 'Tabela de configuração de campos por funil',
+    description: 'Tabela de configuraÃ§Ã£o de campos por funil',
     sqls: [
       `create table if not exists contract_crm.pipeline_field_configs (id uuid primary key default gen_random_uuid(), pipeline_id uuid not null references contract_crm.pipelines(id) on delete cascade, field_key text not null, field_label text not null, visibility text not null default 'optional', display_order integer not null default 0, created_at timestamptz not null default now(), unique (pipeline_id, field_key))`,
       `do $do$ begin if not exists (select 1 from pg_policies where schemaname='contract_crm' and tablename='pipeline_field_configs' and policyname='pipeline_field_configs_all') then alter table contract_crm.pipeline_field_configs enable row level security; create policy "pipeline_field_configs_all" on contract_crm.pipeline_field_configs for all using (auth.role() = 'authenticated'); end if; end $do$`,
@@ -49,7 +49,7 @@ const MIGRATIONS = [
   },
   {
     id: 'contract-measurements-v1',
-    description: 'Tabela de medições mensais',
+    description: 'Tabela de mediÃ§Ãµes mensais',
     sqls: [
       `create table if not exists contract_crm.contract_measurements (id uuid primary key default gen_random_uuid(), contract_id uuid not null references contract_crm.contracts(id) on delete cascade, reference_month date not null, value numeric(14,2) not null, description text, status text not null default 'rascunho', submitted_by uuid references contract_crm.profiles(id), submitted_at timestamptz, approved_by uuid references contract_crm.profiles(id), approved_at timestamptz, sankhya_sent_at timestamptz, created_at timestamptz not null default now())`,
       `do $do$ begin if not exists (select 1 from pg_policies where schemaname='contract_crm' and tablename='contract_measurements' and policyname='measurements_all') then alter table contract_crm.contract_measurements enable row level security; create policy "measurements_all" on contract_crm.contract_measurements for all using (auth.role() = 'authenticated'); end if; end $do$`,
@@ -123,7 +123,7 @@ const MIGRATIONS = [
 
 export async function GET() {
   return NextResponse.json({
-    message: 'API de migrações ORBIS CRM',
+    message: 'API de migraÃ§Ãµes ORBIS CRM',
     usage: 'POST com header: x-migration-key: orbis-migrate-2026',
     migrations: MIGRATIONS.map(m => ({ id: m.id, description: m.description, statements: m.sqls.length }))
   })
@@ -132,7 +132,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const key = request.headers.get('x-migration-key')
   if (key !== (process.env.MIGRATION_SECRET_KEY ?? 'orbis-migrate-2026')) {
-    return NextResponse.json({ error: 'Chave inválida' }, { status: 401 })
+    return NextResponse.json({ error: 'Chave invÃ¡lida' }, { status: 401 })
   }
 
   const supabase = createAdminClient()
@@ -145,8 +145,8 @@ export async function POST(request: Request) {
     for (const sql of migration.sqls) {
       // Cada SQL roda como query direta via Supabase
       const { error } = await (supabase as any).rpc('exec_migration_sql', { p_sql: sql }).catch(async (e: any) => {
-        // Se o RPC não existir, tenta via from().select() que o admin client permite
-        return { error: { message: `RPC não disponível: ${e.message}. Rode o SQL manualmente.` } }
+        // Se o RPC nÃ£o existir, tenta via from().select() que o admin client permite
+        return { error: { message: `RPC nÃ£o disponÃ­vel: ${e.message}. Rode o SQL manualmente.` } }
       })
       if (error) {
         migrationResults.push(`ERRO: ${error.message}`)
@@ -164,5 +164,5 @@ export async function POST(request: Request) {
     })
   }
 
-  return NextResponse.json({ results, tip: 'Se aparecer "RPC não disponível", copie os SQLs da lista abaixo e rode no SQL Editor do Supabase.', migrations: MIGRATIONS.map(m => ({ id: m.id, sqls: m.sqls })) })
+  return NextResponse.json({ results, tip: 'Se aparecer "RPC nÃ£o disponÃ­vel", copie os SQLs da lista abaixo e rode no SQL Editor do Supabase.', migrations: MIGRATIONS.map(m => ({ id: m.id, sqls: m.sqls })) })
 }
