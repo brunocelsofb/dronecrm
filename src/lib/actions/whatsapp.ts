@@ -759,7 +759,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
       admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, tenant_id').eq('id', 'default').maybeSingle(),
     ])
     const nome = (profile as any)?.full_name ?? 'nossa equipe'
-    const transferText = `*TransferÃªncia de atendimento:* Aguarde um momento, vou transferir vocÃª para o(a) *${nome}*... ð`
+    const transferText = `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🙏`
 
     if (org?.evo_server_url && org?.evo_api_key) {
       const { data: lastMsg } = await admin.from('contract_whatsapp_messages')
@@ -768,7 +768,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
       const contractId = (lastMsg as any)?.contract_id ?? null
       const leadId = (lastMsg as any)?.lead_id ?? null
 
-      // Enviar mensagem de transferÃªncia para o cliente
+      // Enviar mensagem de transferência para o cliente
       const evoRes = await fetch(`${org.evo_server_url}/message/sendText/${instance}`, {
         method: 'POST',
         headers: { 'apikey': org.evo_api_key, 'Content-Type': 'application/json' },
@@ -776,7 +776,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
       })
       const evoData: any = await evoRes.json().catch(() => ({}))
 
-      // Salvar mensagem de transferÃªncia no banco
+      // Salvar mensagem de transferência no banco
       const { error: insertErr } = await admin.from('contract_whatsapp_messages').insert({
         contract_id: contractId,
         lead_id: leadId,
@@ -789,9 +789,9 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
         zapi_message_id: evoData?.key?.id ?? null,
         tenant_id: tenantId,
       })
-      if (insertErr) console.error('[assign] erro ao salvar msg transferÃªncia:', insertErr.message)
+      if (insertErr) console.error('[assign] erro ao salvar msg transferência:', insertErr.message)
     }
-  } catch (e) { console.warn('[assign] falha ao notificar transferÃªncia:', e) }
+  } catch (e) { console.warn('[assign] falha ao notificar transferência:', e) }
 
   revalidatePath('/whatsapp')
   return {}
@@ -856,7 +856,7 @@ export async function importExistingWhatsAppChats(): Promise<ActionState & { imp
       unlinked_sender_name: contractId ? null : chat.name,
       direction: 'recebido',
       phone: chat.phone,
-      message: '[Conversa importada do WhatsApp Ã¢ÂÂ histÃÂ³rico anterior ÃÂ  conexÃÂ£o com o CRM]',
+      message: '[Conversa importada do WhatsApp — histórico anterior à conexão com o CRM]',
       status: 'enviado',
       created_at: (chat as any).lastMessageTime ? new Date(Number((chat as any).lastMessageTime) * 1000).toISOString() : new Date().toISOString(),
     })
