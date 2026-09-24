@@ -8,6 +8,11 @@ import { sendEvoTextMessage, sendEvoImageMessage, sendEvoDocumentMessage, verify
 import type { EvoCredentials } from '@/lib/whatsapp/evolution'
 import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
 
+async function getTenantId(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
+  const { data } = await admin.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
+  return (data as any)?.tenant_id ?? null
+}
+
 export type ActionState = { error?: string; message?: any }
 
 async function getEvoCredentials(): Promise<EvoCredentials | null> {
@@ -18,7 +23,7 @@ async function getEvoCredentials(): Promise<EvoCredentials | null> {
 }
 
 export async function connectEvo(formData: FormData): Promise<ActionState> {
-  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
+  if (!(await isCurrentUserAdmin())) return { error: 'SÃ³ administradores podem configurar isso.' }
 
   const serverUrl     = (formData.get('evo_server_url') as string)?.trim()
   const apiKey        = (formData.get('evo_api_key') as string)?.trim()
@@ -36,7 +41,7 @@ export async function connectEvo(formData: FormData): Promise<ActionState> {
 
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
   const webhookRes = await setEvoWebhook({ serverUrl, apiKey, instanceName, webhookUrl })
-  if (!webhookRes.ok) console.warn('[evo] webhook não configurado:', webhookRes.error)
+  if (!webhookRes.ok) console.warn('[evo] webhook nÃ£o configurado:', webhookRes.error)
 
   revalidatePath('/settings')
   return {}
@@ -45,14 +50,14 @@ export async function connectEvo(formData: FormData): Promise<ActionState> {
 export async function getEvoQrCodeAction(): Promise<{ base64?: string; status?: string; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Acesso negado.' }
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'Credenciais da Evolution API não configuradas.' }
+  if (!creds) return { error: 'Credenciais da Evolution API nÃ£o configuradas.' }
   return getEvoQrCode(creds)
 }
 
 export async function configureEvoWebhook(): Promise<ActionState> {
   if (!(await isCurrentUserAdmin())) return { error: 'Acesso negado.' }
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'Credenciais não configuradas.' }
+  if (!creds) return { error: 'Credenciais nÃ£o configuradas.' }
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
   const res = await setEvoWebhook({ ...creds, webhookUrl })
   if (!res.ok) return { error: `Erro ao configurar webhook: ${res.error}` }
@@ -60,7 +65,7 @@ export async function configureEvoWebhook(): Promise<ActionState> {
 }
 
 export async function disconnectEvo(): Promise<ActionState> {
-  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
+  if (!(await isCurrentUserAdmin())) return { error: 'SÃ³ administradores podem configurar isso.' }
   const supabase = await createClient()
   await supabase
     .from('organization_settings')
@@ -79,14 +84,15 @@ export async function sendContractWhatsApp(
 ): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Usuário não autenticado.' }
-  if (!phone) return { error: 'Informe o telefone do destinatário.' }
+  if (!user) return { error: 'UsuÃ¡rio nÃ£o autenticado.' }
+  if (!phone) return { error: 'Informe o telefone do destinatÃ¡rio.' }
   if (!message.trim()) return { error: 'Escreva a mensagem.' }
 
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'WhatsApp não está conectado. Vá em Configurações.' }
+  if (!creds) return { error: 'WhatsApp nÃ£o estÃ¡ conectado. VÃ¡ em ConfiguraÃ§Ãµes.' }
 
   const admin = createAdminClient()
+  const tenantId = await getTenantId(admin)
 
   const rawPhone = phone.replace(/\D/g, '')
   const normalizedPhone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone
@@ -114,6 +120,7 @@ export async function sendContractWhatsApp(
         triggered_automatically: false,
         zapi_message_id: evoResult?.key?.id ?? null,
         instance_name: instanceName ?? creds.instanceName,
+        tenant_id: tenantId,
       })
       .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, sent_by, lead_id, zapi_message_id')
       .single()
@@ -141,12 +148,13 @@ export async function sendContractWhatsApp(
       error_message: errorMsg,
       triggered_automatically: false,
       instance_name: instanceName ?? creds.instanceName,
+      tenant_id: tenantId,
     })
     return { error: errorMsg }
   }
 }
 
-// Envio de Mídia pela Oportunidade CORRIGIDO (Garante inserção no banco com contract_id e revalida ambas as rotas)
+// Envio de MÃ­dia pela Oportunidade CORRIGIDO (Garante inserÃ§Ã£o no banco com contract_id e revalida ambas as rotas)
 export async function sendContractWhatsAppMedia(
   contractId: string,
   phone: string,
@@ -156,13 +164,14 @@ export async function sendContractWhatsAppMedia(
 ): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Usuário não autenticado.' }
-  if (!phone) return { error: 'Informe o telefone do destinatário.' }
+  if (!user) return { error: 'UsuÃ¡rio nÃ£o autenticado.' }
+  if (!phone) return { error: 'Informe o telefone do destinatÃ¡rio.' }
 
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
+  if (!creds) return { error: 'WhatsApp ainda nÃ£o estÃ¡ conectado.' }
 
   const admin = createAdminClient()
+  const tenantId = await getTenantId(admin)
   const rawPhone = phone.replace(/\D/g, '')
   const normalizedPhone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone
   const friendlyText = mediaType === 'image' ? '[imagem]' : `[${mediaType}] ${filename ?? ''}`
@@ -185,6 +194,7 @@ export async function sendContractWhatsAppMedia(
       zapi_message_id: result?.key?.id ?? null,
       status: 'enviado',
       instance_name: creds.instanceName,
+      tenant_id: tenantId,
     })
 
     if (insertErr) {
@@ -212,6 +222,7 @@ export async function sendContractWhatsAppMedia(
       status: 'falhou',
       error_message: errorMsg,
       instance_name: creds.instanceName,
+      tenant_id: tenantId,
     })
     return { error: errorMsg }
   }
@@ -297,7 +308,7 @@ export async function sendAutomatedWhatsAppTemplateMessage(contractId: string, t
     await supabase.from('activities').insert({
       contract_id: contractId,
       type: 'whatsapp',
-      content: `WhatsApp automático enviado pra ${filled.phone}.`,
+      content: `WhatsApp automÃ¡tico enviado pra ${filled.phone}.`,
       metadata: { kind: 'sent', phone: filled.phone, message: filled.message },
     })
   } catch (e) {
@@ -440,7 +451,7 @@ export async function linkUnlinkedWhatsAppConversation(phone: string, contractId
     .select('id')
 
   if (error) return { error: error.message }
-  if (!data || data.length === 0) return { error: 'Nenhuma mensagem atualizada. O vínculo pode já ter sido feito.' }
+  if (!data || data.length === 0) return { error: 'Nenhuma mensagem atualizada. O vÃ­nculo pode jÃ¡ ter sido feito.' }
 
   await supabase.from('activities').insert({
     contract_id: contractId,
@@ -456,7 +467,7 @@ export async function linkUnlinkedWhatsAppConversation(phone: string, contractId
 export async function saveWhatsAppConversationAsNote(contractId: string, noteText: string): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Usuário não autenticado.' }
+  if (!user) return { error: 'UsuÃ¡rio nÃ£o autenticado.' }
 
   const { error } = await supabase.from('activities').insert({
     contract_id: contractId,
@@ -492,11 +503,11 @@ export async function searchContractsForLinking(query: string): Promise<{ id: st
 export async function sendUnlinkedWhatsAppMessage(phone: string, message: string, instanceName?: string): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Usuário não autenticado.' }
+  if (!user) return { error: 'UsuÃ¡rio nÃ£o autenticado.' }
   if (!message.trim()) return { error: 'Escreva a mensagem.' }
 
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
+  if (!creds) return { error: 'WhatsApp ainda nÃ£o estÃ¡ conectado.' }
 
   const { data: profile } = await supabase.from('profiles').select('full_name, job_title').eq('id', user.id).maybeSingle()
   const senderName = profile?.full_name ?? null
@@ -506,15 +517,16 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
     : null
   const signedMessage = signature ? `${signature} ${message}` : message
 
-  // 1. Higienização do telefone
+  // 1. HigienizaÃ§Ã£o do telefone
   const rawPhone = phone.replace(/\D/g, '')
   const normalizedPhone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone
   const last8 = normalizedPhone.slice(-8)
 
   const targetCreds = instanceName ? { ...creds, instanceName } : creds
   const admin = createAdminClient()
+  const tenantId = await getTenantId(admin)
 
-  // 2. Busca de vínculo infalível
+  // 2. Busca de vÃ­nculo infalÃ­vel
   let contractId: string | null = null
   const { data: linkData } = await admin.from('contract_whatsapp_messages')
     .select('contract_id').ilike('phone', `%${last8}`)
@@ -545,6 +557,7 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
       status: 'enviado',
       instance_name: targetCreds.instanceName,
       zapi_message_id: result?.key?.id ?? null,
+      tenant_id: tenantId,
     })
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : 'Falha ao enviar.'
@@ -557,6 +570,7 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
       status: 'falhou',
       error_message: errorMsg,
       instance_name: targetCreds.instanceName,
+      tenant_id: tenantId,
     })
     return { error: errorMsg }
   }
@@ -575,13 +589,13 @@ export async function sendUnlinkedWhatsAppMedia(
 ): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Usuário não autenticado.' }
-  if (!phone) return { error: 'Informe o telefone do destinatário.' }
+  if (!user) return { error: 'UsuÃ¡rio nÃ£o autenticado.' }
+  if (!phone) return { error: 'Informe o telefone do destinatÃ¡rio.' }
 
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
+  if (!creds) return { error: 'WhatsApp ainda nÃ£o estÃ¡ conectado.' }
 
-  // 1. Higienização do telefone
+  // 1. HigienizaÃ§Ã£o do telefone
   const rawPhone = phone.replace(/\D/g, '')
   const normalizedPhone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone
   const last8 = normalizedPhone.slice(-8)
@@ -589,7 +603,7 @@ export async function sendUnlinkedWhatsAppMedia(
   const targetCreds = instanceName ? { ...creds, instanceName } : creds
   const admin = createAdminClient()
 
-  // 2. Busca de vínculo infalível
+  // 2. Busca de vÃ­nculo infalÃ­vel
   let contractId: string | null = null
   const { data: linkData } = await admin.from('contract_whatsapp_messages')
     .select('contract_id').ilike('phone', `%${last8}`)
@@ -694,7 +708,7 @@ export async function checkAndSendWhatsAppCaptureReminders(): Promise<{ checked:
       await supabase.from('whatsapp_capture_prompts').update({ reminder_sent_at: new Date().toISOString() }).eq('phone', p.phone)
       sent++
     } catch (e) {
-      console.error(`Falha ao mandar lembrete de captação pra ${p.phone}:`, e)
+      console.error(`Falha ao mandar lembrete de captaÃ§Ã£o pra ${p.phone}:`, e)
     }
   }
 
@@ -723,7 +737,7 @@ export async function getWhatsAppAssignments(phones: string[]): Promise<Record<s
 
   const result: Record<string, ConversationAssignment> = {}
   for (const row of data ?? []) {
-    result[row.phone] = { assigned_to: row.assigned_to, assigned_to_name: (row as any).profiles?.full_name ?? 'Alguém', assigned_at: row.assigned_at }
+    result[row.phone] = { assigned_to: row.assigned_to, assigned_to_name: (row as any).profiles?.full_name ?? 'AlguÃ©m', assigned_at: row.assigned_at }
   }
   return result
 }
@@ -733,31 +747,51 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
   const { error } = await supabase.from('whatsapp_conversation_assignments').upsert({ phone, assigned_to: userId, assigned_at: new Date().toISOString() })
   if (error) return { error: error.message }
 
-  ;(async () => {
-    try {
-      const admin = createAdminClient()
-      const [{ data: profile }, { data: org }] = await Promise.all([
-        admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
-        admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name').eq('id', 'default').maybeSingle(),
-      ])
-      const nome = profile?.full_name ?? 'nossa equipe'
-      if (org?.evo_server_url && org?.evo_api_key) {
-        const { data: lastMsg } = await admin.from('contract_whatsapp_messages')
-          .select('instance_name').eq('phone', phone).order('created_at', { ascending: false }).limit(1).maybeSingle()
-        const instance = lastMsg?.instance_name ?? org.evo_instance_name
-        await fetch(`${org.evo_server_url}/message/sendText/${instance}`, {
-          method: 'POST',
-          headers: { 'apikey': org.evo_api_key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number: phone, text: `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🔄` }),
-        })
-      }
-    } catch (e) { console.warn('[assign] falha ao notificar transferência:', e) }
-  })()
+  try {
+    const admin = createAdminClient()
+    const tenantId = await getTenantId(admin)
+    const [{ data: profile }, { data: org }] = await Promise.all([
+      admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
+      admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, tenant_id').eq('id', 'default').maybeSingle(),
+    ])
+    const nome = (profile as any)?.full_name ?? 'nossa equipe'
+    const transferText = `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🙏`
+
+    if (org?.evo_server_url && org?.evo_api_key) {
+      const { data: lastMsg } = await admin.from('contract_whatsapp_messages')
+        .select('instance_name, contract_id, lead_id').eq('phone', phone).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const instance = (lastMsg as any)?.instance_name ?? org.evo_instance_name
+      const contractId = (lastMsg as any)?.contract_id ?? null
+      const leadId = (lastMsg as any)?.lead_id ?? null
+
+      // Enviar mensagem de transferência para o cliente
+      const evoRes = await fetch(`${org.evo_server_url}/message/sendText/${instance}`, {
+        method: 'POST',
+        headers: { 'apikey': org.evo_api_key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: phone, text: transferText }),
+      })
+      const evoData: any = await evoRes.json().catch(() => ({}))
+
+      // Salvar mensagem de transferência no banco
+      const { error: insertErr } = await admin.from('contract_whatsapp_messages').insert({
+        contract_id: contractId,
+        lead_id: leadId,
+        phone,
+        message: transferText,
+        direction: 'enviado',
+        status: 'enviado',
+        triggered_automatically: true,
+        instance_name: instance,
+        zapi_message_id: evoData?.key?.id ?? null,
+        tenant_id: tenantId,
+      })
+      if (insertErr) console.error('[assign] erro ao salvar msg transferência:', insertErr.message)
+    }
+  } catch (e) { console.warn('[assign] falha ao notificar transferência:', e) }
 
   revalidatePath('/whatsapp')
   return {}
 }
-
 export async function unassignWhatsAppConversation(phone: string): Promise<ActionState> {
   const supabase = await createClient()
   await supabase.from('whatsapp_conversation_assignments').delete().eq('phone', phone)
@@ -766,10 +800,10 @@ export async function unassignWhatsAppConversation(phone: string): Promise<Actio
 }
 
 export async function importExistingWhatsAppChats(): Promise<ActionState & { imported?: number; skipped?: number }> {
-  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem importar.' }
+  if (!(await isCurrentUserAdmin())) return { error: 'SÃ³ administradores podem importar.' }
 
   const creds = await getEvoCredentials()
-  if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
+  if (!creds) return { error: 'WhatsApp ainda nÃ£o estÃ¡ conectado.' }
 
   const supabase = createAdminClient()
 
@@ -818,7 +852,7 @@ export async function importExistingWhatsAppChats(): Promise<ActionState & { imp
       unlinked_sender_name: contractId ? null : chat.name,
       direction: 'recebido',
       phone: chat.phone,
-      message: '[Conversa importada do WhatsApp — histórico anterior à conexão com o CRM]',
+      message: '[Conversa importada do WhatsApp â histÃ³rico anterior Ã  conexÃ£o com o CRM]',
       status: 'enviado',
       created_at: (chat as any).lastMessageTime ? new Date(Number((chat as any).lastMessageTime) * 1000).toISOString() : new Date().toISOString(),
     })
@@ -830,7 +864,7 @@ export async function importExistingWhatsAppChats(): Promise<ActionState & { imp
 }
 
 export async function updateWhatsAppBotSettings(formData: FormData): Promise<ActionState> {
-  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
+  if (!(await isCurrentUserAdmin())) return { error: 'SÃ³ administradores podem configurar isso.' }
 
   const whatsapp_is_online = formData.get('whatsapp_is_online') === 'on'
   const whatsapp_welcome_message = (formData.get('whatsapp_welcome_message') as string)?.trim() || null
@@ -857,7 +891,7 @@ export async function updateWhatsAppBotSettings(formData: FormData): Promise<Act
 }
 
 export async function toggleWhatsAppOnlineStatus(isOnline: boolean): Promise<ActionState> {
-  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar isso.' }
+  if (!(await isCurrentUserAdmin())) return { error: 'SÃ³ administradores podem alterar isso.' }
   const supabase = await createClient()
   const { error } = await supabase.from('organization_settings').update({ whatsapp_is_online: isOnline }).eq('id', 'default')
   if (error) return { error: error.message }
@@ -869,7 +903,7 @@ export async function toggleWhatsAppOnlineStatus(isOnline: boolean): Promise<Act
 export async function archiveWhatsAppConversation(phone: string, instanceName?: string | null): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Não autenticado.' }
+  if (!user) return { error: 'NÃ£o autenticado.' }
 
   const inst = instanceName ?? ''
 
@@ -895,7 +929,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
       const aliases = (org as any)?.evo_instance_aliases ?? {}
       const instanceAlias = instanceName ? aliases[instanceName] : null
       const closingMsg = (typeof instanceAlias === 'object' ? instanceAlias?.closingMessage : null)
-        ?? '*Atendimento finalizado.* Se precisar de mais alguma coisa, basta enviar uma nova mensagem por aqui! 😊'
+        ?? '*Atendimento finalizado.* Se precisar de mais alguma coisa, basta enviar uma nova mensagem por aqui! ð'
 
       await sendEvoTextMessage({ ...targetCreds, phone, message: closingMsg })
     } catch { }
@@ -925,7 +959,7 @@ export async function unarchiveWhatsAppConversation(phone: string, instanceName?
 export async function saveUnlinkedContactName(phone: string, name: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Não autenticado.' }
+  if (!user) return { error: 'NÃ£o autenticado.' }
 
   const admin = createAdminClient()
   const cleanPhone = phone.replace(/\D/g, '')
@@ -960,7 +994,7 @@ export async function deleteWhatsAppMessage(
 ): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Não autenticado.' }
+  if (!user) return { error: 'NÃ£o autenticado.' }
 
   const admin = createAdminClient()
   
@@ -998,7 +1032,7 @@ export async function deleteWhatsAppMessage(
 export async function deleteWhatsAppConversation(phone: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Não autenticado.' }
+  if (!user) return { error: 'NÃ£o autenticado.' }
 
   const admin = createAdminClient()
   const cleanPhone = phone.replace(/\D/g, '')
