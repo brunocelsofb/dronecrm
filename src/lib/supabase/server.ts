@@ -39,8 +39,16 @@ export async function createClient() {
   )
 }
 
-/** Retorna o tenant_id ativo de impersonation (do request header injetado pelo middleware), ou null */
+/** Retorna o tenant_id ativo de impersonation.
+ * Lê primeiro o cookie (funciona em Route Handlers onde o middleware não injeta headers),
+ * e usa o header como fallback (funciona em Server Components/Actions via middleware). */
 export async function getActiveTenantId(): Promise<string | null> {
+  // Cookie: fonte primária — acessível em qualquer contexto server (Route Handlers incluídos)
+  const cookieStore = await cookies()
+  const fromCookie = cookieStore.get('orbis_imp_tid')?.value ?? null
+  if (fromCookie) return fromCookie
+
+  // Header: fallback para Server Components e Server Actions (injetado pelo middleware)
   const headersList = await headers()
   return headersList.get('x-orbis-imp-tenant-id') ?? null
 }
