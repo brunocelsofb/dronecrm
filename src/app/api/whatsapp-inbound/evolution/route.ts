@@ -304,6 +304,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: insertError.message })
     }
 
+    // Reabertura automática: mensagem inbound desarquiva a conversa
+    if (!isFromMe) {
+      try {
+        // Buscar registro existente via last8 (mesma lógica que o archive usa)
+        const { data: statusRows } = await supabase
+          .from('whatsapp_conversation_status')
+          .select('phone, instance_name, is_archived')
+          .ilike('phone', `%${last8}`)
+
+        for (const row of statusRows ?? []) {
+          if (row.is_archived) {
+            const rowInst = row.instance_name ?? ''
+            const reqInst = instanceName ?? ''
+            // Só reabrir se a instância bater (ou ambas vazias/null)
+            if (rowInst === reqInst || (!rowInst && !reqInst)) {
+              await supabase
+                .from('whatsapp_conversation_status')
+                .update({ is_archived: false, archived_at: null, updated_at: new Date().toISOString(), tenant_id: tenantId })
+                .eq('phone', row.phone)
+                .or(rowInst ? `instance_name.eq."${rowInst}"` : 'instance_name.is.null,instance_name.eq.""')
+              console.log('[evo-webhook] conversa reaberta automaticamente:', phone, '| inst:', instanceName)
+            }
+          }
+        }
+      } catch (reopenErr) {
+        console.warn('[evo-webhook] erro ao tentar reabrir conversa (não fatal):', reopenErr)
+      }
+    }
+
     return NextResponse.json({ ok: true, id: inserted?.id })
 
   } catch (err: any) {
