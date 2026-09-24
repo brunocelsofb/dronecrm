@@ -548,7 +548,7 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
   try {
     const result: any = await sendEvoTextMessage({ ...targetCreds, phone: normalizedPhone, message: signedMessage })
     await unarchiveWhatsAppConversation(normalizedPhone, targetCreds.instanceName)
-    await admin.from('contract_whatsapp_messages').insert({
+    const { data: inserted, error: insertErr } = await admin.from('contract_whatsapp_messages').insert({
       contract_id: contractId,
       sent_by: user.id,
       direction: 'enviado',
@@ -559,6 +559,8 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
       zapi_message_id: result?.key?.id ?? null,
       tenant_id: tenantId,
     })
+    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, sent_by, lead_id, zapi_message_id')
+    .single()
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : 'Falha ao enviar.'
     await admin.from('contract_whatsapp_messages').insert({
@@ -577,7 +579,7 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
 
   revalidatePath('/whatsapp')
   if (contractId) revalidatePath(`/contracts/${contractId}`)
-  return {}
+  return { message: inserted as any ?? undefined }
 }
 
 export async function sendUnlinkedWhatsAppMedia(
