@@ -919,17 +919,44 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   const admin = createAdminClient()
   const tenantId = await getTenantId(admin)
   const inst = instanceName ?? ''
+  const cleanPhone = String(phone).replace(/\D/g, '')
+  const last8 = cleanPhone.slice(-8)
 
-  // Atualizar status usando admin para evitar problemas de RLS/impersonation
-  const { error: updateErr } = await admin
+  // Buscar registro existente via last8 (cobre variações de DDI/DDD/9º dígito)
+  let statusQuery = admin
     .from('whatsapp_conversation_status')
-    .update({ is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id, updated_at: new Date().toISOString(), tenant_id: tenantId })
-    .eq('phone', phone)
-    .eq('instance_name', inst)
+    .select('phone, instance_name')
+    .ilike('phone', `%${last8}`)
+  if (inst) {
+    statusQuery = statusQuery.eq('instance_name', inst)
+  } else {
+    statusQuery = statusQuery.or('instance_name.is.null,instance_name.eq.""')
+  }
+  if (tenantId) {
+    statusQuery = (statusQuery as any).eq('tenant_id', tenantId)
+  }
 
-  if (updateErr) {
+  const { data: existing } = await statusQuery
+
+  if (existing && existing.length > 0) {
+    // Atualizar registro(s) encontrado(s)
+    for (const row of existing) {
+      let updateQ = admin
+        .from('whatsapp_conversation_status')
+        .update({ is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id, updated_at: new Date().toISOString(), tenant_id: tenantId })
+        .eq('phone', row.phone)
+      if (row.instance_name) {
+        updateQ = updateQ.eq('instance_name', row.instance_name)
+      } else {
+        updateQ = updateQ.or('instance_name.is.null,instance_name.eq.""')
+      }
+      if (tenantId) updateQ = (updateQ as any).eq('tenant_id', tenantId)
+      await updateQ
+    }
+  } else {
+    // Inserir novo registro de status arquivado
     await admin.from('whatsapp_conversation_status').insert({
-      phone, instance_name: inst,
+      phone: cleanPhone, instance_name: inst || null,
       is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id,
       tenant_id: tenantId,
     })
