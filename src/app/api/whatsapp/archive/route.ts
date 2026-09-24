@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getActiveTenantId } from '@/lib/supabase/server'
 import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { revalidatePath } from 'next/cache'
 
-async function doArchive(phone: string, userId: string, sendClosing: boolean, instanceName: string | null) {
+async function doArchive(
+  phone: string,
+  userId: string,
+  sendClosing: boolean,
+  instanceName: string | null,
+  tenantId: string | null,
+) {
   const admin = createAdminClient()
   const cleanPhone = String(phone).replace(/\D/g, '')
   const last8 = cleanPhone.slice(-8)
   
-  // A correção: Garantimos a instância correta (seja Matheus, Pedro, ou vazio)
   const targetInstance = instanceName ?? ''
   
-  console.log('[archive] phone:', phone, '→ last8:', last8, '| instance:', targetInstance)
+  console.log('[archive] phone:', phone, '→ last8:', last8, '| instance:', targetInstance, '| tenant:', tenantId)
 
   let dbError: any = null
   let success = false
@@ -29,6 +35,11 @@ async function doArchive(phone: string, userId: string, sendClosing: boolean, in
     query = query.or('instance_name.is.null,instance_name.eq.""')
   }
 
+  // Filtrar por tenant durante impersonation
+  if (tenantId) {
+    query = (query as any).eq('tenant_id', tenantId)
+  }
+
   const { data: existing } = await query
 
   if (existing && existing.length > 0) {
@@ -41,6 +52,7 @@ async function doArchive(phone: string, userId: string, sendClosing: boolean, in
           archived_at: new Date().toISOString(),
           archived_by: userId,
           updated_at: new Date().toISOString(),
+          ...(tenantId ? { tenant_id: tenantId } : {}),
         })
         .eq('phone', row.phone)
 
@@ -50,21 +62,26 @@ async function doArchive(phone: string, userId: string, sendClosing: boolean, in
         updateQuery = updateQuery.or('instance_name.is.null,instance_name.eq.""')
       }
 
+      if (tenantId) {
+        updateQuery = (updateQuery as any).eq('tenant_id', tenantId)
+      }
+
       const { error } = await updateQuery
       if (error) dbError = error
       else success = true
     }
   } else {
-    // 3. SE NÃO EXISTIR, INSERE COM A INSTÂNCIA CORRETA (o meu erro estava aqui!)
+    // 3. SE NÃO EXISTIR, INSERE COM A INSTÂNCIA E TENANT CORRETOS
     const { error } = await admin
       .from('whatsapp_conversation_status')
       .insert({
         phone: cleanPhone,
-        instance_name: targetInstance === '' ? null : targetInstance, // Salva corretamente!
+        instance_name: targetInstance === '' ? null : targetInstance,
         is_archived: true,
         archived_at: new Date().toISOString(),
         archived_by: userId,
         updated_at: new Date().toISOString(),
+        ...(tenantId ? { tenant_id: tenantId } : {}),
       })
       
     if (error) dbError = error
@@ -79,11 +96,13 @@ async function doArchive(phone: string, userId: string, sendClosing: boolean, in
   revalidatePath('/whatsapp')
 
   if (sendClosing) {
-    const { data: org } = await admin
+    const orgQ = admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
       .eq('id', 'default')
-      .maybeSingle()
+    const { data: org } = tenantId
+      ? await (orgQ as any).eq('tenant_id', tenantId).maybeSingle()
+      : await (orgQ as any).maybeSingle()
 
     if (org?.evo_server_url && org?.evo_api_key) {
       const aliases = (org as any)?.evo_instance_aliases ?? {}
@@ -110,12 +129,15 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
+  // Ler tenant ativo do header injetado pelo middleware (suporte a impersonation)
+  const tenantId = await getActiveTenantId()
+
   const url = new URL(req.url)
   const mode = url.searchParams.get('mode') ?? 'finalize'
   const { phone, instanceName } = await req.json()
   if (!phone) return NextResponse.json({ error: 'phone obrigatório' }, { status: 400 })
 
-  const result = await doArchive(phone, user.id, mode === 'finalize', instanceName ?? null)
+  const result = await doArchive(phone, user.id, mode === 'finalize', instanceName ?? null, tenantId)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
