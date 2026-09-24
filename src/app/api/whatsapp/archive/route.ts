@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveTenantId } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { revalidatePath } from 'next/cache'
 
@@ -23,7 +24,6 @@ async function doArchive(
   let dbError: any = null
   let success = false
 
-  // 1. Busca variações do número PARA ESTA INSTÂNCIA
   let query = admin
     .from('whatsapp_conversation_status')
     .select('phone')
@@ -35,7 +35,6 @@ async function doArchive(
     query = query.or('instance_name.is.null,instance_name.eq.""')
   }
 
-  // Filtrar por tenant durante impersonation
   if (tenantId) {
     query = (query as any).eq('tenant_id', tenantId)
   }
@@ -43,7 +42,6 @@ async function doArchive(
   const { data: existing } = await query
 
   if (existing && existing.length > 0) {
-    // 2. Atualiza a conversa desta instância específica
     for (const row of existing) {
       let updateQuery = admin
         .from('whatsapp_conversation_status')
@@ -71,7 +69,6 @@ async function doArchive(
       else success = true
     }
   } else {
-    // 3. SE NÃO EXISTIR, INSERE COM A INSTÂNCIA E TENANT CORRETOS
     const { error } = await admin
       .from('whatsapp_conversation_status')
       .insert({
@@ -129,8 +126,16 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-  // Ler tenant ativo do header injetado pelo middleware (suporte a impersonation)
+  // Ler tenant ativo: cookie (Route Handlers) ou header (Server Actions)
   const tenantId = await getActiveTenantId()
+
+  // Fail-fast: se o cookie de impersonation existe mas tenantId não foi resolvido, algo está errado
+  const cookieStore = await cookies()
+  const impCookie = cookieStore.get('orbis_imp_tid')?.value
+  if (impCookie && !tenantId) {
+    console.error('[archive] Cookie de impersonation presente mas tenantId não resolvido:', impCookie)
+    return NextResponse.json({ error: 'Erro de sessão: tenant de impersonation não pôde ser determinado. Tente sair e entrar novamente.' }, { status: 400 })
+  }
 
   const url = new URL(req.url)
   const mode = url.searchParams.get('mode') ?? 'finalize'
