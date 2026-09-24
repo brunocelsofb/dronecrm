@@ -8,9 +8,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 const COOKIE_TENANT_ID = 'orbis_imp_tid'
 
 export async function proxy(request: NextRequest) {
-  // Rotas de API passam direto (webhooks externos, endpoints internos, etc.)
-  // Evita overhead de auth em chamadas server-to-server
-  if (request.nextUrl.pathname.startsWith('/api/')) {
+  // Rotas de webhook externo passam direto (sem auth, sem injeção de headers)
+  // Apenas webhooks reais que recebem chamadas server-to-server
+  const isWebhook =
+    request.nextUrl.pathname.startsWith('/api/webhook') ||
+    request.nextUrl.pathname.startsWith('/api/evolution') ||
+    request.nextUrl.pathname.startsWith('/api/zapi') ||
+    request.nextUrl.pathname.startsWith('/api/vapi') ||
+    request.nextUrl.pathname.startsWith('/api/asaas') ||
+    request.nextUrl.pathname.startsWith('/api/iugu') ||
+    request.nextUrl.pathname.startsWith('/api/stripe')
+  if (isWebhook) {
     return NextResponse.next()
   }
 
@@ -55,6 +63,7 @@ export async function proxy(request: NextRequest) {
                       request.nextUrl.pathname.startsWith('/register')
 
   const isPublicRoute =
+    request.nextUrl.pathname.startsWith('/api/') ||
     request.nextUrl.pathname.startsWith('/nps/') ||
     request.nextUrl.pathname.startsWith('/survey/') ||
     request.nextUrl.pathname.startsWith('/proposal/') ||
@@ -81,6 +90,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
