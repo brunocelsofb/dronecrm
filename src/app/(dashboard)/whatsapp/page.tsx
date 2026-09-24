@@ -3,6 +3,7 @@ export const revalidate = 0
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getActiveTenantId } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { WhatsAppClientShell } from '@/components/whatsapp/whatsapp-client-shell'
 
@@ -14,12 +15,12 @@ export default async function WhatsAppInboxPage({
   const { phone: selectedPhone, instance: selectedInstance } = await searchParams
   const supabase = await createClient()
   const admin = createAdminClient()
+  const activeTenantId = await getActiveTenantId()
 
   const [
     { data: { user } },
     { data: archivedRows },
     { data: openMessages },
-    { data: teamUsers },
   ] = await Promise.all([
     supabase.auth.getUser(),
     admin.from('whatsapp_conversation_status').select('phone, instance_name').eq('is_archived', true),
@@ -27,8 +28,13 @@ export default async function WhatsAppInboxPage({
       .select('phone, unlinked_sender_name, message, media_type, direction, created_at, lead_id, instance_name')
       .order('created_at', { ascending: false })
       .limit(500),
-    supabase.from('profiles').select('id, full_name, job_title'),
   ])
+
+  // Buscar utilizadores da equipa — filtrar pelo tenant ativo se estiver em impersonation
+  const teamUsersQuery = admin.from('profiles').select('id, full_name, job_title')
+  const { data: teamUsers } = activeTenantId
+    ? await (teamUsersQuery as any).eq('tenant_id', activeTenantId)
+    : await teamUsersQuery
 
   // Agrupa por instance_name + últimos 8 dígitos (cobre variações de DDI e 9º dígito)
   const latestByKey = new Map<string, any>()
