@@ -11,6 +11,7 @@ import {
   assignWhatsAppConversation, 
   unassignWhatsAppConversation, 
   archiveWhatsAppConversation, 
+  unarchiveWhatsAppConversation,
   saveUnlinkedContactName, 
   deleteWhatsAppConversation 
 } from '@/lib/actions/whatsapp'
@@ -405,11 +406,7 @@ export function WhatsAppConversationPanel({
               <button
                 onClick={async () => {
                   setBusy(true)
-                  await fetch('/api/whatsapp/unarchive', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone }),
-                  })
+                  await unarchiveWhatsAppConversation(phone, instanceName ?? undefined)
                   setBusy(false)
                   setIsArchived(false)
                   router.push('/whatsapp')
@@ -426,14 +423,9 @@ export function WhatsAppConversationPanel({
               onClick={async () => {
                 if (!confirm('Arquivar esta conversa? Ela sairá da lista sem enviar mensagem ao cliente.')) return
                 setBusy(true)
-                const res = await fetch('/api/whatsapp/archive?mode=archive', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phone, instanceName }),
-                })
-                const data = await res.json()
+                const result = await archiveWhatsAppConversation(phone, instanceName, false)
                 setBusy(false)
-                if (!res.ok || data.error) { alert(`Erro: ${data.error}`); return }
+                if (result?.error) { alert(`Erro: ${result.error}`); return }
                 setIsArchived(true)
                 onArchiveSuccess?.(phone)
                 router.push('/whatsapp'); router.refresh()
@@ -447,14 +439,9 @@ export function WhatsAppConversationPanel({
               onClick={async () => {
                 if (!confirm('Finalizar? Enviará mensagem de encerramento ao cliente e arquivará a conversa.')) return
                 setBusy(true)
-                const res = await fetch('/api/whatsapp/archive?mode=finalize', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phone, instanceName }),
-                })
-                const data = await res.json()
+                const result = await archiveWhatsAppConversation(phone, instanceName, true)
                 setBusy(false)
-                if (!res.ok || data.error) { alert(`Erro: ${data.error}`); return }
+                if (result?.error) { alert(`Erro: ${result.error}`); return }
                 setIsArchived(true)
                 onArchiveSuccess?.(phone)
                 router.push('/whatsapp'); router.refresh()
@@ -572,11 +559,7 @@ export function WhatsAppConversationPanel({
           </p>
           <button
             onClick={async () => {
-              await fetch('/api/whatsapp/unarchive', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone }),
-              })
+              await unarchiveWhatsAppConversation(phone, instanceName ?? undefined)
               setIsArchived(false)
             }}
             className="mt-2 text-xs text-[#1B556B] hover:underline"
