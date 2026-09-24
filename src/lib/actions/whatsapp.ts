@@ -911,7 +911,7 @@ export async function toggleWhatsAppOnlineStatus(isOnline: boolean): Promise<Act
   return {}
 }
 
-export async function archiveWhatsAppConversation(phone: string, instanceName?: string | null): Promise<ActionState> {
+export async function archiveWhatsAppConversation(phone: string, instanceName?: string | null, sendClosing = true): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
@@ -935,7 +935,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
     })
   }
 
-  const creds = await getEvoCredentials()
+  const creds = sendClosing ? await getEvoCredentials() : null
   if (creds) {
     const targetCreds = instanceName ? { ...creds, instanceName } : creds
     try {
