@@ -50,7 +50,7 @@ async function doArchive(
           archived_at: new Date().toISOString(),
           archived_by: userId,
           updated_at: new Date().toISOString(),
-          ...(tenantId ? { tenant_id: tenantId } : {}),
+          tenant_id: tenantId,
         })
         .eq('phone', row.phone)
 
@@ -78,7 +78,7 @@ async function doArchive(
         archived_at: new Date().toISOString(),
         archived_by: userId,
         updated_at: new Date().toISOString(),
-        ...(tenantId ? { tenant_id: tenantId } : {}),
+        tenant_id: tenantId,
       })
       
     if (error) dbError = error
