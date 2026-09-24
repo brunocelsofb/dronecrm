@@ -329,8 +329,8 @@ export function WhatsAppConversationPanel({
                     placeholder={phone}
                     className="rounded border border-[#1B556B] px-2 py-0.5 text-sm font-semibold focus:outline-none w-44"
                   />
-                  <button type="submit" className="text-[#1B556B] text-xs font-semibold hover:underline">â</button>
-                  <button type="button" onClick={() => setEditingName(false)} className="text-gray-400 text-xs">â</button>
+                  <button type="submit" className="text-[#1B556B] text-xs font-semibold hover:underline">✓</button>
+                  <button type="button" onClick={() => setEditingName(false)} className="text-gray-400 text-xs">✕</button>
                 </form>
               ) : (
                 <button
@@ -338,9 +338,9 @@ export function WhatsAppConversationPanel({
                   className="flex items-center gap-1.5 text-left hover:bg-gray-100 rounded px-1 -mx-1 py-0.5 transition-colors"
                 >
                   <span className="text-sm font-semibold text-gray-900">
-                    {localDisplayName ?? <span className="text-gray-400 italic font-normal text-xs">Sem nome â clique para editar</span>}
+                    {localDisplayName ?? <span className="text-gray-400 italic font-normal text-xs">Sem nome — clique para editar</span>}
                   </span>
-                  <span className="text-[10px] text-gray-300">âï¸</span>
+                  <span className="text-[10px] text-gray-300">✏️</span>
                 </button>
               )}
               <p className="text-[10px] text-gray-400">{phone}</p>
@@ -349,26 +349,26 @@ export function WhatsAppConversationPanel({
           <div className="flex flex-wrap items-center gap-1.5 justify-end">
             {leadId && (
               <span className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700">
-                ð¯ Lead
+                🎯 Lead
               </span>
             )}
             {availableInstances.length > 0 && (
               <select value={selectedInstance} onChange={e => setSelectedInstance(e.target.value)}
                 className="rounded-full border border-[#1B556B]/30 bg-[#1B556B]/5 px-2 py-0.5 text-[10px] font-medium text-[#1B556B] focus:outline-none">
                 {availableInstances.map(i => (
-                  <option key={i.name} value={i.name}>ð± {i.label}</option>
+                  <option key={i.name} value={i.name}>📱 {i.label}</option>
                 ))}
               </select>
             )}
             {assignment ? (
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">
-                  ð¤ {assignment.assigned_to === currentUserId ? 'VocÃª' : assignment.assigned_to_name}
+                  👤 {assignment.assigned_to === currentUserId ? 'Você' : assignment.assigned_to_name}
                 </span>
                 <div className="relative">
                   <button onClick={() => setShowAssignPicker(v => !v)}
                     className="rounded-full border border-gray-300 px-2 py-0.5 text-[10px] text-gray-500 hover:bg-gray-50">
-                    ð
+                    🔄
                   </button>
                   {showAssignPicker && (
                     <>
@@ -395,7 +395,7 @@ export function WhatsAppConversationPanel({
               <button onClick={async () => { setBusy(true); await handleClaim(); setBusy(false) }}
                 disabled={busy}
                 className="rounded-full bg-[#1B556B] px-3 py-1 text-[10px] font-semibold text-white hover:bg-[#164659] disabled:opacity-50 flex-shrink-0">
-                ðââï¸ Assumir
+                🙋‍♂️ Assumir
               </button>
             )}
           </div>
@@ -418,13 +418,13 @@ export function WhatsAppConversationPanel({
                 disabled={busy}
                 className="rounded-md border border-blue-200 px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
               >
-                ð¤ Desarquivar
+                📤 Desarquivar
               </button>
             ) : (
             <>
             <button
               onClick={async () => {
-                if (!confirm('Arquivar esta conversa? Ela sairÃ¡ da lista sem enviar mensagem ao cliente.')) return
+                if (!confirm('Arquivar esta conversa? Ela sairá da lista sem enviar mensagem ao cliente.')) return
                 setBusy(true)
                 const res = await fetch('/api/whatsapp/archive?mode=archive', {
                   method: 'POST',
@@ -441,11 +441,11 @@ export function WhatsAppConversationPanel({
               disabled={busy}
               className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
-              ðï¸ Arquivar
+              🗃️ Arquivar
             </button>
             <button
               onClick={async () => {
-                if (!confirm('Finalizar? EnviarÃ¡ mensagem de encerramento ao cliente e arquivarÃ¡ a conversa.')) return
+                if (!confirm('Finalizar? Enviará mensagem de encerramento ao cliente e arquivará a conversa.')) return
                 setBusy(true)
                 const res = await fetch('/api/whatsapp/archive?mode=finalize', {
                   method: 'POST',
@@ -462,7 +462,7 @@ export function WhatsAppConversationPanel({
               disabled={busy}
               className="rounded-md border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
             >
-              â Finalizar
+              ✅ Finalizar
             </button>
             <button
               onClick={async () => {
@@ -475,16 +475,16 @@ export function WhatsAppConversationPanel({
                 const data = await res.json()
                 setBusy(false)
                 if (data.error) alert(`Erro: ${data.error}`)
-                else { alert(`â ${data.imported} mensagens importadas!`); router.refresh() }
+                else { alert(`✅ ${data.imported} mensagens importadas!`); router.refresh() }
               }}
               disabled={busy}
               className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
             >
-              ð¥ Importar histÃ³rico
+              📥 Importar histórico
             </button>
             <button
               onClick={async () => {
-                if (!confirm('â ï¸ Excluir TODA esta conversa? Isso remove todas as mensagens do banco. NÃ£o pode ser desfeito.')) return
+                if (!confirm('⚠️ Excluir TODA esta conversa? Isso remove todas as mensagens do banco. Não pode ser desfeito.')) return
                 setBusy(true)
                 await deleteWhatsAppConversation(phone)
                 setBusy(false)
@@ -494,11 +494,11 @@ export function WhatsAppConversationPanel({
               disabled={busy}
               className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
             >
-              ðï¸ Excluir chat
+              🗑️ Excluir chat
             </button>
             <button
               onClick={async () => {
-                if (!confirm(`Marcar ${phone} como opt-out? Esta pessoa nÃ£o receberÃ¡ mais mensagens automÃ¡ticas.`)) return
+                if (!confirm(`Marcar ${phone} como opt-out? Esta pessoa não receberá mais mensagens automáticas.`)) return
                 setBusy(true)
                 await fetch('/api/whatsapp/optout', {
                   method: 'POST',
@@ -510,7 +510,7 @@ export function WhatsAppConversationPanel({
               disabled={busy}
               className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
-              ð« Opt-out
+              🚫 Opt-out
             </button>
             {leadId && (
               <>
@@ -519,16 +519,16 @@ export function WhatsAppConversationPanel({
                 </Link>
                 <button onClick={() => setShowConvertModal(true)} disabled={busy}
                   className="rounded-md bg-positive-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-positive-700 disabled:opacity-50">
-                  â Converter em oportunidade
+                  ✅ Converter em oportunidade
                 </button>
               </>
             )}
             <button onClick={() => setShowLinkSearch((v) => !v)} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
-              ð Vincular a conta existente
+              🔍 Vincular a conta existente
             </button>
             <button onClick={() => setShowConvertModal(true)}
               className="rounded-md border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50">
-              â Criar oportunidade nova
+              ➕ Criar oportunidade nova
             </button>
             </>
             )}
@@ -539,7 +539,7 @@ export function WhatsAppConversationPanel({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar conta pelo nome... (mÃ­n. 2 caracteres)"
+              placeholder="Buscar conta pelo nome... (mín. 2 caracteres)"
               className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
               autoFocus
             />
@@ -568,7 +568,7 @@ export function WhatsAppConversationPanel({
       {isArchived ? (
         <div className="flex-shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-center">
           <p className="text-sm text-gray-500">
-            ð Atendimento finalizado. Se o cliente enviar uma nova mensagem, a conversa serÃ¡ reaberta automaticamente.
+            🔒 Atendimento finalizado. Se o cliente enviar uma nova mensagem, a conversa será reaberta automaticamente.
           </p>
           <button
             onClick={async () => {
@@ -626,7 +626,7 @@ export function WhatsAppConversationPanel({
             <div className="flex-1 min-w-0 flex flex-col">
               {selectedFileName && (
                 <div className="flex items-center justify-between bg-[#1B556B]/10 text-[#1B556B] text-xs px-2 py-1 rounded mb-1 mr-2 mt-1">
-                  <span className="truncate flex-1">ð {selectedFileName}</span>
+                  <span className="truncate flex-1">📎 {selectedFileName}</span>
                   <button 
                     type="button" 
                     onClick={() => {
@@ -635,7 +635,7 @@ export function WhatsAppConversationPanel({
                     }}
                     className="ml-2 text-[#1B556B] hover:text-red-600 shrink-0 font-bold px-1"
                     title="Remover anexo">
-                    â
+                    ✕
                   </button>
                 </div>
               )}
