@@ -124,6 +124,7 @@ export function WhatsAppInstancesPanel() {
   const [creating, setCreating] = useState(false)
   const [qrMap, setQrMap] = useState<Record<string, string>>({})
   const [loadingQr, setLoadingQr] = useState<string | null>(null)
+  const [restartingInstance, setRestartingInstance] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAll = useCallback(async () => {
@@ -187,6 +188,22 @@ export function WhatsAppInstancesPanel() {
     setLoadingQr(null)
     if (data.qr) setQrMap(prev => ({ ...prev, [instanceName]: data.qr }))
     else setError('QR Code não disponível. Tente novamente.')
+  }
+
+  async function handleRestart(instanceName: string) {
+    setRestartingInstance(instanceName)
+    setError(null)
+    const res = await fetch('/api/settings/evo-instances', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instanceName }),
+    })
+    setRestartingInstance(null)
+    if (!res.ok) {
+      setError(`Erro ao reiniciar "${instanceName}". Tente novamente.`)
+    } else {
+      await fetchAll()
+    }
   }
 
   return (
@@ -260,6 +277,10 @@ export function WhatsAppInstancesPanel() {
                     {loadingQr === inst.name ? 'Gerando QR...' : '📱 Conectar'}
                   </button>
                 )}
+                <button onClick={() => handleRestart(inst.name)} disabled={restartingInstance === inst.name}
+                  className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">
+                  {restartingInstance === inst.name ? 'Reiniciando...' : '🔄 Reiniciar Conexão'}
+                </button>
                 <button onClick={() => handleDelete(inst.name)}
                   className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
                   🗑 Excluir
@@ -293,4 +314,3 @@ export function WhatsAppInstancesPanel() {
     </div>
   )
 }
-
