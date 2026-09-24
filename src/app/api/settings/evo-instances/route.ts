@@ -76,6 +76,23 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: res.ok, data })
 }
 
+// PUT — reinicia instância (reconecta sessão travada)
+export async function PUT(req: Request) {
+  if (!await guardAdmin()) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+  const creds = await getEvoCreds()
+  if (!creds) return NextResponse.json({ error: 'Credenciais não configuradas' }, { status: 400 })
+
+  const { instanceName } = await req.json()
+  if (!instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
+
+  const res = await fetch(`${creds.evo_server_url}/instance/restart/${instanceName}`, {
+    method: 'PUT',
+    headers: { apikey: creds.evo_api_key },
+  })
+  const data = await res.json().catch(() => ({}))
+  return NextResponse.json({ ok: res.ok, data })
+}
+
 // DELETE — deleta instância
 export async function DELETE(req: Request) {
   if (!await guardAdmin()) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
@@ -104,6 +121,3 @@ export async function PATCH(req: Request) {
   const qrRaw = data?.qrcode?.base64 ?? data?.base64 ?? data?.code ?? null
   return NextResponse.json({ qr: qrRaw ? (qrRaw.startsWith('data:') ? qrRaw : `data:image/png;base64,${qrRaw}`) : null })
 }
-
-// GET com ?action=sync-webhooks — reaplica webhook em todas as instâncias ativas
-// Chamado manualmente ou ao carregar o painel de conexões
