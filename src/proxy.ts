@@ -8,6 +8,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 const COOKIE_TENANT_ID = 'orbis_imp_tid'
 
 export async function proxy(request: NextRequest) {
+  // Rotas de API passam direto (webhooks externos, endpoints internos, etc.)
+  // Evita overhead de auth em chamadas server-to-server
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   // Prepara request headers com impersonation (se ativo)
   // IMPORTANTE: request headers injetados via NextResponse.next({ request: { headers } })
   // ficam visiveis para Server Components via headers() do next/headers.
@@ -56,20 +62,7 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/captura') ||
     request.nextUrl.pathname.startsWith('/suporte') ||
     request.nextUrl.pathname.startsWith('/acompanhar-ticket') ||
-    request.nextUrl.pathname.startsWith('/api/email-track') ||
-    request.nextUrl.pathname.startsWith('/api/email-assets') ||
-    request.nextUrl.pathname.startsWith('/api/email-inbound') ||
-    request.nextUrl.pathname.startsWith('/api/whatsapp-inbound') ||
-    request.nextUrl.pathname.startsWith('/api/zapsign-webhook') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/from-price') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/status') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/snapshot') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/review') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/snapshot-by-contract') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/public-pdf') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/texts') ||
-    request.nextUrl.pathname.startsWith('/proposals/client') ||
-    request.nextUrl.pathname.startsWith('/api/proposals/client')
+    request.nextUrl.pathname.startsWith('/proposals/client')
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
@@ -88,6 +81,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
   ],
 }
