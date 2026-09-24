@@ -13,6 +13,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'invalid json' })
   }
 
+  console.log('[evo-webhook] WEBHOOK RECEBIDO | event:', body?.event ?? body?.type, '| instance:', body?.instance ?? body?.instanceName, '| keys:', JSON.stringify(Object.keys(body ?? {})))
+
   try {
     const eventRaw = body?.event ?? body?.type ?? ''
     const event = eventRaw.toLowerCase().replace(/[.\-]/g, '_')
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, skipped: `event=${eventRaw}` })
     }
 
-    // 1. Trata evento de exclusão no aparelho
+    // 1. Trata evento de exclusÃ£o no aparelho
     if (event === 'messages_delete' || event === 'messages.delete') {
       try {
         const admin = createAdminClient()
@@ -74,7 +76,7 @@ export async function POST(request: Request) {
     const isFromMe = key.fromMe === true
     const messageId = key.id
 
-    // Ignora eco do CRM (mensagens enviadas pela própria action)
+    // Ignora eco do CRM (mensagens enviadas pela prÃ³pria action)
     if (isFromMe && messageId) {
       const { data: existing } = await supabase
         .from('contract_whatsapp_messages')
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Extração de conteúdo
+    // ExtraÃ§Ã£o de conteÃºdo
     const text =
       msg?.conversation ??
       msg?.extendedTextMessage?.text ??
@@ -102,9 +104,9 @@ export async function POST(request: Request) {
     let mediaFilename: string | null = null
 
     const FRIENDLY: Record<string, string> = {
-      image: '[Imagem]', audio: '[Áudio]', video: '[Vídeo]',
+      image: '[Imagem]', audio: '[Ãudio]', video: '[VÃ­deo]',
       document: '[Documento]', sticker: '[Figurinha]', contact: '[Contato]',
-      location: '[Localização]', poll: '[Enquete]', protocol: '[Ação do Sistema]',
+      location: '[LocalizaÃ§Ã£o]', poll: '[Enquete]', protocol: '[AÃ§Ã£o do Sistema]',
       system: '[Aviso do Sistema]',
     }
 
@@ -129,11 +131,11 @@ export async function POST(request: Request) {
         let mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'sticker' ? 'image/webp' : mediaType === 'audio' ? 'audio/mp4' : mediaType === 'video' ? 'video/mp4' : 'application/octet-stream'
         const ext = mediaType === 'image' ? 'jpg' : mediaType === 'sticker' ? 'webp' : mediaType === 'audio' ? 'mp4' : mediaType === 'video' ? 'mp4' : 'bin'
 
-        // Repassa o mimetype real do payload se disponível
+        // Repassa o mimetype real do payload se disponÃ­vel
         const msgMime = msg?.imageMessage?.mimetype ?? msg?.stickerMessage?.mimetype ?? msg?.audioMessage?.mimetype ?? msg?.videoMessage?.mimetype ?? msg?.documentMessage?.mimetype
         if (msgMime && mediaType !== 'audio') mimeType = msgMime
 
-        // Se não veio base64 no payload, baixa da Evolution com o msgData completo
+        // Se nÃ£o veio base64 no payload, baixa da Evolution com o msgData completo
         if (!b64 && rawUrl && messageId) {
           const { data: orgSettings } = await admin
             .from('organization_settings')
@@ -148,7 +150,7 @@ export async function POST(request: Request) {
                 {
                   method: 'POST',
                   headers: { 'apikey': orgSettings.evo_api_key, 'Content-Type': 'application/json' },
-                  // Envia o msgData completo — formato exigido pela Evolution v1/v2
+                  // Envia o msgData completo â formato exigido pela Evolution v1/v2
                   body: JSON.stringify({ message: msgData.message ?? msg, convertToMp4: mediaType === 'audio' }),
                 }
               )
@@ -175,7 +177,7 @@ export async function POST(request: Request) {
           if (!upErr) {
             const { data: pub } = admin.storage.from('whatsapp-media').getPublicUrl(path)
             mediaUrl = pub.publicUrl
-            console.log('[evo-webhook] mídia salva:', path)
+            console.log('[evo-webhook] mÃ­dia salva:', path)
           } else {
             console.warn('[evo-webhook] upload Storage falhou:', upErr.message)
             // Fallback para proxy
@@ -185,13 +187,13 @@ export async function POST(request: Request) {
             }
           }
         } else if (messageId) {
-          // Nem base64 nem download funcionou — usa proxy como último recurso
+          // Nem base64 nem download funcionou â usa proxy como Ãºltimo recurso
           const instParam = instanceName ? `&instance=${encodeURIComponent(instanceName)}` : ''
           mediaUrl = `/api/whatsapp/media?id=${encodeURIComponent(messageId)}${instParam}`
           console.warn('[evo-webhook] sem b64, usando proxy:', mediaUrl)
         }
       } catch (e) {
-        console.error('[evo-webhook] erro no bloco de mídia (não fatal):', e)
+        console.error('[evo-webhook] erro no bloco de mÃ­dia (nÃ£o fatal):', e)
         if (messageId) {
           const instParam = instanceName ? `&instance=${encodeURIComponent(instanceName)}` : ''
           mediaUrl = `/api/whatsapp/media?id=${encodeURIComponent(messageId)}${instParam}`
@@ -200,7 +202,7 @@ export async function POST(request: Request) {
     }
 
     const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
-    let fallbackText = '[Formato não suportado]'
+    let fallbackText = '[Formato nÃ£o suportado]'
     if (msg && typeof msg === 'object') {
       const keys = Object.keys(msg as object).filter(k => k !== 'messageContextInfo')
       if (keys.length > 0) fallbackText = `[Formato: ${keys[0]}]`
@@ -210,7 +212,7 @@ export async function POST(request: Request) {
     if ((msg as any)?.secretEncryptedMessage) fallbackText = '[Status / Mensagem Protegida]'
     const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : fallbackText)
 
-    // Deduplicação genérica
+    // DeduplicaÃ§Ã£o genÃ©rica
     if (messageId) {
       const { data: dup } = await supabase
         .from('contract_whatsapp_messages')
@@ -225,13 +227,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, recorded: 'opt-out' })
     }
 
-    // Busca de vínculo infalível — últimos 8 dígitos ignoram DDI, DDD e 9º dígito
+    // Busca de vÃ­nculo infalÃ­vel â Ãºltimos 8 dÃ­gitos ignoram DDI, DDD e 9Âº dÃ­gito
     let contractId: string | null = null
     let leadId: string | null = null
     const cleanPhone = phone.replace(/\D/g, '')
     const last8 = cleanPhone.length >= 8 ? cleanPhone.slice(-8) : cleanPhone
 
-    // 1. Busca em mensagens anteriores com vínculo já estabelecido
+    // 1. Busca em mensagens anteriores com vÃ­nculo jÃ¡ estabelecido
     const { data: linkData } = await supabase
       .from('contract_whatsapp_messages')
       .select('contract_id, lead_id')
@@ -244,7 +246,7 @@ export async function POST(request: Request) {
     if (linkData?.contract_id || linkData?.lead_id) {
       contractId = linkData.contract_id ?? null
       leadId = linkData.lead_id ?? null
-      console.log('[evo-webhook] vínculo via histórico:', contractId ?? leadId)
+      console.log('[evo-webhook] vÃ­nculo via histÃ³rico:', contractId ?? leadId)
     }
 
     // 2. Fallback: busca na tabela de contatos por phone
@@ -258,11 +260,11 @@ export async function POST(request: Request) {
 
       if (contact?.contract_contacts?.length) {
         contractId = (contact.contract_contacts[0] as any)?.contract_id ?? null
-        console.log('[evo-webhook] vínculo via contacts:', contractId)
+        console.log('[evo-webhook] vÃ­nculo via contacts:', contractId)
       }
     }
 
-    // Inserção da mensagem
+    // InserÃ§Ã£o da mensagem
     const { data: inserted, error: insertError } = await supabase
       .from('contract_whatsapp_messages')
       .insert({
