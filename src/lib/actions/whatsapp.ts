@@ -7,8 +7,12 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { sendEvoTextMessage, sendEvoImageMessage, sendEvoDocumentMessage, verifyEvoConnection, getEvoQrCode, getEvoInstanceStatus, setEvoWebhook } from '@/lib/whatsapp/evolution'
 import type { EvoCredentials } from '@/lib/whatsapp/evolution'
 import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
+import { getActiveTenantId } from '@/lib/supabase/server'
 
 async function getTenantId(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
+  // Durante impersonation, o tenant ativo é lido do header injetado pelo middleware
+  const activeTenantId = await getActiveTenantId()
+  if (activeTenantId) return activeTenantId
   const { data } = await admin.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
   return (data as any)?.tenant_id ?? null
 }
@@ -17,7 +21,10 @@ export type ActionState = { error?: string; message?: any }
 
 async function getEvoCredentials(): Promise<EvoCredentials | null> {
   const supabase = createAdminClient()
-  const { data } = await supabase.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token').eq('id', 'default').maybeSingle()
+  const activeTenantId = await getActiveTenantId()
+  let query = supabase.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token').eq('id', 'default')
+  if (activeTenantId) query = (query as any).eq('tenant_id', activeTenantId)
+  const { data } = await (query as any).maybeSingle()
   if (!data?.evo_server_url || !data?.evo_api_key || !data?.evo_instance_name) return null
   return { serverUrl: data.evo_server_url, apiKey: data.evo_api_key, instanceName: data.evo_instance_name, instanceToken: (data as any).evo_instance_token ?? null }
 }
@@ -756,7 +763,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
     const tenantId = await getTenantId(admin)
     const [{ data: profile }, { data: org }] = await Promise.all([
       admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
-      admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, tenant_id').eq('id', 'default').maybeSingle(),
+      (() => { const q = admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, tenant_id').eq('id', 'default'); return tenantId ? (q as any).eq('tenant_id', tenantId).maybeSingle() : (q as any).maybeSingle() })(),
     ])
     const nome = (profile as any)?.full_name ?? 'nossa equipe'
     const transferText = `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🙏`
@@ -931,8 +938,10 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   if (creds) {
     const targetCreds = instanceName ? { ...creds, instanceName } : creds
     try {
-      const { data: org } = await admin
-        .from('organization_settings').select('evo_instance_aliases').eq('id', 'default').maybeSingle()
+      const orgQ = admin.from('organization_settings').select('evo_instance_aliases').eq('id', 'default')
+      const { data: org } = tenantId
+        ? await (orgQ as any).eq('tenant_id', tenantId).maybeSingle()
+        : await (orgQ as any).maybeSingle()
       const aliases = (org as any)?.evo_instance_aliases ?? {}
       const instanceAlias = instanceName ? aliases[instanceName] : null
       const closingMsg = (typeof instanceAlias === 'object' ? instanceAlias?.closingMessage : null)
