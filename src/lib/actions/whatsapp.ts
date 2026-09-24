@@ -923,7 +923,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   // Atualizar status usando admin para evitar problemas de RLS/impersonation
   const { error: updateErr } = await admin
     .from('whatsapp_conversation_status')
-    .update({ is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id, updated_at: new Date().toISOString() })
+    .update({ is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id, updated_at: new Date().toISOString(), tenant_id: tenantId })
     .eq('phone', phone)
     .eq('instance_name', inst)
 
@@ -931,6 +931,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
     await admin.from('whatsapp_conversation_status').insert({
       phone, instance_name: inst,
       is_archived: true, archived_at: new Date().toISOString(), archived_by: user.id,
+      tenant_id: tenantId,
     })
   }
 
