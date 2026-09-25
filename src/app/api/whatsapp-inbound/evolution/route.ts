@@ -155,61 +155,61 @@ export async function POST(request: Request) {
 
     if (insertError) return NextResponse.json({ ok: false, error: insertError.message })
 
-        // ================================================================
-    // MÁQUINA DE TRIAGEM — FIX: sem .eq('id'), usa rawPhone completo
+    // ================================================================
+    // MÁQUINA DE TRIAGEM + PROCESSAMENTO DE NPS + CRIAÇÃO DE HISTÓRICO
     // ================================================================
     if (!isFromMe) {
       try {
-        const adminE = createAdminClient()
+        const last8 = phone.length >= 8 ? phone.slice(-8) : phone
 
-        const { data: orgSettings } = await adminE
+        const { data: statusRows } = await supabase
+          .from('whatsapp_conversation_status')
+          .select('*')
+          .ilike('phone', `%${last8}%`)
+          .order('created_at', { ascending: false })
+
+        const currentStatus = statusRows && statusRows.length > 0 ? statusRows[0] : null
+
+        // --- TRATAMENTO DE NPS PENDENTE ---
+        if (currentStatus?.nps_pending) {
+          const scoreNum = parseInt((text ?? '').trim(), 10)
+          if (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) {
+            await supabase
+              .from('whatsapp_conversation_status')
+              .update({
+                nps_score: scoreNum,
+                nps_pending: false,
+                is_archived: true,
+                archived_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', currentStatus.id)
+
+            const npsAgradecimento = `Obrigado pela sua avaliação! Sua nota ${scoreNum} foi registrada com sucesso. Tenha um ótimo dia!`
+            await sendAndRecordBotMessage(supabase, tenantId, orgSettingsForSend(body), instanceName, rawPhone, phone, npsAgradecimento)
+            return NextResponse.json({ ok: true, status: 'nps_recorded' })
+          }
+        }
+
+        const { data: orgSettings } = await supabase
           .from('organization_settings')
           .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
           .eq('id', 'default')
           .maybeSingle()
 
         if (orgSettings?.triage_enabled !== false) {
-          // Chave canônica: rawPhone completo (ex: "5562999884637")
-          const phoneKey = rawPhone
-          const last8 = phoneKey.slice(-8)
+          let protocolNumber = currentStatus?.protocol_number ?? null
 
-          console.log('[enterprise] phoneKey:', phoneKey, '| last8:', last8, '| instance:', instanceName)
-
-          const { data: statusRows, error: statusErr } = await adminE
-            .from('whatsapp_conversation_status')
-            .select('phone, instance_name, tenant_id, triage_state, department, protocol_number')
-            .ilike('phone', `%${last8}`)
-
-          console.log('[enterprise] statusRows:', JSON.stringify(statusRows), '| err:', statusErr?.message ?? 'none')
-
-          const currentStatus = statusRows?.[0] ?? null
-          const state: string = currentStatus?.triage_state ?? 'none'
-
-          console.log('[enterprise] state:', state, '| department:', currentStatus?.department ?? 'none')
-
-          // GUARDRAIL: se já ativo, não faz nada
-          if (state === 'active' || currentStatus?.department) {
-            console.log('[enterprise] já ativo — skip')
-            return NextResponse.json({ ok: true, id: inserted?.id, status: 'already_active' })
-          }
-
-          let protocolNumber: string | null = currentStatus?.protocol_number ?? null
           if (!protocolNumber) {
-            const { data: protoData } = await adminE.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
+            const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
             protocolNumber = (protoData as string) ?? null
-            console.log('[enterprise] novo protocolo:', protocolNumber)
-          } else {
-            console.log('[enterprise] protocolo reusado:', protocolNumber)
           }
 
+          const state = currentStatus?.triage_state ?? 'none'
           const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
 
-          const upsertPayload = {
-            phone: phoneKey,
-            instance_name: instanceName ?? '',
-            tenant_id: tenantId,
-            protocol_number: protocolNumber,
-            updated_at: new Date().toISOString(),
+          if (state === 'active') {
+            return NextResponse.json({ ok: true, status: 'already_active' })
           }
 
           if (state === 'awaiting_selection') {
@@ -220,76 +220,115 @@ export async function POST(request: Request) {
               trimmedText === opt.department.toLowerCase()
             )
 
-            console.log('[enterprise] awaiting_selection | input:', trimmedText, '| chosen:', JSON.stringify(chosen ?? null))
-
             if (chosen) {
-              await adminE.from('whatsapp_conversation_status').upsert(
-                { ...upsertPayload, department: chosen.department, triage_state: 'active' },
-                                { onConflict: 'phone,instance_name' }
-              )
-              await sendTriageConfirmation(orgSettings, instanceName, rawPhone, chosen.key, chosen.label, protocolNumber)
+              await supabase
+                .from('whatsapp_conversation_status')
+                .update({
+                  department: chosen.department,
+                  triage_state: 'active',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', currentStatus.id)
+
+              const confirmMsg = `Opção ${chosen.key} selecionada. Seu atendimento foi direcionado para o setor *${chosen.label}*. Um atendente responderá em breve!${protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''}`
+              await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, confirmMsg)
             } else {
-              await sendTriageMenu(orgSettings, instanceName, rawPhone, protocolNumber, menuOptions)
+              await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
             }
           } else {
-            // Estado 'none': upsert ANTES de enviar menu
-            await adminE.from('whatsapp_conversation_status').upsert(
-              { ...upsertPayload, triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active' },
-                             { onConflict: 'phone,instance_name' }
-            )
-            console.log('[enterprise] upsert none→awaiting feito')
+            // Estado 'none'
+            if (!currentStatus) {
+              await supabase
+                .from('whatsapp_conversation_status')
+                .insert({
+                  phone,
+                  instance_name: instanceName ?? '',
+                  tenant_id: tenantId,
+                  protocol_number: protocolNumber,
+                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
+                  updated_at: new Date().toISOString()
+                })
+            } else {
+              await supabase
+                .from('whatsapp_conversation_status')
+                .update({
+                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
+                  protocol_number: protocolNumber,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', currentStatus.id)
+            }
 
             if (menuOptions.length > 0) {
-              await sendTriageMenu(orgSettings, instanceName, rawPhone, protocolNumber, menuOptions)
+              await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
             }
           }
         }
       } catch (err) {
-        console.error('[enterprise] erro (não fatal):', err)
+        console.error('[evo-webhook] erro enterprise:', err)
       }
     }
+
     return NextResponse.json({ ok: true, id: inserted?.id })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'erro' })
   }
 }
 
-async function sendTriageMenu(orgSettings: any, instanceName: string | null, phone: string, protocolNumber: string | null, menuOptions: Array<{ key: string; label: string; department: string }>) {
+function orgSettingsForSend(body: any) {
+  return null // Helper para fallbacks se necessário
+}
+
+async function sendAndRecordBotMessage(
+  supabase: any,
+  tenantId: string,
+  orgSettings: any,
+  instanceName: string | null,
+  rawPhone: string,
+  phone: string,
+  text: string
+) {
   if (!orgSettings?.evo_server_url || !orgSettings?.evo_api_key) return
   const inst = instanceName ?? orgSettings.evo_instance_name
   if (!inst) return
 
-  const optionsText = menuOptions.map(opt => `${opt.key}. ${opt.label}`).join('\n')
-  const protoLine = protocolNumber ? `*Protocolo: ${protocolNumber}*\n\n` : ''
-
-  const menuText = `${protoLine}Olá! Seja bem-vindo(a) à Orbis Engenharia Clínica e Hospitalar! 🚀\n\nEnquanto direciono o seu atendimento, aproveite para conhecer as nossas soluções:\n🌐 Site: https://orbisengenhariaclinica.com.br/\n📸 Instagram: https://instagram.com/orbisengenhariaclinica\n💼 LinkedIn: https://www.linkedin.com/company/orbis-engenharia-cl-nica/\n\nPara agilizar, digite a opção desejada:\n${optionsText}`
-
   try {
-    await fetch(`${orgSettings.evo_server_url}/message/sendText/${inst}`, {
+    const res = await fetch(`${orgSettings.evo_server_url}/message/sendText/${inst}`, {
       method: 'POST',
       headers: { 'apikey': orgSettings.evo_api_key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: phone, text: menuText }),
+      body: JSON.stringify({ number: rawPhone, text }),
     })
+
+    if (res.ok) {
+      await supabase.from('contract_whatsapp_messages').insert({
+        phone,
+        message: text,
+        direction: 'enviado',
+        status: 'enviado',
+        triggered_automatically: true,
+        instance_name: instanceName,
+        tenant_id: tenantId,
+        created_at: new Date().toISOString(),
+      })
+    }
   } catch (e) {
-    console.error('[evo-webhook] erro envio menu:', e)
+    console.error('[evo-webhook] erro sendAndRecordBotMessage:', e)
   }
 }
 
-async function sendTriageConfirmation(orgSettings: any, instanceName: string | null, phone: string, optionKey: string, optionLabel: string, protocolNumber: string | null) {
-  if (!orgSettings?.evo_server_url || !orgSettings?.evo_api_key) return
-  const inst = instanceName ?? orgSettings.evo_instance_name
-  if (!inst) return
+async function sendAndRecordTriageMenu(
+  supabase: any,
+  tenantId: string,
+  orgSettings: any,
+  instanceName: string | null,
+  rawPhone: string,
+  phone: string,
+  protocolNumber: string | null,
+  menuOptions: Array<{ key: string; label: string; department: string }>
+) {
+  const optionsText = menuOptions.map(opt => `${opt.key}. ${opt.label}`).join('\n')
+  const protoLine = protocolNumber ? `*Protocolo: ${protocolNumber}*\n\n` : ''
+  const menuText = `${protoLine}Olá! Seja bem-vindo(a) à Orbis Engenharia Clínica e Hospitalar! 🚀\n\nEnquanto direciono o seu atendimento, aproveite para conhecer as nossas soluções:\n🌐 Site: https://orbisengenhariaclinica.com.br/\n📸 Instagram: https://instagram.com/orbisengenhariaclinica\n💼 LinkedIn: https://www.linkedin.com/company/orbis-engenharia-cl-nica/\n\nPara agilizar, digite a opção desejada:\n${optionsText}`
 
-  const protoLine = protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''
-  const confirmationText = `Opção ${optionKey} selecionada. Seu atendimento foi direcionado para o setor *${optionLabel}*. Um atendente responderá em breve!${protoLine}`
-
-  try {
-    await fetch(`${orgSettings.evo_server_url}/message/sendText/${inst}`, {
-      method: 'POST',
-      headers: { 'apikey': orgSettings.evo_api_key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: phone, text: confirmationText }),
-    })
-  } catch (e) {
-    console.error('[evo-webhook] erro envio confirmacao:', e)
-  }
+  await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, menuText)
 }
