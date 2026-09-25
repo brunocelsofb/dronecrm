@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       try {
         const admin = createAdminClient()
         let keys: any[] = []
-        
+
         if (body?.data?.keys) {
           keys = body.data.keys
         } else if (body?.keys) {
@@ -48,13 +48,13 @@ export async function POST(request: Request) {
         for (const k of keys) {
           const msgId = k?.id ?? k?.messageId ?? k?.key?.id
           if (!msgId) continue
-          
+
           await admin.from('contract_whatsapp_messages')
             .delete()
             .eq('zapi_message_id', msgId)
         }
-      } catch (e) { 
-        console.error('[evo-webhook] erro ao processar delete:', e) 
+      } catch (e) {
+        console.error('[evo-webhook] erro ao processar delete:', e)
       }
       return NextResponse.json({ ok: true })
     }
@@ -131,9 +131,11 @@ export async function POST(request: Request) {
         let mimeType = mediaType === 'image' ? 'image/jpeg' : mediaType === 'sticker' ? 'image/webp' : mediaType === 'audio' ? 'audio/mp4' : mediaType === 'video' ? 'video/mp4' : 'application/octet-stream'
         const ext = mediaType === 'image' ? 'jpg' : mediaType === 'sticker' ? 'webp' : mediaType === 'audio' ? 'mp4' : mediaType === 'video' ? 'mp4' : 'bin'
 
+        // Repassa o mimetype real do payload se disponível
         const msgMime = msg?.imageMessage?.mimetype ?? msg?.stickerMessage?.mimetype ?? msg?.audioMessage?.mimetype ?? msg?.videoMessage?.mimetype ?? msg?.documentMessage?.mimetype
         if (msgMime && mediaType !== 'audio') mimeType = msgMime
 
+        // Se não veio base64 no payload, baixa da Evolution com o msgData completo
         if (!b64 && rawUrl && messageId) {
           const { data: orgSettings } = await admin
             .from('organization_settings')
@@ -271,7 +273,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'tenant_id missing' })
     }
 
-    // Inserção da mensagem — NÚCLEO INTOCÁVEL
+    // Inserção da mensagem
     const { data: inserted, error: insertError } = await supabase
       .from('contract_whatsapp_messages')
       .insert({
@@ -327,99 +329,68 @@ export async function POST(request: Request) {
     }
 
     // ================================================================
-    // BLOCO ENTERPRISE — Protocolo + Triagem (100% aditivo)
-    // Nunca afeta o fluxo acima. Envolto em try/catch isolado.
+    // BLOCO ENTERPRISE: Protocolo + Triagem Comercial (100% aditivo)
+    // NÃO altera nenhuma lógica acima. Executa em try/catch isolado.
     // ================================================================
     if (!isFromMe) {
       try {
-        // Buscar settings completo (inclui triage_menu_options e evo_instance_aliases)
+        // Buscar settings com triage_menu_options, evo_instance_aliases e triage_enabled
         const { data: orgSettings } = await supabase
           .from('organization_settings')
-          .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options')
+          .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled, tenant_id')
           .eq('id', 'default')
           .maybeSingle()
 
-        // Verificar se a instância tem departamento fixo (bypass de triagem)
-        // evo_instance_aliases formato: { "inst_name": { "label": "...", "department": "vendas" } }
-        const instanceAliases = (orgSettings?.evo_instance_aliases ?? {}) as Record<string, { label?: string; department?: string }>
-        const instanceDept: string | null = instanceName
-          ? (instanceAliases[instanceName]?.department ?? null)
-          : null
+        // ============================================================
+        // KILL SWITCH: se triage_enabled === false, não faz NADA aqui.
+        // Mensagens já foram salvas no DB acima (comportamento normal).
+        // ============================================================
+        if (orgSettings?.triage_enabled === false) {
+          console.log('[evo-webhook] triage_enabled=false → bot desativado, mensagem salva sem automações')
+        } else {
 
-        // Buscar registro de status existente desta conversa
-        const { data: existingStatusRows } = await supabase
-          .from('whatsapp_conversation_status')
-          .select('phone, instance_name, protocol_number, triage_state, department')
-          .ilike('phone', `%${last8}`)
+          // --- Verificar dept fixo por instância (bypass de triagem) ---
+          const instanceAliases = (orgSettings?.evo_instance_aliases ?? {}) as Record<string, { label?: string; department?: string }>
+          const instanceDept: string | null = instanceName
+            ? (instanceAliases[instanceName]?.department ?? null)
+            : null
 
-        const existingStatus = (existingStatusRows ?? []).find(r => {
-          const ri = r.instance_name ?? ''
-          const qi = instanceName ?? ''
-          return ri === qi || (!ri && !qi)
-        })
-
-        // Gerar protocolo se ainda não existe para esta conversa
-        let protocolNumber: string | null = existingStatus?.protocol_number ?? null
-
-        if (!protocolNumber) {
-          const { data: protoData, error: protoErr } = await supabase
-            .rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
-
-          if (!protoErr && protoData) {
-            protocolNumber = protoData as string
-            console.log('[evo-webhook] protocolo gerado:', protocolNumber, '| phone:', phone)
-          } else {
-            console.warn('[evo-webhook] erro ao gerar protocolo (não fatal):', protoErr?.message)
-          }
-        }
-
-        // Máquina de estados de triagem
-        const currentTriageState: string = existingStatus?.triage_state ?? 'none'
-        const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{
-          key: string; label: string; department: string
-        }>
-
-        if (instanceDept) {
-          // BYPASS: instância com dept fixo — nasce como active, sem envio de menu
-          await supabase
+          // --- Buscar registro de status da conversa ---
+          const { data: existingStatusRows } = await supabase
             .from('whatsapp_conversation_status')
-            .upsert({
-              phone: cleanPhone,
-              instance_name: instanceName ?? '',
-              tenant_id: tenantId,
-              protocol_number: protocolNumber,
-              department: instanceDept,
-              triage_state: 'active',
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'phone,instance_name,tenant_id' })
+            .select('phone, instance_name, protocol_number, triage_state, department')
+            .ilike('phone', `%${last8}`)
 
-          console.log('[evo-webhook] bypass dept por instância:', instanceDept)
+          const existingStatus = (existingStatusRows ?? []).find(r => {
+            const ri = r.instance_name ?? ''
+            const qi = instanceName ?? ''
+            return ri === qi || (!ri && !qi)
+          })
 
-        } else if (currentTriageState === 'active' || existingStatus?.department) {
-          // Conversa já triada — apenas garantir protocolo salvo se for novo
-          if (protocolNumber && !existingStatus?.protocol_number) {
-            await supabase
-              .from('whatsapp_conversation_status')
-              .upsert({
-                phone: cleanPhone,
-                instance_name: instanceName ?? '',
-                tenant_id: tenantId,
-                protocol_number: protocolNumber,
-                updated_at: new Date().toISOString(),
-              }, { onConflict: 'phone,instance_name,tenant_id' })
+          // --- GERAÇÃO DE PROTOCOLO (só para conversas novas) ---
+          let protocolNumber: string | null = existingStatus?.protocol_number ?? null
+
+          if (!protocolNumber) {
+            const { data: protoData, error: protoErr } = await supabase
+              .rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
+
+            if (!protoErr && protoData) {
+              protocolNumber = protoData as string
+              console.log('[evo-webhook] protocolo gerado:', protocolNumber, '| phone:', phone)
+            } else {
+              console.warn('[evo-webhook] erro ao gerar protocolo (não fatal):', protoErr?.message)
+            }
           }
 
-        } else if (currentTriageState === 'awaiting_selection') {
-          // Processar escolha do menu
-          const trimmedText = (text ?? '').trim().toLowerCase()
-          const chosen = menuOptions.find(opt =>
-            trimmedText === opt.key ||
-            trimmedText === opt.label.toLowerCase() ||
-            trimmedText === opt.department.toLowerCase()
-          )
+          // --- MÁQUINA DE ESTADOS DE TRIAGEM ---
+          const currentTriageState: string = existingStatus?.triage_state ?? 'none'
+          const currentDept: string | null = existingStatus?.department ?? null
+          const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{
+            key: string; label: string; department: string
+          }>
 
-          if (chosen) {
-            // Opção válida: setar departamento e ativar conversa
+          if (instanceDept) {
+            // Bypass total: instância tem dept fixo
             await supabase
               .from('whatsapp_conversation_status')
               .upsert({
@@ -427,39 +398,81 @@ export async function POST(request: Request) {
                 instance_name: instanceName ?? '',
                 tenant_id: tenantId,
                 protocol_number: protocolNumber,
-                department: chosen.department,
+                department: instanceDept,
                 triage_state: 'active',
                 updated_at: new Date().toISOString(),
               }, { onConflict: 'phone,instance_name,tenant_id' })
 
-            console.log('[evo-webhook] triagem concluída → dept:', chosen.department)
+            console.log('[evo-webhook] dept fixo por instância:', instanceDept, '| triagem bypassed')
+
+          } else if (currentTriageState === 'active' || currentDept) {
+            // Conversa já triada: NÃO enviar nada, só garantir protocolo salvo
+            if (protocolNumber && !existingStatus?.protocol_number) {
+              await supabase
+                .from('whatsapp_conversation_status')
+                .upsert({
+                  phone: cleanPhone,
+                  instance_name: instanceName ?? '',
+                  tenant_id: tenantId,
+                  protocol_number: protocolNumber,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'phone,instance_name,tenant_id' })
+            }
+
+          } else if (currentTriageState === 'awaiting_selection') {
+            // Processar escolha do menu
+            const trimmedText = (text ?? '').trim().toLowerCase()
+            const chosen = menuOptions.find(opt =>
+              trimmedText === opt.key ||
+              trimmedText === opt.label.toLowerCase() ||
+              trimmedText === opt.department.toLowerCase()
+            )
+
+            if (chosen) {
+              // Escolha válida: ativar e enviar confirmação
+              await supabase
+                .from('whatsapp_conversation_status')
+                .upsert({
+                  phone: cleanPhone,
+                  instance_name: instanceName ?? '',
+                  tenant_id: tenantId,
+                  protocol_number: protocolNumber,
+                  department: chosen.department,
+                  triage_state: 'active',
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'phone,instance_name,tenant_id' })
+
+              console.log('[evo-webhook] triagem concluída → dept:', chosen.department, '| phone:', phone)
+              await sendTriageConfirmation(orgSettings, instanceName, phone, chosen.key, chosen.label, protocolNumber)
+
+            } else {
+              // Opção inválida: reenviar menu
+              console.log('[evo-webhook] opção inválida na triagem, reenviando menu | input:', trimmedText)
+              await sendTriageMenu(orgSettings, instanceName, phone, protocolNumber, menuOptions)
+            }
+
           } else {
-            // Opção inválida: reenviar menu sem alterar estado
-            console.log('[evo-webhook] opção inválida na triagem, reenviando menu | input:', trimmedText)
-            await sendTriageMenu(orgSettings, instanceName, phone, protocolNumber, menuOptions)
+            // Estado 'none': NOVA CONVERSA
+            // PRIMEIRO persistir estado, DEPOIS enviar menu (evita race conditions)
+            await supabase
+              .from('whatsapp_conversation_status')
+              .upsert({
+                phone: cleanPhone,
+                instance_name: instanceName ?? '',
+                tenant_id: tenantId,
+                protocol_number: protocolNumber,
+                triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'phone,instance_name,tenant_id' })
+
+            if (menuOptions.length > 0) {
+              await sendTriageMenu(orgSettings, instanceName, phone, protocolNumber, menuOptions)
+            }
           }
 
-        } else {
-          // Estado 'none' ou null: primeira mensagem da conversa
-          await supabase
-            .from('whatsapp_conversation_status')
-            .upsert({
-              phone: cleanPhone,
-              instance_name: instanceName ?? '',
-              tenant_id: tenantId,
-              protocol_number: protocolNumber,
-              triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'phone,instance_name,tenant_id' })
-
-          // Enviar menu apenas se houver opções configuradas no JSONB
-          if (menuOptions.length > 0) {
-            await sendTriageMenu(orgSettings, instanceName, phone, protocolNumber, menuOptions)
-          }
-        }
+        } // fim do else (triage_enabled !== false)
 
       } catch (enterpriseErr) {
-        // Nunca deixar o bloco enterprise derrubar o webhook principal
         console.error('[evo-webhook] erro no bloco enterprise (não fatal):', enterpriseErr)
       }
     }
@@ -476,7 +489,6 @@ export async function POST(request: Request) {
 
 // ================================================================
 // HELPER: Enviar menu de triagem via Evolution API
-// Função pura e isolada — falhas são não-fatais
 // ================================================================
 async function sendTriageMenu(
   orgSettings: any,
@@ -496,7 +508,10 @@ async function sendTriageMenu(
     return
   }
 
-  const optionsText = menuOptions.map(opt => `${opt.key}. ${opt.label}`).join('\n')
+  const optionsText = menuOptions
+    .map(opt => `${opt.key}. ${opt.label}`)
+    .join('\n')
+
   const protoLine = protocolNumber ? `*Protocolo: ${protocolNumber}*\n\n` : ''
 
   const menuText = `${protoLine}Olá! Seja bem-vindo(a) à Orbis Engenharia Clínica e Hospitalar! 🚀
@@ -529,5 +544,54 @@ ${optionsText}`
     }
   } catch (e) {
     console.error('[evo-webhook] erro ao enviar menu de triagem (não fatal):', e)
+  }
+}
+
+// ================================================================
+// HELPER: Enviar confirmação de seleção de triagem
+// Disparado após o cliente escolher uma opção válida do menu
+// ================================================================
+async function sendTriageConfirmation(
+  orgSettings: any,
+  instanceName: string | null,
+  phone: string,
+  optionKey: string,
+  optionLabel: string,
+  protocolNumber: string | null
+): Promise<void> {
+  if (!orgSettings?.evo_server_url || !orgSettings?.evo_api_key) {
+    console.warn('[evo-webhook] credenciais Evolution ausentes, não enviou confirmação de triagem')
+    return
+  }
+
+  const inst = instanceName ?? orgSettings.evo_instance_name
+  if (!inst) {
+    console.warn('[evo-webhook] instância desconhecida, não enviou confirmação de triagem')
+    return
+  }
+
+  const protoLine = protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''
+  const confirmationText = `Opção ${optionKey} selecionada. Seu atendimento foi direcionado para o setor *${optionLabel}*. Um atendente responderá em breve!${protoLine}`
+
+  try {
+    const res = await fetch(
+      `${orgSettings.evo_server_url}/message/sendText/${inst}`,
+      {
+        method: 'POST',
+        headers: {
+          'apikey': orgSettings.evo_api_key,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ number: phone, text: confirmationText }),
+      }
+    )
+
+    if (res.ok) {
+      console.log('[evo-webhook] confirmação de triagem enviada | phone:', phone, '| setor:', optionLabel)
+    } else {
+      console.warn('[evo-webhook] falha ao enviar confirmação de triagem:', res.status)
+    }
+  } catch (e) {
+    console.error('[evo-webhook] erro ao enviar confirmação de triagem (não fatal):', e)
   }
 }
