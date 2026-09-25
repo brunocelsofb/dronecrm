@@ -155,41 +155,61 @@ export async function POST(request: Request) {
 
     if (insertError) return NextResponse.json({ ok: false, error: insertError.message })
 
-    // ================================================================
-    // MÁQUINA DE TRIAGEM COM UNICIDADE RIGOROSA
+        // ================================================================
+    // MÁQUINA DE TRIAGEM — FIX: sem .eq('id'), usa rawPhone completo
     // ================================================================
     if (!isFromMe) {
       try {
-        const { data: orgSettings } = await supabase
+        const adminE = createAdminClient()
+
+        const { data: orgSettings } = await adminE
           .from('organization_settings')
           .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
           .eq('id', 'default')
           .maybeSingle()
 
         if (orgSettings?.triage_enabled !== false) {
-          const last8 = phone.length >= 8 ? phone.slice(-8) : phone
+          // Chave canônica: rawPhone completo (ex: "5562999884637")
+          const phoneKey = rawPhone
+          const last8 = phoneKey.slice(-8)
 
-          // Busca registro existente ignorando o campo instance_name
-          const { data: statusRows } = await supabase
+          console.log('[enterprise] phoneKey:', phoneKey, '| last8:', last8, '| instance:', instanceName)
+
+          const { data: statusRows, error: statusErr } = await adminE
             .from('whatsapp_conversation_status')
-            .select('*')
-            .ilike('phone', `%${last8}%`)
-            .order('created_at', { ascending: false })
+            .select('phone, instance_name, tenant_id, triage_state, department, protocol_number')
+            .ilike('phone', `%${last8}`)
 
-          const currentStatus = statusRows && statusRows.length > 0 ? statusRows[0] : null
-          let protocolNumber = currentStatus?.protocol_number ?? null
+          console.log('[enterprise] statusRows:', JSON.stringify(statusRows), '| err:', statusErr?.message ?? 'none')
 
-          if (!protocolNumber) {
-            const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
-            protocolNumber = (protoData as string) ?? null
+          const currentStatus = statusRows?.[0] ?? null
+          const state: string = currentStatus?.triage_state ?? 'none'
+
+          console.log('[enterprise] state:', state, '| department:', currentStatus?.department ?? 'none')
+
+          // GUARDRAIL: se já ativo, não faz nada
+          if (state === 'active' || currentStatus?.department) {
+            console.log('[enterprise] já ativo — skip')
+            return NextResponse.json({ ok: true, id: inserted?.id, status: 'already_active' })
           }
 
-          const state = currentStatus?.triage_state ?? 'none'
+          let protocolNumber: string | null = currentStatus?.protocol_number ?? null
+          if (!protocolNumber) {
+            const { data: protoData } = await adminE.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
+            protocolNumber = (protoData as string) ?? null
+            console.log('[enterprise] novo protocolo:', protocolNumber)
+          } else {
+            console.log('[enterprise] protocolo reusado:', protocolNumber)
+          }
+
           const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
 
-          if (state === 'active') {
-            // Conversa em andamento: ignora o envio de qualquer novo menu/protocolo
-            return NextResponse.json({ ok: true, status: 'already_active' })
+          const upsertPayload = {
+            phone: phoneKey,
+            instance_name: instanceName ?? '',
+            tenant_id: tenantId,
+            protocol_number: protocolNumber,
+            updated_at: new Date().toISOString(),
           }
 
           if (state === 'awaiting_selection') {
@@ -200,43 +220,24 @@ export async function POST(request: Request) {
               trimmedText === opt.department.toLowerCase()
             )
 
-            if (chosen) {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .update({
-                  department: chosen.department,
-                  triage_state: 'active',
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', currentStatus.id)
+            console.log('[enterprise] awaiting_selection | input:', trimmedText, '| chosen:', JSON.stringify(chosen ?? null))
 
+            if (chosen) {
+              await adminE.from('whatsapp_conversation_status').upsert(
+                { ...upsertPayload, department: chosen.department, triage_state: 'active' },
+                { onConflict: 'phone,instance_name,tenant_id' }
+              )
               await sendTriageConfirmation(orgSettings, instanceName, rawPhone, chosen.key, chosen.label, protocolNumber)
             } else {
               await sendTriageMenu(orgSettings, instanceName, rawPhone, protocolNumber, menuOptions)
             }
           } else {
-            // Estado 'none': insere novo registro e trava imediatamente no estado 'awaiting_selection'
-            if (!currentStatus) {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .insert({
-                  phone,
-                  instance_name: instanceName ?? '',
-                  tenant_id: tenantId,
-                  protocol_number: protocolNumber,
-                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
-                  updated_at: new Date().toISOString()
-                })
-            } else {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .update({
-                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
-                  protocol_number: protocolNumber,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', currentStatus.id)
-            }
+            // Estado 'none': upsert ANTES de enviar menu
+            await adminE.from('whatsapp_conversation_status').upsert(
+              { ...upsertPayload, triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active' },
+              { onConflict: 'phone,instance_name,tenant_id' }
+            )
+            console.log('[enterprise] upsert none→awaiting feito')
 
             if (menuOptions.length > 0) {
               await sendTriageMenu(orgSettings, instanceName, rawPhone, protocolNumber, menuOptions)
@@ -244,10 +245,9 @@ export async function POST(request: Request) {
           }
         }
       } catch (err) {
-        console.error('[evo-webhook] erro enterprise:', err)
+        console.error('[enterprise] erro (não fatal):', err)
       }
     }
-
     return NextResponse.json({ ok: true, id: inserted?.id })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'erro' })
