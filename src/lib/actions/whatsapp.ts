@@ -1127,3 +1127,67 @@ export async function toggleTriagemEnabled(enabled: boolean): Promise<ActionStat
   revalidatePath('/settings/whatsapp-bot')
   return {}
 }
+export async function saveTriagemMenuOptions(options: any[]): Promise<ActionState> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar isso.' }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('organization_settings')
+    .update({ triage_menu_options: options })
+    .eq('id', 'default')
+
+  if (error) return { error: error.message }
+  revalidatePath('/settings/whatsapp-bot')
+  return {}
+}
+
+export async function finishConversationWithNPS(phone: string, sendNPS: boolean): Promise<ActionState> {
+  const supabase = await createClient()
+
+  if (sendNPS) {
+    // Marca a conversa para aguardar nota NPS (1 a 5)
+    const { error } = await supabase
+      .from('whatsapp_conversation_status')
+      .update({
+        nps_pending: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('phone', phone)
+
+    if (error) return { error: error.message }
+
+    // Envia a mensagem de pesquisa NPS pelo WhatsApp
+    const { data: orgSettings } = await supabase
+      .from('organization_settings')
+      .select('evo_server_url, evo_api_key, evo_instance_name')
+      .eq('id', 'default')
+      .maybeSingle()
+
+    if (orgSettings?.evo_server_url && orgSettings?.evo_api_key && orgSettings?.evo_instance_name) {
+      const npsMsg = `Seu atendimento foi concluído! 🌟\n\nPor favor, avalie o nosso atendimento enviando uma nota de *1 a 5*:\n\n1 - Péssimo\n2 - Ruim\n3 - Regular\n4 - Bom\n5 - Excelente`
+      try {
+        await fetch(`${orgSettings.evo_server_url}/message/sendText/${orgSettings.evo_instance_name}`, {
+          method: 'POST',
+          headers: { 'apikey': orgSettings.evo_api_key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: phone, text: npsMsg }),
+        })
+      } catch (e) {
+        console.error('[NPS] erro ao enviar mensagem NPS:', e)
+      }
+    }
+  } else {
+    // Arquiva diretamente sem NPS
+    const { error } = await supabase
+      .from('whatsapp_conversation_status')
+      .update({
+        is_archived: true,
+        archived_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('phone', phone)
+
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath('/whatsapp')
+  return {}
+}
