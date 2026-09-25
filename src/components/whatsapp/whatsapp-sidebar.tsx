@@ -1,112 +1,90 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
-type Conv = {
+export interface ConversationItem {
   phone: string
-  instance: string
-  latest: {
-    unlinked_sender_name: string | null
-    message: string
-    media_type: string | null
-    direction: string
-    created_at: string
-    lead_id: string | null
-    instance_name: string | null
-  }
-  lead?: { id: string; name: string } | null
+  name: string
+  lastMessage: string
+  lastMessageTime: string
+  unreadCount?: number
+  department?: string
+  protocolNumber?: string
+  triageState?: string
 }
 
 export function WhatsAppSidebar({
-  open, archived, selectedPhone, selectedInstance, assignments,
-  currentUserId, instanceAliases, onSelectConv, onSelectPhone,
+  conversations,
+  selectedPhone,
+  onSelectConversation,
 }: {
-  open: Conv[]; archived: Conv[]
-  selectedPhone: string | null; selectedInstance?: string | null
-  assignments: Record<string, { assigned_to: string; assigned_to_name: string }>
-  currentUserId: string; instanceAliases: Record<string, any>
-  onSelectConv?: (phone: string, instance: string) => void
-  onSelectPhone?: (phone: string) => void
+  conversations: ConversationItem[]
+  selectedPhone: string | null
+  onSelectConversation: (phone: string) => void
 }) {
-  const router = useRouter()
-  const [tab, setTab] = useState<'open' | 'archived'>('open')
-  const [isPending, startTransition] = useTransition()
-  const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const [filterDept, setFilterDept] = useState<string>('all')
 
-  const getLabel = (name: string) => {
-    const v = instanceAliases[name]
-    if (!v) return name
-    if (typeof v === 'string') return v
-    return (v as any).label || name
-  }
-
-  const list = tab === 'open' ? open : archived
+  const filtered = conversations.filter((c) => {
+    if (filterDept === 'all') return true
+    return c.department?.toLowerCase() === filterDept.toLowerCase()
+  })
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex border-b border-gray-200 mb-2 flex-shrink-0">
-        <button onClick={() => setTab('open')}
-          className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === 'open' ? 'border-b-2 border-[#1B556B] text-[#1B556B]' : 'text-gray-400 hover:text-gray-600'}`}>
-          Em aberto ({open.length})
-        </button>
-        <button onClick={() => setTab('archived')}
-          className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === 'archived' ? 'border-b-2 border-[#1B556B] text-[#1B556B]' : 'text-gray-400 hover:text-gray-600'}`}>
-          Arquivados ({archived.length})
-        </button>
+    <div className="flex h-full w-80 flex-col border-r border-gray-200 bg-white">
+      {/* Filtro por Departamento */}
+      <div className="border-b border-gray-200 p-3">
+        <label className="block text-[11px] font-medium text-gray-500">Filtrar por Setor:</label>
+        <select
+          value={filterDept}
+          onChange={(e) => setFilterDept(e.target.value)}
+          className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-brand-700 focus:outline-none"
+        >
+          <option value="all">Todos os setores</option>
+          <option value="vendas">Vendas</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="tecnico">Técnico</option>
+        </select>
       </div>
-      <div className="flex-1 overflow-y-auto space-y-1">
-        {list.length === 0 && (
-          <p className="px-2 py-4 text-center text-xs text-gray-400">
-            {tab === 'open' ? 'Nenhuma conversa em aberto.' : 'Nenhuma conversa arquivada.'}
-          </p>
-        )}
-        {list.map((c) => {
-          const key = `${c.phone}:${c.instance}`
-          const isSelected = selectedPhone === c.phone && (selectedInstance ?? '') === (c.instance ?? '')
-          const isLoading = isPending && pendingKey === key
+
+      {/* Lista de Conversas */}
+      <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+        {filtered.map((item) => {
+          const isSelected = item.phone === selectedPhone
           return (
-            <button key={key}
-              onClick={() => {
-                setPendingKey(key)
-                if (onSelectConv) {
-                  onSelectConv(c.phone, c.instance)
-                } else if (onSelectPhone) {
-                  onSelectPhone(c.phone)
-                } else {
-                  startTransition(() => {
-                    router.push(`/whatsapp?phone=${encodeURIComponent(c.phone)}&instance=${encodeURIComponent(c.instance)}`)
-                  })
-                }
-              }}
-              className={`w-full text-left rounded-md border px-3 py-2 text-sm hover:bg-gray-50 ${isLoading ? 'opacity-50' : ''} ${
-                isSelected ? 'border-brand-300 bg-brand-50'
-                : tab === 'archived' ? 'border-gray-200 bg-gray-50/60'
-                : c.lead ? 'border-purple-100 bg-purple-50/40' : 'border-yellow-100 bg-yellow-50/40'
-              }`}>
-              <div className="flex items-center justify-between gap-1">
-                <p className="truncate font-medium text-gray-900">
-                  {(() => {
-                    const name = c.lead?.name || c.latest.unlinked_sender_name
-                    const label = getLabel(c.latest.instance_name ?? '')
-                    if (name && name !== label) return name
-                    return c.phone
-                  })()}
+            <button
+              key={item.phone}
+              onClick={() => onSelectConversation(item.phone)}
+              className={`w-full p-3 text-left transition-colors hover:bg-gray-50 ${
+                isSelected ? 'bg-brand-50/60' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-900 truncate max-w-[140px]">
+                  {item.name || item.phone}
                 </p>
-                {c.lead && (
-                  <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-purple-100 text-purple-700">Lead</span>
+                <span className="text-[10px] text-gray-400">{item.lastMessageTime}</span>
+              </div>
+
+              <p className="mt-0.5 text-xs text-gray-500 truncate">{item.lastMessage}</p>
+
+              {/* Badges de Setor e Protocolo */}
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                {item.department ? (
+                  <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-800">
+                    {item.department.toUpperCase()}
+                  </span>
+                ) : item.triageState === 'awaiting_selection' ? (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                    ⏳ Aguardando escolha
+                  </span>
+                ) : null}
+
+                {item.protocolNumber && (
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    #{item.protocolNumber}
+                  </span>
                 )}
               </div>
-              <p className="truncate text-xs text-gray-500">
-                {c.latest.direction === 'enviado' ? '📤 ' : '📥 '}
-                {c.latest.media_type ? `[${c.latest.media_type}]` : c.latest.message}
-              </p>
-              {c.instance && (
-                <span className="mt-0.5 inline-block rounded-full bg-[#1B556B]/10 px-2 py-0.5 text-[10px] font-medium text-[#1B556B]">
-                  via {getLabel(c.instance)}
-                </span>
-              )}
-              <p className="mt-0.5 text-[10px] text-gray-400">{new Date(c.latest.created_at).toLocaleString('pt-BR')}</p>
             </button>
           )
         })}
