@@ -6,14 +6,18 @@ import { WhatsAppBotSettingsForm } from '@/components/settings/whatsapp-bot-sett
 export default async function WhatsAppBotPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
+
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
   const admin = createAdminClient()
-  const { data: settings } = await admin.from('organization_settings')
-    .select('whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, company_name')
-    .eq('id', 'default').maybeSingle()
+  const { data: settings } = await admin
+    .from('organization_settings')
+    .select('whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, company_name, triage_enabled')
+    .eq('id', 'default')
+    .maybeSingle()
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -27,6 +31,7 @@ export default async function WhatsAppBotPage() {
         welcomeMessageOnline={(settings as any)?.whatsapp_welcome_message_online ?? ''}
         reminderMessage={(settings as any)?.whatsapp_reminder_message ?? ''}
         companyName={(settings as any)?.company_name ?? ''}
+        triagemEnabled={(settings as any)?.triage_enabled ?? true}
       />
     </div>
   )
