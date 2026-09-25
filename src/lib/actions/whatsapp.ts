@@ -1115,3 +1115,15 @@ export async function deleteWhatsAppConversation(phone: string): Promise<{ error
   revalidatePath('/whatsapp')
   return {}
 }
+export async function toggleTriagemEnabled(enabled: boolean): Promise<ActionState> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar isso.' }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('organization_settings')
+    .update({ triage_enabled: enabled })
+    .eq('id', 'default')
+
+  if (error) return { error: error.message }
+  revalidatePath('/settings/whatsapp-bot')
+  return {}
+}
