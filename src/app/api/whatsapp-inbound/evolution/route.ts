@@ -225,7 +225,7 @@ export async function POST(request: Request) {
             if (chosen) {
               await adminE.from('whatsapp_conversation_status').upsert(
                 { ...upsertPayload, department: chosen.department, triage_state: 'active' },
-                { onConflict: 'phone,instance_name,tenant_id' }
+                onConflict: 'phone,instance_name'
               )
               await sendTriageConfirmation(orgSettings, instanceName, rawPhone, chosen.key, chosen.label, protocolNumber)
             } else {
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
             // Estado 'none': upsert ANTES de enviar menu
             await adminE.from('whatsapp_conversation_status').upsert(
               { ...upsertPayload, triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active' },
-              { onConflict: 'phone,instance_name,tenant_id' }
+             onConflict: 'phone,instance_name'
             )
             console.log('[enterprise] upsert none→awaiting feito')
 
