@@ -6,22 +6,21 @@ export interface WhatsAppSidebarProps {
   open: any[]
   archived: any[]
   selectedPhone: string | null
-  selectedInstance: string | null
-  assignments: Record<string, string>
-  currentUserId: string
-  instanceAliases: Record<string, any>
-  onSelectConv: (phone: string, instance: string) => void
+  selectedInstance?: string | null
+  assignments?: Record<string, string>
+  currentUserId?: string
+  instanceAliases?: Record<string, any>
+  onSelectConv?: (phone: string, instance?: string) => void
+  onSelectConversation?: (phone: string) => void
 }
 
 export function WhatsAppSidebar({
-  open,
-  archived,
+  open = [],
+  archived = [],
   selectedPhone,
   selectedInstance,
-  assignments,
-  currentUserId,
-  instanceAliases,
   onSelectConv,
+  onSelectConversation,
 }: WhatsAppSidebarProps) {
   const [tab, setTab] = useState<'open' | 'archived'>('open')
   const [filterDept, setFilterDept] = useState<string>('all')
@@ -33,6 +32,14 @@ export function WhatsAppSidebar({
     const dept = item.department ?? item.triage_department
     return dept?.toLowerCase() === filterDept.toLowerCase()
   })
+
+  function handleSelect(phone: string, instance?: string) {
+    if (onSelectConv) {
+      onSelectConv(phone, instance ?? '')
+    } else if (onSelectConversation) {
+      onSelectConversation(phone)
+    }
+  }
 
   return (
     <div className="flex h-full w-80 flex-col border-r border-gray-200 bg-white">
@@ -78,7 +85,7 @@ export function WhatsAppSidebar({
       {/* Lista de Conversas */}
       <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
         {filteredList.map((item) => {
-          const isSelected = item.phone === selectedPhone && (item.instance_name ?? '') === (selectedInstance ?? '')
+          const isSelected = item.phone === selectedPhone
           const dept = item.department ?? item.triage_department
           const protocol = item.protocol_number ?? item.protocolNumber
           const state = item.triage_state
@@ -86,7 +93,7 @@ export function WhatsAppSidebar({
           return (
             <button
               key={`${item.phone}-${item.instance_name ?? 'default'}`}
-              onClick={() => onSelectConv(item.phone, item.instance_name ?? '')}
+              onClick={() => handleSelect(item.phone, item.instance_name ?? '')}
               className={`w-full p-3 text-left transition-colors hover:bg-gray-50 ${
                 isSelected ? 'bg-brand-50/60' : ''
               }`}
