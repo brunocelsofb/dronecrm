@@ -82,6 +82,45 @@ export async function POST(request: Request) {
       if (existing) return NextResponse.json({ ok: true, skipped: 'fromMe-duplicate' })
     }
 
+    // Mensagens enviadas pelo próprio bot NÃO entram no fluxo de triagem
+    if (isFromMe) {
+      // Apenas registramos a mensagem de saída e saímos
+      const text =
+        msg?.conversation ??
+        msg?.extendedTextMessage?.text ??
+        msg?.imageMessage?.caption ??
+        msg?.videoMessage?.caption ??
+        msg?.documentMessage?.caption ??
+        msg?.documentWithCaptionMessage?.message?.documentMessage?.caption ??
+        msgData?.body ?? msgData?.text ?? msgData?.content ?? null
+
+      const { data: orgData } = await supabase
+        .from('organization_settings')
+        .select('tenant_id')
+        .eq('id', 'default')
+        .maybeSingle()
+      const tenantId = orgData?.tenant_id ?? null
+
+      if (tenantId && text && messageId) {
+        // Inserção silenciosa — ignora erro se já existir
+        await supabase.from('contract_whatsapp_messages').insert({
+          phone,
+          message: text,
+          direction: 'enviado',
+          status: 'enviado',
+          triggered_automatically: false,
+          zapi_message_id: messageId ?? null,
+          instance_name: instanceName,
+          tenant_id: tenantId,
+          created_at: messageTimestamp
+            ? new Date(Number(messageTimestamp) * 1000).toISOString()
+            : new Date().toISOString(),
+        }).select('id').maybeSingle()
+      }
+
+      return NextResponse.json({ ok: true, skipped: 'fromMe-processed' })
+    }
+
     const text =
       msg?.conversation ??
       msg?.extendedTextMessage?.text ??
@@ -138,11 +177,11 @@ export async function POST(request: Request) {
       .insert({
         phone,
         message: finalText,
-        direction: isFromMe ? 'enviado' : 'recebido',
-        status: isFromMe ? 'enviado' : 'recebido',
+        direction: 'recebido',
+        status: 'recebido',
         triggered_automatically: false,
         zapi_message_id: messageId ?? null,
-        unlinked_sender_name: isFromMe ? null : pushName,
+        unlinked_sender_name: pushName,
         instance_name: instanceName,
         tenant_id: tenantId,
         media_url: mediaUrl,
@@ -158,125 +197,136 @@ export async function POST(request: Request) {
     // ================================================================
     // MÁQUINA DE TRIAGEM + PROCESSAMENTO DE NPS + CRIAÇÃO DE HISTÓRICO
     // ================================================================
-    if (!isFromMe) {
-      try {
-        const last8 = phone.length >= 8 ? phone.slice(-8) : phone
+    try {
+      const last8 = phone.length >= 8 ? phone.slice(-8) : phone
+      const instKey = instanceName ?? ''
 
-        const { data: statusRows } = await supabase
-          .from('whatsapp_conversation_status')
-          .select('*')
-          .ilike('phone', `%${last8}%`)
-          .order('created_at', { ascending: false })
+      // Busca o status pela chave composta real da tabela (phone + instance_name)
+      const { data: statusRows } = await supabase
+        .from('whatsapp_conversation_status')
+        .select('*')
+        .ilike('phone', `%${last8}`)
+        .eq('instance_name', instKey)
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-        const currentStatus = statusRows && statusRows.length > 0 ? statusRows[0] : null
+      const currentStatus = statusRows && statusRows.length > 0 ? statusRows[0] : null
+      const statusPhone: string = currentStatus?.phone ?? phone
+      const statusInstance: string = currentStatus?.instance_name ?? instKey
 
-        // --- TRATAMENTO DE NPS PENDENTE ---
-        if (currentStatus?.nps_pending) {
-          const scoreNum = parseInt((text ?? '').trim(), 10)
-          if (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) {
-            await supabase
-              .from('whatsapp_conversation_status')
-              .update({
-                nps_score: scoreNum,
-                nps_pending: false,
-                is_archived: true,
-                archived_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', currentStatus.id)
+      // --- TRATAMENTO DE NPS PENDENTE ---
+      if (currentStatus?.nps_pending) {
+        const scoreNum = parseInt((text ?? '').trim(), 10)
+        if (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) {
+          await supabase
+            .from('whatsapp_conversation_status')
+            .update({
+              nps_score: scoreNum,
+              nps_pending: false,
+              is_archived: true,
+              archived_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('phone', statusPhone)
+            .eq('instance_name', statusInstance)
 
-            const npsAgradecimento = `Obrigado pela sua avaliação! Sua nota ${scoreNum} foi registrada com sucesso. Tenha um ótimo dia!`
-            await sendAndRecordBotMessage(supabase, tenantId, orgSettingsForSend(body), instanceName, rawPhone, phone, npsAgradecimento)
-            return NextResponse.json({ ok: true, status: 'nps_recorded' })
-          }
+          const { data: orgSettingsNps } = await supabase
+            .from('organization_settings')
+            .select('evo_server_url, evo_api_key, evo_instance_name')
+            .eq('id', 'default')
+            .maybeSingle()
+
+          const npsAgradecimento = `Obrigado pela sua avaliação! Sua nota ${scoreNum} foi registrada com sucesso. Tenha um ótimo dia!`
+          await sendAndRecordBotMessage(supabase, tenantId, orgSettingsNps, instanceName, rawPhone, phone, npsAgradecimento)
+          return NextResponse.json({ ok: true, status: 'nps_recorded' })
         }
-
-        const { data: orgSettings } = await supabase
-          .from('organization_settings')
-          .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
-          .eq('id', 'default')
-          .maybeSingle()
-
-        if (orgSettings?.triage_enabled !== false) {
-          let protocolNumber = currentStatus?.protocol_number ?? null
-
-          if (!protocolNumber) {
-            const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
-            protocolNumber = (protoData as string) ?? null
-          }
-
-          const state = currentStatus?.triage_state ?? 'none'
-          const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
-
-          if (state === 'active') {
-            return NextResponse.json({ ok: true, status: 'already_active' })
-          }
-
-          if (state === 'awaiting_selection') {
-            const trimmedText = (text ?? '').trim().toLowerCase()
-            const chosen = menuOptions.find(opt =>
-              trimmedText === opt.key.toLowerCase() ||
-              trimmedText === opt.label.toLowerCase() ||
-              trimmedText === opt.department.toLowerCase()
-            )
-
-            if (chosen) {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .update({
-                  department: chosen.department,
-                  triage_state: 'active',
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', currentStatus.id)
-
-              const confirmMsg = `Opção ${chosen.key} selecionada. Seu atendimento foi direcionado para o setor *${chosen.label}*. Um atendente responderá em breve!${protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''}`
-              await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, confirmMsg)
-            } else {
-              await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
-            }
-          } else {
-            // Estado 'none'
-            if (!currentStatus) {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .insert({
-                  phone,
-                  instance_name: instanceName ?? '',
-                  tenant_id: tenantId,
-                  protocol_number: protocolNumber,
-                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
-                  updated_at: new Date().toISOString()
-                })
-            } else {
-              await supabase
-                .from('whatsapp_conversation_status')
-                .update({
-                  triage_state: menuOptions.length > 0 ? 'awaiting_selection' : 'active',
-                  protocol_number: protocolNumber,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', currentStatus.id)
-            }
-
-            if (menuOptions.length > 0) {
-              await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[evo-webhook] erro enterprise:', err)
       }
+
+      const { data: orgSettings } = await supabase
+        .from('organization_settings')
+        .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
+        .eq('id', 'default')
+        .maybeSingle()
+
+      if (orgSettings?.triage_enabled === false) {
+        return NextResponse.json({ ok: true, id: inserted?.id })
+      }
+
+      const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
+      const state: string = currentStatus?.triage_state ?? 'none'
+
+      // ── ESTADO: active ─────────────────────────────────────────────
+      if (state === 'active') {
+        return NextResponse.json({ ok: true, status: 'already_active' })
+      }
+
+      // ── ESTADO: awaiting_selection ─────────────────────────────────
+      if (state === 'awaiting_selection') {
+        const trimmedText = (text ?? '').trim().toLowerCase()
+        const chosen = menuOptions.find(opt =>
+          trimmedText === opt.key.toLowerCase() ||
+          trimmedText === opt.label.toLowerCase() ||
+          trimmedText === opt.department.toLowerCase()
+        )
+
+        if (chosen) {
+          // Opção válida: avança para active usando a chave composta
+          await supabase
+            .from('whatsapp_conversation_status')
+            .update({
+              department: chosen.department,
+              triage_state: 'active',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('phone', statusPhone)
+            .eq('instance_name', statusInstance)
+
+          const protocolNumber = currentStatus?.protocol_number ?? null
+          const confirmMsg = `Opção ${chosen.key} selecionada. Seu atendimento foi direcionado para o setor *${chosen.label}*. Um atendente responderá em breve!${protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''}`
+          await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, confirmMsg)
+          return NextResponse.json({ ok: true, status: 'triage_confirmed' })
+        } else {
+          // Opção inválida: reenvia o menu SEM gerar novo protocolo
+          const protocolNumber = currentStatus?.protocol_number ?? null
+          await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
+          return NextResponse.json({ ok: true, status: 'menu_resent' })
+        }
+      }
+
+      // ── ESTADO: none (primeiro contato) ───────────────────────────
+      let protocolNumber: string | null = null
+      const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
+      protocolNumber = (protoData as string) ?? null
+
+      const newState = menuOptions.length > 0 ? 'awaiting_selection' : 'active'
+
+      // UPSERT pela chave composta — nunca cria duplicatas
+      await supabase
+        .from('whatsapp_conversation_status')
+        .upsert(
+          {
+            phone,
+            instance_name: instKey,
+            tenant_id: tenantId,
+            protocol_number: protocolNumber,
+            triage_state: newState,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'phone,instance_name' }
+        )
+
+      if (menuOptions.length > 0) {
+        await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
+      }
+
+    } catch (err) {
+      console.error('[evo-webhook] erro enterprise:', err)
     }
 
     return NextResponse.json({ ok: true, id: inserted?.id })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'erro' })
   }
-}
-
-function orgSettingsForSend(body: any) {
-  return null // Helper para fallbacks se necessário
 }
 
 async function sendAndRecordBotMessage(
