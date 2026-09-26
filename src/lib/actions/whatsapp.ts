@@ -328,7 +328,8 @@ export async function archiveWhatsAppConversation(
 
 export async function unarchiveWhatsAppConversation(
   phone: string,
-  instanceName?: string
+  instanceName?: string | null,
+  tenantId?: string | null
 ): Promise<ActionState> {
   const admin = createAdminClient()
 
