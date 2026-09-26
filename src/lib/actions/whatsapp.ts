@@ -400,7 +400,7 @@ export async function finishConversationWithNPS(
 
     if (error) return { error: error.message }
 
-    // 2. Dispara a mensagem com as opcoes no WhatsApp do cliente
+    // 2. Dispara a mensagem com as opções no WhatsApp do cliente
     if (orgSettings?.evo_server_url && orgSettings?.evo_api_key && inst) {
       const npsMsg = `Seu atendimento foi concluído! 🌟\n\nPor favor, avalie o nosso atendimento enviando uma nota de *1 a 5*:\n\n1 - Péssimo\n2 - Ruim\n3 - Regular\n4 - Bom\n5 - Excelente`
       try {
@@ -414,7 +414,7 @@ export async function finishConversationWithNPS(
       }
     }
   } else {
-    // Arquiva diretamente se o usuario escolher finalizar sem NPS
+    // Arquiva diretamente se o utilizador escolher finalizar sem NPS
     const { error } = await admin
       .from('whatsapp_conversation_status')
       .update({
