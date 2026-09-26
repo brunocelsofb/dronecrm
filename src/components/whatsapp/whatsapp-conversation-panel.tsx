@@ -4,16 +4,17 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { 
-  linkUnlinkedWhatsAppConversation, 
-  sendUnlinkedWhatsAppMessage, 
-  sendUnlinkedWhatsAppMedia, 
-  assignWhatsAppConversation, 
-  unassignWhatsAppConversation, 
-  archiveWhatsAppConversation, 
+import {
+  linkUnlinkedWhatsAppConversation,
+  sendUnlinkedWhatsAppMessage,
+  sendUnlinkedWhatsAppMedia,
+  assignWhatsAppConversation,
+  unassignWhatsAppConversation,
+  archiveWhatsAppConversation,
   unarchiveWhatsAppConversation,
-  saveUnlinkedContactName, 
-  deleteWhatsAppConversation 
+  saveUnlinkedContactName,
+  deleteWhatsAppConversation,
+  finishConversationWithNPS,
 } from '@/lib/actions/whatsapp'
 import { WhatsAppChatView } from '@/components/whatsapp/whatsapp-chat-view'
 import { ConvertLeadModal } from '@/components/whatsapp/convert-lead-modal'
@@ -36,6 +37,67 @@ type Message = {
 }
 
 type ContractOption = { id: string; label: string }
+
+// ── Modal de NPS inline ──────────────────────────────────────────────────────
+function FinalizarNPSModal({
+  phone,
+  instanceName,
+  onClose,
+  onSuccess,
+}: {
+  phone: string
+  instanceName?: string | null
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+
+  async function handleFinalize(sendNPS: boolean) {
+    setLoading(true)
+    const result = await finishConversationWithNPS(phone, instanceName, sendNPS)
+    setLoading(false)
+    if (result?.error) {
+      alert(`Erro: ${result.error}`)
+      return
+    }
+    onSuccess()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-xl p-5">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">✅ Finalizar atendimento</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Deseja enviar uma pesquisa de satisfação (NPS) ao cliente antes de encerrar?
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => handleFinalize(true)}
+            disabled={loading}
+            className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            🌟 Finalizar e enviar NPS
+          </button>
+          <button
+            onClick={() => handleFinalize(false)}
+            disabled={loading}
+            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            🗃️ Finalizar sem NPS
+          </button>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="w-full rounded-lg px-4 py-2 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+        {loading && <p className="mt-3 text-center text-xs text-gray-400">Processando...</p>}
+      </div>
+    </div>
+  )
+}
 
 export function WhatsAppConversationPanel({
   phone,
@@ -74,6 +136,9 @@ export function WhatsAppConversationPanel({
   const [localMessages, setLocalMessages] = useState<Message[]>(messages)
   const processedIds = useRef(new Set<string>(messages.map(m => m.id)))
 
+  // ── Estado do modal NPS ────────────────────────────────────────────────────
+  const [showNPSModal, setShowNPSModal] = useState(false)
+
   function addMessageSafe(msg: Message) {
     if (!msg?.id || processedIds.current.has(msg.id)) return
     processedIds.current.add(msg.id)
@@ -89,7 +154,7 @@ export function WhatsAppConversationPanel({
       })
     })
   }
-  
+
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(displayName ?? '')
   const [localDisplayName, setLocalDisplayName] = useState(displayName)
@@ -98,7 +163,7 @@ export function WhatsAppConversationPanel({
     setLocalDisplayName(displayName)
     setNameInput(displayName ?? '')
   }, [displayName])
-  
+
   const [showAssignPicker, setShowAssignPicker] = useState(false)
   const [showLinkSearch, setShowLinkSearch] = useState(false)
   const [query, setQuery] = useState('')
@@ -110,7 +175,7 @@ export function WhatsAppConversationPanel({
   const [selectedInstance, setSelectedInstance] = useState<string>(instanceName ?? '')
 
   useEffect(() => { setIsArchived(initialIsArchived ?? false) }, [initialIsArchived])
-  
+
   useEffect(() => {
     setLocalMessages(prev => {
       const pendingOpt = prev.filter(m => m.id.startsWith('opt-'))
@@ -188,13 +253,13 @@ export function WhatsAppConversationPanel({
   async function handleFileUpload() {
     const file = fileInputRef.current?.files?.[0]
     if (!file) return
-    
+
     setBusy(true)
     setError(null)
 
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
     const storagePath = `whatsapp-media/central/${Date.now()}-${safeName}`
-    
+
     const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
 
     if (uploadError) {
@@ -205,7 +270,7 @@ export function WhatsAppConversationPanel({
 
     const publicUrl = `${window.location.origin}/api/email-assets/${storagePath}`
     const mediaType = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('video/') ? 'video' : (file.type.startsWith('audio/') ? 'audio' : 'document'))
-    
+
     const result = await sendUnlinkedWhatsAppMedia(phone, publicUrl, mediaType as any, file.name, selectedInstance || instanceName || undefined)
 
     setBusy(false)
@@ -226,7 +291,7 @@ export function WhatsAppConversationPanel({
     }
 
     if (!replyText.trim()) return
-    
+
     const optimistic: Message = {
       id: `opt-${Date.now()}`,
       phone, message: replyText, direction: 'enviado',
@@ -237,19 +302,18 @@ export function WhatsAppConversationPanel({
     }
     setLocalMessages(prev => [...prev, optimistic])
     setReplyText('')
-    
+
     const ta = document.querySelector('textarea[placeholder="Responder..."]') as HTMLTextAreaElement | null
     if (ta) ta.style.height = '34px'
-    
+
     setBusy(true)
     const result = await sendUnlinkedWhatsAppMessage(phone, replyText, selectedInstance || instanceName || undefined)
     setBusy(false)
-    
+
     if (result.error) {
       setError(result.error)
       setLocalMessages(prev => prev.filter(m => m.id !== optimistic.id))
     } else if (result.message) {
-      // Substituir mensagem otimista pelo dado real retornado da action
       setLocalMessages(prev => prev.map(m => m.id === optimistic.id ? { ...result.message, sent_by_name: result.message.sent_by_name ?? undefined } as Message : m))
     }
     router.refresh()
@@ -294,6 +358,22 @@ export function WhatsAppConversationPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Modal NPS */}
+      {showNPSModal && (
+        <FinalizarNPSModal
+          phone={phone}
+          instanceName={selectedInstance || instanceName}
+          onClose={() => setShowNPSModal(false)}
+          onSuccess={() => {
+            setShowNPSModal(false)
+            setIsArchived(true)
+            onArchiveSuccess?.(phone)
+            router.push('/whatsapp')
+            router.refresh()
+          }}
+        />
+      )}
+
       <div className="flex-shrink-0 rounded-lg border border-gray-200 bg-white p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -435,17 +515,9 @@ export function WhatsAppConversationPanel({
             >
               🗃️ Arquivar
             </button>
+            {/* ── PONTO 4: Botão Finalizar → abre FinalizarNPSModal ── */}
             <button
-              onClick={async () => {
-                if (!confirm('Finalizar? Enviará mensagem de encerramento ao cliente e arquivará a conversa.')) return
-                setBusy(true)
-                const result = await archiveWhatsAppConversation(phone, instanceName, true)
-                setBusy(false)
-                if (result?.error) { alert(`Erro: ${result.error}`); return }
-                setIsArchived(true)
-                onArchiveSuccess?.(phone)
-                router.push('/whatsapp'); router.refresh()
-              }}
+              onClick={() => setShowNPSModal(true)}
               disabled={busy}
               className="rounded-md border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
             >
@@ -569,7 +641,7 @@ export function WhatsAppConversationPanel({
         </div>
       ) : (
         <div className="flex-shrink-0 space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-          
+
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-gray-500 whitespace-nowrap">Responder via:</span>
             <select
@@ -587,18 +659,18 @@ export function WhatsAppConversationPanel({
           </div>
 
           <div className="flex items-end gap-2 bg-white rounded-md border border-gray-300 p-1 focus-within:border-[#1B556B]">
-            
+
             <label className={`cursor-pointer p-2 rounded-full transition-colors self-end mb-[2px]
-              ${selectedFileName ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`} 
+              ${selectedFileName ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
               title="Anexar arquivo">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 transform -rotate-45">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
               </svg>
-              <input 
-                ref={fileInputRef} 
-                type="file" 
-                className="hidden" 
-                accept="image/*, video/*, audio/*, application/pdf, .doc, .docx, .xls, .xlsx" 
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept="image/*, video/*, audio/*, application/pdf, .doc, .docx, .xls, .xlsx"
                 onChange={(e) => {
                   if (e.target.files?.[0]) setSelectedFileName(e.target.files[0].name)
                   else setSelectedFileName(null)
@@ -610,8 +682,8 @@ export function WhatsAppConversationPanel({
               {selectedFileName && (
                 <div className="flex items-center justify-between bg-[#1B556B]/10 text-[#1B556B] text-xs px-2 py-1 rounded mb-1 mr-2 mt-1">
                   <span className="truncate flex-1">📎 {selectedFileName}</span>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => {
                       if (fileInputRef.current) fileInputRef.current.value = ''
                       setSelectedFileName(null)
@@ -622,7 +694,7 @@ export function WhatsAppConversationPanel({
                   </button>
                 </div>
               )}
-              
+
               <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -638,9 +710,9 @@ export function WhatsAppConversationPanel({
               />
             </div>
 
-            <button 
-              onClick={handleReply} 
-              disabled={busy || (!replyText.trim() && !selectedFileName)} 
+            <button
+              onClick={handleReply}
+              disabled={busy || (!replyText.trim() && !selectedFileName)}
               className="p-2 mb-[2px] rounded-full bg-[#1B556B] text-white hover:bg-[#164659] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 transition-colors shrink-0"
               title="Enviar mensagem">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -648,7 +720,7 @@ export function WhatsAppConversationPanel({
               </svg>
             </button>
           </div>
-          
+
           {busy && <p className="text-xs text-[#1B556B] mt-1 text-right">Enviando... aguarde.</p>}
 
         </div>
