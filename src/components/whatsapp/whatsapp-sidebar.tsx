@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 export interface WhatsAppSidebarProps {
   open?: any[]
@@ -26,6 +26,17 @@ export function WhatsAppSidebar({
   const [filterDept, setFilterDept] = useState<string>('all')
 
   const list = tab === 'open' ? open : archived
+
+  // Gera dinamicamente os setores únicos presentes em TODAS as conversas (abertas + arquivadas)
+  const uniqueDepts = useMemo(() => {
+    const all = [...open, ...archived]
+    const depts = new Set<string>()
+    for (const item of all) {
+      const dept = item.department ?? item.triage_department
+      if (dept && dept.trim()) depts.add(dept.trim())
+    }
+    return Array.from(depts).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [open, archived])
 
   const filteredList = list.filter((item) => {
     if (filterDept === 'all') return true
@@ -67,7 +78,7 @@ export function WhatsAppSidebar({
         </button>
       </div>
 
-      {/* Filtro por Setor */}
+      {/* Filtro por Setor — opções geradas dinamicamente */}
       <div className="border-b border-gray-200 p-2.5 bg-gray-50/50">
         <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Filtrar Setor:</label>
         <select
@@ -76,9 +87,11 @@ export function WhatsAppSidebar({
           className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs focus:border-brand-700 focus:outline-none"
         >
           <option value="all">Todos os setores</option>
-          <option value="vendas">Vendas</option>
-          <option value="financeiro">Financeiro</option>
-          <option value="tecnico">Técnico</option>
+          {uniqueDepts.map((dept) => (
+            <option key={dept} value={dept}>
+              {dept.charAt(0).toUpperCase() + dept.slice(1)}
+            </option>
+          ))}
         </select>
       </div>
 
