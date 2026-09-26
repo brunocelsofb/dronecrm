@@ -478,19 +478,19 @@ export async function checkAndSendWhatsAppCaptureReminders(): Promise<ActionStat
   return { success: true }
 }
 
-export async function connectEvo(): Promise<ActionState> {
+export async function connectEvo(formData?: FormData | any): Promise<ActionState> {
   return { success: true }
 }
 
-export async function disconnectEvo(): Promise<ActionState> {
+export async function disconnectEvo(formData?: FormData | any): Promise<ActionState> {
   return { success: true }
 }
 
-export async function getEvoQrCodeAction(): Promise<ActionState> {
+export async function getEvoQrCodeAction(formData?: FormData | any): Promise<ActionState> {
   return { success: true }
 }
 
-export async function configureEvoWebhook(): Promise<ActionState> {
+export async function configureEvoWebhook(formData?: FormData | any): Promise<ActionState> {
   return { success: true }
 }
 
