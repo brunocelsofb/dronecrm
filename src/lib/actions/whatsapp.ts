@@ -1224,7 +1224,7 @@ export async function finishConversationWithNPS(
     : await statusQ
 
   if (sendNPS === true) {
-    // Buscar credenciais e instância correta
+    // ── PASSO 1: buscar credenciais e instância ANTES de qualquer update de status ──
     const { data: org } = await admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
@@ -1241,7 +1241,34 @@ export async function finishConversationWithNPS(
       .maybeSingle()
     const targetInstance = inst || (lastMsg as any)?.instance_name || org?.evo_instance_name
 
-    // Marcar como arquivada + nps_pending em todos os registros encontrados
+    // ── PASSO 2: ENVIAR NPS IMEDIATAMENTE — antes de arquivar ──
+    if (org?.evo_server_url && org?.evo_api_key && targetInstance) {
+      const npsMsg = `Seu atendimento foi concluído! 🌟\n\nPor favor, avalie o nosso atendimento enviando uma nota de *1 a 5*:\n\n1️⃣ - Péssimo\n2️⃣ - Ruim\n3️⃣ - Regular\n4️⃣ - Bom\n5️⃣ - Excelente`
+      try {
+        const evoRes = await fetch(`${org.evo_server_url}/message/sendText/${targetInstance}`, {
+          method: 'POST',
+          headers: { 'apikey': org.evo_api_key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: cleanPhone, text: npsMsg }),
+        })
+        const evoData: any = await evoRes.json().catch(() => ({}))
+        // Registra a mensagem NPS no banco para aparecer no chat
+        await admin.from('contract_whatsapp_messages').insert({
+          phone: cleanPhone,
+          message: npsMsg,
+          direction: 'enviado',
+          status: 'enviado',
+          triggered_automatically: true,
+          instance_name: targetInstance,
+          zapi_message_id: evoData?.key?.id ?? null,
+          tenant_id: tenantId,
+        })
+      } catch (e) {
+        console.error('[NPS] erro ao enviar mensagem NPS:', e)
+        // Não interrompe — arquiva mesmo se o envio falhar
+      }
+    }
+
+    // ── PASSO 3: Marcar como arquivada + nps_pending APÓS o envio ──
     if (statusRows && statusRows.length > 0) {
       for (const row of statusRows) {
         await admin
@@ -1271,32 +1298,6 @@ export async function finishConversationWithNPS(
         },
         { onConflict: 'phone,instance_name' }
       )
-    }
-
-    // Enviar pesquisa NPS via Evolution API
-    if (org?.evo_server_url && org?.evo_api_key && targetInstance) {
-      const npsMsg = `Seu atendimento foi concluído! 🌟\n\nPor favor, avalie o nosso atendimento enviando uma nota de *1 a 5*:\n\n1️⃣ - Péssimo\n2️⃣ - Ruim\n3️⃣ - Regular\n4️⃣ - Bom\n5️⃣ - Excelente`
-      try {
-        const evoRes = await fetch(`${org.evo_server_url}/message/sendText/${targetInstance}`, {
-          method: 'POST',
-          headers: { 'apikey': org.evo_api_key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number: cleanPhone, text: npsMsg }),
-        })
-        const evoData: any = await evoRes.json().catch(() => ({}))
-        // Registra a mensagem NPS no banco para aparecer no chat
-        await admin.from('contract_whatsapp_messages').insert({
-          phone: cleanPhone,
-          message: npsMsg,
-          direction: 'enviado',
-          status: 'enviado',
-          triggered_automatically: true,
-          instance_name: targetInstance,
-          zapi_message_id: evoData?.key?.id ?? null,
-          tenant_id: tenantId,
-        })
-      } catch (e) {
-        console.error('[NPS] erro ao enviar mensagem NPS:', e)
-      }
     }
   } else {
     // Sem NPS — arquiva diretamente
