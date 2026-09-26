@@ -201,16 +201,29 @@ export async function POST(request: Request) {
       const last8 = phone.length >= 8 ? phone.slice(-8) : phone
       const instKey = instanceName ?? ''
 
-      // Busca o status pela chave composta real da tabela (phone + instance_name)
-      const { data: statusRows } = await supabase
+      // Busca pelo phone CANÔNICO exato primeiro (sem prefixo 55)
+      // Fallback para ilike caso o registro antigo tenha sido salvo com prefixo
+      const { data: exactRows } = await supabase
         .from('whatsapp_conversation_status')
         .select('*')
-        .ilike('phone', `%${last8}`)
+        .eq('phone', phone)
         .eq('instance_name', instKey)
-        .order('created_at', { ascending: false })
         .limit(1)
 
-      const currentStatus = statusRows && statusRows.length > 0 ? statusRows[0] : null
+      let currentStatus = exactRows && exactRows.length > 0 ? exactRows[0] : null
+
+      if (!currentStatus) {
+        // Fallback: busca por last8 para cobrir registros antigos com prefixo 55
+        const { data: fuzzyRows } = await supabase
+          .from('whatsapp_conversation_status')
+          .select('*')
+          .ilike('phone', `%${last8}`)
+          .eq('instance_name', instKey)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+        currentStatus = fuzzyRows && fuzzyRows.length > 0 ? fuzzyRows[0] : null
+      }
+
       const statusPhone: string = currentStatus?.phone ?? phone
       const statusInstance: string = currentStatus?.instance_name ?? instKey
 
