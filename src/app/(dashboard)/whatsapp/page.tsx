@@ -21,6 +21,7 @@ export default async function WhatsAppInboxPage({
     { data: { user } },
     { data: archivedRows },
     { data: openMessages },
+    { data: statusRows },
   ] = await Promise.all([
     supabase.auth.getUser(),
     admin.from('whatsapp_conversation_status').select('phone, instance_name').eq('is_archived', true),
@@ -28,6 +29,9 @@ export default async function WhatsAppInboxPage({
       .select('phone, unlinked_sender_name, message, media_type, direction, created_at, lead_id, instance_name')
       .order('created_at', { ascending: false })
       .limit(500),
+    // Busca status com department, protocol_number e triage_state para merge
+    admin.from('whatsapp_conversation_status')
+      .select('phone, instance_name, department, protocol_number, triage_state'),
   ])
 
   // Buscar utilizadores da equipa — filtrar pelo tenant ativo se estiver em impersonation
@@ -35,6 +39,18 @@ export default async function WhatsAppInboxPage({
   const { data: teamUsers } = activeTenantId
     ? await (teamUsersQuery as any).eq('tenant_id', activeTenantId)
     : await teamUsersQuery
+
+  // Mapa de status por chave instance-last8 para merge rápido
+  const statusMap = new Map<string, { department: string | null; protocol_number: string | null; triage_state: string | null }>()
+  for (const row of statusRows ?? []) {
+    const base8 = (row.phone ?? '').replace(/\D/g, '').slice(-8)
+    const key = `${row.instance_name ?? ''}-${base8}`
+    statusMap.set(key, {
+      department: (row as any).department ?? null,
+      protocol_number: (row as any).protocol_number ?? null,
+      triage_state: (row as any).triage_state ?? null,
+    })
+  }
 
   // Agrupa por instance_name + últimos 8 dígitos (cobre variações de DDI e 9º dígito)
   const latestByKey = new Map<string, any>()
@@ -54,12 +70,33 @@ export default async function WhatsAppInboxPage({
 
   const openConversations = Array.from(latestByKey.entries())
     .filter(([key]) => !archivedSet.has(key))
-    .map(([, m]) => ({ phone: m.phone, instance: m.instance_name ?? '', latest: m, lead: null }))
+    .map(([key, m]) => {
+      const status = statusMap.get(key)
+      return {
+        phone: m.phone,
+        instance: m.instance_name ?? '',
+        latest: m,
+        lead: null,
+        department: status?.department ?? null,
+        protocol_number: status?.protocol_number ?? null,
+        triage_state: status?.triage_state ?? null,
+      }
+    })
     .sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime())
 
   const archivedList = Array.from(latestByKey.entries())
     .filter(([key]) => archivedSet.has(key))
-    .map(([, m]) => ({ phone: m.phone, instance: m.instance_name ?? '', latest: m }))
+    .map(([key, m]) => {
+      const status = statusMap.get(key)
+      return {
+        phone: m.phone,
+        instance: m.instance_name ?? '',
+        latest: m,
+        department: status?.department ?? null,
+        protocol_number: status?.protocol_number ?? null,
+        triage_state: status?.triage_state ?? null,
+      }
+    })
     .sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime())
 
   const { data: orgData } = await admin
