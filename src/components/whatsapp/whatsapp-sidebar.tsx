@@ -3,14 +3,14 @@
 import { useState } from 'react'
 
 export interface WhatsAppSidebarProps {
-  open: any[]
-  archived: any[]
+  open?: any[]
+  archived?: any[]
   selectedPhone: string | null
   selectedInstance?: string | null
   assignments?: Record<string, string>
   currentUserId?: string
   instanceAliases?: Record<string, any>
-  onSelectConv?: (phone: string, instance?: string) => void
+  onSelectConv?: (phone: string, instance: string) => void
   onSelectConversation?: (phone: string) => void
 }
 
