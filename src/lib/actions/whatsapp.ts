@@ -1184,11 +1184,30 @@ export async function saveTriagemMenuOptions(options: any[]): Promise<ActionStat
 // - Envia NPS pela instância correta (a última que recebeu mensagem)
 // - Ao enviar NPS: marca is_archived: true + nps_pending: true simultaneamente
 // - Ao não enviar NPS: apenas arquiva (igual ao botão "Arquivar")
-export async function finishConversationWithNPS(phone: string, instanceName?: string | null, sendNPS?: boolean): Promise<ActionState> {
+// Assinatura compatível com chamadas legadas (phone, sendNPS) e novas (phone, instanceName, sendNPS)
+// O segundo argumento pode ser boolean (legado) ou string (instanceName novo)
+export async function finishConversationWithNPS(
+  phone: string,
+  instanceNameOrSendNPS?: string | boolean | null,
+  sendNPSArg?: boolean
+): Promise<ActionState> {
   const admin = createAdminClient()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
+
+  // Detecta se foi chamado no modo legado (phone, sendNPS) ou novo (phone, instanceName, sendNPS)
+  let instanceName: string | null
+  let sendNPS: boolean
+  if (typeof instanceNameOrSendNPS === 'boolean') {
+    // Modo legado: finishConversationWithNPS(phone, sendNPS)
+    instanceName = null
+    sendNPS = instanceNameOrSendNPS
+  } else {
+    // Modo novo: finishConversationWithNPS(phone, instanceName, sendNPS)
+    instanceName = instanceNameOrSendNPS ?? null
+    sendNPS = sendNPSArg ?? false
+  }
 
   const tenantId = await getTenantId(admin)
   const cleanPhone = String(phone).replace(/\D/g, '')
