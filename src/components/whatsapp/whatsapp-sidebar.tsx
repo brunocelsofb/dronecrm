@@ -97,37 +97,65 @@ export function WhatsAppSidebar({
 
       {/* Lista de Conversas */}
       <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+        {filteredList.length === 0 && (
+          <p className="p-4 text-center text-xs text-gray-400">
+            {tab === 'archived' ? 'Nenhuma conversa arquivada.' : 'Nenhuma conversa em aberto.'}
+          </p>
+        )}
         {filteredList.map((item) => {
-          const isSelected = item.phone === selectedPhone
+          // Suporta tanto objetos flat (antigo) quanto objetos com `latest` (novo page.tsx)
+          const latest = item.latest ?? item
+          const displayName = item.contact_name
+            || item.name
+            || latest.unlinked_sender_name
+            || item.phone
+
+          const lastMsg = item.last_message
+            || item.lastMessage
+            || latest.message
+            || 'Sem mensagens'
+
+          const lastTime = item.last_message_time
+            || item.lastMessageTime
+            || (latest.created_at
+              ? new Date(latest.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+              : '')
+
+          const instanceKey = item.instance ?? item.instance_name ?? latest.instance_name ?? ''
+          const isSelected = item.phone === selectedPhone && instanceKey === (selectedInstance ?? '')
           const dept = item.department ?? item.triage_department
           const protocol = item.protocol_number ?? item.protocolNumber
           const state = item.triage_state
+          const isArchived = tab === 'archived'
 
           return (
             <button
-              key={`${item.phone}-${item.instance_name ?? 'default'}`}
-              onClick={() => handleSelect(item.phone, item.instance_name ?? '')}
+              key={`${item.phone}-${instanceKey || 'default'}`}
+              onClick={() => handleSelect(item.phone, instanceKey)}
               className={`w-full p-3 text-left transition-colors hover:bg-gray-50 ${
                 isSelected ? 'bg-brand-50/60' : ''
               }`}
             >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-900 truncate max-w-[140px]">
-                  {item.contact_name || item.name || item.phone}
+                <p className={`text-xs font-semibold truncate max-w-[140px] ${isArchived ? 'text-gray-500' : 'text-gray-900'}`}>
+                  {isArchived && <span className="mr-1 text-gray-400">🔒</span>}
+                  {displayName}
                 </p>
-                <span className="text-[10px] text-gray-400">
-                  {item.last_message_time || item.lastMessageTime || ''}
-                </span>
+                <span className="text-[10px] text-gray-400">{lastTime}</span>
               </div>
 
               <p className="mt-0.5 text-xs text-gray-500 truncate">
-                {item.last_message || item.lastMessage || 'Sem mensagens'}
+                {lastMsg}
               </p>
 
-              {/* Badges de Setor e Protocolo */}
+              {/* Badges de Setor, Protocolo e Estado da Triagem */}
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                 {dept ? (
-                  <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-800">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    isArchived
+                      ? 'bg-gray-100 text-gray-600'
+                      : 'bg-brand-100 text-brand-800'
+                  }`}>
                     {dept.toUpperCase()}
                   </span>
                 ) : state === 'awaiting_selection' ? (
@@ -139,6 +167,12 @@ export function WhatsAppSidebar({
                 {protocol && (
                   <span className="text-[10px] text-gray-400 font-mono">
                     #{protocol}
+                  </span>
+                )}
+
+                {isArchived && (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+                    Arquivado
                   </span>
                 )}
               </div>
