@@ -6,7 +6,7 @@ interface Message {
   id: string
   phone: string
   message: string
-  direction: 'enviado' | 'recebido'
+  direction: 'enviado' | 'recebido' | string
   status?: string | null
   created_at: string
   triggered_automatically?: boolean | null
@@ -14,10 +14,15 @@ interface Message {
   media_url?: string | null
   media_filename?: string | null
   zapi_message_id?: string | null
+  sender_photo_url?: string | null
+  delivery_status?: string | null
+  unlinked_sender_name?: string | null
 }
 
 interface WhatsAppChatViewProps {
-  messages: Message[]
+  messages: Message[] | any[]
+  contactName?: string | null
+  contactPhone?: string | null
   onDeleteMessage?: (messageId: string) => void
 }
 
@@ -131,7 +136,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   }
 
   // Agrupa mensagens por dia
-  const grouped: { dateKey: string; dateLabel: string; messages: Message[] }[] = []
+  const grouped: { dateKey: string; dateLabel: string; messages: any[] }[] = []
   for (const msg of messages) {
     const dk = getDateKey(msg.created_at)
     const last = grouped[grouped.length - 1]
