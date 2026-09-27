@@ -357,7 +357,7 @@ export function WhatsAppConversationPanel({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Modal NPS */}
       {showNPSModal && (
         <FinalizarNPSModal
@@ -619,25 +619,31 @@ export function WhatsAppConversationPanel({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-white">
         <WhatsAppChatView messages={localMessages} contactName={displayName} contactPhone={phone} />
         <div ref={messagesEndRef} />
       </div>
 
       {isArchived ? (
-        <div className="flex-shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-center">
-          <p className="text-sm text-gray-500">
-            🔒 Atendimento finalizado. Se o cliente enviar uma nova mensagem, a conversa será reaberta automaticamente.
-          </p>
-          <button
-            onClick={async () => {
-              await unarchiveWhatsAppConversation(phone, instanceName ?? undefined)
-              setIsArchived(false)
-            }}
-            className="mt-2 text-xs text-[#1B556B] hover:underline"
-          >
-            Reabrir conversa
-          </button>
+        <div className="flex-shrink-0 border-t border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-amber-800 font-medium">
+              🔒 Atendimento arquivado/finalizado — respostas do cliente reabrirão automaticamente.
+            </p>
+            <button
+              onClick={async () => {
+                setBusy(true)
+                await unarchiveWhatsAppConversation(phone, instanceName ?? undefined)
+                setBusy(false)
+                setIsArchived(false)
+                router.refresh()
+              }}
+              disabled={busy}
+              className="flex-shrink-0 rounded-md border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+            >
+              📤 Desarquivar
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-shrink-0 space-y-2 rounded-lg border border-gray-200 bg-white p-3">
