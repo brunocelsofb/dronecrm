@@ -1,220 +1,208 @@
 'use client'
 
-import { useState } from 'react'
-import { deleteWhatsAppMessage } from '@/lib/actions/whatsapp'
+import { useRef, useEffect } from 'react'
 
-type ChatMessage = {
+interface Message {
   id: string
-  direction: string
+  phone: string
   message: string
-  media_url: string | null
-  media_type: string | null
-  media_filename: string | null
-  sender_photo_url: string | null
-  delivery_status: string | null
-  unlinked_sender_name?: string | null
-  status: string
-  error_message: string | null
-  triggered_automatically: boolean
+  direction: 'enviado' | 'recebido'
+  status?: string | null
   created_at: string
-  sent_by_name?: string | null
-  is_forwarded?: boolean | null
+  triggered_automatically?: boolean | null
+  media_type?: string | null
+  media_url?: string | null
+  media_filename?: string | null
   zapi_message_id?: string | null
 }
 
-const DELIVERY_TICK: Record<string, string> = { sent: '✓', delivered: '✓✓', read: '✓✓' }
-
-function dayLabel(dateStr: string): string {
-  const d = new Date(dateStr)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Hoje'
-  if (d.toDateString() === yesterday.toDateString()) return 'Ontem'
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+interface WhatsAppChatViewProps {
+  messages: Message[]
+  onDeleteMessage?: (messageId: string) => void
 }
 
-function timeLabel(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+function formatTime(dateStr: string) {
+  try {
+    return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
 }
 
-function isSystemCaption(msg: string) {
-  const lower = msg.toLowerCase().trim()
-  return lower.startsWith('[imagem]') || 
-         lower.startsWith('[vídeo]') || 
-         lower.startsWith('[video]') || 
-         lower.startsWith('[áudio]') || 
-         lower.startsWith('[audio]') || 
-         lower.startsWith('[documento]') || 
-         lower.startsWith('[document]') || 
-         lower.startsWith('[figurinha]')
+function formatDateLabel(dateStr: string) {
+  try {
+    const date = new Date(dateStr)
+    const today = new Date()
+    const yesterday = new Date()
+    yesterday.setDate(today.getDate() - 1)
+
+    if (date.toDateString() === today.toDateString()) return 'Hoje'
+    if (date.toDateString() === yesterday.toDateString()) return 'Ontem'
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  } catch {
+    return ''
+  }
 }
 
-function MediaContent({ mediaUrl, mediaType, mediaFilename }: { mediaUrl: string; mediaType: string; mediaFilename: string | null }) {
-  if (mediaType === 'image') {
+function getDateKey(dateStr: string) {
+  try {
+    return new Date(dateStr).toDateString()
+  } catch {
+    return dateStr
+  }
+}
+
+function DeliveryTick({ status, direction }: { status?: string | null; direction: string }) {
+  if (direction !== 'enviado') return null
+  if (status === 'lido' || status === 'read') {
+    return <span className="ml-1 text-[10px] text-blue-400">✓✓</span>
+  }
+  if (status === 'entregue' || status === 'delivered') {
+    return <span className="ml-1 text-[10px] text-gray-400">✓✓</span>
+  }
+  return <span className="ml-1 text-[10px] text-gray-400">✓</span>
+}
+
+function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
+  mediaType?: string | null
+  mediaUrl?: string | null
+  mediaFilename?: string | null
+  message: string
+}) {
+  if (mediaType === 'image' && mediaUrl) {
     return (
-      <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
-        <img src={mediaUrl} alt="Imagem" className="max-w-[240px] rounded-md cursor-pointer hover:opacity-90" />
-      </a>
+      <div className="flex flex-col gap-1">
+        <img
+          src={mediaUrl}
+          alt="Imagem"
+          className="max-w-[220px] rounded-lg object-cover"
+          loading="lazy"
+        />
+        {message && message !== '[Imagem]' && (
+          <span className="text-sm">{message}</span>
+        )}
+      </div>
     )
   }
   if (mediaType === 'audio') {
-    return (
-      <audio controls className="min-w-[220px] max-w-[280px] h-10 w-full">
-        <source src={mediaUrl} type="audio/mp4" />
-        <source src={mediaUrl} type="audio/mpeg" />
-        <source src={mediaUrl} type="audio/ogg; codecs=opus" />
-        <source src={mediaUrl} type="audio/ogg" />
-        Seu navegador não suporta áudio.
+    return mediaUrl ? (
+      <audio controls className="max-w-[220px]">
+        <source src={mediaUrl} />
+        {message}
       </audio>
+    ) : <span className="text-sm italic">{message}</span>
+  }
+  if (mediaType === 'video' && mediaUrl) {
+    return (
+      <video controls className="max-w-[220px] rounded-lg">
+        <source src={mediaUrl} />
+      </video>
     )
   }
-  if (mediaType === 'video') {
-    return <video controls src={mediaUrl} className="max-w-[240px] rounded-md" />
+  if (mediaType === 'document') {
+    return mediaUrl ? (
+      <a
+        href={mediaUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-sm underline"
+      >
+        <span>📎</span>
+        <span>{mediaFilename ?? message}</span>
+      </a>
+    ) : <span className="text-sm italic">{message}</span>
   }
-  
-  return (
-    <a href={mediaUrl} target="_blank" rel="noopener noreferrer"
-      className="flex items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-sm hover:bg-black/10 transition-colors">
-      <span className="text-2xl">📎</span>
-      <span className="underline truncate max-w-[180px]" title={mediaFilename ?? 'Arquivo'}>
-        {mediaFilename ?? 'Arquivo'}
-      </span>
-    </a>
-  )
+  return <span className="text-sm whitespace-pre-wrap break-words">{message}</span>
 }
 
-function MessageAvatar({ isSent, m, senderName }: { isSent: boolean, m: ChatMessage, senderName: string | null | undefined }) {
-  const [imgError, setImgError] = useState(false)
+export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatViewProps) {
+  const bottomRef = useRef<HTMLDivElement>(null)
 
-  const safeSenderName = senderName?.trim() || 'Usuário'
-  const safeSentByName = m.sent_by_name?.trim() || '📱'
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-  const fallbackText = isSent
-    ? (m.triggered_automatically ? '🤖' : (safeSentByName !== '📱' ? safeSentByName.charAt(0).toUpperCase() : '📱'))
-    : safeSenderName.charAt(0).toUpperCase()
+  if (!messages || messages.length === 0) {
+    return (
+      <div className="w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto relative p-4 items-center justify-center">
+        <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
+      </div>
+    )
+  }
 
-  return (
-    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm
-      ${isSent ? 'bg-[#1B556B] text-white' : 'bg-blue-100 text-blue-700'}`}
-      title={safeSenderName}>
-      
-      {!isSent && m.sender_photo_url && m.sender_photo_url.startsWith('http') && !imgError ? (
-        <img 
-          src={m.sender_photo_url} 
-          alt={fallbackText} 
-          className="h-full w-full rounded-full object-cover" 
-          onError={() => setImgError(true)} 
-        />
-      ) : (
-        <span>{fallbackText}</span>
-      )}
-    </div>
-  )
-}
-
-export function WhatsAppChatView({ 
-  messages, contactName, contactPhone, selectable = false, selectedIds = new Set(), onToggleSelect 
-}: {
-  messages: ChatMessage[]; contactName?: string | null; contactPhone?: string | null;
-  selectable?: boolean; selectedIds?: Set<string>; onToggleSelect?: (id: string) => void;
-}) {
-  const chronological = [...messages].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
-
-  const groups: { label: string; msgs: ChatMessage[] }[] = []
-  for (const m of chronological) {
-    const label = dayLabel(m.created_at)
-    if (!groups.length || groups[groups.length - 1].label !== label) {
-      groups.push({ label, msgs: [m] })
+  // Agrupa mensagens por dia
+  const grouped: { dateKey: string; dateLabel: string; messages: Message[] }[] = []
+  for (const msg of messages) {
+    const dk = getDateKey(msg.created_at)
+    const last = grouped[grouped.length - 1]
+    if (last && last.dateKey === dk) {
+      last.messages.push(msg)
     } else {
-      groups[groups.length - 1].msgs.push(m)
+      grouped.push({ dateKey: dk, dateLabel: formatDateLabel(msg.created_at), messages: [msg] })
     }
   }
 
   return (
-    <div className="flex flex-col gap-0.5 bg-[#e5ddd5] p-3 overflow-y-auto h-full">
-      {chronological.length === 0 && (
-        <p className="py-8 text-center text-sm text-gray-500">Nenhuma mensagem ainda.</p>
-      )}
-
-      {groups.map((group) => (
-        <div key={group.label}>
-          <div className="flex items-center justify-center my-3">
-            <span className="rounded-full bg-[#e1f3fb] px-3 py-0.5 text-[11px] font-medium text-[#54656f] shadow-sm">
-              {group.label}
+    <div className="w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto relative p-4">
+      {grouped.map((group) => (
+        <div key={group.dateKey}>
+          {/* Separador de data */}
+          <div className="flex items-center justify-center my-3 z-10 relative">
+            <span className="bg-[#e1f3fb] text-[#54656f] text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+              {group.dateLabel}
             </span>
           </div>
 
-          {group.msgs.map((m) => {
-            const isSent = m.direction === 'enviado'
-            const senderName = isSent
-              ? (m.sent_by_name ?? (m.triggered_automatically ? 'Automação' : null))
-              : (m.unlinked_sender_name ?? contactName)
+          {group.messages.map((msg) => {
+            const isSent = msg.direction === 'enviado'
+            const isBot = msg.triggered_automatically === true
 
             return (
-              <div key={m.id} className={`group flex items-end gap-1 mb-1 ${isSent ? 'flex-row-reverse' : ''}`}>
-                
-                {selectable && (
-                  <div className="flex items-center pb-1">
-                    <input 
-                      type="checkbox" 
-                      checked={selectedIds.has(m.id)}
-                      onChange={() => onToggleSelect?.(m.id)}
-                      className={`w-4 h-4 cursor-pointer rounded border-gray-300 ${isSent ? 'mr-1' : 'ml-1'}`}
-                    />
-                  </div>
-                )}
-
-                <MessageAvatar isSent={isSent} m={m} senderName={senderName} />
-
-                <div className={`relative max-w-[72%] rounded-lg px-3 pt-1.5 pb-2 text-sm shadow-sm
-                  ${isSent ? 'bg-[#dcf8c6] rounded-tr-none' : 'bg-white rounded-tl-none'} text-gray-900`}>
-
-                  <button
-                    onClick={async () => {
-                      if (!confirm('Excluir esta mensagem?')) return
-                      await deleteWhatsAppMessage(m.id, (m as any).phone ?? contactPhone ?? '', m.zapi_message_id)
-                    }}
-                    className={`absolute opacity-0 group-hover:opacity-100 transition-opacity -top-2 text-[10px] text-red-400
-                      hover:text-red-600 bg-white rounded-full w-5 h-5 flex items-center justify-center shadow z-10
-                      ${isSent ? '-left-2' : '-right-2'}`}>
-                    🗑
-                  </button>
-
-                  {m.is_forwarded && (
-                    <p className="text-[10px] text-gray-400 italic mb-0.5">↪ Encaminhada</p>
-                  )}
-
-                  {senderName && (
-                    <p className={`text-[11px] font-semibold mb-0.5
-                      ${isSent ? 'text-[#1B556B]' : 'text-[#e67e22]'}`}>
-                      {senderName}
-                    </p>
-                  )}
-
-                  {m.media_url && m.media_type ? (
-                    <>
-                      <MediaContent mediaUrl={m.media_url} mediaType={m.media_type} mediaFilename={m.media_filename} />
-                      {m.message && !isSystemCaption(m.message) && (
-                        <p className="mt-1 whitespace-pre-wrap">{m.message}</p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="whitespace-pre-wrap leading-snug">{m.message}</p>
-                  )}
-
-                  <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-gray-400 select-none">
-                    {m.triggered_automatically && <span title="Automação">🤖</span>}
-                    <span>{timeLabel(m.created_at)}</span>
-                    {isSent && m.status === 'falhou' && (
-                      <span className="text-red-500" title={m.error_message ?? ''}>✗</span>
-                    )}
-                    {isSent && m.delivery_status && m.status !== 'falhou' && (
-                      <span className={m.delivery_status === 'read' ? 'text-blue-500' : ''}>
-                        {DELIVERY_TICK[m.delivery_status] ?? ''}
+              <div
+                key={msg.id}
+                className={`flex mb-1.5 z-10 relative ${isSent ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`
+                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm
+                    ${isSent
+                      ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none'
+                      : 'bg-white text-gray-900 rounded-tl-none'
+                    }
+                  `}
+                >
+                  {/* Indicador de bot */}
+                  {isBot && (
+                    <div className="mb-1 flex items-center gap-1">
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                        🤖 Bot
                       </span>
+                    </div>
+                  )}
+
+                  {/* Conteúdo da mensagem */}
+                  <MediaContent
+                    mediaType={msg.media_type}
+                    mediaUrl={msg.media_url}
+                    mediaFilename={msg.media_filename}
+                    message={msg.message}
+                  />
+
+                  {/* Footer: hora + ticks + botão deletar */}
+                  <div className="mt-1 flex items-center justify-end gap-1">
+                    <span className="text-[10px] text-gray-400">
+                      {formatTime(msg.created_at)}
+                    </span>
+                    <DeliveryTick status={msg.status} direction={msg.direction} />
+
+                    {onDeleteMessage && (
+                      <button
+                        onClick={() => onDeleteMessage(msg.id)}
+                        className="ml-1 hidden group-hover:inline-flex text-[10px] text-red-400 hover:text-red-600 transition-colors"
+                        title="Deletar mensagem"
+                      >
+                        ✕
+                      </button>
                     )}
                   </div>
                 </div>
@@ -223,6 +211,7 @@ export function WhatsAppChatView({
           })}
         </div>
       ))}
+      <div ref={bottomRef} />
     </div>
   )
 }
