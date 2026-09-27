@@ -84,7 +84,6 @@ export async function POST(request: Request) {
 
     // Mensagens enviadas pelo próprio bot NÃO entram no fluxo de triagem
     if (isFromMe) {
-      // Apenas registramos a mensagem de saída e saímos
       const text =
         msg?.conversation ??
         msg?.extendedTextMessage?.text ??
@@ -102,7 +101,6 @@ export async function POST(request: Request) {
       const tenantId = orgData?.tenant_id ?? null
 
       if (tenantId && text && messageId) {
-        // Inserção silenciosa — ignora erro se já existir
         await supabase.from('contract_whatsapp_messages').insert({
           phone,
           message: text,
@@ -202,7 +200,6 @@ export async function POST(request: Request) {
       const instKey = instanceName ?? ''
 
       // Busca pelo phone CANÔNICO exato primeiro (sem prefixo 55)
-      // Fallback para ilike caso o registro antigo tenha sido salvo com prefixo
       const { data: exactRows } = await supabase
         .from('whatsapp_conversation_status')
         .select('*')
@@ -228,6 +225,7 @@ export async function POST(request: Request) {
       const statusInstance: string = currentStatus?.instance_name ?? instKey
 
       // --- TRATAMENTO DE NPS PENDENTE ---
+      // Se há NPS pendente E a mensagem é uma nota 1-5, registra e encerra
       if (currentStatus?.nps_pending) {
         const scoreNum = parseInt((text ?? '').trim(), 10)
         if (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) {
@@ -253,8 +251,65 @@ export async function POST(request: Request) {
           await sendAndRecordBotMessage(supabase, tenantId, orgSettingsNps, instanceName, rawPhone, phone, npsAgradecimento)
           return NextResponse.json({ ok: true, status: 'nps_recorded' })
         }
+        // Se NPS pendente mas mensagem não é nota válida:
+        // Cai para o bloco abaixo — se is_archived=true, vai reabrir conversa
+        // (tratado no bloco de REABERTURA abaixo)
       }
 
+      // ================================================================
+      // REABERTURA AUTOMÁTICA DE CONVERSAS ARQUIVADAS
+      // Quando cliente envia mensagem e conversa está arquivada:
+      // → desarquiva, limpa atribuição, reinicia triagem com novo protocolo
+      // ================================================================
+      if (currentStatus?.is_archived === true) {
+        const { data: orgSettings } = await supabase
+          .from('organization_settings')
+          .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
+          .eq('id', 'default')
+          .maybeSingle()
+
+        // Limpa a atribuição anterior (remove o atendente vinculado)
+        await supabase
+          .from('whatsapp_conversation_assignments')
+          .delete()
+          .eq('phone', statusPhone)
+          .eq('instance_name', statusInstance)
+
+        // Gera novo número de protocolo
+        let newProtocol: string | null = null
+        const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
+        newProtocol = (protoData as string) ?? null
+
+        const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
+        const newTriageState = menuOptions.length > 0 ? 'awaiting_selection' : 'active'
+
+        // Reabre a conversa e reinicia triagem
+        await supabase
+          .from('whatsapp_conversation_status')
+          .update({
+            is_archived: false,
+            archived_at: null,
+            nps_pending: false,
+            nps_score: null,
+            department: null,
+            triage_state: newTriageState,
+            protocol_number: newProtocol,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('phone', statusPhone)
+          .eq('instance_name', statusInstance)
+
+        // Envia o menu de triagem com o novo protocolo (se habilitado)
+        if (orgSettings?.triage_enabled !== false && menuOptions.length > 0) {
+          await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, newProtocol, menuOptions)
+        }
+
+        return NextResponse.json({ ok: true, status: 'conversation_reopened', id: inserted?.id })
+      }
+
+      // ================================================================
+      // FLUXO NORMAL DE TRIAGEM
+      // ================================================================
       const { data: orgSettings } = await supabase
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
@@ -283,7 +338,6 @@ export async function POST(request: Request) {
         )
 
         if (chosen) {
-          // Opção válida: avança para active usando a chave composta
           await supabase
             .from('whatsapp_conversation_status')
             .update({
@@ -313,7 +367,6 @@ export async function POST(request: Request) {
 
       const newState = menuOptions.length > 0 ? 'awaiting_selection' : 'active'
 
-      // UPSERT pela chave composta — nunca cria duplicatas
       await supabase
         .from('whatsapp_conversation_status')
         .upsert(
