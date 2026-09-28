@@ -357,7 +357,8 @@ export function WhatsAppConversationPanel({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    // CORRECÇÃO: flex-1 min-w-0 overflow-hidden garantem que o painel não vaza sobre a sidebar
+    <div className="flex flex-col w-full h-full min-w-0 min-h-0 overflow-hidden">
       {/* Modal NPS */}
       {showNPSModal && (
         <FinalizarNPSModal
@@ -515,7 +516,6 @@ export function WhatsAppConversationPanel({
             >
               🗃️ Arquivar
             </button>
-            {/* ── PONTO 4: Botão Finalizar → abre FinalizarNPSModal ── */}
             <button
               onClick={() => setShowNPSModal(true)}
               disabled={busy}
@@ -619,7 +619,8 @@ export function WhatsAppConversationPanel({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+      {/* Área do chat — flex-1 min-h-0 para não crescer além do espaço disponível */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <WhatsAppChatView messages={localMessages} contactName={displayName} contactPhone={phone} />
         <div ref={messagesEndRef} />
       </div>
