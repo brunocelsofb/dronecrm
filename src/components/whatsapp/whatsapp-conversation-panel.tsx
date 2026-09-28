@@ -333,7 +333,7 @@ export function WhatsAppConversationPanel({
   }
 
   return (
-    <div className="flex flex-col w-full h-full min-w-0 min-h-0 overflow-hidden bg-white">
+    <div className="flex flex-col w-full h-full min-w-0 min-h-0 overflow-hidden bg-white border-l border-gray-200">
       {showNPSModal && (
         <FinalizarNPSModal
           phone={phone}
@@ -349,7 +349,8 @@ export function WhatsAppConversationPanel({
         />
       )}
 
-      <div className="flex-shrink-0 rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+      {/* CABEÇALHO - Flex-none impede que ele cresça ou encolha */}
+      <div className="flex-none bg-white p-3 border-b border-gray-200 z-10 shadow-sm flex flex-col gap-2 relative">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {profilePicUrl ? (
@@ -456,7 +457,8 @@ export function WhatsAppConversationPanel({
             )}
           </div>
         </div>
-          <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap gap-2">
             {isArchived ? (
               <button
                 onClick={async () => {
@@ -565,7 +567,7 @@ export function WhatsAppConversationPanel({
             </button>
             </>
             )}
-          </div>
+        </div>
 
         {showLinkSearch && (
           <div className="relative mt-2">
@@ -593,12 +595,14 @@ export function WhatsAppConversationPanel({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col relative bg-[#E5DDD5]">
+      {/* ÁREA DE CHAT - A TÉCNICA DE BLINDAGEM */}
+      <div className="flex-1 w-full min-w-0 min-h-0 relative bg-[#E5DDD5] z-0">
         <WhatsAppChatView messages={localMessages} contactName={displayName} contactPhone={phone} />
       </div>
 
+      {/* RODAPÉ - Flex-none garante fixação */}
       {isArchived ? (
-        <div className="flex-shrink-0 border-t border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="flex-none border-t border-amber-200 bg-amber-50 px-4 py-3 z-10 relative">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-amber-800 font-medium">
               🔒 Atendimento arquivado/finalizado — respostas do cliente reabrirão automaticamente.
@@ -619,9 +623,8 @@ export function WhatsAppConversationPanel({
           </div>
         </div>
       ) : (
-        <div className="flex-shrink-0 space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-
-          <div className="flex items-center gap-2 mb-2">
+        <div className="flex-none border-t border-gray-200 bg-white p-3 z-10 flex flex-col gap-2 relative">
+          <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 whitespace-nowrap">Responder via:</span>
             <select
               value={selectedInstance}
@@ -638,7 +641,6 @@ export function WhatsAppConversationPanel({
           </div>
 
           <div className="flex items-end gap-2 bg-white rounded-md border border-gray-300 p-1 focus-within:border-[#1B556B]">
-
             <label className={`cursor-pointer p-2 rounded-full transition-colors self-end mb-[2px]
               ${selectedFileName ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
               title="Anexar arquivo">
@@ -699,9 +701,7 @@ export function WhatsAppConversationPanel({
               </svg>
             </button>
           </div>
-
           {busy && <p className="text-xs text-[#1B556B] mt-1 text-right">Enviando... aguarde.</p>}
-
         </div>
       )}
       {showConvertModal && (
