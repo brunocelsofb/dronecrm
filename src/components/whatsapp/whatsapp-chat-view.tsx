@@ -109,16 +109,18 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
 }
 
 export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatViewProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Scroll simples sem o 'smooth' para evitar travamento do navegador
-    bottomRef.current?.scrollIntoView()
+    // A correção cirúrgica: Manipulamos o scroll interno em vez de forçar a janela inteira
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    }
   }, [messages])
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 relative items-center justify-center">
+      <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] relative items-center justify-center">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
@@ -136,7 +138,10 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   }
 
   return (
-    <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 relative">
+    <div 
+      ref={containerRef}
+      className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 relative"
+    >
       {grouped.map((group) => (
         <div key={group.dateKey}>
           <div className="flex items-center justify-center my-3 z-10 relative">
@@ -171,7 +176,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
           })}
         </div>
       ))}
-      <div ref={bottomRef} className="h-1 flex-shrink-0" />
+      <div className="h-2 flex-shrink-0" />
     </div>
   )
 }
