@@ -9,6 +9,7 @@ import { BulkSurveyDispatch } from '@/components/surveys/bulk-survey-dispatch'
 import { calculateNps, categorizeScore } from '@/lib/utils/nps'
 import { calculateResponseScore, calculateAverageScore, extractNpsScore, averageNpsScore } from '@/lib/utils/survey-score'
 import type { Question } from '@/lib/actions/custom-surveys'
+import { WhatsAppNpsTab } from '@/components/whatsapp/whatsapp-nps-tab'
 
 const NPS_CATEGORY_LABELS = { promoter: 'Promotor', passive: 'Neutro', detractor: 'Detrator' } as const
 const NPS_CATEGORY_STYLE = {
@@ -31,7 +32,7 @@ export default async function SurveysDashboardPage({
   searchParams: Promise<{ tab?: string; template?: string; from?: string; to?: string; tag?: string }>
 }) {
   const params = await searchParams
-  const tab = params.tab === 'surveys' ? 'surveys' : 'nps'
+  const tab = params.tab === 'surveys' ? 'surveys' : params.tab === 'whatsapp_nps' ? 'whatsapp_nps' : 'nps'
   const defaultRange = currentQuarterRange()
   const from = params.from ?? defaultRange.from
   const to = params.to ?? defaultRange.to
@@ -55,7 +56,11 @@ export default async function SurveysDashboardPage({
 
       {/* Tabs */}
       <div className="flex gap-0.5 border-b border-gray-200">
-        {[{ label: 'NPS', value: 'nps' }, { label: 'Pesquisas Customizadas', value: 'surveys' }].map(t => (
+        {[
+          { label: 'NPS', value: 'nps' },
+          { label: 'Pesquisas Customizadas', value: 'surveys' },
+          { label: '📱 NPS Atendimento WhatsApp', value: 'whatsapp_nps' },
+        ].map(t => (
           <Link key={t.value} href={`/surveys-dashboard?tab=${t.value}&from=${from}&to=${to}`}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors no-underline ${
               tab === t.value ? 'border-[#1B556B] text-[#1B556B]' : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -67,6 +72,8 @@ export default async function SurveysDashboardPage({
 
       {tab === 'nps' ? (
         <NpsTab supabase={supabase} from={from} to={to} selectedTagId={params.tag ?? 'all'} />
+      ) : tab === 'whatsapp_nps' ? (
+        <WhatsAppNpsTab />
       ) : (
         <SurveysTab supabase={supabase} from={from} to={to} selectedTemplateId={params.template} />
       )}
@@ -201,8 +208,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
   const selectedTemplate = templates?.find(t => t.id === templateId)
   const questions = (selectedTemplate?.questions ?? []) as Question[]
 
-  // KPIs: busca TODOS os disparos do template (sem filtro de data no disparo)
-  // e filtra respondidas pelo período de answered_at
   const { data: allDispatched } = templateId
     ? await admin.from('custom_surveys')
         .select('id, status, answered_at, expires_at, contract_id')
@@ -215,7 +220,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
 
   const totalSent = (allDispatched ?? []).length
   const answered = (allDispatched ?? []).filter((s: any) => s.status === 'answered')
-  // Respondidas dentro do período de answered_at
   const answeredInPeriod = answered.filter((s: any) => {
     if (!s.answered_at) return false
     const d = new Date(s.answered_at)
@@ -228,7 +232,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
   const expired = (allDispatched ?? []).filter((s: any) => s.status === 'pending' && s.expires_at && new Date(s.expires_at) < now)
   const responseRate = totalSent > 0 ? Math.round((answeredInPeriod.length / totalSent) * 100) : 0
 
-  // Respostas para exibição detalhada
   const { data: responses } = templateId
     ? await admin.from('custom_surveys').select('id, respondent_name, respondent_email, respondent_phone, contract_id, responses, answered_at, expires_at').eq('template_id', templateId).eq('status', 'answered').gte('answered_at', `${from}T00:00:00`).lte('answered_at', `${to}T23:59:59`).order('answered_at', { ascending: false })
     : { data: [] as any[] }
@@ -251,7 +254,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
 
   return (
     <div className="space-y-4">
-      {/* Header com botão de disparo em lote */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-1.5 flex-wrap">
           {templates?.map(t => (
@@ -271,7 +273,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
         <>
           <PeriodSelector from={from} to={to} basePath="/surveys-dashboard" extraParams={{ tab: 'surveys', template: templateId }} />
 
-          {/* KPIs de engajamento */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: 'Enviadas', value: totalSent, sub: 'total de disparos', color: '#1B556B' },
@@ -318,7 +319,6 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
             </div>
           )}
 
-          {/* Filtros rápidos */}
           <div className="flex gap-1.5 flex-wrap">
             {[
               { value: 'all', label: 'Todas as respostas' },
