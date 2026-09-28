@@ -129,7 +129,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto relative p-4 items-center justify-center">
+      <div className="flex-1 w-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 space-y-3 relative items-center justify-center">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
@@ -148,7 +148,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto relative p-4">
+    <div className="flex-1 w-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 space-y-3 relative">
       {grouped.map((group) => (
         <div key={group.dateKey}>
           {/* Separador de data */}
