@@ -124,13 +124,14 @@ export function WhatsAppClientShell({
       <WhatsAppInboxRealtimeWatcher />
 
       {/* Sidebar — largura imposta pela 1ª coluna do Grid */}
-      <div className="flex flex-col min-h-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden">
+      <div className="flex flex-col min-h-0 min-w-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden">
         <div className="p-2 shrink-0 border-b border-gray-100">
           <button
             onClick={() => setShowNewConv(true)}
-            className="w-full rounded-lg bg-[#1B556B] py-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors"
+            title="Nova Conversa"
+            className="w-full rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors overflow-hidden whitespace-nowrap min-w-0"
           >
-            ✏️ Nova Conversa
+            <span className="truncate shrink">✏️ Nova Conversa</span>
           </button>
         </div>
 
