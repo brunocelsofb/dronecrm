@@ -10,7 +10,7 @@ import { NewConversationModal } from './new-conversation-modal'
 type Profile = { id: string; full_name: string; job_title?: string | null }
 
 const SIDEBAR_MIN = 220
-const SIDEBAR_MAX = 520
+const SIDEBAR_MAX = 420
 const SIDEBAR_DEFAULT = 280
 
 function ConvSkeleton() {
@@ -129,9 +129,9 @@ export function WhatsAppClientShell({
           <button
             onClick={() => setShowNewConv(true)}
             title="Nova Conversa"
-            className="w-full rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors overflow-hidden whitespace-nowrap min-w-0"
+            className="w-[220px] mx-auto rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-sm"
           >
-            <span className="truncate shrink">✏️ Nova Conversa</span>
+            ✏️ Nova Conversa
           </button>
         </div>
 
