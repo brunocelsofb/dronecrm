@@ -26,6 +26,11 @@ interface WhatsAppChatViewProps {
   onDeleteMessage?: (messageId: string) => void
 }
 
+// Labels automáticos que não devem aparecer como texto debaixo da mídia
+const MEDIA_PLACEHOLDER_LABELS = new Set([
+  '[Imagem]', '[Áudio]', '[Vídeo]', '[Documento]', '[Figurinha]',
+])
+
 function formatTime(dateStr: string) {
   try {
     return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -74,11 +79,22 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
   mediaFilename?: string | null
   message: string
 }) {
+  // Oculta o label automático ("[Imagem]", "[Áudio]", etc.) abaixo da mídia.
+  // Só mostra texto se for uma caption real escrita pelo utilizador.
+  const hasRealCaption = message && !MEDIA_PLACEHOLDER_LABELS.has(message)
+
   if (mediaType === 'image' && mediaUrl) {
     return (
       <div className="flex flex-col gap-1">
-        <img src={mediaUrl} alt="Imagem" className="max-w-[220px] rounded-lg object-cover" loading="lazy" />
-        {message && message !== '[Imagem]' && <span className="text-sm">{message}</span>}
+        <img
+          src={mediaUrl}
+          alt="Imagem"
+          className="max-w-[220px] rounded-lg object-cover"
+          loading="lazy"
+        />
+        {hasRealCaption && (
+          <span className="text-sm">{message}</span>
+        )}
       </div>
     )
   }
@@ -86,46 +102,71 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
     return mediaUrl ? (
       <audio controls className="max-w-[220px]">
         <source src={mediaUrl} />
-        {message}
       </audio>
     ) : <span className="text-sm italic">{message}</span>
   }
   if (mediaType === 'video' && mediaUrl) {
     return (
-      <video controls className="max-w-[220px] rounded-lg">
-        <source src={mediaUrl} />
-      </video>
+      <div className="flex flex-col gap-1">
+        <video controls className="max-w-[220px] rounded-lg">
+          <source src={mediaUrl} />
+        </video>
+        {hasRealCaption && (
+          <span className="text-sm">{message}</span>
+        )}
+      </div>
     )
   }
   if (mediaType === 'document') {
     return mediaUrl ? (
-      <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm underline">
+      <a
+        href={mediaUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-sm underline"
+      >
         <span>📎</span>
-        <span>{mediaFilename ?? message}</span>
+        <span>{mediaFilename ?? (hasRealCaption ? message : 'Documento')}</span>
       </a>
-    ) : <span className="text-sm italic">{message}</span>
+    ) : <span className="text-sm italic">{mediaFilename ?? message}</span>
   }
   return <span className="text-sm whitespace-pre-wrap break-words">{message}</span>
 }
 
+// Ícone de lixeira SVG minimalista
+function TrashIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className="w-3 h-3"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 6.518A2.25 2.25 0 0 0 6.108 14h3.784a2.25 2.25 0 0 0 2.243-1.982L12.95 5.5h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  )
+}
+
 export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatViewProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Mantemos apenas a rolagem estrita dentro do container (sem forçar a página)
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="absolute inset-0 flex flex-col bg-[#E5DDD5] items-center justify-center z-0">
+      <div className="absolute inset-0 bg-[#E5DDD5] flex items-center justify-center">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
   }
 
+  // Agrupa mensagens por dia
   const grouped: { dateKey: string; dateLabel: string; messages: any[] }[] = []
   for (const msg of messages) {
     const dk = getDateKey(msg.created_at)
@@ -138,13 +179,11 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   }
 
   return (
-    <div 
-      ref={containerRef}
-      className="absolute inset-0 flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 z-0"
-    >
+    <div className="absolute inset-0 bg-[#E5DDD5] overflow-y-auto p-4 space-y-3">
       {grouped.map((group) => (
         <div key={group.dateKey}>
-          <div className="flex items-center justify-center my-3 z-10 relative">
+          {/* Separador de data */}
+          <div className="flex items-center justify-center my-3">
             <span className="bg-[#e1f3fb] text-[#54656f] text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
               {group.dateLabel}
             </span>
@@ -155,19 +194,58 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
             const isBot = msg.triggered_automatically === true
 
             return (
-              <div key={msg.id} className={`flex mb-1.5 z-10 relative ${isSent ? 'justify-end' : 'justify-start'}`}>
-                <div className={`group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm ${isSent ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'}`}>
+              <div
+                key={msg.id}
+                className={`flex mb-1.5 ${isSent ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`
+                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm
+                    ${isSent
+                      ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none'
+                      : 'bg-white text-gray-900 rounded-tl-none'
+                    }
+                  `}
+                >
+                  {/* Indicador de bot */}
                   {isBot && (
                     <div className="mb-1 flex items-center gap-1">
-                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">🤖 Bot</span>
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                        🤖 Bot
+                      </span>
                     </div>
                   )}
-                  <MediaContent mediaType={msg.media_type} mediaUrl={msg.media_url} mediaFilename={msg.media_filename} message={msg.message} />
+
+                  {/* Conteúdo da mensagem */}
+                  <MediaContent
+                    mediaType={msg.media_type}
+                    mediaUrl={msg.media_url}
+                    mediaFilename={msg.media_filename}
+                    message={msg.message}
+                  />
+
+                  {/* Footer: hora + ticks + botão deletar */}
                   <div className="mt-1 flex items-center justify-end gap-1">
-                    <span className="text-[10px] text-gray-400">{formatTime(msg.created_at)}</span>
+                    <span className="text-[10px] text-gray-400">
+                      {formatTime(msg.created_at)}
+                    </span>
                     <DeliveryTick status={msg.status} direction={msg.direction} />
+
+                    {/* Botão lixeira — aparece discretamente ao passar o rato */}
                     {onDeleteMessage && (
-                      <button onClick={() => onDeleteMessage(msg.id)} className="ml-1 hidden group-hover:inline-flex text-[10px] text-red-400 hover:text-red-600 transition-colors" title="Deletar mensagem">✕</button>
+                      <button
+                        onClick={() => onDeleteMessage(msg.id)}
+                        className="
+                          ml-1 p-0.5 rounded
+                          opacity-0 group-hover:opacity-100
+                          text-gray-400 hover:text-red-500 hover:bg-red-50
+                          transition-all duration-150
+                        "
+                        title="Apagar mensagem"
+                        aria-label="Apagar mensagem"
+                      >
+                        <TrashIcon />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -176,8 +254,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
           })}
         </div>
       ))}
-      {/* Margem extra para não colar no rodapé */}
-      <div className="h-4 flex-shrink-0" />
+      <div ref={bottomRef} />
     </div>
   )
 }
