@@ -38,13 +38,7 @@ type Message = {
 
 type ContractOption = { id: string; label: string }
 
-// ── Modal de NPS inline ──────────────────────────────────────────────────────
-function FinalizarNPSModal({
-  phone,
-  instanceName,
-  onClose,
-  onSuccess,
-}: {
+function FinalizarNPSModal({ phone, instanceName, onClose, onSuccess }: {
   phone: string
   instanceName?: string | null
   onClose: () => void
@@ -71,25 +65,13 @@ function FinalizarNPSModal({
           Deseja enviar uma pesquisa de satisfação (NPS) ao cliente antes de encerrar?
         </p>
         <div className="flex flex-col gap-2">
-          <button
-            onClick={() => handleFinalize(true)}
-            disabled={loading}
-            className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-          >
+          <button onClick={() => handleFinalize(true)} disabled={loading} className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
             🌟 Finalizar e enviar NPS
           </button>
-          <button
-            onClick={() => handleFinalize(false)}
-            disabled={loading}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
+          <button onClick={() => handleFinalize(false)} disabled={loading} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             🗃️ Finalizar sem NPS
           </button>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="w-full rounded-lg px-4 py-2 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50"
-          >
+          <button onClick={onClose} disabled={loading} className="w-full rounded-lg px-4 py-2 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50">
             Cancelar
           </button>
         </div>
@@ -134,7 +116,6 @@ export function WhatsAppConversationPanel({
   const [localMessages, setLocalMessages] = useState<Message[]>(messages)
   const processedIds = useRef(new Set<string>(messages.map(m => m.id)))
 
-  // ── Estado do modal NPS ────────────────────────────────────────────────────
   const [showNPSModal, setShowNPSModal] = useState(false)
 
   function addMessageSafe(msg: Message) {
@@ -234,6 +215,7 @@ export function WhatsAppConversationPanel({
       if (!selectedInstance && names.length > 0) setSelectedInstance(instanceName ?? names[0].name)
     } catch { }
   }, [instanceName])
+  
   useEffect(() => { loadInstances() }, [loadInstances])
   useEffect(() => { setSelectedInstance(instanceName ?? '') }, [instanceName])
 
@@ -351,9 +333,7 @@ export function WhatsAppConversationPanel({
   }
 
   return (
-    // CORRECÇÃO: flex-1 min-w-0 overflow-hidden garantem que o painel não vaza sobre a sidebar
-    <div className="flex flex-col w-full h-full min-w-0 min-h-0 overflow-hidden">
-      {/* Modal NPS */}
+    <div className="flex flex-col w-full h-full min-w-0 min-h-0 overflow-hidden bg-white">
       {showNPSModal && (
         <FinalizarNPSModal
           phone={phone}
@@ -613,8 +593,7 @@ export function WhatsAppConversationPanel({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 
-      {/* Área do chat — flex-1 min-h-0 para não crescer além do espaço disponível */}
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col relative">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col relative bg-[#E5DDD5]">
         <WhatsAppChatView messages={localMessages} contactName={displayName} contactPhone={phone} />
       </div>
 
