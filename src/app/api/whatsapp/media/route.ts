@@ -115,10 +115,12 @@ export async function GET(request: NextRequest) {
   // Remove prefixo "data:...;base64," se presente
   const base64Data = rawBase64.includes(',') ? rawBase64.split(',')[1] : rawBase64
 
-  // Converte base64 para Buffer
-  let buffer: Buffer
+  // Converte base64 para Uint8Array — NextResponse aceita BodyInit,
+  // e Buffer não satisfaz BodyInit nos tipos do Next.js 14 / Node 18.
+  // Uint8Array é BodyInit válido em todos os ambientes Web/Edge/Node.
+  let bytes: Uint8Array
   try {
-    buffer = Buffer.from(base64Data, 'base64')
+    bytes = Uint8Array.from(Buffer.from(base64Data, 'base64'))
   } catch (e) {
     return NextResponse.json({ error: 'Base64 inválido' }, { status: 502 })
   }
@@ -127,11 +129,11 @@ export async function GET(request: NextRequest) {
   const contentType = (mimetype && MIME_MAP[mimetype]) ?? mimetype ?? 'application/octet-stream'
 
   // Devolve o binário ao browser com cache de 1 hora
-  return new NextResponse(buffer, {
+  return new NextResponse(bytes, {
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Content-Length': String(buffer.length),
+      'Content-Length': String(bytes.byteLength),
       'Cache-Control': 'private, max-age=3600',
     },
   })
