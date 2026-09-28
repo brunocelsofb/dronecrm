@@ -112,7 +112,6 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // A correção cirúrgica: Manipulamos o scroll interno em vez de forçar a janela inteira
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
@@ -120,7 +119,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] relative items-center justify-center">
+      <div className="flex-1 min-h-0 w-full flex flex-col bg-[#E5DDD5] relative items-center justify-center">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
@@ -140,7 +139,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   return (
     <div 
       ref={containerRef}
-      className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 relative"
+      className="flex-1 min-h-0 w-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3"
     >
       {grouped.map((group) => (
         <div key={group.dateKey}>
