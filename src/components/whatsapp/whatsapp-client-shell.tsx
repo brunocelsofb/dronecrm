@@ -76,9 +76,11 @@ export function WhatsAppClientShell({
   )
 
   return (
-    <div className="flex flex-1 min-h-0 gap-3">
+    // CORRECÇÃO PRINCIPAL: overflow-hidden impede o chat de vazar sobre a sidebar
+    <div className="flex flex-1 min-h-0 overflow-hidden gap-3">
       <WhatsAppInboxRealtimeWatcher />
 
+      {/* Sidebar — largura fixa, não encolhe, não cresce */}
       <div className="w-72 shrink-0 flex flex-col min-h-0 border-r border-gray-100 pr-2">
         <button onClick={() => setShowNewConv(true)}
           className="mb-2 shrink-0 w-full rounded-lg bg-[#1B556B] py-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5">
@@ -96,7 +98,8 @@ export function WhatsAppClientShell({
         />
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Painel de chat — ocupa o restante, min-w-0 impede overflow horizontal */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
         {selectedPhone ? (
           loadingConv ? <ConvSkeleton /> : convData ? (
             <WhatsAppConversationPanel
