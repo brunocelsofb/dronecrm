@@ -82,43 +82,7 @@ export async function POST(request: Request) {
       if (existing) return NextResponse.json({ ok: true, skipped: 'fromMe-duplicate' })
     }
 
-    // Mensagens enviadas pelo próprio bot NÃO entram no fluxo de triagem
-    if (isFromMe) {
-      const text =
-        msg?.conversation ??
-        msg?.extendedTextMessage?.text ??
-        msg?.imageMessage?.caption ??
-        msg?.videoMessage?.caption ??
-        msg?.documentMessage?.caption ??
-        msg?.documentWithCaptionMessage?.message?.documentMessage?.caption ??
-        msgData?.body ?? msgData?.text ?? msgData?.content ?? null
-
-      const { data: orgData } = await supabase
-        .from('organization_settings')
-        .select('tenant_id')
-        .eq('id', 'default')
-        .maybeSingle()
-      const tenantId = orgData?.tenant_id ?? null
-
-      if (tenantId && text && messageId) {
-        await supabase.from('contract_whatsapp_messages').insert({
-          phone,
-          message: text,
-          direction: 'enviado',
-          status: 'enviado',
-          triggered_automatically: false,
-          zapi_message_id: messageId ?? null,
-          instance_name: instanceName,
-          tenant_id: tenantId,
-          created_at: messageTimestamp
-            ? new Date(Number(messageTimestamp) * 1000).toISOString()
-            : new Date().toISOString(),
-        }).select('id').maybeSingle()
-      }
-
-      return NextResponse.json({ ok: true, skipped: 'fromMe-processed' })
-    }
-
+    // ── Extracção de texto (caption incluso) ──────────────────────────────────
     const text =
       msg?.conversation ??
       msg?.extendedTextMessage?.text ??
@@ -128,6 +92,9 @@ export async function POST(request: Request) {
       msg?.documentWithCaptionMessage?.message?.documentMessage?.caption ??
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
 
+    // ── Extracção de mediaUrl, mediaType, mediaFilename ───────────────────────
+    // A Evolution API devolve a URL pública em .url (ou .directPath como fallback)
+    // dentro de cada tipo de mensagem.
     let mediaUrl: string | null = null
     let mediaType: string | null = null
     let mediaFilename: string | null = null
@@ -139,15 +106,72 @@ export async function POST(request: Request) {
       system: '[Aviso do Sistema]',
     }
 
-    if (msg?.imageMessage) mediaType = 'image'
-    if (msg?.audioMessage) mediaType = 'audio'
-    if (msg?.videoMessage) mediaType = 'video'
-    if (msg?.documentMessage) { mediaType = 'document'; mediaFilename = msg.documentMessage.fileName ?? null }
-    if (msg?.stickerMessage) mediaType = 'sticker'
+    if (msg?.imageMessage) {
+      mediaType = 'image'
+      mediaUrl = msg.imageMessage.url ?? msg.imageMessage.directPath ?? null
+    } else if (msg?.audioMessage) {
+      mediaType = 'audio'
+      mediaUrl = msg.audioMessage.url ?? msg.audioMessage.directPath ?? null
+    } else if (msg?.voiceMessage) {
+      // Alguns builds da Evolution separam "voice" de "audio"
+      mediaType = 'audio'
+      mediaUrl = msg.voiceMessage.url ?? msg.voiceMessage.directPath ?? null
+    } else if (msg?.videoMessage) {
+      mediaType = 'video'
+      mediaUrl = msg.videoMessage.url ?? msg.videoMessage.directPath ?? null
+    } else if (msg?.documentMessage) {
+      mediaType = 'document'
+      mediaFilename = msg.documentMessage.fileName ?? null
+      mediaUrl = msg.documentMessage.url ?? msg.documentMessage.directPath ?? null
+    } else if (msg?.documentWithCaptionMessage?.message?.documentMessage) {
+      const docMsg = msg.documentWithCaptionMessage.message.documentMessage
+      mediaType = 'document'
+      mediaFilename = docMsg.fileName ?? null
+      mediaUrl = docMsg.url ?? docMsg.directPath ?? null
+    } else if (msg?.stickerMessage) {
+      mediaType = 'sticker'
+      mediaUrl = msg.stickerMessage.url ?? msg.stickerMessage.directPath ?? null
+    }
 
+    // Sticker é guardado como imagem no banco
     const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
+
+    // Texto final: caption do media, ou label friendly, ou "[Formato não suportado]"
     const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : '[Formato não suportado]')
 
+    // ── Mensagens enviadas pelo próprio número (fromMe) ───────────────────────
+    // São registadas no histórico mas NÃO entram no fluxo de triagem
+    if (isFromMe) {
+      const { data: orgData } = await supabase
+        .from('organization_settings')
+        .select('tenant_id')
+        .eq('id', 'default')
+        .maybeSingle()
+      const tenantId = orgData?.tenant_id ?? null
+
+      if (tenantId && (text || mediaType) && messageId) {
+        await supabase.from('contract_whatsapp_messages').insert({
+          phone,
+          message: finalText,
+          direction: 'enviado',
+          status: 'enviado',
+          triggered_automatically: false,
+          zapi_message_id: messageId ?? null,
+          instance_name: instanceName,
+          tenant_id: tenantId,
+          media_url: mediaUrl,
+          media_type: dbMediaType,
+          media_filename: mediaFilename,
+          created_at: messageTimestamp
+            ? new Date(Number(messageTimestamp) * 1000).toISOString()
+            : new Date().toISOString(),
+        }).select('id').maybeSingle()
+      }
+
+      return NextResponse.json({ ok: true, skipped: 'fromMe-processed' })
+    }
+
+    // ── Deduplicação ─────────────────────────────────────────────────────────
     if (messageId) {
       const { data: dup } = await supabase
         .from('contract_whatsapp_messages')
@@ -157,11 +181,13 @@ export async function POST(request: Request) {
       if (dup) return NextResponse.json({ ok: true, skipped: 'duplicata' })
     }
 
-    if (!isFromMe && text && isOptOutMessage(text)) {
+    // ── Opt-out ───────────────────────────────────────────────────────────────
+    if (text && isOptOutMessage(text)) {
       await recordWhatsAppOptOut(phone)
       return NextResponse.json({ ok: true, recorded: 'opt-out' })
     }
 
+    // ── Tenant ────────────────────────────────────────────────────────────────
     const { data: orgData } = await supabase
       .from('organization_settings')
       .select('tenant_id')
@@ -170,6 +196,7 @@ export async function POST(request: Request) {
     const tenantId = orgData?.tenant_id ?? null
     if (!tenantId) return NextResponse.json({ ok: false, error: 'tenant_id missing' })
 
+    // ── Inserção da mensagem recebida ─────────────────────────────────────────
     const { data: inserted, error: insertError } = await supabase
       .from('contract_whatsapp_messages')
       .insert({
@@ -199,7 +226,6 @@ export async function POST(request: Request) {
       const last8 = phone.length >= 8 ? phone.slice(-8) : phone
       const instKey = instanceName ?? ''
 
-      // Busca pelo phone CANÔNICO exato primeiro (sem prefixo 55)
       const { data: exactRows } = await supabase
         .from('whatsapp_conversation_status')
         .select('*')
@@ -210,7 +236,6 @@ export async function POST(request: Request) {
       let currentStatus = exactRows && exactRows.length > 0 ? exactRows[0] : null
 
       if (!currentStatus) {
-        // Fallback: busca por last8 para cobrir registros antigos com prefixo 55
         const { data: fuzzyRows } = await supabase
           .from('whatsapp_conversation_status')
           .select('*')
@@ -225,7 +250,6 @@ export async function POST(request: Request) {
       const statusInstance: string = currentStatus?.instance_name ?? instKey
 
       // --- TRATAMENTO DE NPS PENDENTE ---
-      // Se há NPS pendente E a mensagem é uma nota 1-5, registra e encerra
       if (currentStatus?.nps_pending) {
         const scoreNum = parseInt((text ?? '').trim(), 10)
         if (!isNaN(scoreNum) && scoreNum >= 1 && scoreNum <= 5) {
@@ -251,16 +275,9 @@ export async function POST(request: Request) {
           await sendAndRecordBotMessage(supabase, tenantId, orgSettingsNps, instanceName, rawPhone, phone, npsAgradecimento)
           return NextResponse.json({ ok: true, status: 'nps_recorded' })
         }
-        // Se NPS pendente mas mensagem não é nota válida:
-        // Cai para o bloco abaixo — se is_archived=true, vai reabrir conversa
-        // (tratado no bloco de REABERTURA abaixo)
       }
 
-      // ================================================================
-      // REABERTURA AUTOMÁTICA DE CONVERSAS ARQUIVADAS
-      // Quando cliente envia mensagem e conversa está arquivada:
-      // → desarquiva, limpa atribuição, reinicia triagem com novo protocolo
-      // ================================================================
+      // ── REABERTURA AUTOMÁTICA DE CONVERSAS ARQUIVADAS ────────────────────────
       if (currentStatus?.is_archived === true) {
         const { data: orgSettings } = await supabase
           .from('organization_settings')
@@ -268,14 +285,12 @@ export async function POST(request: Request) {
           .eq('id', 'default')
           .maybeSingle()
 
-        // Limpa a atribuição anterior (remove o atendente vinculado)
         await supabase
           .from('whatsapp_conversation_assignments')
           .delete()
           .eq('phone', statusPhone)
           .eq('instance_name', statusInstance)
 
-        // Gera novo número de protocolo
         let newProtocol: string | null = null
         const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
         newProtocol = (protoData as string) ?? null
@@ -283,7 +298,6 @@ export async function POST(request: Request) {
         const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
         const newTriageState = menuOptions.length > 0 ? 'awaiting_selection' : 'active'
 
-        // Reabre a conversa e reinicia triagem
         await supabase
           .from('whatsapp_conversation_status')
           .update({
@@ -299,7 +313,6 @@ export async function POST(request: Request) {
           .eq('phone', statusPhone)
           .eq('instance_name', statusInstance)
 
-        // Envia o menu de triagem com o novo protocolo (se habilitado)
         if (orgSettings?.triage_enabled !== false && menuOptions.length > 0) {
           await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, newProtocol, menuOptions)
         }
@@ -307,9 +320,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, status: 'conversation_reopened', id: inserted?.id })
       }
 
-      // ================================================================
-      // FLUXO NORMAL DE TRIAGEM
-      // ================================================================
+      // ── FLUXO NORMAL DE TRIAGEM ──────────────────────────────────────────────
       const { data: orgSettings } = await supabase
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
@@ -323,12 +334,10 @@ export async function POST(request: Request) {
       const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
       const state: string = currentStatus?.triage_state ?? 'none'
 
-      // ── ESTADO: active ─────────────────────────────────────────────
       if (state === 'active') {
         return NextResponse.json({ ok: true, status: 'already_active' })
       }
 
-      // ── ESTADO: awaiting_selection ─────────────────────────────────
       if (state === 'awaiting_selection') {
         const trimmedText = (text ?? '').trim().toLowerCase()
         const chosen = menuOptions.find(opt =>
@@ -353,14 +362,13 @@ export async function POST(request: Request) {
           await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, confirmMsg)
           return NextResponse.json({ ok: true, status: 'triage_confirmed' })
         } else {
-          // Opção inválida: reenvia o menu SEM gerar novo protocolo
           const protocolNumber = currentStatus?.protocol_number ?? null
           await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, protocolNumber, menuOptions)
           return NextResponse.json({ ok: true, status: 'menu_resent' })
         }
       }
 
-      // ── ESTADO: none (primeiro contato) ───────────────────────────
+      // Estado: none (primeiro contato)
       let protocolNumber: string | null = null
       const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
       protocolNumber = (protoData as string) ?? null
