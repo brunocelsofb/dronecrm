@@ -112,6 +112,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    // Mantemos apenas a rolagem estrita dentro do container (sem forçar a página)
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
@@ -119,7 +120,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex-1 min-h-0 w-full flex flex-col bg-[#E5DDD5] relative items-center justify-center">
+      <div className="absolute inset-0 flex flex-col bg-[#E5DDD5] items-center justify-center z-0">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
@@ -139,7 +140,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   return (
     <div 
       ref={containerRef}
-      className="flex-1 min-h-0 w-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3"
+      className="absolute inset-0 flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 z-0"
     >
       {grouped.map((group) => (
         <div key={group.dateKey}>
@@ -175,7 +176,8 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
           })}
         </div>
       ))}
-      <div className="h-2 flex-shrink-0" />
+      {/* Margem extra para não colar no rodapé */}
+      <div className="h-4 flex-shrink-0" />
     </div>
   )
 }
