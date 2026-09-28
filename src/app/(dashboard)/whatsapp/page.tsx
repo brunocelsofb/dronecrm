@@ -29,18 +29,15 @@ export default async function WhatsAppInboxPage({
       .select('phone, unlinked_sender_name, message, media_type, direction, created_at, lead_id, instance_name')
       .order('created_at', { ascending: false })
       .limit(500),
-    // Busca status com department, protocol_number e triage_state para merge
     admin.from('whatsapp_conversation_status')
       .select('phone, instance_name, department, protocol_number, triage_state'),
   ])
 
-  // Buscar utilizadores da equipa — filtrar pelo tenant ativo se estiver em impersonation
   const teamUsersQuery = admin.from('profiles').select('id, full_name, job_title')
   const { data: teamUsers } = activeTenantId
     ? await (teamUsersQuery as any).eq('tenant_id', activeTenantId)
     : await teamUsersQuery
 
-  // Mapa de status por chave instance-last8 para merge rápido
   const statusMap = new Map<string, { department: string | null; protocol_number: string | null; triage_state: string | null }>()
   for (const row of statusRows ?? []) {
     const base8 = (row.phone ?? '').replace(/\D/g, '').slice(-8)
@@ -52,7 +49,6 @@ export default async function WhatsAppInboxPage({
     })
   }
 
-  // Agrupa por instance_name + últimos 8 dígitos (cobre variações de DDI e 9º dígito)
   const latestByKey = new Map<string, any>()
   for (const m of openMessages ?? []) {
     const base8 = (m.phone ?? '').replace(/\D/g, '').slice(-8)
@@ -60,7 +56,6 @@ export default async function WhatsAppInboxPage({
     if (!latestByKey.has(key)) latestByKey.set(key, m)
   }
 
-  // archivedSet normalizado por instance + últimos 8 (usa '' como default)
   const archivedSet = new Set(
     (archivedRows ?? []).map((r: any) => {
       const base8 = (r.phone ?? '').replace(/\D/g, '').slice(-8)
@@ -105,7 +100,7 @@ export default async function WhatsAppInboxPage({
     .eq('id', 'default').maybeSingle()
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
       <div className="flex items-center justify-between px-1 py-2 flex-shrink-0">
         <div>
           <h1 className="text-base font-semibold text-gray-900">Central de Atendimento</h1>
@@ -116,15 +111,17 @@ export default async function WhatsAppInboxPage({
           📊 Relatórios
         </Link>
       </div>
-      <WhatsAppClientShell
-        open={openConversations as any}
-        archived={archivedList as any}
-        initialPhone={selectedPhone ?? null}
-        initialInstance={selectedInstance ?? null}
-        currentUserId={user?.id ?? ''}
-        teamUsers={(teamUsers ?? []) as any}
-        instanceAliases={(orgData as any)?.evo_instance_aliases ?? {}}
-      />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <WhatsAppClientShell
+          open={openConversations as any}
+          archived={archivedList as any}
+          initialPhone={selectedPhone ?? null}
+          initialInstance={selectedInstance ?? null}
+          currentUserId={user?.id ?? ''}
+          teamUsers={(teamUsers ?? []) as any}
+          instanceAliases={(orgData as any)?.evo_instance_aliases ?? {}}
+        />
+      </div>
     </div>
   )
 }
