@@ -115,12 +115,13 @@ export async function GET(request: NextRequest) {
   // Remove prefixo "data:...;base64," se presente
   const base64Data = rawBase64.includes(',') ? rawBase64.split(',')[1] : rawBase64
 
-  // Converte base64 para Uint8Array — NextResponse aceita BodyInit,
-  // e Buffer não satisfaz BodyInit nos tipos do Next.js 14 / Node 18.
-  // Uint8Array é BodyInit válido em todos os ambientes Web/Edge/Node.
-  let bytes: Uint8Array
+  // Converte base64 para ArrayBuffer — é BodyInit garantido em todos os
+  // ambientes (Web API, Edge, Node) e aceite pelos tipos do Next.js 16.
+  // Uint8Array e Buffer têm problemas de tipagem no Next.js 16 Turbopack.
+  let arrayBuffer: ArrayBuffer
   try {
-    bytes = Uint8Array.from(Buffer.from(base64Data, 'base64'))
+    const buf = Buffer.from(base64Data, 'base64')
+    arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
   } catch (e) {
     return NextResponse.json({ error: 'Base64 inválido' }, { status: 502 })
   }
@@ -128,12 +129,13 @@ export async function GET(request: NextRequest) {
   // Determina o Content-Type
   const contentType = (mimetype && MIME_MAP[mimetype]) ?? mimetype ?? 'application/octet-stream'
 
-  // Devolve o binário ao browser com cache de 1 hora
-  return new NextResponse(bytes, {
+  // Usa Response nativo da Web API — NextResponse herda o mesmo construtor
+  // mas os tipos do Next.js 16 aceitam ArrayBuffer em Response sem problema.
+  return new Response(arrayBuffer, {
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Content-Length': String(bytes.byteLength),
+      'Content-Length': String(arrayBuffer.byteLength),
       'Cache-Control': 'private, max-age=3600',
     },
   })
