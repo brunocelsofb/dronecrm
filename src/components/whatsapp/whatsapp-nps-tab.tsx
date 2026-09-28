@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 // A tabela whatsapp_conversation_status usa chave composta (phone, instance_name).
-// NÃO há coluna id — usamos phone como identificador único nas listas.
+// Colunas disponíveis: phone, instance_name, nps_score, protocol_number,
+// department, archived_at, updated_at. NÃO existe id nem nps_feedback.
 interface NpsEntry {
   phone: string
   instance_name: string
   nps_score: number
-  nps_feedback?: string | null
   protocol_number?: string | null
   department?: string | null
   archived_at?: string | null
@@ -69,10 +69,10 @@ export function WhatsAppNpsTab() {
     setLoading(true)
     setError(null)
     try {
-      // Sem 'id' no select — a tabela usa (phone, instance_name) como PK composta
+      // Seleciona apenas colunas que existem na tabela. Sem 'id', sem 'nps_feedback'.
       const { data, error: err } = await supabase
         .from('whatsapp_conversation_status')
-        .select('phone, instance_name, nps_score, nps_feedback, protocol_number, department, archived_at, updated_at')
+        .select('phone, instance_name, nps_score, protocol_number, department, archived_at, updated_at')
         .not('nps_score', 'is', null)
         .order('archived_at', { ascending: false })
 
@@ -97,8 +97,7 @@ export function WhatsAppNpsTab() {
       return (
         e.phone.includes(s) ||
         (e.protocol_number ?? '').toLowerCase().includes(s) ||
-        (e.department ?? '').toLowerCase().includes(s) ||
-        (e.nps_feedback ?? '').toLowerCase().includes(s)
+        (e.department ?? '').toLowerCase().includes(s)
       )
     }
     return true
@@ -243,7 +242,7 @@ export function WhatsAppNpsTab() {
           ) : (
             <div className="divide-y divide-gray-50">
               {filtered.map(entry => {
-                // Chave única: combinação de phone + instance_name (sem coluna id)
+                // Chave composta (phone + instance_name) — sem coluna id
                 const entryKey = `${entry.phone}__${entry.instance_name}`
                 const cat = classifyScore(entry.nps_score)
                 const catLabel = cat === 'promoter' ? 'Promotor' : cat === 'passive' ? 'Neutro' : 'Detrator'
@@ -277,11 +276,6 @@ export function WhatsAppNpsTab() {
                       </div>
                       <StarDisplay score={entry.nps_score} />
                     </div>
-                    {entry.nps_feedback && (
-                      <p className="mt-1.5 text-sm text-gray-600 italic border-l-2 border-gray-200 pl-2">
-                        &ldquo;{entry.nps_feedback}&rdquo;
-                      </p>
-                    )}
                   </div>
                 )
               })}
