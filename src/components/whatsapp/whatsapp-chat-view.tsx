@@ -77,15 +77,8 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
   if (mediaType === 'image' && mediaUrl) {
     return (
       <div className="flex flex-col gap-1">
-        <img
-          src={mediaUrl}
-          alt="Imagem"
-          className="max-w-[220px] rounded-lg object-cover"
-          loading="lazy"
-        />
-        {message && message !== '[Imagem]' && (
-          <span className="text-sm">{message}</span>
-        )}
+        <img src={mediaUrl} alt="Imagem" className="max-w-[220px] rounded-lg object-cover" loading="lazy" />
+        {message && message !== '[Imagem]' && <span className="text-sm">{message}</span>}
       </div>
     )
   }
@@ -106,12 +99,7 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
   }
   if (mediaType === 'document') {
     return mediaUrl ? (
-      <a
-        href={mediaUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 text-sm underline"
-      >
+      <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm underline">
         <span>📎</span>
         <span>{mediaFilename ?? message}</span>
       </a>
@@ -124,18 +112,18 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Scroll simples sem o 'smooth' para evitar travamento do navegador
+    bottomRef.current?.scrollIntoView()
   }, [messages])
 
   if (!messages || messages.length === 0) {
     return (
-      <div className="flex-1 w-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 space-y-3 relative items-center justify-center">
+      <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 relative items-center justify-center">
         <p className="text-sm text-gray-500">Nenhuma mensagem ainda.</p>
       </div>
     )
   }
 
-  // Agrupa mensagens por dia
   const grouped: { dateKey: string; dateLabel: string; messages: any[] }[] = []
   for (const msg of messages) {
     const dk = getDateKey(msg.created_at)
@@ -148,10 +136,9 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
   }
 
   return (
-    <div className="flex-1 w-full flex flex-col bg-[#E5DDD5] overflow-y-auto p-4 space-y-3 relative">
+    <div className="flex-1 w-full h-full flex flex-col bg-[#E5DDD5] overflow-x-hidden overflow-y-auto p-4 space-y-3 relative">
       {grouped.map((group) => (
         <div key={group.dateKey}>
-          {/* Separador de data */}
           <div className="flex items-center justify-center my-3 z-10 relative">
             <span className="bg-[#e1f3fb] text-[#54656f] text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
               {group.dateLabel}
@@ -163,51 +150,19 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
             const isBot = msg.triggered_automatically === true
 
             return (
-              <div
-                key={msg.id}
-                className={`flex mb-1.5 z-10 relative ${isSent ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`
-                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm
-                    ${isSent
-                      ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none'
-                      : 'bg-white text-gray-900 rounded-tl-none'
-                    }
-                  `}
-                >
-                  {/* Indicador de bot */}
+              <div key={msg.id} className={`flex mb-1.5 z-10 relative ${isSent ? 'justify-end' : 'justify-start'}`}>
+                <div className={`group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm ${isSent ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'}`}>
                   {isBot && (
                     <div className="mb-1 flex items-center gap-1">
-                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
-                        🤖 Bot
-                      </span>
+                      <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">🤖 Bot</span>
                     </div>
                   )}
-
-                  {/* Conteúdo da mensagem */}
-                  <MediaContent
-                    mediaType={msg.media_type}
-                    mediaUrl={msg.media_url}
-                    mediaFilename={msg.media_filename}
-                    message={msg.message}
-                  />
-
-                  {/* Footer: hora + ticks + botão deletar */}
+                  <MediaContent mediaType={msg.media_type} mediaUrl={msg.media_url} mediaFilename={msg.media_filename} message={msg.message} />
                   <div className="mt-1 flex items-center justify-end gap-1">
-                    <span className="text-[10px] text-gray-400">
-                      {formatTime(msg.created_at)}
-                    </span>
+                    <span className="text-[10px] text-gray-400">{formatTime(msg.created_at)}</span>
                     <DeliveryTick status={msg.status} direction={msg.direction} />
-
                     {onDeleteMessage && (
-                      <button
-                        onClick={() => onDeleteMessage(msg.id)}
-                        className="ml-1 hidden group-hover:inline-flex text-[10px] text-red-400 hover:text-red-600 transition-colors"
-                        title="Deletar mensagem"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => onDeleteMessage(msg.id)} className="ml-1 hidden group-hover:inline-flex text-[10px] text-red-400 hover:text-red-600 transition-colors" title="Deletar mensagem">✕</button>
                     )}
                   </div>
                 </div>
@@ -216,7 +171,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
           })}
         </div>
       ))}
-      <div ref={bottomRef} />
+      <div ref={bottomRef} className="h-1 flex-shrink-0" />
     </div>
   )
 }
