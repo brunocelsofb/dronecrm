@@ -125,7 +125,7 @@ export function WhatsAppClientShell({
 
       {/* Sidebar — largura imposta pela 1ª coluna do Grid */}
       <div className="flex flex-col min-h-0 min-w-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden">
-        <div className="p-2 shrink-0 border-b border-gray-100">
+        <div className="p-2 shrink-0 border-b border-gray-100 min-w-0">
           <button
             onClick={() => setShowNewConv(true)}
             title="Nova Conversa"
@@ -136,7 +136,7 @@ export function WhatsAppClientShell({
         </div>
 
         {/* Lista de contatos: sem barra horizontal, com respiro no fim */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 min-w-0">
           <WhatsAppSidebar
             open={open}
             archived={archived}
@@ -153,7 +153,7 @@ export function WhatsAppClientShell({
       {/* Dragger — ocupa a 2ª coluna do Grid (4px fixos) */}
       <div
         onMouseDown={onDraggerMouseDown}
-        className="w-full h-full bg-gray-200 hover:bg-[#1B556B]/40 active:bg-[#1B556B]/60 cursor-col-resize transition-colors duration-150 select-none z-10"
+        className="w-full h-full bg-gray-200 hover:bg-[#1B556B]/40 active:bg-[#1B556B]/60 cursor-col-resize transition-colors duration-150 select-none z-10 shrink-0"
         title="Arraste para redimensionar"
       />
 
