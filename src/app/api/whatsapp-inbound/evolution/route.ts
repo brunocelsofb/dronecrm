@@ -17,6 +17,16 @@ function toCanonicalPhone(rawPhone: string): string {
   return cleaned
 }
 
+// ── Constrói a URL proxy interna para o browser buscar a mídia ────────────────
+// A Evolution API não devolve URLs públicas nos webhooks.
+// O browser chama /api/whatsapp/media?id=<messageId>&instance=<inst>
+// e esse endpoint busca o base64 da Evolution e devolve o binário.
+function buildMediaProxyUrl(messageId: string, instanceName: string | null): string {
+  const params = new URLSearchParams({ id: messageId })
+  if (instanceName) params.set('instance', instanceName)
+  return `/api/whatsapp/media?${params.toString()}`
+}
+
 export async function POST(request: Request) {
   const supabase = createAdminClient()
 
@@ -92,9 +102,11 @@ export async function POST(request: Request) {
       msg?.documentWithCaptionMessage?.message?.documentMessage?.caption ??
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
 
-    // ── Extracção de mediaUrl, mediaType, mediaFilename ───────────────────────
-    // A Evolution API devolve a URL pública em .url (ou .directPath como fallback)
-    // dentro de cada tipo de mensagem.
+    // ── Detecção de tipo de mídia e construção da URL proxy ───────────────────
+    // A Evolution API não devolve URLs públicas nos webhooks — o campo .url
+    // é uma URL interna/expirada do servidor WhatsApp. A solução correcta é
+    // gravar o messageId e construir uma URL proxy /api/whatsapp/media?id=...
+    // que o browser chama em runtime para buscar o base64 da Evolution.
     let mediaUrl: string | null = null
     let mediaType: string | null = null
     let mediaFilename: string | null = null
@@ -108,39 +120,38 @@ export async function POST(request: Request) {
 
     if (msg?.imageMessage) {
       mediaType = 'image'
-      mediaUrl = msg.imageMessage.url ?? msg.imageMessage.directPath ?? null
+      // Usa proxy interno — o messageId é suficiente para buscar na Evolution
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.audioMessage) {
       mediaType = 'audio'
-      mediaUrl = msg.audioMessage.url ?? msg.audioMessage.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.voiceMessage) {
-      // Alguns builds da Evolution separam "voice" de "audio"
       mediaType = 'audio'
-      mediaUrl = msg.voiceMessage.url ?? msg.voiceMessage.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.videoMessage) {
       mediaType = 'video'
-      mediaUrl = msg.videoMessage.url ?? msg.videoMessage.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.documentMessage) {
       mediaType = 'document'
       mediaFilename = msg.documentMessage.fileName ?? null
-      mediaUrl = msg.documentMessage.url ?? msg.documentMessage.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.documentWithCaptionMessage?.message?.documentMessage) {
       const docMsg = msg.documentWithCaptionMessage.message.documentMessage
       mediaType = 'document'
       mediaFilename = docMsg.fileName ?? null
-      mediaUrl = docMsg.url ?? docMsg.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.stickerMessage) {
       mediaType = 'sticker'
-      mediaUrl = msg.stickerMessage.url ?? msg.stickerMessage.directPath ?? null
+      if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     }
 
-    // Sticker é guardado como imagem no banco
+    // Sticker é tratado como imagem no banco
     const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
 
-    // Texto final: caption do media, ou label friendly, ou "[Formato não suportado]"
+    // Texto final: caption, label friendly, ou "[Formato não suportado]"
     const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : '[Formato não suportado]')
 
     // ── Mensagens enviadas pelo próprio número (fromMe) ───────────────────────
-    // São registadas no histórico mas NÃO entram no fluxo de triagem
     if (isFromMe) {
       const { data: orgData } = await supabase
         .from('organization_settings')
