@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+// A tabela whatsapp_conversation_status usa chave composta (phone, instance_name).
+// NÃO há coluna id — usamos phone como identificador único nas listas.
 interface NpsEntry {
-  id: string
   phone: string
   instance_name: string
   nps_score: number
@@ -68,9 +69,10 @@ export function WhatsAppNpsTab() {
     setLoading(true)
     setError(null)
     try {
+      // Sem 'id' no select — a tabela usa (phone, instance_name) como PK composta
       const { data, error: err } = await supabase
         .from('whatsapp_conversation_status')
-        .select('id, phone, instance_name, nps_score, nps_feedback, protocol_number, department, archived_at, updated_at')
+        .select('phone, instance_name, nps_score, nps_feedback, protocol_number, department, archived_at, updated_at')
         .not('nps_score', 'is', null)
         .order('archived_at', { ascending: false })
 
@@ -241,6 +243,8 @@ export function WhatsAppNpsTab() {
           ) : (
             <div className="divide-y divide-gray-50">
               {filtered.map(entry => {
+                // Chave única: combinação de phone + instance_name (sem coluna id)
+                const entryKey = `${entry.phone}__${entry.instance_name}`
                 const cat = classifyScore(entry.nps_score)
                 const catLabel = cat === 'promoter' ? 'Promotor' : cat === 'passive' ? 'Neutro' : 'Detrator'
                 const catColor = cat === 'promoter' ? '#1a7c3e' : cat === 'passive' ? '#92400e' : '#b91c1c'
@@ -250,7 +254,7 @@ export function WhatsAppNpsTab() {
                   : '—'
 
                 return (
-                  <div key={entry.id} className="py-3">
+                  <div key={entryKey} className="py-3">
                     <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
