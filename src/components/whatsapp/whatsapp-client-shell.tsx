@@ -9,10 +9,6 @@ import { NewConversationModal } from './new-conversation-modal'
 
 type Profile = { id: string; full_name: string; job_title?: string | null }
 
-const SIDEBAR_MIN = 220
-const SIDEBAR_MAX = 520
-const SIDEBAR_DEFAULT = 280
-
 function ConvSkeleton() {
   return (
     <div className="flex flex-col h-full animate-pulse p-4 gap-3 bg-white">
@@ -44,42 +40,35 @@ export function WhatsAppClientShell({
   const [loadingConv, setLoadingConv] = useState(false)
   const [showNewConv, setShowNewConv] = useState(false)
 
-  // ── Splitter ──────────────────────────────────────────────────────────────
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
+  // Estado para a largura da barra lateral
+  const [sidebarWidth, setSidebarWidth] = useState(280)
   const isDragging = useRef(false)
-  const dragStartX = useRef(0)
-  const dragStartWidth = useRef(SIDEBAR_DEFAULT)
 
-  const onDraggerMouseDown = useCallback((e: React.MouseEvent) => {
+  // Lógica de redimensionamento da barra lateral
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
-    dragStartX.current = e.clientX
-    dragStartWidth.current = sidebarWidth
     document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }, [sidebarWidth])
 
-  useEffect(() => {
-    function onMouseMove(e: MouseEvent) {
-      if (!isDragging.current) return
-      const delta = e.clientX - dragStartX.current
-      const next = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, dragStartWidth.current + delta))
-      setSidebarWidth(next)
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (isDragging.current) {
+        requestAnimationFrame(() => {
+          // Limita a largura entre 250px e 500px
+          setSidebarWidth(Math.min(Math.max(moveEvent.clientX, 250), 500))
+        })
+      }
     }
-    function onMouseUp() {
-      if (!isDragging.current) return
+
+    const handleMouseUp = () => {
       isDragging.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      document.body.style.cursor = 'default'
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
     }
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
   }, [])
-  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!selectedPhone) { setConvData(null); return }
@@ -117,26 +106,22 @@ export function WhatsAppClientShell({
   )
 
   return (
-    <div
-      className="flex w-full h-full min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm"
-    >
+    <div className="flex w-full h-full min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
       <WhatsAppInboxRealtimeWatcher />
 
-      {/* Sidebar — largura controlada pelo splitter */}
-      <div
-        className="flex flex-col min-h-0 border-r border-gray-200 bg-white shrink-0"
+      {/* Sidebar — Adicionado 'overflow-hidden' para garantir que NADA vaza ao encolher */}
+      <div 
         style={{ width: sidebarWidth }}
+        className="flex flex-col min-h-0 shrink-0 bg-white overflow-hidden"
       >
         <div className="p-2 shrink-0 border-b border-gray-100">
-          <button
-            onClick={() => setShowNewConv(true)}
-            className="w-full rounded-lg bg-[#1B556B] py-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors"
-          >
-            ✏️ Nova Conversa
+          <button onClick={() => setShowNewConv(true)}
+            title="Nova Conversa"
+            className="w-full rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors overflow-hidden whitespace-nowrap">
+            <span className="truncate">✏️ Nova Conversa</span>
           </button>
         </div>
-
-        {/* Lista de contatos: sem barra horizontal, com respiro no fim */}
+        
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20">
           <WhatsAppSidebar
             open={open}
@@ -151,15 +136,15 @@ export function WhatsAppClientShell({
         </div>
       </div>
 
-      {/* Dragger — linha divisória arrastável */}
+      {/* Barra separadora (Dragger) para redimensionar */}
       <div
-        onMouseDown={onDraggerMouseDown}
-        className="w-1 shrink-0 bg-gray-200 hover:bg-[#1B556B]/40 active:bg-[#1B556B]/60 cursor-col-resize transition-colors duration-150 select-none"
+        onMouseDown={handleMouseDown}
+        className="w-1 bg-gray-200 cursor-col-resize hover:bg-[#1B556B] active:bg-[#1B556B] shrink-0 transition-colors z-10"
         title="Arraste para redimensionar"
       />
 
-      {/* Painel de chat — ocupa o resto */}
-      <div className="flex flex-col min-w-0 min-h-0 bg-white relative flex-1">
+      {/* Painel de chat */}
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 bg-white relative">
         {selectedPhone ? (
           loadingConv ? <ConvSkeleton /> : convData ? (
             <WhatsAppConversationPanel
@@ -186,10 +171,7 @@ export function WhatsAppClientShell({
           </div>
         )}
       </div>
-
-      {showNewConv && (
-        <NewConversationModal onClose={() => { setShowNewConv(false); router.refresh() }} />
-      )}
+      {showNewConv && <NewConversationModal onClose={() => { setShowNewConv(false); router.refresh() }} />}
     </div>
   )
 }
