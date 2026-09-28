@@ -126,8 +126,6 @@ export function WhatsAppConversationPanel({
 }) {
   const router = useRouter()
   const supabase = createClient()
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
 
@@ -183,10 +181,6 @@ export function WhatsAppConversationPanel({
       return [...messages, ...pendingOpt]
     })
   }, [messages])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [localMessages])
 
   useEffect(() => {
     const channel = supabase
@@ -620,9 +614,8 @@ export function WhatsAppConversationPanel({
       </div>
 
       {/* Área do chat — flex-1 min-h-0 para não crescer além do espaço disponível */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col relative">
         <WhatsAppChatView messages={localMessages} contactName={displayName} contactPhone={phone} />
-        <div ref={messagesEndRef} />
       </div>
 
       {isArchived ? (
