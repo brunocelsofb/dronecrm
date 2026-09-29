@@ -112,6 +112,9 @@ export async function POST(request: Request) {
       msg?.documentMessage?.title ??
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
 
+    // ── Detecção de tipo de mídia — declaração antecipada (usado também em contactLabel) ──
+    let mediaType: string | null = null
+
     // Contacto(s) — extrai nome e telefone do vCard para renderização no frontend
     // Formato do message salvo: "[Contato] Nome | +5511999999999"
     // O frontend detecta media_type === 'contact' e renderiza o ContactCard.
@@ -172,7 +175,6 @@ export async function POST(request: Request) {
 
     // ── Detecção de tipo de mídia e construção da URL proxy ───────────────────
     let mediaUrl: string | null = null
-    let mediaType: string | null = null
     let mediaFilename: string | null = null
 
     const FRIENDLY: Record<string, string> = {
