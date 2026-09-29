@@ -80,14 +80,9 @@ export async function POST(request: Request) {
     const isFromMe = key.fromMe === true
     const messageId = key.id
 
-    if (isFromMe && messageId) {
-      const { data: existing } = await supabase
-        .from('contract_whatsapp_messages')
-        .select('id')
-        .eq('zapi_message_id', messageId)
-        .maybeSingle()
-      if (existing) return NextResponse.json({ ok: true, skipped: 'fromMe-duplicate' })
-    }
+    // Deduplicação prévia de fromMe movida para dentro do bloco isFromMe abaixo
+    // (foi necessário para garantir que o schema está correcto e para poder
+    //  persistir mensagens onde messageId é null — envios via CRM/web)
 
     // ── Extracção de texto (caption incluso) ──────────────────────────────────
     const text =
@@ -142,30 +137,69 @@ export async function POST(request: Request) {
 
     // ── Mensagens enviadas pelo próprio número (fromMe) ───────────────────────
     if (isFromMe) {
-      const { data: orgData } = await supabase
+      // BUG FIX: condição anterior `&& messageId` descartava silenciosamente
+      // mensagens onde a Evolution não inclui key.id (envios via CRM/web).
+      // BUG FIX: `.schema('contract_crm')` garante a schema correcta.
+      // BUG FIX: salva mesmo quando text é null (emoji, sticker sem caption).
+      const { data: orgData, error: orgErr } = await supabase
+        .schema('contract_crm')
         .from('organization_settings')
         .select('tenant_id')
         .eq('id', 'default')
         .maybeSingle()
+
+      if (orgErr) {
+        console.error('[evo-webhook][fromMe] falha ao buscar tenant_id:', orgErr.message)
+      }
+
       const tenantId = orgData?.tenant_id ?? null
 
-      if (tenantId && (text || mediaType) && messageId) {
-        await supabase.from('contract_whatsapp_messages').insert({
-          phone,
-          message: finalText,
-          direction: 'enviado',
-          status: 'enviado',
-          triggered_automatically: false,
-          zapi_message_id: messageId ?? null,
-          instance_name: instanceName,
-          tenant_id: tenantId,
-          media_url: mediaUrl,
-          media_type: dbMediaType,
-          media_filename: mediaFilename,
-          created_at: messageTimestamp
-            ? new Date(Number(messageTimestamp) * 1000).toISOString()
-            : new Date().toISOString(),
-        }).select('id').maybeSingle()
+      if (tenantId) {
+        // Deduplicação apenas quando temos messageId (evita duplicatas no reload)
+        if (messageId) {
+          const { data: existingFromMe } = await supabase
+            .schema('contract_crm')
+            .from('contract_whatsapp_messages')
+            .select('id')
+            .eq('zapi_message_id', messageId)
+            .maybeSingle()
+          if (existingFromMe) {
+            return NextResponse.json({ ok: true, skipped: 'fromMe-duplicate' })
+          }
+        }
+
+        const { error: insertErr } = await supabase
+          .schema('contract_crm')
+          .from('contract_whatsapp_messages')
+          .insert({
+            phone,
+            message: finalText,           // finalText nunca é null — tem fallback '[Formato não suportado]'
+            direction: 'enviado',
+            status: 'enviado',
+            triggered_automatically: false,
+            zapi_message_id: messageId ?? null,   // null aceite — sem dedup neste caso
+            instance_name: instanceName,
+            tenant_id: tenantId,
+            media_url: mediaUrl,
+            media_type: dbMediaType,
+            media_filename: mediaFilename,
+            created_at: messageTimestamp
+              ? new Date(Number(messageTimestamp) * 1000).toISOString()
+              : new Date().toISOString(),
+          })
+
+        if (insertErr) {
+          console.error('[evo-webhook][fromMe] INSERT falhou:', {
+            msg: insertErr.message,
+            phone,
+            instanceName,
+            messageId: messageId ?? 'null',
+          })
+        }
+      } else {
+        console.warn('[evo-webhook][fromMe] tenant_id não encontrado — mensagem NÃO persistida', {
+          phone, instanceName, messageId: messageId ?? 'null',
+        })
       }
 
       return NextResponse.json({ ok: true, skipped: 'fromMe-processed' })
