@@ -13,7 +13,7 @@ export default async function WhatsAppConexoesPage() {
 
   const admin = createAdminClient()
   const { data: settings } = await admin.from('organization_settings')
-    .select('evo_server_url, evo_api_key, evo_instance_name').eq('id', 'default').maybeSingle()
+    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases').eq('id', 'default').maybeSingle()
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -26,7 +26,7 @@ export default async function WhatsAppConexoesPage() {
         currentServerUrl={(settings as any)?.evo_server_url ?? null}
         currentInstanceName={(settings as any)?.evo_instance_name ?? null}
       />
-      <WhatsAppInstancesPanel />
+      <WhatsAppInstancesPanel instanceAliases={(settings as any)?.evo_instance_aliases ?? {}} />
     </div>
   )
 }
