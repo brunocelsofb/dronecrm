@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const event = eventRaw.toLowerCase().replace(/[.\-]/g, '_')
     const instanceName = body?.instance ?? body?.instanceName ?? null
 
-    if (!['messages_upsert', 'messages_delete', 'messages.delete'].includes(event)) {
+    if (!['messages_upsert', 'messages_delete', 'messages.delete', 'call'].includes(event)) {
       return NextResponse.json({ ok: true, skipped: `event=${eventRaw}` })
     }
 
@@ -62,6 +62,44 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ ok: true })
     }
+
+    // ── Evento de chamada (voz/vídeo perdida) ────────────────────────────────
+    // Pode chegar com event='call' ou event='messages_upsert' + messageStubType=40/75
+    // Tratamos aqui, antes de qualquer extracção de msg/key, pois o payload é diferente.
+    if (event === 'call') {
+      const callData = Array.isArray(body?.data) ? body.data[0] : (body?.data ?? body)
+      const isVideoCall = callData?.isVideo === true || callData?.video === true
+      const callText = isVideoCall ? '📹 Chamada de Vídeo Perdida' : '📞 Chamada de Voz Perdida'
+      const rawCallPhone = (callData?.from ?? callData?.caller ?? '')
+        .replace(/@.*/, '').replace(/\D/g, '')
+      const callPhone = rawCallPhone ? toCanonicalPhone(rawCallPhone) : null
+
+      if (callPhone) {
+        const { data: callOrgData } = await supabase
+          .from('organization_settings')
+          .select('tenant_id')
+          .eq('id', 'default')
+          .maybeSingle()
+        const callTenantId = callOrgData?.tenant_id ?? null
+        if (callTenantId) {
+          await supabase
+            .schema('contract_crm')
+            .from('contract_whatsapp_messages')
+            .insert({
+              phone: callPhone,
+              message: callText,
+              direction: 'recebido',
+              media_type: 'call',
+              triggered_automatically: false,
+              instance_name: instanceName,
+              tenant_id: callTenantId,
+              created_at: new Date().toISOString(),
+            })
+        }
+      }
+      return NextResponse.json({ ok: true, type: 'call-missed' })
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const msgData = Array.isArray(body?.data) ? body.data[0] : (body?.data ?? body)
     const key = msgData?.key ?? msgData?.message?.key
@@ -92,6 +130,48 @@ export async function POST(request: Request) {
     if (isReaction || isPollUpdate) {
       return NextResponse.json({ ok: true, skipped: 'reaction-or-poll-update' })
     }
+
+    // ── Chamadas perdidas via messageStubType (messages_upsert) ──────────────
+    // event='call' já foi tratado acima com early-return.
+    // Aqui cobrimos chamadas que chegam via messages_upsert com stub 40 (voz) ou 75 (vídeo).
+    const stubType: number | undefined = msgData?.messageStubType ?? body?.messageStubType
+    const isVideoCall = stubType === 75
+    const isCallEvent = stubType === 40 || stubType === 75
+
+    if (isCallEvent) {
+      // Registar chamada perdida como mensagem no chat e terminar imediatamente
+      // (não há msg/texto adicional a extrair — o stub É a mensagem)
+      const callText = isVideoCall
+        ? '📹 Chamada de Vídeo Perdida'
+        : '📞 Chamada de Voz Perdida'
+
+      // Resolve tenant_id igual ao fluxo normal de mensagens recebidas
+      const { data: callOrgData } = await supabase
+        .from('organization_settings')
+        .select('tenant_id')
+        .eq('id', 'default')
+        .maybeSingle()
+      const callTenantId = callOrgData?.tenant_id ?? null
+
+      if (callTenantId && phone) {
+        const { error: callErr } = await supabase
+          .schema('contract_crm')
+          .from('contract_whatsapp_messages')
+          .insert({
+            phone,
+            message:  callText,
+            direction: 'recebido',
+            media_type: 'call',
+            triggered_automatically: false,
+            instance_name: instanceName,
+            tenant_id: callTenantId,
+            created_at: new Date().toISOString(),
+          })
+        if (callErr) console.error('[evo-webhook] call insert error', callErr)
+      }
+      return NextResponse.json({ ok: true, type: 'call-missed' })
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     // Desempacota viewOnce (foto/vídeo que desaparece) — trata como mídia normal
     const viewOnceInner: Record<string, any> | null =
