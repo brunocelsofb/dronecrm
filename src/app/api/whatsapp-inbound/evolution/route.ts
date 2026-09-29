@@ -18,9 +18,6 @@ function toCanonicalPhone(rawPhone: string): string {
 }
 
 // ── Constrói a URL proxy interna para o browser buscar a mídia ────────────────
-// A Evolution API não devolve URLs públicas nos webhooks.
-// O browser chama /api/whatsapp/media?id=<messageId>&instance=<inst>
-// e esse endpoint busca o base64 da Evolution e devolve o binário.
 function buildMediaProxyUrl(messageId: string, instanceName: string | null): string {
   const params = new URLSearchParams({ id: messageId })
   if (instanceName) params.set('instance', instanceName)
@@ -103,10 +100,6 @@ export async function POST(request: Request) {
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
 
     // ── Detecção de tipo de mídia e construção da URL proxy ───────────────────
-    // A Evolution API não devolve URLs públicas nos webhooks — o campo .url
-    // é uma URL interna/expirada do servidor WhatsApp. A solução correcta é
-    // gravar o messageId e construir uma URL proxy /api/whatsapp/media?id=...
-    // que o browser chama em runtime para buscar o base64 da Evolution.
     let mediaUrl: string | null = null
     let mediaType: string | null = null
     let mediaFilename: string | null = null
@@ -120,7 +113,6 @@ export async function POST(request: Request) {
 
     if (msg?.imageMessage) {
       mediaType = 'image'
-      // Usa proxy interno — o messageId é suficiente para buscar na Evolution
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.audioMessage) {
       mediaType = 'audio'
@@ -145,10 +137,7 @@ export async function POST(request: Request) {
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     }
 
-    // Sticker é tratado como imagem no banco
     const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
-
-    // Texto final: caption, label friendly, ou "[Formato não suportado]"
     const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : '[Formato não suportado]')
 
     // ── Mensagens enviadas pelo próprio número (fromMe) ───────────────────────
@@ -237,6 +226,7 @@ export async function POST(request: Request) {
       const last8 = phone.length >= 8 ? phone.slice(-8) : phone
       const instKey = instanceName ?? ''
 
+      // ── Busca status da conversa ─────────────────────────────────────────────
       const { data: exactRows } = await supabase
         .from('whatsapp_conversation_status')
         .select('*')
@@ -259,6 +249,35 @@ export async function POST(request: Request) {
 
       const statusPhone: string = currentStatus?.phone ?? phone
       const statusInstance: string = currentStatus?.instance_name ?? instKey
+
+      // ── Busca configurações globais + verificação de bot por instância ────────
+      const { data: orgSettings } = await supabase
+        .from('organization_settings')
+        .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
+        .eq('id', 'default')
+        .maybeSingle()
+
+      // VERIFICAÇÃO: bot habilitado para esta instância específica?
+      // evo_instance_aliases é um objeto JSON { "instancia_a": { alias: "...", bot_enabled: true }, ... }
+      // Se a chave não existir no aliases, assume bot_enabled = true (comportamento padrão).
+      // Se existir mas bot_enabled === false, o bot fica mudo para esta instância.
+      const instanceAliases = (orgSettings?.evo_instance_aliases ?? {}) as Record<string, any>
+      const instanceConfig = instanceName ? instanceAliases[instanceName] : null
+      const botEnabledForInstance = instanceConfig
+        ? instanceConfig.bot_enabled !== false   // false explícito desliga; undefined/true liga
+        : true                                    // instâncias sem config seguem ligadas por padrão
+
+      if (!botEnabledForInstance) {
+        // Bot desligado para esta instância — só gravamos a mensagem, sem automação
+        return NextResponse.json({ ok: true, id: inserted?.id, bot: 'disabled_for_instance' })
+      }
+
+      // triage_enabled é o interruptor global (quando false, para tudo)
+      if (orgSettings?.triage_enabled === false) {
+        return NextResponse.json({ ok: true, id: inserted?.id })
+      }
+
+      const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
 
       // --- TRATAMENTO DE NPS PENDENTE ---
       if (currentStatus?.nps_pending) {
@@ -290,12 +309,6 @@ export async function POST(request: Request) {
 
       // ── REABERTURA AUTOMÁTICA DE CONVERSAS ARQUIVADAS ────────────────────────
       if (currentStatus?.is_archived === true) {
-        const { data: orgSettings } = await supabase
-          .from('organization_settings')
-          .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
-          .eq('id', 'default')
-          .maybeSingle()
-
         await supabase
           .from('whatsapp_conversation_assignments')
           .delete()
@@ -306,7 +319,6 @@ export async function POST(request: Request) {
         const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
         newProtocol = (protoData as string) ?? null
 
-        const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
         const newTriageState = menuOptions.length > 0 ? 'awaiting_selection' : 'active'
 
         await supabase
@@ -324,7 +336,7 @@ export async function POST(request: Request) {
           .eq('phone', statusPhone)
           .eq('instance_name', statusInstance)
 
-        if (orgSettings?.triage_enabled !== false && menuOptions.length > 0) {
+        if (menuOptions.length > 0) {
           await sendAndRecordTriageMenu(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, newProtocol, menuOptions)
         }
 
@@ -332,19 +344,12 @@ export async function POST(request: Request) {
       }
 
       // ── FLUXO NORMAL DE TRIAGEM ──────────────────────────────────────────────
-      const { data: orgSettings } = await supabase
-        .from('organization_settings')
-        .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
-        .eq('id', 'default')
-        .maybeSingle()
-
-      if (orgSettings?.triage_enabled === false) {
-        return NextResponse.json({ ok: true, id: inserted?.id })
-      }
-
-      const menuOptions = (orgSettings?.triage_menu_options ?? []) as Array<{ key: string; label: string; department: string }>
       const state: string = currentStatus?.triage_state ?? 'none'
 
+      // TRAVA ANTI-DUPLICAÇÃO DE PROTOCOLO:
+      // Se a conversa já está activa ou em triagem, não faz nada de automático.
+      // Só o estado 'none' (sem registo algum) ou ausência total de currentStatus
+      // permite gerar um novo protocolo e enviar o menu de boas-vindas.
       if (state === 'active') {
         return NextResponse.json({ ok: true, status: 'already_active' })
       }
@@ -379,7 +384,15 @@ export async function POST(request: Request) {
         }
       }
 
-      // Estado: none (primeiro contato)
+      // Estado: 'none' ou currentStatus === null — PRIMEIRO CONTACTO REAL
+      // Só chegamos aqui se não há registo na tabela OU o estado é literalmente 'none'.
+      // Qualquer outro valor de triage_state não reconhecido é tratado como 'active'
+      // para evitar disparar protocolos em estados desconhecidos.
+      if (state !== 'none' && currentStatus !== null) {
+        console.warn(`[evo-webhook] triage_state desconhecido '${state}' — tratado como active`)
+        return NextResponse.json({ ok: true, status: 'unknown_state_ignored' })
+      }
+
       let protocolNumber: string | null = null
       const { data: protoData } = await supabase.rpc('next_whatsapp_protocol', { p_tenant_id: tenantId })
       protocolNumber = (protoData as string) ?? null
