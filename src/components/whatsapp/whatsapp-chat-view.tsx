@@ -73,14 +73,42 @@ function DeliveryTick({ status, direction }: { status?: string | null; direction
   return <span className="ml-1 text-[10px] text-gray-400">✓</span>
 }
 
+// ─── NOVO: Função para formatar links ──────────────────────────────────
+function formatMessageWithLinks(text: string) {
+  if (!text) return null
+  // Regex para identificar URLs que começam com http ou https
+  const urlRegex = /(https?:\/\/[^\s]+)/g
+  const parts = text.split(urlRegex)
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-700 underline break-words"
+            >
+              {part}
+            </a>
+          )
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </>
+  )
+}
+// ────────────────────────────────────────────────────────────────────────
+
 function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
   mediaType?: string | null
   mediaUrl?: string | null
   mediaFilename?: string | null
   message: string
 }) {
-  // Oculta o label automático ("[Imagem]", "[Áudio]", etc.) abaixo da mídia.
-  // Só mostra texto se for uma caption real escrita pelo utilizador.
   const hasRealCaption = message && !MEDIA_PLACEHOLDER_LABELS.has(message)
 
   if (mediaType === 'image' && mediaUrl) {
@@ -93,7 +121,7 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
           loading="lazy"
         />
         {hasRealCaption && (
-          <span className="text-sm">{message}</span>
+          <span className="text-sm whitespace-pre-wrap break-words">{formatMessageWithLinks(message)}</span>
         )}
       </div>
     )
@@ -112,7 +140,7 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
           <source src={mediaUrl} />
         </video>
         {hasRealCaption && (
-          <span className="text-sm">{message}</span>
+          <span className="text-sm whitespace-pre-wrap break-words">{formatMessageWithLinks(message)}</span>
         )}
       </div>
     )
@@ -123,17 +151,16 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
         href={mediaUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 text-sm underline"
+        className="flex items-center gap-2 text-sm text-blue-600 hover:underline break-words"
       >
         <span>📎</span>
         <span>{mediaFilename ?? (hasRealCaption ? message : 'Documento')}</span>
       </a>
     ) : <span className="text-sm italic">{mediaFilename ?? message}</span>
   }
-  return <span className="text-sm whitespace-pre-wrap break-words">{message}</span>
+  return <span className="text-sm whitespace-pre-wrap break-words">{formatMessageWithLinks(message)}</span>
 }
 
-// Ícone de lixeira SVG minimalista
 function TrashIcon() {
   return (
     <svg
@@ -166,7 +193,6 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
     )
   }
 
-  // Agrupa mensagens por dia
   const grouped: { dateKey: string; dateLabel: string; messages: any[] }[] = []
   for (const msg of messages) {
     const dk = getDateKey(msg.created_at)
@@ -182,7 +208,6 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
     <div className="absolute inset-0 bg-[#E5DDD5] overflow-y-auto p-4 space-y-3">
       {grouped.map((group) => (
         <div key={group.dateKey}>
-          {/* Separador de data */}
           <div className="flex items-center justify-center my-3">
             <span className="bg-[#e1f3fb] text-[#54656f] text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
               {group.dateLabel}
@@ -207,7 +232,6 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
                     }
                   `}
                 >
-                  {/* Indicador de bot */}
                   {isBot && (
                     <div className="mb-1 flex items-center gap-1">
                       <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
@@ -216,7 +240,6 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
                     </div>
                   )}
 
-                  {/* Conteúdo da mensagem */}
                   <MediaContent
                     mediaType={msg.media_type}
                     mediaUrl={msg.media_url}
@@ -224,14 +247,12 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
                     message={msg.message}
                   />
 
-                  {/* Footer: hora + ticks + botão deletar */}
                   <div className="mt-1 flex items-center justify-end gap-1">
                     <span className="text-[10px] text-gray-400">
                       {formatTime(msg.created_at)}
                     </span>
                     <DeliveryTick status={msg.status} direction={msg.direction} />
 
-                    {/* Botão lixeira — aparece discretamente ao passar o rato */}
                     {onDeleteMessage && (
                       <button
                         onClick={() => onDeleteMessage(msg.id)}
