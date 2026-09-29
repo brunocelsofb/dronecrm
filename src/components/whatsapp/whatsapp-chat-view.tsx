@@ -31,6 +31,57 @@ const MEDIA_PLACEHOLDER_LABELS = new Set([
   '[Imagem]', '[Áudio]', '[Vídeo]', '[Documento]', '[Figurinha]',
 ])
 
+// ─── Contact Card ─────────────────────────────────────────────────────────────
+// Parseado a partir de: "[Contato] Nome | telefone"  ou  "[Contato] Nome"
+// Suporta múltiplos contactos separados por "; "
+function parseContactEntries(message: string): Array<{ name: string; phone: string | null }> {
+  // Remove o prefixo "[Contato] " ou "[Contatos] "
+  const body = message.replace(/^\[Contatos?\]\s*/i, '')
+  return body.split(';').map(entry => {
+    const [namePart, phonePart] = entry.split('|').map(s => s.trim())
+    return { name: namePart || 'Contato', phone: phonePart ?? null }
+  })
+}
+
+function ContactCard({ message, isSent }: { message: string; isSent: boolean }) {
+  const entries = parseContactEntries(message)
+
+  return (
+    <div className="flex flex-col gap-2 min-w-[200px]">
+      {entries.map((entry, idx) => (
+        <div
+          key={idx}
+          className={`
+            flex items-center gap-3 rounded-xl px-3 py-2.5
+            ${isSent ? 'bg-[#c5e8a8]' : 'bg-gray-50'}
+            border ${isSent ? 'border-[#b0d890]' : 'border-gray-200'}
+          `}
+        >
+          {/* Avatar */}
+          <div className="shrink-0 w-10 h-10 rounded-full bg-[#1B556B] flex items-center justify-center shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+              <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
+            </svg>
+          </div>
+
+          {/* Info */}
+          <div className="flex flex-col min-w-0">
+            <span className="text-sm font-semibold text-gray-900 leading-tight truncate">
+              {entry.name}
+            </span>
+            {entry.phone && (
+              <span className="text-xs text-gray-500 font-mono mt-0.5">
+                +{entry.phone}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function formatTime(dateStr: string) {
   try {
     return new Date(dateStr).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -103,13 +154,20 @@ function formatMessageWithLinks(text: string) {
 }
 // ────────────────────────────────────────────────────────────────────────
 
-function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
+function MediaContent({ mediaType, mediaUrl, mediaFilename, message, isSent }: {
   mediaType?: string | null
   mediaUrl?: string | null
   mediaFilename?: string | null
   message: string
+  isSent: boolean
 }) {
   const hasRealCaption = message && !MEDIA_PLACEHOLDER_LABELS.has(message)
+
+  // ── Contact Card ─────────────────────────────────────────────────────────
+  if (mediaType === 'contact') {
+    return <ContactCard message={message} isSent={isSent} />
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (mediaType === 'image' && mediaUrl) {
     return (
@@ -245,6 +303,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
                     mediaUrl={msg.media_url}
                     mediaFilename={msg.media_filename}
                     message={msg.message}
+                    isSent={isSent}
                   />
 
                   <div className="mt-1 flex items-center justify-end gap-1">
