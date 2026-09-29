@@ -84,15 +84,82 @@ export async function POST(request: Request) {
     // (foi necessário para garantir que o schema está correcto e para poder
     //  persistir mensagens onde messageId é null — envios via CRM/web)
 
-    // ── Extracção de texto (caption incluso) ──────────────────────────────────
-    const text =
+    // ── Extracção de texto (todos os formatos conhecidos da Evolution/Baileys) ──
+
+    // Eventos de sistema a ignorar silenciosamente (não geram registo no chat)
+    const isReaction   = !!(msg?.reactionMessage)
+    const isPollUpdate = !!(msg?.pollUpdateMessage)
+    if (isReaction || isPollUpdate) {
+      return NextResponse.json({ ok: true, skipped: 'reaction-or-poll-update' })
+    }
+
+    // Desempacota viewOnce (foto/vídeo que desaparece) — trata como mídia normal
+    const viewOnceInner: Record<string, any> | null =
+      msg?.viewOnceMessage?.message ??
+      msg?.viewOnceMessageV2?.message?.viewOnceMessage?.message ??
+      null
+
+    // Texto puro + legendas de mídia (prioridade descendente)
+    const text: string | null =
       msg?.conversation ??
       msg?.extendedTextMessage?.text ??
       msg?.imageMessage?.caption ??
       msg?.videoMessage?.caption ??
+      viewOnceInner?.imageMessage?.caption ??
+      viewOnceInner?.videoMessage?.caption ??
       msg?.documentMessage?.caption ??
       msg?.documentWithCaptionMessage?.message?.documentMessage?.caption ??
+      msg?.documentMessage?.title ??
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
+
+    // Contacto(s) — extrai nome do vCard (linha FN:) ou displayName
+    let contactLabel: string | null = null
+    if (msg?.contactMessage) {
+      const vcard: string = msg.contactMessage.vcard ?? ''
+      const fn = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
+      contactLabel = `[Contato] ${fn || msg.contactMessage.displayName || 'Contato'}`
+    } else if (msg?.contactsArrayMessage) {
+      const names = (msg.contactsArrayMessage.contacts ?? []).map((c: any) => {
+        const fn = (c.vcard ?? '').match(/^FN:(.+)$/m)?.[1]?.trim()
+        return fn || c.displayName || 'Contato'
+      }).filter(Boolean)
+      contactLabel = `[Contatos] ${names.join(', ') || 'Contatos'}`
+    }
+
+    // Localização
+    let locationLabel: string | null = null
+    if (msg?.locationMessage) {
+      const loc = msg.locationMessage
+      locationLabel = loc.name || loc.address
+        ? `[Localização] ${loc.name || loc.address}`
+        : '[Localização]'
+    } else if (msg?.liveLocationMessage) {
+      locationLabel = msg.liveLocationMessage.caption
+        ? `[Localização ao vivo] ${msg.liveLocationMessage.caption}`
+        : '[Localização ao vivo]'
+    }
+
+    // Enquetes
+    let pollLabel: string | null = null
+    const pollMsg = msg?.pollCreationMessage ?? msg?.pollCreationMessageV3 ?? null
+    if (pollMsg) {
+      const name = pollMsg.name ?? 'Enquete'
+      const opts = (pollMsg.options ?? []).map((o: any) => o.optionName).filter(Boolean)
+      pollLabel = opts.length > 0 ? `[Enquete] ${name}: ${opts.join(' / ')}` : `[Enquete] ${name}`
+    }
+
+    // Respostas a botões e listas
+    let buttonLabel: string | null = null
+    if (msg?.templateButtonReplyMessage) {
+      const sel = msg.templateButtonReplyMessage.selectedDisplayText ?? msg.templateButtonReplyMessage.selectedId ?? 'Botão'
+      buttonLabel = `[Resposta] ${sel}`
+    } else if (msg?.buttonsResponseMessage) {
+      const sel = msg.buttonsResponseMessage.selectedDisplayText ?? msg.buttonsResponseMessage.selectedButtonId ?? 'Botão'
+      buttonLabel = `[Resposta] ${sel}`
+    } else if (msg?.listResponseMessage) {
+      const sel = msg.listResponseMessage.title ?? msg.listResponseMessage.singleSelectReply?.selectedRowId ?? 'Opção'
+      buttonLabel = `[Resposta de lista] ${sel}`
+    }
 
     // ── Detecção de tipo de mídia e construção da URL proxy ───────────────────
     let mediaUrl: string | null = null
@@ -106,7 +173,7 @@ export async function POST(request: Request) {
       system: '[Aviso do Sistema]',
     }
 
-    if (msg?.imageMessage) {
+    if (msg?.imageMessage || viewOnceInner?.imageMessage) {
       mediaType = 'image'
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.audioMessage) {
@@ -115,7 +182,7 @@ export async function POST(request: Request) {
     } else if (msg?.voiceMessage) {
       mediaType = 'audio'
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
-    } else if (msg?.videoMessage) {
+    } else if (msg?.videoMessage || viewOnceInner?.videoMessage) {
       mediaType = 'video'
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     } else if (msg?.documentMessage) {
@@ -133,7 +200,17 @@ export async function POST(request: Request) {
     }
 
     const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
-    const finalText = text ?? (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : '[Formato não suportado]')
+
+    // Texto final consolidado — nunca cai em '[Formato não suportado]' para tipos conhecidos
+    const finalText: string =
+      text ??
+      contactLabel ??
+      locationLabel ??
+      pollLabel ??
+      buttonLabel ??
+      (mediaType ? (FRIENDLY[mediaType] ?? `[${mediaType}]`) : null) ??
+      (msg?.stickerMessage ? '🎨' : null) ??
+      '[Formato não suportado]'
 
     // ── Mensagens enviadas pelo próprio número (fromMe) ───────────────────────
     if (isFromMe) {
