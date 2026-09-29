@@ -53,7 +53,8 @@ export function WhatsAppSidebar({
   }
 
   return (
-    <div className="flex h-full w-80 flex-col border-r border-gray-200 bg-white">
+    // w-full em vez de w-80 — a largura é imposta pela coluna do Grid no client-shell
+    <div className="flex h-full w-full flex-col bg-white">
       {/* Abas Em Aberto / Arquivados */}
       <div className="flex border-b border-gray-200">
         <button
@@ -136,12 +137,12 @@ export function WhatsAppSidebar({
                 isSelected ? 'bg-brand-50/60' : ''
               }`}
             >
-              <div className="flex items-center justify-between">
-                <p className={`text-xs font-semibold truncate max-w-[140px] ${isArchived ? 'text-gray-500' : 'text-gray-900'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className={`text-xs font-semibold truncate min-w-0 ${isArchived ? 'text-gray-500' : 'text-gray-900'}`}>
                   {isArchived && <span className="mr-1 text-gray-400">🔒</span>}
                   {displayName}
                 </p>
-                <span className="text-[10px] text-gray-400">{lastTime}</span>
+                <span className="text-[10px] text-gray-400 shrink-0">{lastTime}</span>
               </div>
 
               <p className="mt-0.5 text-xs text-gray-500 truncate">
