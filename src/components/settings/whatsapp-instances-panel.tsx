@@ -1,326 +1,319 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { WhatsAppBotInstanceSettings } from '@/components/settings/whatsapp-bot-instance-settings'
+import { useState, useCallback, useEffect } from 'react'
+import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 
-type Instance = {
-  name: string
-  connectionStatus: string
-  ownerJid?: string
-  profileName?: string
-  profilePicUrl?: string
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+
+interface InstanceConfig {
+  label?: string
+  bot_enabled?: boolean
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const isOpen = status === 'open'
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-      isOpen ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
-    }`}>
-      <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-green-500' : 'bg-red-500'}`} />
-      {isOpen ? 'Conectado' : status === 'connecting' ? 'Conectando...' : 'Desconectado'}
-    </span>
-  )
+interface WhatsAppInstance {
+  name: string            // chave interna (ex: "drone_whatsapp_v4")
+  label: string           // nome de exibição (ex: "Bruno Barbosa")
+  status: 'open' | 'close' | 'connecting' | string
+  bot_enabled: boolean
 }
 
-function AliasEditor({ instanceName, currentAlias, currentClosingMessage, onSave }: {
-  instanceName: string
-  currentAlias: string
-  currentClosingMessage?: string
-  onSave: (alias: string, closingMessage: string) => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(currentAlias)
-  const [closing, setClosing] = useState(currentClosingMessage ?? '')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
-    setSaving(true)
-    await fetch('/api/settings/evo-aliases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName, alias: value, closingMessage: closing }),
-    })
-    setSaving(false)
-    setEditing(false)
-    onSave(value, closing)
-  }
-
-  if (editing) return (
-    <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
-      <div className="flex gap-1.5 items-center">
-        <input value={value} onChange={e => setValue(e.target.value)}
-          placeholder="Nome de exibição (ex: Bruno)"
-          className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-[#1B556B] focus:outline-none" />
-      </div>
-      <textarea value={closing} onChange={e => setClosing(e.target.value)} rows={2}
-        placeholder="Mensagem de finalização (deixe vazio para usar o padrão)"
-        className="w-full rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 focus:outline-none resize-none" />
-      <div className="flex gap-1.5">
-        <button onClick={handleSave} disabled={saving}
-          className="rounded bg-[#1B556B] px-2 py-1 text-xs text-white disabled:opacity-50">
-          {saving ? '...' : 'Salvar'}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-gray-400 text-xs">Cancelar</button>
-      </div>
-    </div>
-  )
-
-  return (
-    <button onClick={() => setEditing(true)}
-      className="text-xs text-gray-400 hover:text-[#1B556B] hover:underline">
-      {currentAlias ? `✏️ ${currentAlias}` : '+ Adicionar nome'}
-      {currentClosingMessage && ' · mensagem personalizada'}
-    </button>
-  )
+interface Props {
+  // evo_instance_aliases de organization_settings — suporta string pura (legado) e objeto (novo)
+  instanceAliases: Record<string, InstanceConfig | string>
 }
 
-function ClosingMessageEditor({ instanceName, currentMessage, currentAlias, onSave }: {
-  instanceName: string
-  currentMessage: string
-  currentAlias: string
-  onSave: (msg: string) => void
-}) {
-  const [value, setValue] = useState(currentMessage)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  async function handleSave() {
-    setSaving(true)
-    await fetch('/api/settings/evo-aliases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName, alias: currentAlias, closingMessage: value }),
-    })
-    setSaving(false); setSaved(true)
-    onSave(value)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  return (
-    <div className="mt-2 space-y-1">
-      <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-        Mensagem de Encerramento
-      </label>
-      <textarea
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        rows={2}
-        placeholder="Ex: Atendimento finalizado! Se precisar, é só chamar. 😊 (deixe vazio para usar o texto padrão)"
-        className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs text-gray-700 focus:border-[#1B556B] focus:outline-none resize-none"
-      />
-      <button onClick={handleSave} disabled={saving}
-        className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-        {saving ? 'Salvando...' : saved ? '✓ Salvo' : 'Salvar mensagem'}
-      </button>
-    </div>
-  )
-}
-
-export function WhatsAppInstancesPanel() {
-  const [instances, setInstances] = useState<Instance[]>([])
-  const [aliases, setAliases] = useState<Record<string, { label: string; closingMessage?: string }>>({})
-  const [loading, setLoading] = useState(true)
-  const [newName, setNewName] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [qrMap, setQrMap] = useState<Record<string, string>>({})
-  const [loadingQr, setLoadingQr] = useState<string | null>(null)
-  const [restartingInstance, setRestartingInstance] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    const [instRes, aliasRes] = await Promise.all([
-      fetch('/api/settings/evo-instances'),
-      fetch('/api/settings/evo-aliases'),
-    ])
-    const instData = await instRes.json()
-    const aliasData = await aliasRes.json()
-    setInstances((instData.instances ?? []).map((i: any) => ({
-      name: i.name ?? i.instance?.instanceName ?? i.instanceName,
-      connectionStatus: i.connectionStatus ?? i.instance?.state ?? 'close',
-      ownerJid: i.ownerJid ?? i.instance?.ownerJid,
-      profileName: i.instance?.profileName,
-      profilePicUrl: i.instance?.profilePicUrl,
-    })).filter((i: Instance) => i.name))
-    setAliases(aliasData.aliases ?? {})
-    setLoading(false)
-  }, [])
-
-  useEffect(() => { fetchAll() }, [fetchAll])
-
-  const displayName = (name: string) => aliases[name]?.label || name
-
-  async function handleCreate() {
-    if (!newName.trim()) return
-    setCreating(true); setError(null)
-    const res = await fetch('/api/settings/evo-instances', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName: newName.trim() }),
-    })
-    const data = await res.json()
-    setCreating(false)
-    if (!res.ok) { setError(data.error ?? 'Erro ao criar instância'); return }
-    setNewName('')
-    await fetchAll()
-  }
-
-  async function handleDelete(instanceName: string) {
-    if (!confirm(`Excluir a instância "${instanceName}"?`)) return
-    await fetch('/api/settings/evo-instances', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName }),
-    })
-    setQrMap(prev => { const n = { ...prev }; delete n[instanceName]; return n })
-    await fetchAll()
-  }
-
-  async function handleGetQr(instanceName: string) {
-    setLoadingQr(instanceName)
-    setQrMap(prev => { const n = { ...prev }; delete n[instanceName]; return n })
-    const res = await fetch('/api/settings/evo-instances', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName }),
-    })
-    const data = await res.json()
-    setLoadingQr(null)
-    if (data.qr) setQrMap(prev => ({ ...prev, [instanceName]: data.qr }))
-    else setError('QR Code não disponível. Tente novamente.')
-  }
-
-  async function handleRestart(instanceName: string) {
-    setRestartingInstance(instanceName)
-    setError(null)
-    const res = await fetch('/api/settings/evo-instances', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName }),
-    })
-    setRestartingInstance(null)
-    if (!res.ok) {
-      setError(`Erro ao reiniciar "${instanceName}". Tente novamente.`)
+function normalizeAliases(
+  aliases: Record<string, InstanceConfig | string>
+): Record<string, InstanceConfig> {
+  const out: Record<string, InstanceConfig> = {}
+  for (const [key, val] of Object.entries(aliases)) {
+    if (typeof val === 'string') {
+      out[key] = { label: val, bot_enabled: true }
     } else {
-      await fetchAll()
+      out[key] = {
+        label: val.label ?? key,
+        bot_enabled: val.bot_enabled !== false,
+      }
     }
   }
+  return out
+}
+
+// ─── Componente principal ────────────────────────────────────────────────────
+
+export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
+  const normalized = normalizeAliases(instanceAliases ?? {})
+
+  // Estado local de instâncias (inclui bot_enabled para optimistic UI)
+  const [instances, setInstances] = useState<Record<string, InstanceConfig>>(normalized)
+
+  // Status de conexão por instância (buscado da Evolution API via rota interna)
+  const [connectionStatus, setConnectionStatus] = useState<Record<string, string>>({})
+  const [loadingStatus, setLoadingStatus] = useState<Record<string, boolean>>({})
+
+  // Estado do toggle de bot por instância
+  const [botSaving, setBotSaving] = useState<Record<string, boolean>>({})
+  const [botErrors, setBotErrors] = useState<Record<string, string>>({})
+
+  // ── Busca status de conexão ao montar ───────────────────────────────────
+  useEffect(() => {
+    const keys = Object.keys(instances)
+    if (keys.length === 0) return
+
+    // Marca todos como carregando
+    setLoadingStatus(Object.fromEntries(keys.map(k => [k, true])))
+
+    keys.forEach(async (instanceName) => {
+      try {
+        const res = await fetch(
+          `/api/whatsapp/instance-status?instance=${encodeURIComponent(instanceName)}`
+        )
+        const data = await res.json()
+        setConnectionStatus(prev => ({
+          ...prev,
+          [instanceName]: data?.status ?? 'unknown',
+        }))
+      } catch {
+        setConnectionStatus(prev => ({ ...prev, [instanceName]: 'error' }))
+      } finally {
+        setLoadingStatus(prev => ({ ...prev, [instanceName]: false }))
+      }
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Toggle de bot por instância ─────────────────────────────────────────
+  const toggleBot = useCallback(async (instanceKey: string, newValue: boolean) => {
+    const previous = instances[instanceKey]?.bot_enabled
+
+    // Optimistic update
+    setInstances(prev => ({
+      ...prev,
+      [instanceKey]: { ...prev[instanceKey], bot_enabled: newValue },
+    }))
+    setBotSaving(prev => ({ ...prev, [instanceKey]: true }))
+    setBotErrors(prev => ({ ...prev, [instanceKey]: '' }))
+
+    try {
+      const res = await fetch('/api/settings/whatsapp-instance', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey, bot_enabled: newValue }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error ?? `HTTP ${res.status}`)
+      }
+    } catch (err: any) {
+      // Reverte
+      setInstances(prev => ({
+        ...prev,
+        [instanceKey]: { ...prev[instanceKey], bot_enabled: previous },
+      }))
+      setBotErrors(prev => ({
+        ...prev,
+        [instanceKey]: err?.message ?? 'Erro ao salvar',
+      }))
+    } finally {
+      setBotSaving(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [instances])
+
+  // ── Reiniciar conexão ────────────────────────────────────────────────────
+  const [restarting, setRestarting] = useState<Record<string, boolean>>({})
+
+  const restartInstance = useCallback(async (instanceKey: string) => {
+    setRestarting(prev => ({ ...prev, [instanceKey]: true }))
+    setConnectionStatus(prev => ({ ...prev, [instanceKey]: 'connecting' }))
+    try {
+      const res = await fetch('/api/whatsapp/restart-instance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      // Aguarda um momento e re-busca o status
+      await new Promise(r => setTimeout(r, 3000))
+      const statusRes = await fetch(
+        `/api/whatsapp/instance-status?instance=${encodeURIComponent(instanceKey)}`
+      )
+      const data = await statusRes.json()
+      setConnectionStatus(prev => ({ ...prev, [instanceKey]: data?.status ?? 'unknown' }))
+    } catch {
+      setConnectionStatus(prev => ({ ...prev, [instanceKey]: 'error' }))
+    } finally {
+      setRestarting(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [])
+
+  const instanceKeys = Object.keys(instances)
+
+  if (instanceKeys.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-200 py-10 text-center">
+        <p className="text-sm text-gray-400">Nenhuma instância configurada.</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-sm font-semibold text-[#1B556B]">Instâncias conectadas</h3>
-        <div className="flex gap-2">
-          <button onClick={async () => {
-            const res = await fetch('/api/settings/evo-instances?action=sync-webhooks')
-            const data = await res.json()
-            const synced = data.synced?.filter((r: any) => r.ok).length ?? 0
-            alert(`✅ Webhooks sincronizados em ${synced} instância(s).`)
-          }} className="rounded-md border border-[#1B556B] px-3 py-1 text-xs font-medium text-[#1B556B] hover:bg-[#1B556B]/5">
-            🔗 Sincronizar Webhooks
-          </button>
-          <button onClick={fetchAll} className="text-xs text-gray-400 hover:text-gray-600">↻ Atualizar</button>
-        </div>
-      </div>
+    <div className="space-y-3">
+      {instanceKeys.map((key) => {
+        const config = instances[key]
+        const label = config.label ?? key
+        const isConnected = connectionStatus[key] === 'open'
+        const isConnecting =
+          connectionStatus[key] === 'connecting' ||
+          loadingStatus[key] === true ||
+          restarting[key] === true
+        const status = connectionStatus[key]
+        const botEnabled = config.bot_enabled !== false
+        const isBotSaving = botSaving[key] === true
+        const botError = botErrors[key]
 
-      {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-      {loading ? (
-        <p className="text-sm text-gray-400 text-center py-6">Carregando instâncias...</p>
-      ) : instances.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
-          <p className="text-sm text-gray-400">Nenhuma instância configurada ainda.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {instances.map(inst => (
-            <div key={inst.name} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  {inst.profilePicUrl && (
-                    <img src={inst.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
-                  )}
-                  <div>
-                    <p className="text-sm font-semibold text-[#1B556B]">{displayName(inst.name)}</p>
-                    <p className="text-[10px] font-mono text-gray-300">{inst.name}</p>
-                    {inst.ownerJid && (
-                      <p className="text-xs text-gray-400">{inst.ownerJid.replace('@s.whatsapp.net', '')}</p>
-                    )}
-                  </div>
-                </div>
-                <StatusBadge status={inst.connectionStatus} />
+        return (
+          <div
+            key={key}
+            className="group flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm transition-shadow hover:shadow-md"
+          >
+            {/* Linha superior: info da instância + status de conexão */}
+            <div className="flex items-center justify-between gap-4">
+              {/* Info */}
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-sm font-semibold text-gray-900">
+                  {label}
+                </span>
+                <span className="truncate font-mono text-[11px] text-gray-400">
+                  {key}
+                </span>
               </div>
 
-              <AliasEditor
-                instanceName={inst.name}
-                currentAlias={aliases[inst.name]?.label ?? ''}
-                currentClosingMessage={aliases[inst.name]?.closingMessage}
-                onSave={(alias, closingMessage) => setAliases(prev => ({
-                  ...prev,
-                  [inst.name]: { label: alias, closingMessage: closingMessage || undefined }
-                }))}
-              />
-              <ClosingMessageEditor
-                instanceName={inst.name}
-                currentMessage={aliases[inst.name]?.closingMessage ?? ''}
-                currentAlias={aliases[inst.name]?.label ?? inst.name}
-                onSave={(msg) => setAliases(prev => ({
-                  ...prev,
-                  [inst.name]: { ...(prev[inst.name] ?? { label: inst.name }), closingMessage: msg || undefined }
-                }))}
-              />
-
-              <div className="flex gap-2 flex-wrap">
-                {inst.connectionStatus !== 'open' && (
-                  <button onClick={() => handleGetQr(inst.name)} disabled={loadingQr === inst.name}
-                    className="rounded-md bg-[#1B556B] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#164659] disabled:opacity-50">
-                    {loadingQr === inst.name ? 'Gerando QR...' : '📱 Conectar'}
-                  </button>
+              {/* Status de conexão + botão reiniciar */}
+              <div className="flex shrink-0 items-center gap-2">
+                {/* Badge de status */}
+                {isConnecting ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Conectando…
+                  </span>
+                ) : isConnected ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700">
+                    <Wifi className="h-3 w-3" />
+                    Conectado
+                  </span>
+                ) : status === 'error' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-600">
+                    <AlertCircle className="h-3 w-3" />
+                    Erro
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">
+                    <WifiOff className="h-3 w-3" />
+                    {status === 'close' ? 'Desconectado' : status ?? 'Desconhecido'}
+                  </span>
                 )}
-                <button onClick={() => handleRestart(inst.name)} disabled={restartingInstance === inst.name}
-                  className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50">
-                  {restartingInstance === inst.name ? 'Reiniciando...' : '🔄 Reiniciar Conexão'}
-                </button>
-                <button onClick={() => handleDelete(inst.name)}
-                  className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">
-                  🗑 Excluir
+
+                {/* Botão reiniciar */}
+                <button
+                  onClick={() => restartInstance(key)}
+                  disabled={isConnecting}
+                  title="Reiniciar instância"
+                  className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${restarting[key] ? 'animate-spin' : ''}`}
+                  />
                 </button>
               </div>
-
-              {qrMap[inst.name] && (
-                <div className="text-center space-y-2">
-                  <p className="text-xs text-gray-500">Escaneie com o WhatsApp</p>
-                  <img src={qrMap[inst.name]} alt="QR Code" className="mx-auto max-w-[200px] rounded-lg border" />
-                </div>
-              )}
             </div>
-          ))}
-        </div>
-      )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-        <p className="text-sm font-semibold text-[#1B556B]">Adicionar nova instância</p>
-        <div className="flex gap-2">
-          <input value={newName} onChange={e => setNewName(e.target.value)}
-            placeholder="Ex: drone_comercial_v2"
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none" />
-          <button onClick={handleCreate} disabled={creating || !newName.trim()}
-            className="rounded-lg bg-[#1B556B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#164659] disabled:opacity-50">
-            {creating ? 'Criando...' : '+ Criar'}
-          </button>
-        </div>
-        <p className="text-xs text-gray-400">O webhook será registrado automaticamente na nova instância.</p>
-      </div>
+            {/* Divisor */}
+            <div className="h-px bg-gray-100" />
 
-      {/* BLOCO NOVO ADICIONADO AQUI: Bot por Instância */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm mt-6">
-        <h3 className="text-sm font-semibold text-[#1B556B] mb-3">
-          🤖 Ativação do Bot por Instância
-        </h3>
-        <WhatsAppBotInstanceSettings instanceAliases={aliases} />
-      </div>
+            {/* Linha inferior: toggle do bot */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium text-gray-700">
+                  Bot de triagem
+                </span>
+                {botError && (
+                  <span className="text-[11px] text-red-500">⚠ {botError}</span>
+                )}
+              </div>
 
+              <div className="flex shrink-0 items-center gap-2.5">
+                {/* Badge de estado do bot */}
+                <span
+                  className={`
+                    hidden sm:inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-all duration-200
+                    ${botEnabled
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-gray-100 text-gray-500'}
+                  `}
+                >
+                  <span
+                    className={`
+                      inline-block h-1.5 w-1.5 rounded-full
+                      ${botEnabled ? 'animate-pulse bg-emerald-500' : 'bg-gray-400'}
+                    `}
+                  />
+                  {botEnabled ? 'Bot ativo' : 'Bot inativo'}
+                </span>
+
+                {/* Switch */}
+                <button
+                  role="switch"
+                  aria-checked={botEnabled}
+                  aria-label={`${botEnabled ? 'Desativar' : 'Ativar'} bot para ${label}`}
+                  disabled={isBotSaving}
+                  onClick={() => toggleBot(key, !botEnabled)}
+                  className={`
+                    relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full
+                    border-2 border-transparent transition-colors duration-200 ease-in-out
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B556B] focus-visible:ring-offset-2
+                    disabled:cursor-not-allowed disabled:opacity-60
+                    ${botEnabled ? 'bg-[#1B556B]' : 'bg-gray-200'}
+                  `}
+                >
+                  <span
+                    className={`
+                      pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md
+                      ring-0 transition-all duration-200 ease-in-out
+                      ${botEnabled ? 'translate-x-5' : 'translate-x-0'}
+                      ${isBotSaving ? 'opacity-60' : ''}
+                    `}
+                  />
+                  {isBotSaving && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <svg
+                        className="h-3 w-3 animate-spin text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
