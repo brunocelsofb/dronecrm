@@ -163,9 +163,25 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message, isSent }: {
 }) {
   const hasRealCaption = message && !MEDIA_PLACEHOLDER_LABELS.has(message)
 
-  // ── Contact Card ─────────────────────────────────────────────────────────
-  if (mediaType === 'contact') {
+  // ── Contact Card — também cobre mensagens antigas sem media_type ─────────
+  const isContact =
+    mediaType === 'contact' ||
+    message?.startsWith('[Contato]') ||
+    message?.startsWith('[Contatos]')
+  if (isContact) {
     return <ContactCard message={message} isSent={isSent} />
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── Chamada perdida ───────────────────────────────────────────────────────
+  if (mediaType === 'call') {
+    const isVideo = message?.includes('Vídeo') || message?.includes('video')
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-600">
+        <span className="text-base">{isVideo ? '📹' : '📞'}</span>
+        <span className="italic">{message}</span>
+      </div>
+    )
   }
   // ─────────────────────────────────────────────────────────────────────────
 
