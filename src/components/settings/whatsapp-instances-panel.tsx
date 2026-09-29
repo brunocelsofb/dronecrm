@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { WhatsAppBotInstanceSettings } from '@/components/settings/whatsapp-bot-instance-settings'
 
 type Instance = {
   name: string
@@ -311,6 +312,15 @@ export function WhatsAppInstancesPanel() {
         </div>
         <p className="text-xs text-gray-400">O webhook será registrado automaticamente na nova instância.</p>
       </div>
+
+      {/* BLOCO NOVO ADICIONADO AQUI: Bot por Instância */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm mt-6">
+        <h3 className="text-sm font-semibold text-[#1B556B] mb-3">
+          🤖 Ativação do Bot por Instância
+        </h3>
+        <WhatsAppBotInstanceSettings instanceAliases={aliases} />
+      </div>
+
     </div>
   )
 }
