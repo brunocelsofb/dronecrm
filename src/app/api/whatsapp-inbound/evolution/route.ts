@@ -112,18 +112,27 @@ export async function POST(request: Request) {
       msg?.documentMessage?.title ??
       msgData?.body ?? msgData?.text ?? msgData?.content ?? null
 
-    // Contacto(s) — extrai nome do vCard (linha FN:) ou displayName
+    // Contacto(s) — extrai nome e telefone do vCard para renderização no frontend
+    // Formato do message salvo: "[Contato] Nome | +5511999999999"
+    // O frontend detecta media_type === 'contact' e renderiza o ContactCard.
     let contactLabel: string | null = null
     if (msg?.contactMessage) {
       const vcard: string = msg.contactMessage.vcard ?? ''
-      const fn = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
-      contactLabel = `[Contato] ${fn || msg.contactMessage.displayName || 'Contato'}`
+      const fn  = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
+      const tel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]?.trim().replace(/\D/g, '')
+      const name = fn || msg.contactMessage.displayName || 'Contato'
+      contactLabel = tel ? `[Contato] ${name} | ${tel}` : `[Contato] ${name}`
+      mediaType = 'contact'
     } else if (msg?.contactsArrayMessage) {
-      const names = (msg.contactsArrayMessage.contacts ?? []).map((c: any) => {
-        const fn = (c.vcard ?? '').match(/^FN:(.+)$/m)?.[1]?.trim()
-        return fn || c.displayName || 'Contato'
+      const parts = (msg.contactsArrayMessage.contacts ?? []).map((c: any) => {
+        const vcard: string = c.vcard ?? ''
+        const fn  = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
+        const tel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]?.trim().replace(/\D/g, '')
+        const name = fn || c.displayName || 'Contato'
+        return tel ? `${name} | ${tel}` : name
       }).filter(Boolean)
-      contactLabel = `[Contatos] ${names.join(', ') || 'Contatos'}`
+      contactLabel = `[Contato] ${parts.join('; ')}`
+      mediaType = 'contact'
     }
 
     // Localização
