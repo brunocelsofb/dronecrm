@@ -179,8 +179,15 @@ export async function POST(request: Request) {
       msg?.viewOnceMessageV2?.message?.viewOnceMessage?.message ??
       null
 
+    // Mensagens editadas (protocolMessage type 14 — editedMessage)
+    const editedMsg = msg?.protocolMessage?.editedMessage?.message
+    const editedText: string | null = editedMsg
+      ? (editedMsg.conversation ?? editedMsg.extendedTextMessage?.text ?? null)
+      : null
+
     // Texto puro + legendas de mídia (prioridade descendente)
     const text: string | null =
+      (editedText ? `✏️ [Editada] ${editedText}` : null) ??
       msg?.conversation ??
       msg?.extendedTextMessage?.text ??
       msg?.imageMessage?.caption ??
@@ -201,17 +208,19 @@ export async function POST(request: Request) {
     let contactLabel: string | null = null
     if (msg?.contactMessage) {
       const vcard: string = msg.contactMessage.vcard ?? ''
-      const fn  = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
-      const tel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]?.trim().replace(/\D/g, '')
-      const name = fn || msg.contactMessage.displayName || 'Contato'
+      const fn     = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
+      const rawTel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]
+      const tel    = rawTel ? rawTel.trim().replace(/\D/g, '') : null
+      const name   = fn || msg.contactMessage.displayName || 'Contato'
       contactLabel = tel ? `[Contato] ${name} | ${tel}` : `[Contato] ${name}`
       mediaType = 'contact'
     } else if (msg?.contactsArrayMessage) {
       const parts = (msg.contactsArrayMessage.contacts ?? []).map((c: any) => {
         const vcard: string = c.vcard ?? ''
-        const fn  = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
-        const tel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]?.trim().replace(/\D/g, '')
-        const name = fn || c.displayName || 'Contato'
+        const fn     = vcard.match(/^FN:(.+)$/m)?.[1]?.trim()
+        const rawTel = vcard.match(/^TEL[^:\r\n]*:([^\r\n]+)/m)?.[1]
+        const tel    = rawTel ? rawTel.trim().replace(/\D/g, '') : null
+        const name   = fn || c.displayName || 'Contato'
         return tel ? `${name} | ${tel}` : name
       }).filter(Boolean)
       contactLabel = `[Contato] ${parts.join('; ')}`
