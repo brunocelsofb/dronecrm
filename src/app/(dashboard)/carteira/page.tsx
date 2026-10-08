@@ -168,17 +168,17 @@ export default async function CarteiraPage({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="flex flex-col gap-5">
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <div className="flex items-start justify-between">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Gestão de Carteira</h1>
-          <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>Contratos ativos no funil de Gestão de Contratos.</p>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Gestão de Carteira</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Contratos ativos no funil de Gestão de Contratos.</p>
         </div>
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-5 gap-4">
         {[
           { label: 'Valor mensal total', value: fmt(totalValorMensal), sub: `${filtered.length} contratos ativos` },
           { label: 'Fixos', value: String(fixos), sub: 'receita previsível' },
@@ -186,57 +186,57 @@ export default async function CarteiraPage({
           { label: '🔴 Vencidos', value: String(vencido), sub: 'requer ação imediata', alert: vencido > 0 },
           { label: '⚠ Vencendo em 30d', value: String(vencendo30), sub: 'monitorar', alert: vencendo30 > 0 },
         ].map(k => (
-          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${(k as any).alert ? '#fca5a5' : '#e8edf5'}` }}>
-            <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 500, color: (k as any).alert ? '#b91c1c' : '#1a1f36', letterSpacing: '-0.5px', margin: 0 }}>{k.value}</p>
-            <p style={{ fontSize: 11, color: (k as any).alert ? '#b91c1c' : '#8892a4', marginTop: 3 }}>{k.sub}</p>
+          <div key={k.label} className={`rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] ${(k as any).alert ? 'ring-1 ring-red-200' : ''}`}>
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">{k.label}</p>
+            <p className={`text-3xl font-bold tracking-tight mb-1 ${(k as any).alert ? 'text-red-700' : 'text-[#1B556B]'}`}>{k.value}</p>
+            <p className={`text-xs ${(k as any).alert ? 'text-red-500' : 'text-gray-400'}`}>{k.sub}</p>
           </div>
         ))}
       </div>
 
       {/* ABC + Rankings */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr', gap: 12 }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'auto 1fr 1fr' }}>
         {/* Curva ABC resumo */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20, minWidth: 160 }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 16 }}>Curva ABC</p>
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] min-w-[160px]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-4">Curva ABC</p>
           {(['A', 'B', 'C'] as const).map(curve => (
-            <div key={curve} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, ...ABC_STYLE[curve] }}>Curva {curve}</span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1f36' }}>{abcCount[curve]}</span>
+            <div key={curve} className="flex items-center justify-between mb-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold" style={{ background: ABC_STYLE[curve].bg, color: ABC_STYLE[curve].color }}>Curva {curve}</span>
+              <span className="text-sm font-semibold text-[#1B556B]">{abcCount[curve]}</span>
             </div>
           ))}
-          <p style={{ fontSize: 10, color: '#b0b8c8', marginTop: 8 }}>{enriched.filter(c => !c.abc_curve).length} sem classificação</p>
+          <p className="text-[10px] text-gray-300 mt-2">{enriched.filter(c => !c.abc_curve).length} sem classificação</p>
         </div>
 
         {/* Ranking Coordenadores */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 16 }}>Carteira por Coordenador</p>
-          {rankCoord.length === 0 && <p style={{ fontSize: 12, color: '#8892a4' }}>Nenhum coordenador atribuído ainda.</p>}
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-4">Carteira por Coordenador</p>
+          {rankCoord.length === 0 && <p className="text-xs text-gray-400">Nenhum coordenador atribuído ainda.</p>}
           {rankCoord.map(([name, val]) => (
-            <div key={name} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: '#1a1f36', fontWeight: 500 }}>{name}</span>
-                <span style={{ fontSize: 11, color: '#52514e' }}>{fmt(val)} · {countByCoord.get(name)} contratos</span>
+            <div key={name} className="mb-3">
+              <div className="flex justify-between mb-1">
+                <span className="text-xs font-medium text-[#1B556B]">{name}</span>
+                <span className="text-[11px] text-gray-500">{fmt(val)} · {countByCoord.get(name)} contratos</span>
               </div>
-              <div style={{ height: 6, background: '#f1f3f8', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.round((val / maxCoord) * 100)}%`, background: 'linear-gradient(90deg, #4f86f7, #7c3aed)', borderRadius: 3 }} />
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.round((val / maxCoord) * 100)}%`, background: 'linear-gradient(90deg, #1B556B, #32AF9D)' }} />
               </div>
             </div>
           ))}
         </div>
 
         {/* Ranking Engenheiros */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 16 }}>Carteira por Engenheiro</p>
-          {rankEng.length === 0 && <p style={{ fontSize: 12, color: '#8892a4' }}>Nenhum engenheiro atribuído ainda.</p>}
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-4">Carteira por Engenheiro</p>
+          {rankEng.length === 0 && <p className="text-xs text-gray-400">Nenhum engenheiro atribuído ainda.</p>}
           {rankEng.map(([name, val]) => (
-            <div key={name} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: '#1a1f36', fontWeight: 500 }}>{name}</span>
-                <span style={{ fontSize: 11, color: '#52514e' }}>{fmt(val)} · {countByEng.get(name)} contratos</span>
+            <div key={name} className="mb-3">
+              <div className="flex justify-between mb-1">
+                <span className="text-xs font-medium text-[#1B556B]">{name}</span>
+                <span className="text-[11px] text-gray-500">{fmt(val)} · {countByEng.get(name)} contratos</span>
               </div>
-              <div style={{ height: 6, background: '#f1f3f8', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${Math.round((val / maxEng) * 100)}%`, background: 'linear-gradient(90deg, #1a7c3e, #32af9d)', borderRadius: 3 }} />
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.round((val / maxEng) * 100)}%`, background: 'linear-gradient(90deg, #1B556B, #32AF9D)' }} />
               </div>
             </div>
           ))}
@@ -244,33 +244,37 @@ export default async function CarteiraPage({
       </div>
 
       {/* Tabela */}
-      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f1f3f8', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase' }}>Tipo:</span>
+      <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-col gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-400">Tipo:</span>
             {TIPOS.map(t => (
               <Link key={t.value} href={buildHref({ tipo: t.value })}
-                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 20, textDecoration: 'none', border: '0.5px solid', borderColor: (tipo ?? '') === t.value ? '#1a1f36' : '#d1d8e8', background: (tipo ?? '') === t.value ? '#1a1f36' : '#fff', color: (tipo ?? '') === t.value ? '#fff' : '#8892a4' }}>
+                className={(tipo ?? '') === t.value
+                  ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline'
+                  : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
                 {t.label}
               </Link>
             ))}
-            <span style={{ width: 1, height: 16, background: '#e8edf5', margin: '0 4px' }} />
-            <span style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase' }}>Vencimento:</span>
+            <span className="w-px h-4 bg-gray-200 mx-1" />
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-400">Vencimento:</span>
             {ALERTS.map(a => (
               <Link key={a.value} href={buildHref({ alerta: a.value })}
-                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 20, textDecoration: 'none', border: '0.5px solid', borderColor: (alerta ?? '') === a.value ? '#1a1f36' : '#d1d8e8', background: (alerta ?? '') === a.value ? '#1a1f36' : '#fff', color: (alerta ?? '') === a.value ? '#fff' : '#8892a4' }}>
+                className={(alerta ?? '') === a.value
+                  ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline'
+                  : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
                 {a.label}
               </Link>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <form method="GET" style={{ display: 'flex', gap: 6 }}>
+          <div className="flex gap-2">
+            <form method="GET" className="flex gap-1.5">
               {tipo && <input type="hidden" name="tipo" value={tipo} />}
               {alerta && <input type="hidden" name="alerta" value={alerta} />}
               <input type="text" name="q" defaultValue={q ?? ''} placeholder="Buscar cliente, nº contrato, coordenador..."
-                style={{ padding: '6px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none', width: 260 }} />
-              <button type="submit" style={{ padding: '6px 12px', fontSize: 11, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', cursor: 'pointer' }}>Buscar</button>
-              {q && <Link href="/carteira" style={{ padding: '6px 10px', fontSize: 11, color: '#8892a4', textDecoration: 'none', alignSelf: 'center' }}>Limpar</Link>}
+                className="px-3 py-1.5 text-xs rounded-xl border border-gray-200 bg-gray-50 text-[#1B556B] outline-none w-64 focus:ring-2 focus:ring-[#1B556B]/20" />
+              <button type="submit" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline cursor-pointer">Buscar</button>
+              {q && <Link href="/carteira" className="px-3 py-1.5 text-xs text-gray-400 no-underline self-center">Limpar</Link>}
             </form>
             <CarteiraSelectFilters
               coords={[...valueByCoord.keys()].map(n => ({ id: n, name: n }))}
@@ -282,12 +286,12 @@ export default async function CarteiraPage({
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" style={{ minWidth: 900 }}>
             <thead>
-              <tr>
+              <tr className="border-b border-gray-100">
                 {['Cliente', 'Natureza', 'Nº Contrato', 'Tipo', 'Valor/mês', 'Coordenador', 'Engenheiro', 'ABC', 'Vencimento', 'Alerta', ''].map((h, i) => (
-                  <th key={h + i} style={{ padding: '10px 12px', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', fontWeight: 500, textAlign: 'left', borderBottom: '0.5px solid #f1f3f8', whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h + i} className="text-xs font-medium uppercase tracking-wider text-gray-400 py-3 px-4 text-left whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -298,56 +302,56 @@ export default async function CarteiraPage({
                 const abcSt = c.abc_curve ? ABC_STYLE[c.abc_curve] : null
                 const isVencido = (c.dias ?? 0) < 0
                 return (
-                  <tr key={c.id} style={{ borderBottom: '0.5px solid #f8f9fb', background: isVencido ? '#fff8f8' : undefined }}>
-                    <td style={{ padding: '12px 12px' }}>
-                      <Link href={`/contracts/${c.id}`} style={{ textDecoration: 'none' }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, color: isVencido ? '#b91c1c' : '#1a1f36', margin: 0 }}>{c.client_name}</p>
-                        {c.municipality && <p style={{ fontSize: 11, color: '#8892a4', marginTop: 2 }}>{c.municipality}</p>}
+                  <tr key={c.id} className={`border-b border-gray-50 ${isVencido ? 'bg-red-50/40' : ''}`}>
+                    <td className="py-3 px-4">
+                      <Link href={`/contracts/${c.id}`} className="no-underline">
+                        <p className={`text-sm font-medium m-0 ${isVencido ? 'text-red-700' : 'text-[#1B556B]'}`}>{c.client_name}</p>
+                        {c.municipality && <p className="text-[11px] text-gray-400 mt-0.5">{c.municipality}</p>}
                       </Link>
                     </td>
-                    <td style={{ padding: '12px 12px' }}>
+                    <td className="py-3 px-4">
                       {c.naturezaLabel ? (
-                        <span style={{
-                          display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500,
-                          background: c.naturezaLabel.includes('Hospit') ? '#eef3ff' : '#eaf5ee',
-                          color: c.naturezaLabel.includes('Hospit') ? '#3b5bdb' : '#1a7c3e',
-                        }}>
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium"
+                          style={{
+                            background: c.naturezaLabel.includes('Hospit') ? '#eef3ff' : '#eaf5ee',
+                            color: c.naturezaLabel.includes('Hospit') ? '#3b5bdb' : '#1a7c3e',
+                          }}>
                           {c.naturezaLabel}
                         </span>
-                      ) : <span style={{ fontSize: 11, color: '#d1d8e8' }}>—</span>}
+                      ) : <span className="text-[11px] text-gray-200">—</span>}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>
+                    <td className="py-3 px-4 text-[11px] font-mono text-gray-400">
                       {c.contract_number ?? c.process_number}
-                      {c.sankhya_code && <p style={{ fontSize: 10, color: '#b0b8c8', marginTop: 1 }}>{c.sankhya_code}</p>}
+                      {c.sankhya_code && <p className="text-[10px] text-gray-300 mt-0.5">{c.sankhya_code}</p>}
                     </td>
-                    <td style={{ padding: '12px 12px' }}>
-                      {typeSt ? <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: typeSt.bg, color: typeSt.color }}>{TYPE_LABEL[c.contract_type!]}</span>
-                        : <span style={{ fontSize: 11, color: '#d1d8e8' }}>—</span>}
+                    <td className="py-3 px-4">
+                      {typeSt ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ background: typeSt.bg, color: typeSt.color }}>{TYPE_LABEL[c.contract_type!]}</span>
+                        : <span className="text-[11px] text-gray-200">—</span>}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 13, fontWeight: 500, color: '#1a1f36' }}>
-                      {c.monthly_value ? fmt(c.monthly_value) : <span style={{ color: '#d1d8e8', fontSize: 11 }}>—</span>}
+                    <td className="py-3 px-4 text-sm font-semibold text-[#1B556B]">
+                      {c.monthly_value ? fmt(c.monthly_value) : <span className="text-gray-200 text-[11px]">—</span>}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 12, color: '#52514e' }}>{c.coordinator_name ?? <span style={{ color: '#d1d8e8' }}>—</span>}</td>
-                    <td style={{ padding: '12px 12px', fontSize: 12, color: '#52514e' }}>{c.engineer_name ?? <span style={{ color: '#d1d8e8' }}>—</span>}</td>
-                    <td style={{ padding: '12px 12px' }}>
-                      {abcSt ? <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700, background: abcSt.bg, color: abcSt.color }}>{c.abc_curve}</span>
-                        : <span style={{ color: '#d1d8e8', fontSize: 11 }}>—</span>}
-                      {c.score_weight ? <p style={{ fontSize: 9, color: '#b0b8c8', marginTop: 2 }}>Peso {c.score_weight}</p> : null}
+                    <td className="py-3 px-4 text-xs text-gray-500">{c.coordinator_name ?? <span className="text-gray-200">—</span>}</td>
+                    <td className="py-3 px-4 text-xs text-gray-500">{c.engineer_name ?? <span className="text-gray-200">—</span>}</td>
+                    <td className="py-3 px-4">
+                      {abcSt ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: abcSt.bg, color: abcSt.color }}>{c.abc_curve}</span>
+                        : <span className="text-gray-200 text-[11px]">—</span>}
+                      {c.score_weight ? <p className="text-[9px] text-gray-300 mt-0.5">Peso {c.score_weight}</p> : null}
                     </td>
-                    <td style={{ padding: '12px 12px', fontSize: 11, color: isVencido ? '#b91c1c' : '#52514e' }}>
-                      {c.valid_until ? new Date(c.valid_until + 'T12:00:00').toLocaleDateString('pt-BR') : <span style={{ color: '#d1d8e8' }}>—</span>}
+                    <td className={`py-3 px-4 text-[11px] ${isVencido ? 'text-red-700' : 'text-gray-500'}`}>
+                      {c.valid_until ? new Date(c.valid_until + 'T12:00:00').toLocaleDateString('pt-BR') : <span className="text-gray-200">—</span>}
                     </td>
-                    <td style={{ padding: '12px 12px' }}>
-                      <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: alert.bg, color: alert.color, whiteSpace: 'nowrap' }}>{alert.label}</span>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap" style={{ background: alert.bg, color: alert.color }}>{alert.label}</span>
                     </td>
-                    <td style={{ padding: '12px 12px' }}>
-                      <Link href={`/contracts/${c.id}`} style={{ fontSize: 11, color: '#4f86f7', textDecoration: 'none' }}>Ver</Link>
+                    <td className="py-3 px-4">
+                      <Link href={`/contracts/${c.id}`} className="text-[11px] text-[#1B556B] no-underline font-medium">Ver</Link>
                     </td>
                   </tr>
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} style={{ padding: '48px 16px', textAlign: 'center', fontSize: 13, color: '#8892a4' }}>
+                <tr><td colSpan={10} className="py-12 px-4 text-center text-sm text-gray-400">
                   {contractIds.length === 0 ? 'Nenhum contrato no funil de Gestão de Contratos ainda.' : 'Nenhum contrato com esses filtros.'}
                 </td></tr>
               )}

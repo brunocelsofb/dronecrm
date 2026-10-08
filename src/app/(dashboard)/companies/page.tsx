@@ -59,53 +59,53 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   ).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Empresas</h1>
-          <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>Base de clientes e parceiros cadastrados</p>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Empresas</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Base de clientes e parceiros cadastrados</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/companies/inactive" style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', textDecoration: 'none' }}>Inativos</Link>
-          <Link href="/companies/import" style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', textDecoration: 'none' }}>Importar CSV</Link>
-          <Link href="/companies/new" style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, background: '#1a1f36', color: '#fff', textDecoration: 'none', fontWeight: 500 }}>+ Nova Empresa</Link>
+        <div className="flex gap-2">
+          <Link href="/companies/inactive" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline">Inativos</Link>
+          <Link href="/companies/import" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline">Importar CSV</Link>
+          <Link href="/companies/new" className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline">+ Nova Empresa</Link>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Total de empresas', value: String(total), sub: 'na base de clientes' },
-          { label: 'Com contratos', value: String(comContratos), sub: 'clientes ativos' },
-          { label: 'Sem contratos', value: String(total - comContratos), sub: 'sem oportunidade aberta' },
+          { label: 'Total de empresas', value: String(total), sub: 'na base de clientes', alert: false },
+          { label: 'Com contratos', value: String(comContratos), sub: 'clientes ativos', alert: false },
+          { label: 'Sem contratos', value: String(total - comContratos), sub: 'sem oportunidade aberta', alert: false },
           { label: `⚠ Inativos +${inativoDias}d`, value: String(inactivos), sub: `sem compra há ${inativoDias}+ dias`, alert: inactivos > 0 },
         ].map(k => (
-          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${(k as any).alert ? '#fca5a5' : '#e8edf5'}` }}>
-            <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 500, color: (k as any).alert ? '#b91c1c' : '#1a1f36', letterSpacing: '-0.5px' }}>{k.value}</p>
-            <p style={{ fontSize: 11, color: (k as any).alert ? '#b91c1c' : '#8892a4', marginTop: 3 }}>{k.sub}</p>
+          <div key={k.label} className={`rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]${k.alert ? ' ring-1 ring-red-200' : ''}`}>
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">{k.label}</p>
+            <p className={`text-3xl font-bold tracking-tight${k.alert ? ' text-red-600' : ' text-[#1B556B]'}`}>{k.value}</p>
+            <p className={`text-xs mt-1${k.alert ? ' text-red-500' : ' text-gray-400'}`}>{k.sub}</p>
           </div>
         ))}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f1f3f8', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <form method="GET" style={{ display: 'flex', gap: 6, flex: 1 }}>
+      <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="p-4 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+          <form method="GET" className="flex gap-1.5 flex-1">
             {inativo && inativo !== '180' && <input type="hidden" name="inativo" value={inativo} />}
             <input type="text" name="q" defaultValue={q ?? ''} placeholder="Buscar empresa pelo nome…"
-              style={{ padding: '6px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none', width: 260 }} />
-            <button type="submit" style={{ padding: '6px 12px', fontSize: 11, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', cursor: 'pointer' }}>Buscar</button>
-            {q && <Link href="/companies" style={{ padding: '6px 10px', fontSize: 11, color: '#8892a4', textDecoration: 'none', alignSelf: 'center' }}>Limpar</Link>}
+              className="px-3 py-1.5 text-xs rounded-xl border border-gray-200 bg-gray-50 text-gray-800 outline-none w-64" />
+            <button type="submit" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 cursor-pointer">Buscar</button>
+            {q && <Link href="/companies" className="px-3 py-2 text-xs text-gray-400 no-underline self-center">Limpar</Link>}
           </form>
           <InativoDaysSelector current={inativoDias} />
         </div>
 
-        {error && <p style={{ padding: '12px 16px', fontSize: 12, color: '#b91c1c' }}>Erro: {error.message}</p>}
+        {error && <p className="px-4 py-3 text-xs text-red-600">Erro: {error.message}</p>}
 
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="w-full border-collapse">
           <thead>
-            <tr>
+            <tr className="border-b border-gray-100">
               {['Empresa', 'CNPJ', 'Contratos', 'Cadastrada em', ''].map((h, i) => (
-                <th key={h + i} style={{ padding: '10px 16px', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', fontWeight: 500, textAlign: i >= 2 && i < 4 ? 'right' : 'left', borderBottom: '0.5px solid #f1f3f8' }}>{h}</th>
+                <th key={h + i} className={`text-xs font-medium uppercase tracking-wider text-gray-400 py-3 px-4 ${i >= 2 && i < 4 ? 'text-right' : 'text-left'}`}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -114,32 +114,32 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               const cnt = countByCompany.get(c.id) ?? 0
               const isInativo = cnt > 0 && !recentCompanyIds.has(c.id)
               return (
-                <tr key={c.id} style={{ borderBottom: '0.5px solid #f8f9fb' }}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <Link href={`/companies/${c.id}`} style={{ textDecoration: 'none' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{c.name}</p>
+                <tr key={c.id} className="border-b border-gray-50">
+                  <td className="py-3 px-4">
+                    <Link href={`/companies/${c.id}`} className="no-underline">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-gray-800 m-0">{c.name}</p>
                         {isInativo && (
-                          <span style={{ padding: '2px 7px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: '#fff8e6', color: '#92400e' }}>⚠ Inativo +{inativoDias}d</span>
+                          <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium bg-amber-50 text-amber-800">⚠ Inativo +{inativoDias}d</span>
                         )}
                       </div>
                     </Link>
                   </td>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#8892a4', fontFamily: 'monospace' }}>{c.cnpj || '—'}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                    <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: cnt > 0 ? '#eef3ff' : '#f1f3f8', color: cnt > 0 ? '#3b5bdb' : '#8892a4' }}>
+                  <td className="py-3 px-4 text-xs text-gray-400 font-mono">{c.cnpj || '—'}</td>
+                  <td className="py-3 px-4 text-right">
+                    <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium" style={{ background: cnt > 0 ? '#eef3ff' : '#f1f3f8', color: cnt > 0 ? '#3b5bdb' : '#8892a4' }}>
                       {cnt} contrato{cnt !== 1 ? 's' : ''}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, color: '#8892a4' }}>{new Date(c.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td style={{ padding: '12px 16px' }}>
+                  <td className="py-3 px-4 text-right text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td className="py-3 px-4">
                     <CompanyRowActions companyId={c.id} companyName={c.name} isAdmin={isAdmin} />
                   </td>
                 </tr>
               )
             })}
             {(companies ?? []).length === 0 && (
-              <tr><td colSpan={5} style={{ padding: '48px 16px', textAlign: 'center', fontSize: 13, color: '#8892a4' }}>
+              <tr><td colSpan={5} className="py-12 px-4 text-center text-sm text-gray-400">
                 {q ? `Nenhuma empresa encontrada para "${q}".` : 'Nenhuma empresa cadastrada ainda.'}
               </td></tr>
             )}

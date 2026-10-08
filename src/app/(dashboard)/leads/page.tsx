@@ -15,13 +15,13 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 const SOURCE_LABELS: Record<string, string> = { indicacao: 'Indicação', evento: 'Evento', formulario_site: 'Site', ligacao: 'Ligação', anuncio: 'Anúncio', manual: 'Manual', whatsapp: 'WhatsApp', outro: 'Outro' }
 
 function scoreBar(score: number) {
-  const color = score >= 60 ? '#1a7c3e' : score >= 30 ? '#f59e0b' : '#d1d8e8'
+  const colorClass = score >= 60 ? '#1a7c3e' : score >= 30 ? '#f59e0b' : '#d1d8e8'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-      <div style={{ width: 48, height: 4, borderRadius: 2, background: '#f1f3f8', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${Math.min(100, score)}%`, background: color, borderRadius: 2 }} />
+    <div className="flex items-center gap-1.5 justify-end">
+      <div className="w-12 h-1 rounded-sm bg-gray-100 overflow-hidden">
+        <div className="h-full rounded-sm" style={{ width: `${Math.min(100, score)}%`, background: colorClass }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 500, color, minWidth: 24, textAlign: 'right' }}>{score}</span>
+      <span className="text-xs font-medium min-w-[24px] text-right" style={{ color: colorClass }}>{score}</span>
     </div>
   )
 }
@@ -46,54 +46,56 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const avgScore = totalLeads > 0 ? Math.round((leads ?? []).reduce((s, l) => s + l.score, 0) / totalLeads) : 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Leads & Captação</h1>
-          <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>Qualifique e converta quando fizer sentido.</p>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Leads & Captação</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Qualifique e converta quando fizer sentido.</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <a href="/captura" target="_blank" style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', textDecoration: 'none' }}>
+        <div className="flex gap-2">
+          <a href="/captura" target="_blank" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline">
             🔗 Formulário público
           </a>
-          <Link href="/leads/new" style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, background: '#1a1f36', color: '#fff', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/leads/new" className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline">
             + Novo Lead
           </Link>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Total de leads', value: String(totalLeads), sub: 'captados até hoje' },
           { label: 'Qualificados', value: String(qualificados), sub: 'prontos pra converter' },
           { label: 'Convertidos', value: String(convertidos), sub: 'viraram oportunidade' },
           { label: 'Score médio', value: String(avgScore), sub: 'pontuação média' },
         ].map(k => (
-          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: '0.5px solid #e8edf5' }}>
-            <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{k.value}</p>
-            <p style={{ fontSize: 11, color: '#8892a4', marginTop: 3 }}>{k.sub}</p>
+          <div key={k.label} className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">{k.label}</p>
+            <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{k.value}</p>
+            <p className="text-xs text-gray-400 mt-1">{k.sub}</p>
           </div>
         ))}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px', borderBottom: '0.5px solid #f1f3f8', flexWrap: 'wrap' }}>
-          <Link href="/leads" style={{ padding: '4px 12px', fontSize: 11, borderRadius: 20, textDecoration: 'none', border: '0.5px solid', borderColor: !statusFilter ? '#1a1f36' : '#d1d8e8', background: !statusFilter ? '#1a1f36' : '#fff', color: !statusFilter ? '#fff' : '#8892a4' }}>
-            Todos ({totalLeads})
-          </Link>
-          {STATUS_ORDER.map(s => (
-            <Link key={s} href={`/leads?status=${s}`} style={{ padding: '4px 12px', fontSize: 11, borderRadius: 20, textDecoration: 'none', border: '0.5px solid', borderColor: statusFilter === s ? '#1a1f36' : '#d1d8e8', background: statusFilter === s ? '#1a1f36' : '#fff', color: statusFilter === s ? '#fff' : '#8892a4' }}>
-              {STATUS_LABELS[s]} ({countByStatus[s] ?? 0})
+      <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="flex items-center gap-2 p-4 border-b border-gray-100 flex-wrap">
+          <div className="flex gap-1.5 bg-gray-100 rounded-2xl p-1">
+            <Link href="/leads" className={!statusFilter ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline' : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
+              Todos ({totalLeads})
             </Link>
-          ))}
+            {STATUS_ORDER.map(s => (
+              <Link key={s} href={`/leads?status=${s}`} className={statusFilter === s ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline' : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
+                {STATUS_LABELS[s]} ({countByStatus[s] ?? 0})
+              </Link>
+            ))}
+          </div>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="w-full border-collapse">
           <thead>
-            <tr>
+            <tr className="border-b border-gray-100">
               {['Nome / contato', 'Empresa', 'Origem', 'Status', 'Pontuação', 'Recebido', ''].map((h, i) => (
-                <th key={h + i} style={{ padding: '10px 16px', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', fontWeight: 500, textAlign: i >= 4 && i < 6 ? 'right' : 'left', borderBottom: '0.5px solid #f1f3f8' }}>{h}</th>
+                <th key={h + i} className={`text-xs font-medium uppercase tracking-wider text-gray-400 py-3 px-4 ${i >= 4 && i < 6 ? 'text-right' : 'text-left'}`}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -101,30 +103,30 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             {filtered.map(lead => {
               const st = STATUS_STYLE[lead.status] ?? STATUS_STYLE.novo
               return (
-                <tr key={lead.id} style={{ borderBottom: '0.5px solid #f8f9fb' }}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <Link href={`/leads/${lead.id}`} style={{ textDecoration: 'none' }}>
-                      <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{lead.name}</p>
-                      <p style={{ fontSize: 11, color: '#8892a4', marginTop: 2 }}>{lead.email ?? lead.phone ?? '—'}</p>
+                <tr key={lead.id} className="border-b border-gray-50">
+                  <td className="py-3 px-4">
+                    <Link href={`/leads/${lead.id}`} className="no-underline">
+                      <p className="text-sm font-medium text-gray-800 m-0">{lead.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{lead.email ?? lead.phone ?? '—'}</p>
                     </Link>
                   </td>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#52514e' }}>{lead.company_name ?? '—'}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 12, color: '#8892a4' }}>{SOURCE_LABELS[lead.source ?? ''] ?? lead.source ?? 'Manual'}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{ display: 'inline-flex', padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: st.bg, color: st.color }}>
+                  <td className="py-3 px-4 text-xs text-gray-600">{lead.company_name ?? '—'}</td>
+                  <td className="py-3 px-4 text-xs text-gray-400">{SOURCE_LABELS[lead.source ?? ''] ?? lead.source ?? 'Manual'}</td>
+                  <td className="py-3 px-4">
+                    <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium" style={{ background: st.bg, color: st.color }}>
                       {STATUS_LABELS[lead.status]}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 16px' }}>{scoreBar(lead.score)}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, color: '#8892a4' }}>{new Date(lead.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td style={{ padding: '12px 16px' }}>
+                  <td className="py-3 px-4">{scoreBar(lead.score)}</td>
+                  <td className="py-3 px-4 text-right text-xs text-gray-400">{new Date(lead.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td className="py-3 px-4">
                     {isAdmin && <DeleteLeadButton leadId={lead.id} leadName={lead.name} />}
                   </td>
                 </tr>
               )
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: '48px 16px', textAlign: 'center', fontSize: 13, color: '#8892a4' }}>Nenhum lead nessa categoria ainda.</td></tr>
+              <tr><td colSpan={7} className="py-12 px-4 text-center text-sm text-gray-400">Nenhum lead nessa categoria ainda.</td></tr>
             )}
           </tbody>
         </table>

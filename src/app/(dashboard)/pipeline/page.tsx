@@ -176,32 +176,28 @@ export default async function PipelinePage({
   const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="flex flex-col gap-5">
 
       {/* Cards de seleção de funil — premium, um por funil */}
       {pipelines && pipelines.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex gap-3 flex-wrap">
           {pipelines.map(p => {
             const isActive = p.id === selectedPipeline
             const badge = TYPE_COLOR[p.type] ?? TYPE_COLOR.vendas
             return (
-              <Link key={p.id} href={`/pipeline?pipeline=${p.id}`} style={{ textDecoration: 'none' }}>
-                <div style={{
-                  padding: '10px 16px', borderRadius: 10, minWidth: 160, cursor: 'pointer',
-                  border: `0.5px solid ${isActive ? '#1a1f36' : '#e8edf5'}`,
-                  background: isActive ? '#1a1f36' : '#fff',
-                  transition: 'all 0.15s',
-                }}>
-                  <span style={{
-                    display: 'inline-block', fontSize: 10, fontWeight: 500, padding: '1px 7px', borderRadius: 20, marginBottom: 5,
-                    background: isActive ? 'rgba(255,255,255,0.12)' : badge.bg,
-                    color: isActive ? '#fff' : badge.color,
-                  }}>
+              <Link key={p.id} href={`/pipeline?pipeline=${p.id}`} className="no-underline">
+                <div className={`rounded-3xl p-4 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] cursor-pointer min-w-[160px] transition-all ${isActive ? 'ring-2 ring-[#1B556B] bg-[#1B556B]' : 'hover:shadow-md'}`}
+                  style={isActive ? { background: '#1B556B' } : undefined}>
+                  <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full mb-1.5"
+                    style={{
+                      background: isActive ? 'rgba(255,255,255,0.15)' : badge.bg,
+                      color: isActive ? '#fff' : badge.color,
+                    }}>
                     {TYPE_LABEL[p.type] ?? p.type}
                   </span>
-                  <p style={{ fontSize: 13, fontWeight: 500, color: isActive ? '#fff' : '#1a1f36', margin: 0 }}>{p.name}</p>
+                  <p className={`text-sm font-semibold m-0 ${isActive ? 'text-white' : 'text-[#1B556B]'}`}>{p.name}</p>
                   {isActive && (
-                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 3 }}>
+                    <p className="text-[11px] text-white/60 mt-1">
                       {openCards.length} aberta{openCards.length !== 1 ? 's' : ''} · {fmtCurrency(totalOpen)}
                     </p>
                   )}
@@ -213,49 +209,56 @@ export default async function PipelinePage({
       )}
 
       {/* Header do funil ativo */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{pipelineName}</h1>
-          <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: typeBadge.bg, color: typeBadge.color }}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight m-0">{pipelineName}</h1>
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ background: typeBadge.bg, color: typeBadge.color }}>
             {TYPE_LABEL[pipelineType]}
           </span>
           {/* Filtro por tag */}
           {availableTags.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <div className="flex gap-1 items-center">
               <Link href={`/pipeline?${selectedPipeline ? `pipeline=${selectedPipeline}&` : ''}`}
-                style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, border: '0.5px solid', textDecoration: 'none', background: !tagFilter ? '#1a1f36' : '#fff', color: !tagFilter ? '#fff' : '#8892a4', borderColor: !tagFilter ? '#1a1f36' : '#d1d8e8' }}>
+                className={!tagFilter
+                  ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline'
+                  : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
                 Todos
               </Link>
               {availableTags.map(tag => (
                 <Link key={tag.id} href={`/pipeline?${selectedPipeline ? `pipeline=${selectedPipeline}&` : ''}tag=${tag.id}`}
-                  style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, border: '0.5px solid', textDecoration: 'none', fontWeight: 500, background: tagFilter === tag.id ? tag.color : '#fff', color: tagFilter === tag.id ? '#fff' : tag.color, borderColor: tag.color }}>
+                  className="px-3.5 py-1.5 text-xs font-medium rounded-xl no-underline border"
+                  style={{
+                    background: tagFilter === tag.id ? tag.color : '#fff',
+                    color: tagFilter === tag.id ? '#fff' : tag.color,
+                    borderColor: tag.color,
+                  }}>
                   {tag.name}
                 </Link>
               ))}
               {tagFilter && (
-                <span style={{ fontSize: 11, color: '#8892a4' }}>
+                <span className="text-xs text-gray-400">
                   {filteredCards.filter(c => c.status === 'open').length} de {cards.filter(c => c.status === 'open').length} oportunidades
                 </span>
               )}
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-2">
           {showDash ? (
             <Link href={`/pipeline${selectedPipeline ? `?pipeline=${selectedPipeline}` : ''}`}
-              style={{ whiteSpace: 'nowrap', borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', padding: '7px 14px', fontSize: 12, fontWeight: 500, color: '#52514e', textDecoration: 'none' }}>
+              className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline whitespace-nowrap">
               ← Kanban
             </Link>
           ) : (
             <Link href={`/pipeline?${selectedPipeline ? `pipeline=${selectedPipeline}&` : ''}dash=1`}
-              style={{ whiteSpace: 'nowrap', borderRadius: 8, background: '#3b5bdb', padding: '7px 16px', fontSize: 12, fontWeight: 500, color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 14 }}>📊</span> Gestão à vista
+              className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline whitespace-nowrap flex items-center gap-1.5">
+              <span className="text-sm">📊</span> Gestão à vista
             </Link>
           )}
           {!showDash && (
             <Link
               href={`/contracts/new${selectedPipeline ? `?pipeline=${selectedPipeline}` : ''}`}
-              style={{ whiteSpace: 'nowrap', borderRadius: 8, background: '#1a1f36', padding: '7px 14px', fontSize: 12, fontWeight: 500, color: '#fff', textDecoration: 'none' }}
+              className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline whitespace-nowrap"
             >
               + {pipelineType === 'vendas' ? 'Nova Oportunidade' : 'Novo Contrato'}
             </Link>
@@ -302,7 +305,7 @@ export default async function PipelinePage({
           }
         />
       ) : (
-        <p style={{ fontSize: 13, color: '#8892a4' }}>Nenhuma etapa cadastrada para este pipeline.</p>
+        <p className="text-sm text-gray-400">Nenhuma etapa cadastrada para este pipeline.</p>
       )}
     </div>
   )

@@ -134,51 +134,54 @@ export default async function ContractsPage({
   const activeFilter = status ?? 'all'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Oportunidades</h1>
-          <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>Todas as oportunidades e contratos ativos</p>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Oportunidades</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Todas as oportunidades e contratos ativos</p>
         </div>
         <Link href={`/contracts/new${defaultSalesPipeline ? `?pipeline=${defaultSalesPipeline}` : ''}`}
-          style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, background: '#1a1f36', color: '#fff', textDecoration: 'none', fontWeight: 500 }}>
+          className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline">
           + Nova oportunidade
         </Link>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Valor total', value: fmt(total), sub: `${enriched.length} oportunidades` },
           { label: 'Em andamento', value: String(open), sub: 'oportunidades abertas' },
           { label: 'Ganhas', value: String(won), sub: 'oportunidades fechadas' },
           { label: 'Perdidas', value: String(lost), sub: 'oportunidades perdidas' },
         ].map(k => (
-          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: '0.5px solid #e8edf5' }}>
-            <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{k.value}</p>
-            <p style={{ fontSize: 11, color: '#8892a4', marginTop: 3 }}>{k.sub}</p>
+          <div key={k.label} className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">{k.label}</p>
+            <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{k.value}</p>
+            <p className="text-xs text-gray-400 mt-1">{k.sub}</p>
           </div>
         ))}
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px', borderBottom: '0.5px solid #f1f3f8', flexWrap: 'wrap' }}>
-          {FILTERS.map(f => (
-            <Link key={f.value} href={`/contracts?status=${f.value}${q ? `&q=${q}` : ''}`}
-              style={{ padding: '4px 12px', fontSize: 11, borderRadius: 20, border: '0.5px solid', textDecoration: 'none',
-                borderColor: activeFilter === f.value ? '#1a1f36' : '#d1d8e8',
-                background: activeFilter === f.value ? '#1a1f36' : '#fff',
-                color: activeFilter === f.value ? '#fff' : '#8892a4' }}>
-              {f.label}
-            </Link>
-          ))}
-          <div style={{ flex: 1 }} />
-          <form method="GET" style={{ display: 'flex', gap: 6 }}>
+      <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
+          <div className="flex gap-1.5 bg-gray-100 rounded-2xl p-1">
+            {FILTERS.map(f => (
+              <Link key={f.value} href={`/contracts?status=${f.value}${q ? `&q=${q}` : ''}`}
+                className={activeFilter === f.value
+                  ? 'px-3.5 py-1.5 text-xs font-medium rounded-xl bg-[#1B556B] text-white shadow-sm no-underline'
+                  : 'px-3.5 py-1.5 text-xs font-medium rounded-xl text-gray-500 hover:text-gray-700 no-underline'}>
+                {f.label}
+              </Link>
+            ))}
+          </div>
+          <div className="flex-1" />
+          <form method="GET" className="flex gap-2">
             {status && <input type="hidden" name="status" value={status} />}
-            <input type="text" name="q" defaultValue={q ?? ''} placeholder="Buscar empresa ou processo…"
-              style={{ padding: '6px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none', width: 220 }} />
-            <button type="submit" style={{ padding: '6px 12px', fontSize: 11, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', cursor: 'pointer' }}>Buscar</button>
-            {q && <Link href="/contracts" style={{ padding: '6px 10px', fontSize: 11, color: '#8892a4', textDecoration: 'none', alignSelf: 'center' }}>Limpar</Link>}
+            <div className="relative">
+              <input type="text" name="q" defaultValue={q ?? ''} placeholder="Buscar empresa ou processo…"
+                className="w-full pl-9 pr-4 py-2 text-sm rounded-2xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#1B556B]/20" />
+            </div>
+            <button type="submit" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline cursor-pointer">Buscar</button>
+            {q && <Link href="/contracts" className="px-4 py-2 text-xs font-medium rounded-xl text-gray-500 no-underline self-center">Limpar</Link>}
           </form>
         </div>
 

@@ -108,12 +108,14 @@ export default async function PropostasPage() {
   })
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-gray-900">Propostas</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Visão global de todas as propostas ativas · {rows.length} proposta{rows.length !== 1 ? 's' : ''}
-        </p>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Propostas</h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Visão global de todas as propostas ativas · {rows.length} proposta{rows.length !== 1 ? 's' : ''}
+          </p>
+        </div>
       </div>
       <PropostasTable proposals={rows} currentUserRole={profile?.role ?? 'member'} />
     </div>
