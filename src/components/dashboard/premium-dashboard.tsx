@@ -11,7 +11,8 @@ type TeamMember = { initials: string; name: string; activities: number; revenue:
 
 declare global { interface Window { Chart: any } }
 
-const COLORS = ['#4f86f7', '#6366f1', '#7c3aed', '#a855f7']
+// Paleta secundária oficial para gráficos
+const CHART_COLORS = ['#E98C5F', '#32AF9D', '#83D0F5', '#524E9C']
 
 function fmt(v: number) {
   if (v >= 1000) return 'R$ ' + Math.round(v / 1000) + 'k'
@@ -46,16 +47,16 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
           data: {
             labels: series.map(s => s.month),
             datasets: [
-              { label: 'Meta', data: series.map(s => s.meta), borderColor: '#e8edf5', borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0 },
-              { label: 'Faturamento', data: series.map(s => s.realizado), borderColor: '#4f86f7', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#4f86f7', fill: true, backgroundColor: 'rgba(79,134,247,0.08)', tension: 0.4 },
+              { label: 'Meta', data: series.map(s => s.meta), borderColor: '#83D0F5', borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0 },
+              { label: 'Faturamento', data: series.map(s => s.realizado), borderColor: '#E98C5F', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#E98C5F', fill: true, backgroundColor: 'rgba(233,140,95,0.10)', tension: 0.4 },
             ]
           },
           options: {
             responsive: true, maintainAspectRatio: false,
             plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { label: (c: any) => c.dataset.label + ': ' + fmtFull(c.parsed.y) } } },
             scales: {
-              x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#8892a4' } },
-              y: { grid: { color: '#f1f3f8' }, ticks: { font: { size: 10 }, color: '#8892a4', callback: (v: number) => fmt(v) }, border: { display: false } }
+              x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af' } },
+              y: { grid: { color: '#f3f4f6' }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: (v: number) => fmt(v) }, border: { display: false } }
             }
           }
         })
@@ -66,7 +67,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
           type: 'doughnut',
           data: {
             labels: leadSources.map(l => l.label),
-            datasets: [{ data: leadSources.map(l => l.pct), backgroundColor: COLORS.slice(0, leadSources.length), borderWidth: 0, hoverOffset: 4 }]
+            datasets: [{ data: leadSources.map(l => l.pct), backgroundColor: CHART_COLORS.slice(0, leadSources.length), borderWidth: 0, hoverOffset: 4 }]
           },
           options: {
             responsive: true, maintainAspectRatio: false, cutout: '68%',
@@ -87,143 +88,207 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
   const metaPct = kpi.meta > 0 ? Math.min(100, Math.round((kpi.receita / kpi.meta) * 100)) : 0
   const maxFunnelValue = funnel[0]?.value ?? 1
 
-  const AVATAR_COLORS = [
-    { bg: '#eef3ff', text: '#3b5bdb' },
-    { bg: '#eaf5ee', text: '#1a7c3e' },
-    { bg: '#fdecea', text: '#b91c1c' },
-  ]
+  const AVATAR_BG = ['bg-indigo-50', 'bg-teal-50', 'bg-red-50']
+  const AVATAR_TEXT = ['text-indigo-700', 'text-teal-700', 'text-red-700']
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Filtros */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div className="flex flex-col gap-5">
+
+      {/* ── Header + Filtros de período ── */}
+      <div className="flex items-center justify-between">
         <div>
-          <p style={{ fontSize: 17, fontWeight: 500, color: '#1a1f36' }}>Visão Geral Comercial</p>
-          <p style={{ fontSize: 11, color: '#8892a4', marginTop: 2 }}>Atualizado agora · {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+          <p className="text-lg font-semibold text-[#1B556B] tracking-tight">Visão Geral Comercial</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Atualizado agora · {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="flex gap-1.5 bg-gray-100 rounded-2xl p-1">
           {[
             { label: 'Semana', value: 'week' },
             { label: 'Este Mês', value: 'month' },
             { label: 'Trimestre', value: 'quarter' },
             { label: 'Ano', value: 'year' },
           ].map((f) => (
-            <Link key={f.value} href={`/?period=${f.value}`}
-              style={{ padding: '5px 12px', fontSize: 11, borderRadius: 20, border: '0.5px solid', textDecoration: 'none',
-                borderColor: period === f.value ? '#1a1f36' : '#d1d8e8',
-                background: period === f.value ? '#1a1f36' : '#fff',
-                color: period === f.value ? '#fff' : '#8892a4' }}>
+            <Link
+              key={f.value}
+              href={`/?period=${f.value}`}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all no-underline
+                ${period === f.value
+                  ? 'bg-[#1B556B] text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
               {f.label}
             </Link>
           ))}
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5', borderLeft: '3px solid #3b5bdb' }}>
-          <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Ganhos no período</p>
-          <p style={{ fontSize: 22, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{fmt(kpi.receita)}</p>
-          <div style={{ height: 6, background: '#f1f3f8', borderRadius: 3, marginTop: 10, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${metaPct}%`, borderRadius: 3, background: 'linear-gradient(90deg, #3b5bdb, #7c3aed)' }} />
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-4 gap-4">
+
+        {/* Card em destaque: Ganhos */}
+        <div className="rounded-3xl p-5 shadow-[0_4px_24px_rgba(27,85,107,0.18)] bg-gradient-to-br from-[#1B556B] to-[#0e3a4a] col-span-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/60 mb-3">Ganhos no período</p>
+          <p className="text-3xl font-bold text-white tracking-tight">{fmt(kpi.receita)}</p>
+          <div className="h-1.5 bg-white/20 rounded-full mt-4 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#E98C5F] transition-all"
+              style={{ width: `${metaPct}%` }}
+            />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8892a4', marginTop: 4 }}>
-            <span>{metaPct}% da meta</span><span>{fmt(kpi.meta)}</span>
+          <div className="flex justify-between text-xs text-white/50 mt-1.5">
+            <span>{metaPct}% da meta</span>
+            <span>{fmt(kpi.meta)}</span>
           </div>
         </div>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5', borderLeft: '3px solid #1a7c3e' }}>
-          <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>MRR Carteira</p>
-          <p style={{ fontSize: 22, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{kpi.mrrCarteira ? fmt(kpi.mrrCarteira) : '—'}</p>
-          <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>contratos ativos em gestão</p>
+
+        {/* MRR Carteira */}
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">MRR Carteira</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.mrrCarteira ? fmt(kpi.mrrCarteira) : '—'}</p>
+          <p className="text-xs text-gray-400 mt-2">contratos ativos em gestão</p>
         </div>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5', borderLeft: '3px solid #7c3aed' }}>
-          <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Ticket Médio</p>
-          <p style={{ fontSize: 22, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{kpi.ticketMedio > 0 ? fmt(kpi.ticketMedio) : '—'}</p>
-          {kpi.cicloMedio !== null && <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>Ciclo médio: {kpi.cicloMedio} dias</p>}
+
+        {/* Ticket Médio */}
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">Ticket Médio</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.ticketMedio > 0 ? fmt(kpi.ticketMedio) : '—'}</p>
+          {kpi.cicloMedio !== null && (
+            <p className="text-xs text-gray-400 mt-2">Ciclo médio: {kpi.cicloMedio} dias</p>
+          )}
         </div>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5', borderLeft: `3px solid ${kpi.churnPct !== null && kpi.churnPct > 3 ? '#b91c1c' : '#92400e'}` }}>
-          <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Churn no período</p>
-          <p style={{ fontSize: 22, fontWeight: 500, color: '#1a1f36', letterSpacing: '-0.5px' }}>{kpi.churnPct !== null ? `${kpi.churnPct}%` : '—'}</p>
-          {kpi.churnPct !== null && kpi.churnPct > 3 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, marginTop: 4, padding: '2px 7px', borderRadius: 20, background: '#fff8e6', color: '#92400e' }}>⚠ atenção</span>}
+
+        {/* Churn */}
+        <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">Churn no período</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.churnPct !== null ? `${kpi.churnPct}%` : '—'}</p>
+          {kpi.churnPct !== null && kpi.churnPct > 3 && (
+            <span className="inline-flex items-center gap-1 text-xs mt-2 px-2.5 py-1 rounded-xl bg-[#FFE596] text-amber-800 font-medium">
+              ⚠ atenção
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Gráficos centrais */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 2 }}>Funil de Vendas</p>
-          <p style={{ fontSize: 10, color: '#8892a4', marginBottom: 14 }}>Volume por etapa · oportunidades ativas</p>
-          {funnel.map((f, i) => (
-            <div key={f.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: 10, color: '#8892a4', width: 72, flexShrink: 0 }}>{f.label}</span>
-              <div style={{ flex: 1, height: 24, background: '#f1f3f8', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${maxFunnelValue > 0 ? Math.round((f.value / maxFunnelValue) * 100) : 0}%`, background: COLORS[i] || COLORS[3], borderRadius: 4, display: 'flex', alignItems: 'center', paddingLeft: 8, fontSize: 10, fontWeight: 500, color: '#fff', minWidth: f.value > 0 ? 40 : 0 }}>
-                  {f.value > 0 ? fmt(f.value) : ''}
-                </div>
-              </div>
-              <span style={{ fontSize: 10, color: '#8892a4', width: 24, textAlign: 'right', flexShrink: 0 }}>{f.count}</span>
-            </div>
-          ))}
-          {funnel.length === 0 && <p style={{ fontSize: 12, color: '#8892a4' }}>Nenhuma oportunidade aberta.</p>}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
+      {/* ── Gráficos centrais ── */}
+      <div className="grid grid-cols-[1.4fr_1fr] gap-4">
+
+        {/* Funil de Vendas */}
+        <div className="rounded-3xl p-6 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-0.5">Funil de Vendas</p>
+          <p className="text-xs text-gray-400 mb-5">Volume por etapa · oportunidades ativas</p>
+
+          <div className="flex flex-col gap-3">
             {funnel.map((f, i) => (
-              <span key={f.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#8892a4' }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i] || COLORS[3] }} />{f.label}
-              </span>
+              <div key={f.label} className="flex items-center gap-3">
+                <span className="text-xs text-gray-400 w-20 shrink-0">{f.label}</span>
+                <div className="flex-1 h-6 bg-gray-100 rounded-lg overflow-hidden">
+                  <div
+                    className="h-full rounded-lg flex items-center pl-2.5 text-xs font-semibold text-white transition-all"
+                    style={{
+                      width: `${maxFunnelValue > 0 ? Math.round((f.value / maxFunnelValue) * 100) : 0}%`,
+                      background: CHART_COLORS[i] ?? CHART_COLORS[3],
+                      minWidth: f.value > 0 ? 40 : 0,
+                    }}
+                  >
+                    {f.value > 0 ? fmt(f.value) : ''}
+                  </div>
+                </div>
+                <span className="text-xs text-gray-400 w-6 text-right shrink-0">{f.count}</span>
+              </div>
             ))}
+            {funnel.length === 0 && (
+              <p className="text-xs text-gray-400">Nenhuma oportunidade aberta.</p>
+            )}
           </div>
+
+          {funnel.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-4">
+              {funnel.map((f, i) => (
+                <span key={f.label} className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className="w-2 h-2 rounded-sm" style={{ background: CHART_COLORS[i] ?? CHART_COLORS[3] }} />
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 2 }}>Evolução Financeira</p>
-          <p style={{ fontSize: 10, color: '#8892a4', marginBottom: 14 }}>Faturamento vs meta · últimos 6 meses</p>
-          <div style={{ position: 'relative', height: 180 }}>
+
+        {/* Evolução Financeira */}
+        <div className="rounded-3xl p-6 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-0.5">Evolução Financeira</p>
+          <p className="text-xs text-gray-400 mb-5">Faturamento vs meta · últimos 6 meses</p>
+          <div className="relative h-44">
             <canvas ref={areaRef} role="img" aria-label="Gráfico de área comparando faturamento e meta mensal" />
           </div>
+          <div className="flex gap-4 mt-3">
+            <span className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="w-5 h-0.5 rounded" style={{ background: '#E98C5F', display: 'inline-block' }} />
+              Faturamento
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="w-5 border-t border-dashed border-[#83D0F5]" />
+              Meta
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Linha inferior */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 2 }}>Origem dos Leads</p>
-          <p style={{ fontSize: 10, color: '#8892a4', marginBottom: 14 }}>Distribuição por canal de aquisição</p>
+      {/* ── Linha inferior ── */}
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* Origem dos Leads */}
+        <div className="rounded-3xl p-6 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-0.5">Origem dos Leads</p>
+          <p className="text-xs text-gray-400 mb-5">Distribuição por canal de aquisição</p>
           {leadSources.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
+            <div className="flex items-center gap-6">
+              <div className="relative w-28 h-28 shrink-0">
                 <canvas ref={donutRef} role="img" aria-label="Gráfico de rosca com origem dos leads" />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="flex flex-col gap-2.5">
                 {leadSources.map((l, i) => (
-                  <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS[i] || COLORS[3], flexShrink: 0 }} />
-                    <span style={{ color: '#1a1f36' }}>{l.label}</span>
-                    <span style={{ color: '#8892a4', marginLeft: 'auto' }}>{l.pct}%</span>
+                  <div key={l.label} className="flex items-center gap-2 text-xs">
+                    <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: CHART_COLORS[i] ?? CHART_COLORS[3] }} />
+                    <span className="text-gray-700">{l.label}</span>
+                    <span className="text-gray-400 ml-auto pl-3 font-medium">{l.pct}%</span>
                   </div>
                 ))}
               </div>
             </div>
-          ) : <p style={{ fontSize: 12, color: '#8892a4' }}>Sem dados de origem ainda.</p>}
+          ) : (
+            <p className="text-xs text-gray-400">Sem dados de origem ainda.</p>
+          )}
         </div>
 
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16, border: '0.5px solid #e8edf5' }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 2 }}>Ranking da Equipe</p>
-          <p style={{ fontSize: 10, color: '#8892a4', marginBottom: 14 }}>Produtividade comercial · período atual</p>
-          {team.length === 0 && <p style={{ fontSize: 12, color: '#8892a4' }}>Sem dados de equipe ainda.</p>}
-          {team.map((m, i) => (
-            <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < team.length - 1 ? '0.5px solid #f1f3f8' : 'none' }}>
-              <span style={{ fontSize: 9, fontWeight: 500, padding: '2px 6px', borderRadius: 4, background: i === 0 ? '#fff8e6' : '#f1f3f8', color: i === 0 ? '#92400e' : '#52514e' }}>#{i + 1}</span>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, flexShrink: 0, background: AVATAR_COLORS[i]?.bg ?? '#f1f3f8', color: AVATAR_COLORS[i]?.text ?? '#52514e' }}>
-                {m.initials}
+        {/* Ranking da Equipe */}
+        <div className="rounded-3xl p-6 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <p className="text-sm font-semibold text-[#1B556B] mb-0.5">Ranking da Equipe</p>
+          <p className="text-xs text-gray-400 mb-5">Produtividade comercial · período atual</p>
+          {team.length === 0 && (
+            <p className="text-xs text-gray-400">Sem dados de equipe ainda.</p>
+          )}
+          <div className="flex flex-col divide-y divide-gray-50">
+            {team.map((m, i) => (
+              <div key={m.name} className="flex items-center gap-3 py-2.5">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-lg ${i === 0 ? 'bg-[#FFE596] text-amber-800' : 'bg-gray-100 text-gray-500'}`}>
+                  #{i + 1}
+                </span>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${AVATAR_BG[i] ?? 'bg-gray-100'} ${AVATAR_TEXT[i] ?? 'text-gray-600'}`}>
+                  {m.initials}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-800 leading-tight">{m.name}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{m.activities} atividades</p>
+                </div>
+                <p className="text-xs font-bold text-[#1B556B] ml-auto">{fmt(m.revenue)}</p>
               </div>
-              <div>
-                <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36' }}>{m.name}</p>
-                <p style={{ fontSize: 10, color: '#8892a4', marginTop: 1 }}>{m.activities} atividades</p>
-              </div>
-              <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', marginLeft: 'auto' }}>{fmt(m.revenue)}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
+
     </div>
   )
 }
