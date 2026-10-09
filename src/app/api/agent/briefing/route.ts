@@ -334,7 +334,7 @@ async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
   const instance = process.env.EVOLUTION_INSTANCE_NAME
   const number   = process.env.WHATSAPP_NUMBER
 
-  // Valida config — se alguma variável faltar, regista mas não lança excepção
+  // Valida config — se alguma variável faltar, regista detalhes e não lança excepção
   if (!baseUrl || !apiKey || !instance || !number) {
     const missing = [
       !baseUrl  && 'EVOLUTION_API_URL',
@@ -342,6 +342,8 @@ async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
       !instance && 'EVOLUTION_INSTANCE_NAME',
       !number   && 'WHATSAPP_NUMBER',
     ].filter(Boolean).join(', ')
+    console.error(`[whatsapp] configuração incompleta — variáveis em falta: ${missing}`)
+    console.error('[whatsapp] adiciona as variáveis de ambiente em: Vercel → Settings → Environment Variables')
     return { sent: false, error: `Variáveis de ambiente em falta: ${missing}` }
   }
 
@@ -350,7 +352,11 @@ async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
 
   const url = `${baseUrl.replace(/\/$/, '')}/message/sendText/${instance}`
 
+  console.log(`[whatsapp] target → número: ${cleanNumber.slice(0, 4)}****${cleanNumber.slice(-2)} | instância: ${instance}`)
+  console.log(`[whatsapp] endpoint → POST ${url}`)
+
   try {
+    const startMs = Date.now()
     const res = await fetch(url, {
       method:  'POST',
       headers: {
@@ -367,17 +373,25 @@ async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
         },
       }),
     })
+    const elapsedMs = Date.now() - startMs
 
     const body = await res.json().catch(() => ({}))
 
+    console.log(`[whatsapp] resposta HTTP ${res.status} em ${elapsedMs}ms`)
+
     if (!res.ok) {
-      const detail = body?.message ?? body?.error ?? res.statusText
+      const detail = body?.message ?? body?.error ?? body?.response?.message ?? res.statusText
+      console.error(`[whatsapp] erro da Evolution API → status: ${res.status} | detalhe: ${detail}`)
+      console.error(`[whatsapp] body completo: ${JSON.stringify(body)}`)
       return { sent: false, error: `Evolution API ${res.status}: ${detail}` }
     }
 
+    console.log(`[whatsapp] mensagem entregue → messageId: ${body?.key?.id ?? body?.id ?? '(sem id)'}`)
     return { sent: true, statusCode: res.status }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[whatsapp] erro de rede → ${msg}`)
+    console.error(`[whatsapp] verifica se EVOLUTION_API_URL está acessível: ${baseUrl}`)
     return { sent: false, error: `Erro de rede ao contactar Evolution API: ${msg}` }
   }
 }
@@ -436,13 +450,15 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
 
     // 5. Envio via WhatsApp (Fase 2)
     // Falhas aqui são registadas mas NÃO interrompem a resposta da API.
-    console.log('[agent] enviando briefing via WhatsApp...')
+    console.log('[agent] iniciando envio do briefing via WhatsApp...')
+    console.log(`[agent] briefing tem ${briefing.length} caracteres`)
     const whatsapp = await sendWhatsApp(briefing)
 
     if (whatsapp.sent) {
-      console.log(`[agent] WhatsApp enviado com sucesso (HTTP ${whatsapp.statusCode})`)
+      console.log(`[agent] ✓ WhatsApp entregue com sucesso (HTTP ${whatsapp.statusCode})`)
     } else {
-      console.error(`[agent] falha no envio WhatsApp — ${whatsapp.error}`)
+      console.error(`[agent] ✗ falha no envio WhatsApp — ${whatsapp.error}`)
+      console.error('[agent] o briefing foi gerado mas NÃO foi enviado via WhatsApp')
     }
 
     // 6. Resposta JSON final
