@@ -10,8 +10,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { generateText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
+import Anthropic from '@anthropic-ai/sdk'
 import { subDays, format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -415,25 +414,34 @@ export async function generateBriefing(opts: {
     `${renewal.length} renovações, ${stale.length} leads estagnados`
   )
 
-  // ── 3. Chamada ao LLM ───────────────────────────────────────────────────────
+  // ── 3. Chamada ao LLM via @anthropic-ai/sdk (SDK oficial, sem camada intermédia)
   console.log('[agent] chamando Anthropic API — modelo: claude-3-5-haiku-20241022')
   let briefing: string
   let usage: { promptTokens: number; completionTokens: number }
 
   try {
-    const result = await generateText({
-      model:       anthropic('claude-3-5-haiku-20241022'),
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    const response = await client.messages.create({
+      model:      'claude-3-5-haiku-20241022',
+      max_tokens: 900,
       system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
 Analisa dados de CRM de vendas B2B complexas e consultivas (hospitais, clínicas, equipamentos médicos).
 Gera briefings executivos concisos, precisos e acionáveis em português do Brasil.
 Nunca inventa informações. Baseia-se exclusivamente nos dados fornecidos.
 Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
-      prompt:      buildPrompt({ dormant, renewal, stale, today }),
-      maxTokens:   900,
-      temperature: 0.2,
+      messages: [
+        { role: 'user', content: buildPrompt({ dormant, renewal, stale, today }) }
+      ],
     })
-    briefing = result.text
-    usage    = result.usage
+
+    // Extrai o texto da resposta
+    const block = response.content.find(b => b.type === 'text')
+    briefing = block && block.type === 'text' ? block.text : ''
+    usage = {
+      promptTokens:     response.usage.input_tokens,
+      completionTokens: response.usage.output_tokens,
+    }
   } catch (err) {
     const detail = serializeError(err)
     console.error('[agent] ERRO na chamada Anthropic API:')
