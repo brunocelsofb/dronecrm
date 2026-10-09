@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/check-automations",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/agent/briefing",
+      "schedule": "0 7 * * 1,4"
     }
   ]
 }
