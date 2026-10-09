@@ -3,7 +3,7 @@
 /**
  * BriefingClient — Client Component
  * Recebe os dados do Server Component e renderiza o dashboard do Copiloto.
- * O botão "Gerar Agora" faz reload do Server Component via router.refresh().
+ * O botão "Gerar Agora" usa router.refresh() para re-executar o Server Component.
  */
 
 import { useRouter } from 'next/navigation'
@@ -20,46 +20,28 @@ import {
   Zap,
   BarChart3,
   Calendar,
+  BrainCircuit,
 } from 'lucide-react'
+import type { BriefingResult, BriefingError } from '@/lib/agent/briefing-core'
 
-// ─── Tipos (espelham os da page.tsx) ─────────────────────────────────────────
-type BriefingStats = {
-  dormantOpportunities: number
-  renewalCandidates:    number
-  staleLeads:           number
-  tokensInput:          number
-  tokensOutput:         number
-}
-
-type WhatsAppResult =
-  | { sent: true;  statusCode: number }
-  | { sent: false; error: string }
-
-type BriefingResponse = {
-  ok:          boolean
-  generatedAt: string
-  stats:       BriefingStats
-  briefing:    string
-  whatsapp:    WhatsAppResult
-  error?:      string
-} | null
+type BriefingResponse = BriefingResult | BriefingError | null
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(iso: string) {
+function fmtDate(iso: string) {
   try {
     return new Intl.DateTimeFormat('pt-BR', {
       dateStyle: 'long',
       timeStyle: 'short',
-      timeZone: 'America/Sao_Paulo',
+      timeZone:  'America/Sao_Paulo',
     }).format(new Date(iso))
   } catch {
     return iso
   }
 }
 
-// Converte o texto do briefing (4 seções com emoji) em parágrafos estruturados
+// Converte o texto do briefing (4 secções com emoji) em blocos estruturados
 function parseBriefing(text: string): { icon: string; title: string; body: string }[] {
-  const sectionMarkers = [
+  const markers = [
     { emoji: '🚨', title: 'TOP 3 AÇÕES URGENTES' },
     { emoji: '💰', title: 'MAIOR OPORTUNIDADE DA SEMANA' },
     { emoji: '⚠️', title: 'SINAL DE ALERTA' },
@@ -67,13 +49,11 @@ function parseBriefing(text: string): { icon: string; title: string; body: strin
   ]
 
   const sections: { icon: string; title: string; body: string }[] = []
-
-  // Divide por linhas que começam com um dos emojis conhecidos
   const lines = text.split('\n')
   let current: { icon: string; title: string; lines: string[] } | null = null
 
   for (const line of lines) {
-    const marker = sectionMarkers.find(m => line.includes(m.emoji))
+    const marker = markers.find(m => line.includes(m.emoji))
     if (marker) {
       if (current) sections.push({ icon: current.icon, title: current.title, body: current.lines.join('\n').trim() })
       current = { icon: marker.emoji, title: marker.title, lines: [] }
@@ -83,20 +63,15 @@ function parseBriefing(text: string): { icon: string; title: string; body: strin
   }
   if (current) sections.push({ icon: current.icon, title: current.title, body: current.lines.join('\n').trim() })
 
-  // Se o parser não encontrou secções (formato diferente), devolve o texto inteiro
-  if (sections.length === 0) {
-    return [{ icon: '📋', title: 'Briefing Completo', body: text }]
-  }
+  if (sections.length === 0) return [{ icon: '📋', title: 'Briefing Completo', body: text }]
   return sections
 }
 
+const SECTION_COLORS = ['#1B556B', '#E98C5F', '#524E9C', '#32AF9D']
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  accent,
+  icon: Icon, label, value, sub, accent,
 }: {
   icon: React.ElementType
   label: string
@@ -106,10 +81,7 @@ function KpiCard({
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm p-5 flex flex-col gap-3">
-      <div
-        className="flex h-10 w-10 items-center justify-center rounded-xl"
-        style={{ background: accent + '18' }}
-      >
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: accent + '18' }}>
         <Icon size={20} style={{ color: accent }} strokeWidth={1.75} />
       </div>
       <div>
@@ -117,93 +89,90 @@ function KpiCard({
         <p className="text-sm font-medium text-gray-700 mt-0.5">{label}</p>
         {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
       </div>
-      <div
-        className="absolute bottom-0 right-0 h-20 w-20 rounded-full opacity-5"
-        style={{ background: accent, transform: 'translate(25%, 25%)' }}
-      />
+      <div className="absolute bottom-0 right-0 h-20 w-20 rounded-full opacity-5"
+        style={{ background: accent, transform: 'translate(25%, 25%)' }} />
     </div>
   )
 }
 
 // ─── Section Card ─────────────────────────────────────────────────────────────
 function SectionCard({
-  icon,
-  title,
-  body,
-  accentColor,
+  icon, title, body, accentColor,
 }: {
-  icon: string
-  title: string
-  body: string
-  accentColor: string
+  icon: string; title: string; body: string; accentColor: string
 }) {
-  // Divide por parágrafos não-vazios
   const paragraphs = body.split('\n').filter(l => l.trim().length > 0)
-
   return (
     <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
-      <div
-        className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100"
-        style={{ background: accentColor + '08' }}
-      >
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100"
+        style={{ background: accentColor + '08' }}>
         <span className="text-xl leading-none">{icon}</span>
         <h3 className="text-sm font-semibold tracking-wide" style={{ color: accentColor }}>
           {title}
         </h3>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2">
-        {paragraphs.map((p, i) => (
-          <p key={i} className="text-sm text-gray-700 leading-relaxed">
-            {p}
-          </p>
-        ))}
-        {paragraphs.length === 0 && (
-          <p className="text-sm text-gray-400 italic">Sem informações para esta secção.</p>
-        )}
+        {paragraphs.length > 0
+          ? paragraphs.map((p, i) => (
+              <p key={i} className="text-sm text-gray-700 leading-relaxed">{p}</p>
+            ))
+          : <p className="text-sm text-gray-400 italic">Sem informações para esta secção.</p>
+        }
       </div>
     </div>
   )
 }
 
-const SECTION_COLORS = ['#1B556B', '#E98C5F', '#524E9C', '#32AF9D']
+// ─── Header partilhado ────────────────────────────────────────────────────────
+function PageHeader({ onRefresh, loading }: { onRefresh: () => void; loading: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1B556B]/10">
+        <BrainCircuit size={20} className="text-[#1B556B]" strokeWidth={1.75} />
+      </div>
+      <div className="flex-1">
+        <h1 className="text-xl font-bold text-[#1B556B] leading-tight">Copiloto Estratégico</h1>
+        <p className="text-xs text-gray-400">Análise inteligente do CRM</p>
+      </div>
+      <button
+        onClick={onRefresh}
+        disabled={loading}
+        className="flex items-center gap-2 rounded-2xl bg-[#1B556B] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#174a5c] disabled:opacity-60 transition-colors"
+      >
+        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        {loading ? 'A gerar...' : 'Gerar Agora'}
+      </button>
+    </div>
+  )
+}
 
 // ─── Main Client Component ────────────────────────────────────────────────────
 export function BriefingClient({ data }: { data: BriefingResponse }) {
-  const router = useRouter()
+  const router  = useRouter()
   const [loading, setLoading] = useState(false)
 
   async function handleRefresh() {
     setLoading(true)
     router.refresh()
-    // Dá tempo ao Server Component de re-executar
-    await new Promise(r => setTimeout(r, 3000))
+    await new Promise(r => setTimeout(r, 4000))
     setLoading(false)
   }
 
-  // ─── Estado de erro / sem dados ────────────────────────────────────────────
+  // ─── Estado de erro ────────────────────────────────────────────────────────
   if (!data || !data.ok) {
+    const errorMsg = data && 'error' in data ? data.error : 'Erro desconhecido. Verifica as variáveis de ambiente no Vercel.'
+
     return (
       <div className="flex flex-col gap-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[#1B556B]">Copiloto Estratégico</h1>
-            <p className="text-sm text-gray-500 mt-1">Análise inteligente do teu CRM</p>
-          </div>
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-2xl bg-[#1B556B] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#174a5c] disabled:opacity-60 transition-colors"
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-            {loading ? 'A gerar...' : 'Gerar Agora'}
-          </button>
-        </div>
+        <PageHeader onRefresh={handleRefresh} loading={loading} />
         <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 flex items-start gap-3">
           <AlertTriangle size={18} className="text-red-500 mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-red-700">Não foi possível carregar o briefing</p>
-            <p className="text-xs text-red-500 mt-1">
-              {data?.error ?? 'Erro ao conectar com a API. Verifica as variáveis de ambiente no Vercel.'}
+            <p className="text-sm font-semibold text-red-700">Não foi possível gerar o briefing</p>
+            <p className="text-xs text-red-500 mt-1 font-mono leading-relaxed">{errorMsg}</p>
+            <p className="text-xs text-red-400 mt-2">
+              Verifica em <strong>Vercel → Settings → Environment Variables</strong> se todas as variáveis estão configuradas:
+              ANTHROPIC_API_KEY, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL
             </p>
           </div>
         </div>
@@ -211,96 +180,56 @@ export function BriefingClient({ data }: { data: BriefingResponse }) {
     )
   }
 
-  const { stats, briefing, whatsapp, generatedAt } = data
+  const { stats, briefing, whatsapp, generatedAt } = data as BriefingResult
   const sections = parseBriefing(briefing)
 
   return (
     <div className="flex flex-col gap-6">
       {/* ─── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1B556B]">Copiloto Estratégico</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-400">
-            <span className="flex items-center gap-1">
-              <Clock size={12} />
-              Gerado em {fmt(generatedAt)}
+      <div className="flex flex-col gap-3">
+        <PageHeader onRefresh={handleRefresh} loading={loading} />
+        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 pl-1">
+          <span className="flex items-center gap-1">
+            <Clock size={11} />
+            {fmtDate(generatedAt)}
+          </span>
+          <span className="flex items-center gap-1">
+            <Zap size={11} />
+            {stats.tokensInput + stats.tokensOutput} tokens
+          </span>
+          {whatsapp.sent ? (
+            <span className="flex items-center gap-1 text-[#32AF9D]">
+              <CheckCircle2 size={11} />
+              WhatsApp enviado
             </span>
-            <span className="flex items-center gap-1">
-              <Zap size={12} />
-              {stats.tokensInput + stats.tokensOutput} tokens
+          ) : (
+            <span className="flex items-center gap-1 text-gray-300">
+              <MessageSquare size={11} />
+              WhatsApp não configurado
             </span>
-            {/* Status WhatsApp */}
-            {whatsapp.sent ? (
-              <span className="flex items-center gap-1 text-[#32AF9D]">
-                <CheckCircle2 size={12} />
-                WhatsApp enviado
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-gray-300">
-                <MessageSquare size={12} />
-                WhatsApp não configurado
-              </span>
-            )}
-          </div>
+          )}
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={loading}
-          className="mt-3 sm:mt-0 flex items-center gap-2 self-start rounded-2xl bg-[#1B556B] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#174a5c] disabled:opacity-60 transition-colors"
-        >
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          {loading ? 'A gerar...' : 'Gerar Agora'}
-        </button>
       </div>
 
       {/* ─── KPI Cards ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <KpiCard
-          icon={TrendingUp}
-          label="Oportunidades Dormentes"
-          value={stats.dormantOpportunities}
-          sub="sem actividade ≥ 14 dias"
-          accent="#E98C5F"
-        />
-        <KpiCard
-          icon={Calendar}
-          label="Contratos a Renovar"
-          value={stats.renewalCandidates}
-          sub="vencem em 90 dias"
-          accent="#1B556B"
-        />
-        <KpiCard
-          icon={Users}
-          label="Leads Estagnados"
-          value={stats.staleLeads}
-          sub="sem evolução ≥ 30 dias"
-          accent="#524E9C"
-        />
-        <KpiCard
-          icon={BarChart3}
-          label="Em Risco Total"
-          value={stats.dormantOpportunities + stats.renewalCandidates + stats.staleLeads}
-          sub="oportunidades + renovações + leads"
-          accent="#32AF9D"
-        />
+        <KpiCard icon={TrendingUp}  label="Oportunidades Dormentes" value={stats.dormantOpportunities} sub="sem actividade ≥ 14 dias" accent="#E98C5F" />
+        <KpiCard icon={Calendar}    label="Contratos a Renovar"     value={stats.renewalCandidates}    sub="vencem em 90 dias"         accent="#1B556B" />
+        <KpiCard icon={Users}       label="Leads Estagnados"        value={stats.staleLeads}           sub="sem evolução ≥ 30 dias"    accent="#524E9C" />
+        <KpiCard icon={BarChart3}   label="Em Risco Total"          value={stats.dormantOpportunities + stats.renewalCandidates + stats.staleLeads} sub="oportunidades + renovações + leads" accent="#32AF9D" />
       </div>
 
-      {/* ─── Briefing sections ───────────────────────────────────────────────── */}
+      {/* ─── Secções do briefing ─────────────────────────────────────────────── */}
       {sections.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {sections.map((s, i) => (
-            <SectionCard
-              key={i}
-              icon={s.icon}
-              title={s.title}
-              body={s.body}
-              accentColor={SECTION_COLORS[i % SECTION_COLORS.length]}
-            />
+            <SectionCard key={i} icon={s.icon} title={s.title} body={s.body}
+              accentColor={SECTION_COLORS[i % SECTION_COLORS.length]} />
           ))}
         </div>
       )}
 
-      {/* ─── Raw briefing (fallback / detalhes) ─────────────────────────────── */}
+      {/* ─── Raw text colapsável ─────────────────────────────────────────────── */}
       <details className="group rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <summary className="flex cursor-pointer items-center gap-2 px-5 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 select-none list-none [&::-webkit-details-marker]:hidden">
           <span className="flex-1">Ver briefing completo (texto bruto)</span>
@@ -314,8 +243,9 @@ export function BriefingClient({ data }: { data: BriefingResponse }) {
         </div>
       </details>
 
-      {/* ─── WhatsApp error detail (se falhou) ──────────────────────────────── */}
-      {!whatsapp.sent && 'error' in whatsapp && whatsapp.error && (
+      {/* ─── Detalhe de erro WhatsApp ────────────────────────────────────────── */}
+      {!whatsapp.sent && 'error' in whatsapp && whatsapp.error &&
+        !whatsapp.error.startsWith('Envio WhatsApp desactivado') && (
         <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4 flex items-start gap-3">
           <XCircle size={16} className="text-amber-500 mt-0.5 shrink-0" />
           <div>
