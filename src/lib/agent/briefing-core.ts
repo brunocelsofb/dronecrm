@@ -336,49 +336,111 @@ export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
   }
 }
 
+// ─── Serializa qualquer erro para string legível ──────────────────────────────
+// A SDK da Anthropic pode lançar objectos com .status, .error.message, etc.
+function serializeError(err: unknown): string {
+  if (err instanceof Error) {
+    // Tenta extrair campos específicos da Anthropic SDK / AI SDK
+    const e = err as Error & {
+      status?: number
+      statusCode?: number
+      error?: { message?: string; type?: string }
+      cause?: unknown
+    }
+
+    const parts: string[] = [`${e.constructor?.name ?? 'Error'}: ${e.message}`]
+
+    if (e.status || e.statusCode) {
+      parts.push(`HTTP ${e.status ?? e.statusCode}`)
+    }
+    if (e.error?.type)    parts.push(`type: ${e.error.type}`)
+    if (e.error?.message) parts.push(`api_error: ${e.error.message}`)
+    if (e.cause)          parts.push(`cause: ${serializeError(e.cause)}`)
+
+    return parts.join(' | ')
+  }
+
+  // Fallback: serializa como JSON para capturar objectos não-Error
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
+}
+
 // ─── Função principal — gera o briefing completo ──────────────────────────────
 // Chamada directamente pelo Server Component E pelo route.ts (sem fetch HTTP).
 export async function generateBriefing(opts: {
   sendViaWhatsApp: boolean
 }): Promise<BriefingResult | BriefingError> {
-  // Verifica variáveis obrigatórias antes de qualquer I/O
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return { ok: false, error: 'Variável NEXT_PUBLIC_SUPABASE_URL não configurada.' }
-  }
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false, error: 'Variável SUPABASE_SERVICE_ROLE_KEY não configurada.' }
-  }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { ok: false, error: 'Variável ANTHROPIC_API_KEY não configurada no Vercel.' }
+
+  // ── 1. Verifica variáveis obrigatórias ANTES de qualquer I/O ────────────────
+  console.log('[agent] verificando variáveis de ambiente...')
+
+  const missingVars: string[] = []
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL)  missingVars.push('NEXT_PUBLIC_SUPABASE_URL')
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) missingVars.push('SUPABASE_SERVICE_ROLE_KEY')
+  if (!process.env.ANTHROPIC_API_KEY)         missingVars.push('ANTHROPIC_API_KEY')
+
+  if (missingVars.length > 0) {
+    const msg = `Variáveis de ambiente em falta no Vercel: ${missingVars.join(', ')}`
+    console.error(`[agent] ${msg}`)
+    return { ok: false, error: msg }
   }
 
+  // Log parcial da key para confirmar que foi lida (nunca loga a key completa)
+  const keyPreview = process.env.ANTHROPIC_API_KEY!
+  console.log(`[agent] ANTHROPIC_API_KEY presente — prefixo: ${keyPreview.slice(0, 7)}... (${keyPreview.length} chars)`)
+
+  // ── 2. Queries ao Supabase ───────────────────────────────────────────────────
   const today    = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
   const supabase = getAdminClient()
 
-  console.log('[agent] iniciando análise do CRM...')
-  const [dormant, renewal, stale] = await Promise.all([
-    fetchDormantOpportunities(supabase),
-    fetchRenewalCandidates(supabase),
-    fetchStaleLeds(supabase),
-  ])
+  console.log('[agent] iniciando queries ao Supabase...')
+  let dormant: DormantRun[], renewal: RenewalCandidate[], stale: StaleLead[]
+  try {
+    ;[dormant, renewal, stale] = await Promise.all([
+      fetchDormantOpportunities(supabase),
+      fetchRenewalCandidates(supabase),
+      fetchStaleLeds(supabase),
+    ])
+  } catch (err) {
+    const msg = `Erro nas queries ao Supabase: ${serializeError(err)}`
+    console.error(`[agent] ${msg}`)
+    return { ok: false, error: msg }
+  }
 
   console.log(
-    `[agent] dados: ${dormant.length} dormentes, ` +
+    `[agent] dados carregados — ${dormant.length} dormentes, ` +
     `${renewal.length} renovações, ${stale.length} leads estagnados`
   )
 
-  console.log('[agent] gerando briefing com Claude Haiku...')
-  const { text: briefing, usage } = await generateText({
-    model:       anthropic('claude-3-5-haiku-20241022'),
-    system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
+  // ── 3. Chamada ao LLM ───────────────────────────────────────────────────────
+  console.log('[agent] chamando Anthropic API — modelo: claude-3-5-haiku-20241022')
+  let briefing: string
+  let usage: { promptTokens: number; completionTokens: number }
+
+  try {
+    const result = await generateText({
+      model:       anthropic('claude-3-5-haiku-20241022'),
+      system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
 Analisa dados de CRM de vendas B2B complexas e consultivas (hospitais, clínicas, equipamentos médicos).
 Gera briefings executivos concisos, precisos e acionáveis em português do Brasil.
 Nunca inventa informações. Baseia-se exclusivamente nos dados fornecidos.
 Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
-    prompt:      buildPrompt({ dormant, renewal, stale, today }),
-    maxTokens:   900,
-    temperature: 0.2,
-  })
+      prompt:      buildPrompt({ dormant, renewal, stale, today }),
+      maxTokens:   900,
+      temperature: 0.2,
+    })
+    briefing = result.text
+    usage    = result.usage
+  } catch (err) {
+    const detail = serializeError(err)
+    console.error('[agent] ERRO na chamada Anthropic API:')
+    console.error(err)   // log do objecto completo nos Vercel Logs
+    const msg = `Falha na chamada ao modelo Anthropic: ${detail}`
+    return { ok: false, error: msg }
+  }
 
   console.log('\n========================================')
   console.log('COPILOTO ESTRATÉGICO — BRIEFING')
@@ -390,6 +452,7 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
     `custo: ~$${((usage.promptTokens * 0.0008 + usage.completionTokens * 0.004) / 1000).toFixed(4)}`
   )
 
+  // ── 4. Envio WhatsApp (não-bloqueante) ──────────────────────────────────────
   let whatsapp: WhatsAppResult = { sent: false, error: 'Envio WhatsApp desactivado nesta chamada' }
   if (opts.sendViaWhatsApp) {
     console.log('[agent] enviando via WhatsApp...')

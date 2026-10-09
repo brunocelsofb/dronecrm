@@ -45,11 +45,19 @@ async function BriefingContent() {
   try {
     data = await generateBriefing({ sendViaWhatsApp: false })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    data = {
-      ok:    false,
-      error: `Erro inesperado ao gerar briefing: ${msg}`,
+    // Serializa o erro completo — incluindo campos da Anthropic SDK
+    let msg: string
+    if (err instanceof Error) {
+      const e = err as Error & { status?: number; error?: { message?: string } }
+      const parts = [`${e.constructor?.name ?? 'Error'}: ${e.message}`]
+      if (e.status)          parts.push(`HTTP ${e.status}`)
+      if (e.error?.message)  parts.push(`api: ${e.error.message}`)
+      msg = parts.join(' | ')
+    } else {
+      try { msg = JSON.stringify(err) } catch { msg = String(err) }
     }
+    console.error('[briefing page] erro inesperado no Server Component:', err)
+    data = { ok: false, error: `Erro inesperado: ${msg}` }
   }
 
   return <BriefingClient data={data} />
