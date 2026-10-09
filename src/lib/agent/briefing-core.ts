@@ -422,8 +422,10 @@ export async function generateBriefing(opts: {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+    // claude-haiku-4-5 é o Haiku mais recente disponível na API Anthropic.
+    // Se a tua conta ainda não tiver acesso, tenta 'claude-3-haiku-20240307'.
     const response = await client.messages.create({
-      model:      'claude-3-5-haiku-20241022',
+      model:      'claude-haiku-4-5',
       max_tokens: 900,
       system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
 Analisa dados de CRM de vendas B2B complexas e consultivas (hospitais, clínicas, equipamentos médicos).
