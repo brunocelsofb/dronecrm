@@ -5,20 +5,24 @@
  * Cron:  Segunda e Quinta às 07h (configurado em vercel.json)
  *
  * Fase 1 (MVP): lê Supabase → chama LLM → devolve briefing em JSON + console.log
- * Fase 2: adicionar envio via Evolution API (WhatsApp)
+ * Fase 2 (actual): envia briefing via Evolution API (WhatsApp) após geração
  *
  * Variáveis de ambiente necessárias:
- *   CRON_SECRET              — segredo partilhado para autenticar chamadas do cron
- *   ANTHROPIC_API_KEY        — chave da Anthropic (Vercel AI SDK lê automaticamente)
- *   NEXT_PUBLIC_SUPABASE_URL — já existe no projeto
+ *   CRON_SECRET               — segredo partilhado para autenticar chamadas do cron
+ *   ANTHROPIC_API_KEY         — chave da Anthropic (Vercel AI SDK lê automaticamente)
+ *   NEXT_PUBLIC_SUPABASE_URL  — já existe no projeto
  *   SUPABASE_SERVICE_ROLE_KEY — chave de admin do Supabase (nunca exposta ao cliente)
+ *   EVOLUTION_API_URL         — ex: https://evolution.tuaempresa.com
+ *   EVOLUTION_API_KEY         — chave de autenticação da Evolution API
+ *   EVOLUTION_INSTANCE_NAME   — nome da instância WhatsApp (ex: "gestor")
+ *   WHATSAPP_NUMBER           — número do destinatário com código do país (ex: "5511999999999")
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generateText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
-import { subDays, subMonths, format, differenceInDays } from 'date-fns'
+import { subDays, format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 // ─── Segurança ─────────────────────────────────────────────────────────────────
@@ -317,6 +321,67 @@ e quantas estão em risco (dormentes + renovações urgentes).
 `.trim()
 }
 
+// ─── Evolution API: envio via WhatsApp ─────────────────────────────────────────
+// Retorna { sent: true } em caso de sucesso ou { sent: false, error: string }
+// em caso de falha — o handler principal nunca aborta por causa disto.
+type WhatsAppResult =
+  | { sent: true;  statusCode: number }
+  | { sent: false; error: string }
+
+async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
+  const baseUrl  = process.env.EVOLUTION_API_URL
+  const apiKey   = process.env.EVOLUTION_API_KEY
+  const instance = process.env.EVOLUTION_INSTANCE_NAME
+  const number   = process.env.WHATSAPP_NUMBER
+
+  // Valida config — se alguma variável faltar, regista mas não lança excepção
+  if (!baseUrl || !apiKey || !instance || !number) {
+    const missing = [
+      !baseUrl  && 'EVOLUTION_API_URL',
+      !apiKey   && 'EVOLUTION_API_KEY',
+      !instance && 'EVOLUTION_INSTANCE_NAME',
+      !number   && 'WHATSAPP_NUMBER',
+    ].filter(Boolean).join(', ')
+    return { sent: false, error: `Variáveis de ambiente em falta: ${missing}` }
+  }
+
+  // Normaliza o número: remove tudo que não seja dígito
+  const cleanNumber = number.replace(/\D/g, '')
+
+  const url = `${baseUrl.replace(/\/$/, '')}/message/sendText/${instance}`
+
+  try {
+    const res = await fetch(url, {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey':        apiKey,          // header padrão da Evolution API v2
+      },
+      body: JSON.stringify({
+        number:  cleanNumber,
+        text,
+        // options opcionais — remove se a tua versão da Evolution API não aceitar
+        options: {
+          delay:    1200,   // ms de delay antes de enviar (simula digitação)
+          presence: 'composing',
+        },
+      }),
+    })
+
+    const body = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      const detail = body?.message ?? body?.error ?? res.statusText
+      return { sent: false, error: `Evolution API ${res.status}: ${detail}` }
+    }
+
+    return { sent: true, statusCode: res.status }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { sent: false, error: `Erro de rede ao contactar Evolution API: ${msg}` }
+  }
+}
+
 // ─── Handler principal ──────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   // 1. Autorização
@@ -358,7 +423,7 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
       temperature: 0.2, // análise factual: temperatura baixa para máxima precisão
     })
 
-    // 4. Log do resultado (Fase 1 — sem Evolution API ainda)
+    // 4. Log do briefing gerado
     console.log('\n========================================')
     console.log('COPILOTO ESTRATÉGICO — BRIEFING GERADO')
     console.log('========================================')
@@ -369,7 +434,18 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
       `custo estimado: ~$${((usage.promptTokens * 0.0008 + usage.completionTokens * 0.004) / 1000).toFixed(4)}`
     )
 
-    // 5. Resposta JSON (útil para debug via curl ou Vercel Logs)
+    // 5. Envio via WhatsApp (Fase 2)
+    // Falhas aqui são registadas mas NÃO interrompem a resposta da API.
+    console.log('[agent] enviando briefing via WhatsApp...')
+    const whatsapp = await sendWhatsApp(briefing)
+
+    if (whatsapp.sent) {
+      console.log(`[agent] WhatsApp enviado com sucesso (HTTP ${whatsapp.statusCode})`)
+    } else {
+      console.error(`[agent] falha no envio WhatsApp — ${whatsapp.error}`)
+    }
+
+    // 6. Resposta JSON final
     return NextResponse.json({
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -381,8 +457,7 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
         tokensOutput:         usage.completionTokens,
       },
       briefing,
-      // FASE 2: descomentar e implementar envio via Evolution API
-      // whatsappSent: false,
+      whatsapp,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
