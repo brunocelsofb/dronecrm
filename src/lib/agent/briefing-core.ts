@@ -231,21 +231,20 @@ export async function fetchRenewalCandidates(
 
   if (error) { console.error('[agent] erro renovações:', error.message); return [] }
 
-  return (data ?? []).map((c: {
-    id: string
-    process_number: string
-    client_name: string
-    valid_until: string | null
-    pipeline_runs?: { stage_id: string; status: string; stages: { name: string } | null }[]
-  }) => {
-    const openRun = c.pipeline_runs?.find(r => r.status === 'open')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((c: any) => {
+    const runs    = (c.pipeline_runs ?? []) as { stage_id: string; status: string; stages: { name: string }[] | null }[]
+    const openRun = runs.find(r => r.status === 'open')
+    const rawStages = openRun?.stages
+    const stageName = Array.isArray(rawStages) ? (rawStages[0] as { name: string } | undefined)?.name ?? null
+                    : (rawStages as { name: string } | null | undefined)?.name ?? null
     return {
-      id:                c.id,
-      process_number:    c.process_number,
-      client_name:       c.client_name,
-      valid_until:       c.valid_until,
-      days_until_expiry: c.valid_until ? differenceInDays(new Date(c.valid_until), today) : null,
-      stage_name:        openRun?.stages?.name ?? null,
+      id:                c.id as string,
+      process_number:    c.process_number as string,
+      client_name:       c.client_name as string,
+      valid_until:       (c.valid_until as string | null) ?? null,
+      days_until_expiry: c.valid_until ? differenceInDays(new Date(c.valid_until as string), today) : null,
+      stage_name:        stageName,
       run_status:        openRun?.status ?? null,
     }
   })
@@ -269,18 +268,16 @@ export async function fetchStaleLeds(
 
   if (error) { console.error('[agent] erro leads:', error.message); return [] }
 
-  return (data ?? []).map((l: {
-    id: string; name: string; company_name: string | null; status: string
-    score: number; source: string | null; created_at: string; updated_at: string
-  }) => ({
-    id:                 l.id,
-    name:               l.name,
-    company_name:       l.company_name,
-    status:             l.status,
-    score:              l.score,
-    source:             l.source,
-    days_since_update:  differenceInDays(new Date(), new Date(l.updated_at)),
-    days_since_created: differenceInDays(new Date(), new Date(l.created_at)),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((l: any) => ({
+    id:                 l.id as string,
+    name:               l.name as string,
+    company_name:       (l.company_name as string | null) ?? null,
+    status:             l.status as string,
+    score:              l.score as number,
+    source:             (l.source as string | null) ?? null,
+    days_since_update:  differenceInDays(new Date(), new Date(l.updated_at as string)),
+    days_since_created: differenceInDays(new Date(), new Date(l.created_at as string)),
   }))
 }
 
