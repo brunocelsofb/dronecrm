@@ -39,9 +39,26 @@ export async function GET(request: Request) {
     const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 
     const supabase = createAdminClient()
+
+    // Busca o tenant_id do utilizador — obrigatório pelo trigger set_tenant_id()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', userId)
+      .single()
+
+    const tenantId = profile?.tenant_id ?? null
+    if (!tenantId) {
+      console.error(`[google/callback] tenant_id não encontrado para user ${userId}`)
+      return NextResponse.redirect(
+        `${accountPage}?email_error=${encodeURIComponent('Perfil do utilizador não encontrado. Contacte o administrador.')}`
+      )
+    }
+
     const { error: upsertError } = await supabase.from('email_accounts').upsert(
       {
         user_id:         userId,
+        tenant_id:       tenantId,
         email,
         connection_type: 'oauth_google',
         access_token:    tokens.access_token,
