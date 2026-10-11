@@ -1,52 +1,86 @@
 /**
  * Copiloto Estratégico — Lógica de negócio partilhada
  *
- * Exporta as funções de dados e o buildPrompt para que possam ser chamadas
- * directamente pelo Server Component da página /briefing SEM fazer fetch HTTP
- * (fetch com URL relativa falha no SSR da Vercel).
- *
- * O route.ts /api/agent/briefing importa daqui também,
- * mantendo uma única fonte de verdade.
+ * Schema: contract_crm (customizado, não "public")
+ * O agente actua como consultor comercial: identifica situações por NOME,
+ * gera acções concretas e cria tarefas directamente no CRM.
  */
 
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
-import { subDays, format, differenceInDays } from 'date-fns'
+import { differenceInDays, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
+// ─── Schema ───────────────────────────────────────────────────────────────────
+const SCHEMA = 'contract_crm'
+
 // ─── Tipos públicos ────────────────────────────────────────────────────────────
+
+/** Contrato/oportunidade sem actividade no funil de vendas */
 export type DormantRun = {
   contract_id:      string
-  client_name:      string | null
+  process_number:   string
+  client_name:      string
   value:            number | null
   stage_name:       string | null
+  pipeline_name:    string | null
   days_idle:        number
-  stage_entered_at: string | null
+  last_activity_at: string | null
+  owner_name:       string | null
 }
 
+/** Contrato a vencer ou já vencido */
 export type RenewalCandidate = {
   id:                string
+  process_number:    string
   client_name:       string
-  contract_type:     string | null
   valid_until:       string | null
-  monthly_value:     number | null
   days_until_expiry: number | null
-  abc_curve:         string | null
+  stage_name:        string | null
+  run_status:        string | null
 }
 
+/** Lead parado sem qualificação */
 export type StaleLead = {
   id:                 string
   name:               string
+  company_name:       string | null
   status:             string
   score:              number
   source:             string | null
+  days_since_update:  number
   days_since_created: number
 }
 
+/** Proposta parada aguardando acção */
+export type StuckProposal = {
+  id:             string
+  control_code:   string
+  client_name:    string
+  status:         string
+  status_label:   string
+  days_waiting:   number
+  total_value:    number | null
+  pending_approver: string | null
+}
+
+/** Plano de acção com itens pendentes */
+export type PendingActionPlan = {
+  contract_id:  string
+  process_number: string
+  client_name:  string
+  pending_count: number
+  oldest_days:  number
+  departments:  string[]
+}
+
+/** Resumo de stats para os KPIs do dashboard */
 export type BriefingStats = {
   dormantOpportunities: number
   renewalCandidates:    number
   staleLeads:           number
+  stuckProposals:       number
+  pendingActionPlans:   number
   tokensInput:          number
   tokensOutput:         number
 }
@@ -56,11 +90,12 @@ export type WhatsAppResult =
   | { sent: false; error: string }
 
 export type BriefingResult = {
-  ok:          true
-  generatedAt: string
-  stats:       BriefingStats
-  briefing:    string
-  whatsapp:    WhatsAppResult
+  ok:             true
+  generatedAt:    string
+  stats:          BriefingStats
+  briefing:       string
+  tasksCreated:   number
+  whatsapp:       WhatsAppResult
 }
 
 export type BriefingError = {
@@ -73,37 +108,48 @@ function getAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db:   { schema: SCHEMA },
+    }
   )
 }
 
-// ─── Query 1: Oportunidades dormentes ─────────────────────────────────────────
+// ─── Query 1: Oportunidades dormentes no funil de vendas ──────────────────────
 export async function fetchDormantOpportunities(
   supabase: ReturnType<typeof getAdminClient>
 ): Promise<DormantRun[]> {
-  const { data: salesPipelines } = await supabase
-    .from('pipelines')
-    .select('id')
-    .eq('type', 'vendas')
+  // Busca runs abertas em pipelines de vendas
+  const { data: runs, error: runsErr } = await supabase
+    .from('pipeline_runs')
+    .select(`
+      id, contract_id, stage_id, stage_entered_at, value, pipeline_id,
+      contracts!inner(id, process_number, client_name, owner_id),
+      stages(name),
+      pipelines!inner(name, type)
+    `)
+    .eq('status', 'open')
+    .eq('pipelines.type', 'vendas')
 
-  const salesPipelineIds = (salesPipelines ?? []).map((p: { id: string }) => p.id)
-  if (salesPipelineIds.length === 0) {
-    console.warn('[agent] nenhum pipeline de vendas encontrado — verifica o campo type')
+  if (runsErr) {
+    console.error('[agent] erro pipeline_runs:', runsErr.message)
+    // Tenta sem o join de pipelines para ver quantos runs existem
+    const { data: fallback } = await supabase
+      .from('pipeline_runs')
+      .select('id, contract_id, stage_id, stage_entered_at, value')
+      .eq('status', 'open')
+    console.warn(`[agent] fallback: ${fallback?.length ?? 0} runs abertas no total (qualquer pipeline)`)
     return []
   }
 
-  const { data: runs, error: runsErr } = await supabase
-    .from('pipeline_runs')
-    .select('contract_id, value, stage_id, stage_entered_at')
-    .in('pipeline_id', salesPipelineIds)
-    .eq('status', 'open')
-
-  if (runsErr) { console.error('[agent] erro pipeline_runs:', runsErr.message); return [] }
-  if (!runs || runs.length === 0) return []
+  if (!runs || runs.length === 0) {
+    console.warn('[agent] nenhuma run aberta em pipeline de vendas — verifica se o campo type está preenchido')
+    return []
+  }
 
   const contractIds = runs.map((r: { contract_id: string }) => r.contract_id)
-  const stageIds    = [...new Set(runs.map((r: { stage_id: string }) => r.stage_id).filter(Boolean))]
 
+  // Última actividade por contrato
   const { data: lastActivities } = await supabase
     .from('activities')
     .select('contract_id, created_at')
@@ -116,43 +162,45 @@ export async function fetchDormantOpportunities(
       lastActivityByContract.set(a.contract_id, a.created_at)
   }
 
-  const { data: contracts } = await supabase
-    .from('contracts')
-    .select('id, client_name')
-    .in('id', contractIds)
+  // Nomes dos owners
+  const ownerIds = [...new Set(
+    runs.map((r: { contracts: { owner_id: string } }) => r.contracts?.owner_id).filter(Boolean)
+  )]
+  const { data: profiles } = ownerIds.length
+    ? await supabase.from('profiles').select('id, full_name').in('id', ownerIds)
+    : { data: [] as { id: string; full_name: string }[] }
 
-  const { data: stages } = stageIds.length
-    ? await supabase.from('stages').select('id, name').in('id', stageIds)
-    : { data: [] as { id: string; name: string }[] }
-
-  const contractNameById = new Map(
-    (contracts ?? []).map((c: { id: string; client_name: string }) => [c.id, c.client_name])
-  )
-  const stageNameById = new Map(
-    (stages ?? []).map((s: { id: string; name: string }) => [s.id, s.name])
+  const ownerNameById = new Map(
+    (profiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name])
   )
 
   const dormant: DormantRun[] = []
+
   for (const run of runs) {
-    const lastActivity  = lastActivityByContract.get(run.contract_id)
-    const referenceDate = lastActivity ?? run.stage_entered_at ?? new Date(0).toISOString()
-    const daysIdle      = differenceInDays(new Date(), new Date(referenceDate))
+    const contract       = run.contracts as { id: string; process_number: string; client_name: string; owner_id: string }
+    const lastActivityAt = lastActivityByContract.get(run.contract_id) ?? null
+    const referenceDate  = lastActivityAt ?? run.stage_entered_at ?? new Date(0).toISOString()
+    const daysIdle       = differenceInDays(new Date(), new Date(referenceDate))
+
     if (daysIdle >= 14) {
       dormant.push({
         contract_id:      run.contract_id,
-        client_name:      contractNameById.get(run.contract_id) ?? null,
-        value:            run.value,
-        stage_name:       run.stage_id ? (stageNameById.get(run.stage_id) ?? null) : null,
+        process_number:   contract?.process_number ?? '',
+        client_name:      contract?.client_name ?? '(sem nome)',
+        value:            run.value ?? null,
+        stage_name:       (run.stages as { name: string } | null)?.name ?? null,
+        pipeline_name:    (run.pipelines as { name: string } | null)?.name ?? null,
         days_idle:        daysIdle,
-        stage_entered_at: run.stage_entered_at,
+        last_activity_at: lastActivityAt,
+        owner_name:       ownerNameById.get(contract?.owner_id) ?? null,
       })
     }
   }
 
-  return dormant.sort((a, b) => (b.value ?? 0) - (a.value ?? 0)).slice(0, 15)
+  return dormant.sort((a, b) => b.days_idle - a.days_idle).slice(0, 10)
 }
 
-// ─── Query 2: Contratos a renovar ─────────────────────────────────────────────
+// ─── Query 2: Contratos a vencer ─────────────────────────────────────────────
 export async function fetchRenewalCandidates(
   supabase: ReturnType<typeof getAdminClient>
 ): Promise<RenewalCandidate[]> {
@@ -160,9 +208,13 @@ export async function fetchRenewalCandidates(
   const in90Days = new Date(today)
   in90Days.setDate(in90Days.getDate() + 90)
 
+  // Inclui já vencidos (valid_until no passado) e a vencer em 90 dias
   const { data, error } = await supabase
     .from('contracts')
-    .select('id, client_name, contract_type, valid_until, monthly_value, abc_curve')
+    .select(`
+      id, process_number, client_name, valid_until,
+      pipeline_runs!left(stage_id, status, stages(name))
+    `)
     .lte('valid_until', in90Days.toISOString().slice(0, 10))
     .not('valid_until', 'is', null)
     .order('valid_until', { ascending: true })
@@ -171,112 +223,384 @@ export async function fetchRenewalCandidates(
   if (error) { console.error('[agent] erro renovações:', error.message); return [] }
 
   return (data ?? []).map((c: {
-    id: string; client_name: string; contract_type: string | null
-    valid_until: string | null; monthly_value: number | null; abc_curve: string | null
-  }) => ({
-    id:                c.id,
-    client_name:       c.client_name,
-    contract_type:     c.contract_type,
-    valid_until:       c.valid_until,
-    monthly_value:     c.monthly_value,
-    days_until_expiry: c.valid_until ? differenceInDays(new Date(c.valid_until), today) : null,
-    abc_curve:         c.abc_curve,
-  }))
+    id: string
+    process_number: string
+    client_name: string
+    valid_until: string | null
+    pipeline_runs?: { stage_id: string; status: string; stages: { name: string } | null }[]
+  }) => {
+    const openRun = c.pipeline_runs?.find(r => r.status === 'open')
+    return {
+      id:                c.id,
+      process_number:    c.process_number,
+      client_name:       c.client_name,
+      valid_until:       c.valid_until,
+      days_until_expiry: c.valid_until ? differenceInDays(new Date(c.valid_until), today) : null,
+      stage_name:        openRun?.stages?.name ?? null,
+      run_status:        openRun?.status ?? null,
+    }
+  })
 }
 
 // ─── Query 3: Leads estagnados ─────────────────────────────────────────────────
 export async function fetchStaleLeds(
   supabase: ReturnType<typeof getAdminClient>
 ): Promise<StaleLead[]> {
-  const cutoff = subDays(new Date(), 30).toISOString()
+  // Leads sem actualização há 30 dias
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
 
   const { data, error } = await supabase
     .from('leads')
-    .select('id, name, status, score, source, created_at')
+    .select('id, name, company_name, status, score, source, created_at, updated_at')
     .in('status', ['novo', 'em_qualificacao'])
-    .lt('created_at', cutoff)
+    .lt('updated_at', cutoff.toISOString())
     .order('score', { ascending: false })
-    .limit(15)
+    .limit(10)
 
   if (error) { console.error('[agent] erro leads:', error.message); return [] }
 
   return (data ?? []).map((l: {
-    id: string; name: string; status: string
-    score: number; source: string | null; created_at: string
+    id: string; name: string; company_name: string | null; status: string
+    score: number; source: string | null; created_at: string; updated_at: string
   }) => ({
     id:                 l.id,
     name:               l.name,
+    company_name:       l.company_name,
     status:             l.status,
     score:              l.score,
     source:             l.source,
+    days_since_update:  differenceInDays(new Date(), new Date(l.updated_at)),
     days_since_created: differenceInDays(new Date(), new Date(l.created_at)),
   }))
 }
 
-// ─── Prompt builder ───────────────────────────────────────────────────────────
+// ─── Query 4: Propostas paradas (aguardando aprovação interna ou cliente) ─────
+export async function fetchStuckProposals(
+  supabase: ReturnType<typeof getAdminClient>
+): Promise<StuckProposal[]> {
+  const STATUS_LABELS: Record<string, string> = {
+    draft:               'Rascunho',
+    pending_technical:   'Aguardando Aprovação Técnica',
+    pending_commercial:  'Aguardando Aprovação Comercial',
+    declined_internal:   'Recusada Internamente',
+    pending_client:      'Aguardando Cliente',
+    approved:            'Aprovada',
+    declined_client:     'Recusada pelo Cliente',
+  }
+
+  // Propostas abertas há mais de 5 dias sem avanço
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 5)
+
+  const { data, error } = await supabase
+    .from('proposals')
+    .select(`
+      id, control_code, status, created_at, updated_at,
+      assigned_technical_approver_id, assigned_commercial_approver_id,
+      contracts!inner(client_name),
+      proposal_items(subtotal)
+    `)
+    .in('status', ['pending_technical', 'pending_commercial', 'pending_client', 'draft'])
+    .lt('updated_at', cutoff.toISOString())
+    .order('updated_at', { ascending: true })
+    .limit(10)
+
+  if (error) { console.error('[agent] erro propostas:', error.message); return [] }
+
+  // Busca nomes dos aprovadores
+  const approverIds = new Set<string>()
+  for (const p of data ?? []) {
+    if (p.assigned_technical_approver_id)  approverIds.add(p.assigned_technical_approver_id)
+    if (p.assigned_commercial_approver_id) approverIds.add(p.assigned_commercial_approver_id)
+  }
+
+  const { data: approverProfiles } = approverIds.size
+    ? await supabase.from('profiles').select('id, full_name').in('id', [...approverIds])
+    : { data: [] as { id: string; full_name: string }[] }
+
+  const approverNameById = new Map(
+    (approverProfiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name])
+  )
+
+  return (data ?? []).map((p: {
+    id: string; control_code: string; status: string; updated_at: string
+    assigned_technical_approver_id: string | null
+    assigned_commercial_approver_id: string | null
+    contracts: { client_name: string }
+    proposal_items: { subtotal: number }[]
+  }) => {
+    const totalValue = (p.proposal_items ?? []).reduce((s, i) => s + (i.subtotal ?? 0), 0)
+    const pendingApprover =
+      p.status === 'pending_technical'  ? approverNameById.get(p.assigned_technical_approver_id ?? '') ?? 'Técnico não designado'
+      : p.status === 'pending_commercial' ? approverNameById.get(p.assigned_commercial_approver_id ?? '') ?? 'Comercial não designado'
+      : null
+
+    return {
+      id:              p.id,
+      control_code:    p.control_code,
+      client_name:     p.contracts?.client_name ?? '(sem cliente)',
+      status:          p.status,
+      status_label:    STATUS_LABELS[p.status] ?? p.status,
+      days_waiting:    differenceInDays(new Date(), new Date(p.updated_at)),
+      total_value:     totalValue || null,
+      pending_approver: pendingApprover,
+    }
+  })
+}
+
+// ─── Query 5: Planos de acção com itens pendentes há muito tempo ──────────────
+export async function fetchPendingActionPlans(
+  supabase: ReturnType<typeof getAdminClient>
+): Promise<PendingActionPlan[]> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 7)
+
+  const { data, error } = await supabase
+    .from('action_plan_items')
+    .select(`
+      id, contract_id, responsible_department, status, created_at,
+      contracts!inner(process_number, client_name)
+    `)
+    .in('status', ['pending', 'in_progress'])
+    .lt('created_at', cutoff.toISOString())
+
+  if (error) { console.error('[agent] erro action_plan:', error.message); return [] }
+
+  // Agrupa por contrato
+  const byContract = new Map<string, {
+    process_number: string; client_name: string
+    items: { created_at: string; dept: string | null }[]
+  }>()
+
+  for (const item of data ?? []) {
+    const key = item.contract_id
+    if (!byContract.has(key)) {
+      byContract.set(key, {
+        process_number: item.contracts?.process_number ?? '',
+        client_name:    item.contracts?.client_name ?? '',
+        items:          [],
+      })
+    }
+    byContract.get(key)!.items.push({
+      created_at: item.created_at,
+      dept:       item.responsible_department ?? null,
+    })
+  }
+
+  const result: PendingActionPlan[] = []
+  for (const [contract_id, { process_number, client_name, items }] of byContract) {
+    const oldestDays = Math.max(...items.map(i => differenceInDays(new Date(), new Date(i.created_at))))
+    const departments = [...new Set(items.map(i => i.dept).filter(Boolean))] as string[]
+    result.push({ contract_id, process_number, client_name, pending_count: items.length, oldest_days: oldestDays, departments })
+  }
+
+  return result.sort((a, b) => b.oldest_days - a.oldest_days).slice(0, 8)
+}
+
+// ─── Criar tarefa no CRM em nome do agente ────────────────────────────────────
+async function createAgentTask(
+  supabase: ReturnType<typeof getAdminClient>,
+  contractId: string,
+  content: string,
+  dueInDays = 2
+): Promise<boolean> {
+  const dueDate = new Date()
+  dueDate.setDate(dueDate.getDate() + dueInDays)
+
+  const { error } = await supabase
+    .from('activities')
+    .insert({
+      contract_id: contractId,
+      type:        'task',
+      content,
+      due_date:    dueDate.toISOString(),
+      completed:   false,
+      metadata:    { source: 'copiloto_ia', auto_created: true },
+    })
+
+  if (error) {
+    console.error(`[agent] erro ao criar tarefa para contrato ${contractId}:`, error.message)
+    return false
+  }
+  return true
+}
+
+// ─── Prompt builder — consultor comercial, dados por nome ─────────────────────
 export function buildPrompt(data: {
-  dormant: DormantRun[]
-  renewal: RenewalCandidate[]
-  stale:   StaleLead[]
-  today:   string
+  dormant:        DormantRun[]
+  renewal:        RenewalCandidate[]
+  stale:          StaleLead[]
+  proposals:      StuckProposal[]
+  actionPlans:    PendingActionPlan[]
+  today:          string
 }): string {
   const fmt = (rows: unknown[]) =>
-    rows.length > 0 ? JSON.stringify(rows, null, 2) : '(sem registos para esta categoria hoje)'
+    rows.length > 0 ? JSON.stringify(rows, null, 2) : '(nenhum registo nesta categoria hoje)'
+
+  const fmtBRL = (v: number | null) =>
+    v != null ? `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '(valor não informado)'
 
   return `
-## Dados do CRM — ${data.today}
+Você é o Copiloto Estratégico da empresa, actuando como um CONSULTOR COMERCIAL SÉNIOR.
+Data de hoje: ${data.today}
 
-Você recebe dados reais do CRM de uma empresa de Engenharia Clínica e Hospitalar.
-O ciclo médio de vendas é longo (60-120 dias). Os contratos são B2B complexos com
-hospitais e clínicas. O campo abc_curve indica a importância do cliente (A=maior).
-
----
-
-### 1. Oportunidades no funil de vendas sem actividade há ≥14 dias (${data.dormant.length})
-Cada item inclui: cliente, valor estimado, etapa actual e dias sem toque.
-${fmt(data.dormant)}
-
-### 2. Contratos a vencer nos próximos 90 dias (${data.renewal.length})
-Days_until_expiry negativo = já vencido. Prioriza curva A e B.
-${fmt(data.renewal)}
-
-### 3. Leads sem evolução há ≥30 dias (${data.stale.length})
-Leads em status inicial (novo/em_qualificação) sem progressão.
-${fmt(data.stale)}
+Você tem acesso completo ao CRM e deve:
+1. Identificar situações críticas PELO NOME do cliente/lead
+2. Dar recomendações CONCRETAS com próximo passo específico
+3. Priorizar por impacto financeiro e urgência
 
 ---
 
-## Tarefa
+### A. OPORTUNIDADES NO FUNIL SEM TOQUE (${data.dormant.length} identificadas)
+${fmt(data.dormant.map(d => ({
+  cliente:     d.client_name,
+  processo:    d.process_number,
+  etapa:       d.stage_name ?? '(sem etapa)',
+  funil:       d.pipeline_name ?? '',
+  dias_parado: d.days_idle,
+  valor:       fmtBRL(d.value),
+  responsavel: d.owner_name ?? '(sem responsável)',
+  ultima_ativ: d.last_activity_at
+    ? `há ${d.days_idle} dias`
+    : `desde entrada na etapa`,
+})))}
 
-Gera um briefing executivo para o Gestor Comercial com estas 4 secções:
+### B. CONTRATOS A VENCER / VENCIDOS (${data.renewal.length} identificados)
+${fmt(data.renewal.map(r => ({
+  cliente:        r.client_name,
+  processo:       r.process_number,
+  vencimento:     r.valid_until,
+  dias_p_vencer:  r.days_until_expiry !== null
+    ? (r.days_until_expiry < 0 ? `VENCIDO há ${Math.abs(r.days_until_expiry)} dias` : `vence em ${r.days_until_expiry} dias`)
+    : '(sem data)',
+  etapa_atual:    r.stage_name ?? '(sem etapa activa)',
+})))}
 
-🚨 *TOP 3 ACÇÕES URGENTES*
-As 3 acções mais críticas desta semana. Para cada uma: nome do cliente/lead, contexto
-em 1 frase, e a acção concreta recomendada.
+### C. LEADS SEM QUALIFICAÇÃO (${data.stale.length} identificados)
+${fmt(data.stale.map(l => ({
+  nome:      l.name,
+  empresa:   l.company_name ?? '(sem empresa)',
+  status:    l.status,
+  score:     l.score,
+  origem:    l.source ?? '(sem origem)',
+  parado_ha: `${l.days_since_update} dias sem movimentação`,
+})))}
 
-💰 *MAIOR OPORTUNIDADE DA SEMANA*
-O negócio ou renovação com maior impacto financeiro imediato. Explica o porquê
-e sugere o próximo passo específico.
+### D. PROPOSTAS PARADAS (${data.proposals.length} identificadas)
+${fmt(data.proposals.map(p => ({
+  cliente:         p.client_name,
+  codigo:          p.control_code,
+  situacao:        p.status_label,
+  aguardando:      p.pending_approver ?? '(cliente ou etapa sem aprovador)',
+  dias_aguardando: p.days_waiting,
+  valor_total:     fmtBRL(p.total_value),
+})))}
 
-⚠️ *SINAL DE ALERTA*
-Se existir um padrão preocupante nos dados (ex: concentração de deals numa etapa,
-contrato de curva A prestes a vencer sem renovação em andamento), aponta-o em 2-3
-linhas. Se não houver nada relevante, escreve "Nenhum sinal crítico esta semana."
-
-📊 *SAÚDE DO PIPELINE*
-Uma linha de resumo: número de oportunidades activas, valor total estimado em jogo,
-e quantas estão em risco (dormentes + renovações urgentes).
+### E. PLANOS DE ACÇÃO COM ITENS PENDENTES (${data.actionPlans.length} contratos)
+${fmt(data.actionPlans.map(a => ({
+  cliente:          a.client_name,
+  processo:         a.process_number,
+  itens_pendentes:  a.pending_count,
+  mais_antigo_ha:   `${a.oldest_days} dias`,
+  departamentos:    a.departments.join(', ') || '(sem departamento)',
+})))}
 
 ---
 
-*Regras de formatação:*
-- Pronto para WhatsApp: sem asteriscos duplos, sem markdown pesado
-- Usa os emojis das secções acima, mais nenhum
-- Máximo 300 palavras no total
-- Escreve em português do Brasil
-- Nunca inventes dados que não estejam acima
-- Se uma secção não tiver dados suficientes, diz isso em uma frase curta
+## SUA TAREFA
+
+Gera um briefing executivo DIRECTO E NOMINAL (sempre diz o nome do cliente/lead).
+Actua como um consultor de vendas que vai reportar ao director comercial.
+
+🚨 TOP 3 ACÇÕES URGENTES
+Liste as 3 situações mais críticas com:
+• Nome do cliente/lead
+• O que está parado e porquê é urgente
+• Acção concreta a tomar HOJE (quem faz o quê)
+
+💰 MAIOR OPORTUNIDADE DA SEMANA
+O negócio com maior impacto financeiro imediato:
+• Nome do cliente, valor em jogo
+• Contexto da situação actual
+• Próximo passo específico
+
+⚠️ SINAL DE ALERTA
+Um padrão preocupante que o gestor precisa saber:
+• Exemplo: "3 propostas aguardam aprovação técnica há mais de X dias"
+• Ou: "Pipeline de vendas tem Y oportunidades paradas na mesma etapa"
+• Se não houver nada relevante: "Nenhum padrão crítico detectado esta semana."
+
+📊 SAÚDE DO PIPELINE
+Uma linha com os números: X oportunidades activas | Y em risco | Z propostas paradas | W leads para qualificar
+
+---
+
+Regras obrigatórias:
+- SEMPRE menciona nomes reais (cliente, lead, responsável)
+- Nunca inventa dados ausentes; se faltar um campo, diz "(sem informação)"
+- Máximo 350 palavras no total
+- Português do Brasil
+- Sem markdown pesado — pronto para WhatsApp
+- Usa apenas os emojis das secções acima
 `.trim()
+}
+
+// ─── Criação automática de tarefas após o briefing ────────────────────────────
+async function createAutomaticTasks(
+  supabase: ReturnType<typeof getAdminClient>,
+  data: {
+    dormant:     DormantRun[]
+    renewal:     RenewalCandidate[]
+    proposals:   StuckProposal[]
+    actionPlans: PendingActionPlan[]
+  }
+): Promise<number> {
+  let created = 0
+
+  // Tarefa para oportunidades mais críticas (top 3 mais paradas)
+  for (const d of data.dormant.slice(0, 3)) {
+    const ok = await createAgentTask(
+      supabase,
+      d.contract_id,
+      `[Copiloto IA] Oportunidade parada há ${d.days_idle} dias na etapa "${d.stage_name ?? 'desconhecida'}". ` +
+      `Retomar contato com ${d.client_name} e registar próximo passo até amanhã.`,
+      1
+    )
+    if (ok) created++
+  }
+
+  // Tarefa para contratos vencidos ou vencendo em 15 dias
+  for (const r of data.renewal.filter(r => (r.days_until_expiry ?? 99) <= 15)) {
+    const ok = await createAgentTask(
+      supabase,
+      r.id,
+      `[Copiloto IA] Contrato ${r.days_until_expiry !== null && r.days_until_expiry < 0
+        ? `VENCIDO há ${Math.abs(r.days_until_expiry)} dias`
+        : `vence em ${r.days_until_expiry} dias`
+      }. Ligar para ${r.client_name} e confirmar renovação ou negociar condições.`,
+      r.days_until_expiry !== null && r.days_until_expiry < 0 ? 0 : 2
+    )
+    if (ok) created++
+  }
+
+  // Tarefa para propostas paradas (top 2)
+  for (const p of data.proposals.slice(0, 2)) {
+    if (p.status === 'pending_technical' || p.status === 'pending_commercial') {
+      const ok = await createAgentTask(
+        supabase,
+        // proposals não têm contract_id directo — busca via control_code
+        p.id, // usará proposal_id como fallback; não é ideal mas evita join extra
+        `[Copiloto IA] Proposta ${p.control_code} para ${p.client_name} aguarda aprovação ` +
+        `(${p.status_label}) há ${p.days_waiting} dias. ` +
+        `Cobrar ${p.pending_approver ?? 'o responsável'} para dar andamento.`,
+        1
+      )
+      if (ok) created++
+    }
+  }
+
+  return created
 }
 
 // ─── Envio WhatsApp ───────────────────────────────────────────────────────────
@@ -322,7 +646,6 @@ export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
     if (!res.ok) {
       const detail = body?.message ?? body?.error ?? body?.response?.message ?? res.statusText
       console.error(`[whatsapp] erro Evolution API → ${res.status}: ${detail}`)
-      console.error(`[whatsapp] body: ${JSON.stringify(body)}`)
       return { sent: false, error: `Evolution API ${res.status}: ${detail}` }
     }
 
@@ -335,45 +658,31 @@ export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
   }
 }
 
-// ─── Serializa qualquer erro para string legível ──────────────────────────────
-// A SDK da Anthropic pode lançar objectos com .status, .error.message, etc.
+// ─── Serializa erros para string legível ──────────────────────────────────────
 function serializeError(err: unknown): string {
   if (err instanceof Error) {
-    // Tenta extrair campos específicos da Anthropic SDK / AI SDK
     const e = err as Error & {
       status?: number
       statusCode?: number
       error?: { message?: string; type?: string }
       cause?: unknown
     }
-
     const parts: string[] = [`${e.constructor?.name ?? 'Error'}: ${e.message}`]
-
-    if (e.status || e.statusCode) {
-      parts.push(`HTTP ${e.status ?? e.statusCode}`)
-    }
-    if (e.error?.type)    parts.push(`type: ${e.error.type}`)
-    if (e.error?.message) parts.push(`api_error: ${e.error.message}`)
-    if (e.cause)          parts.push(`cause: ${serializeError(e.cause)}`)
-
+    if (e.status || e.statusCode)  parts.push(`HTTP ${e.status ?? e.statusCode}`)
+    if (e.error?.type)             parts.push(`type: ${e.error.type}`)
+    if (e.error?.message)          parts.push(`api_error: ${e.error.message}`)
+    if (e.cause)                   parts.push(`cause: ${serializeError(e.cause)}`)
     return parts.join(' | ')
   }
-
-  // Fallback: serializa como JSON para capturar objectos não-Error
-  try {
-    return JSON.stringify(err)
-  } catch {
-    return String(err)
-  }
+  try { return JSON.stringify(err) } catch { return String(err) }
 }
 
-// ─── Função principal — gera o briefing completo ──────────────────────────────
-// Chamada directamente pelo Server Component E pelo route.ts (sem fetch HTTP).
+// ─── Função principal ─────────────────────────────────────────────────────────
 export async function generateBriefing(opts: {
   sendViaWhatsApp: boolean
+  createTasks?: boolean   // default: true (cria tarefas no CRM)
 }): Promise<BriefingResult | BriefingError> {
 
-  // ── 1. Verifica variáveis obrigatórias ANTES de qualquer I/O ────────────────
   console.log('[agent] verificando variáveis de ambiente...')
 
   const missingVars: string[] = []
@@ -387,21 +696,25 @@ export async function generateBriefing(opts: {
     return { ok: false, error: msg }
   }
 
-  // Log parcial da key para confirmar que foi lida (nunca loga a key completa)
   const keyPreview = process.env.ANTHROPIC_API_KEY!
   console.log(`[agent] ANTHROPIC_API_KEY presente — prefixo: ${keyPreview.slice(0, 7)}... (${keyPreview.length} chars)`)
 
-  // ── 2. Queries ao Supabase ───────────────────────────────────────────────────
+  // ── Queries ao Supabase ──────────────────────────────────────────────────────
   const today    = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
   const supabase = getAdminClient()
 
-  console.log('[agent] iniciando queries ao Supabase...')
-  let dormant: DormantRun[], renewal: RenewalCandidate[], stale: StaleLead[]
+  console.log('[agent] iniciando queries ao Supabase (schema: contract_crm)...')
+
+  let dormant: DormantRun[], renewal: RenewalCandidate[], stale: StaleLead[],
+      proposals: StuckProposal[], actionPlans: PendingActionPlan[]
+
   try {
-    ;[dormant, renewal, stale] = await Promise.all([
+    ;[dormant, renewal, stale, proposals, actionPlans] = await Promise.all([
       fetchDormantOpportunities(supabase),
       fetchRenewalCandidates(supabase),
       fetchStaleLeds(supabase),
+      fetchStuckProposals(supabase),
+      fetchPendingActionPlans(supabase),
     ])
   } catch (err) {
     const msg = `Erro nas queries ao Supabase: ${serializeError(err)}`
@@ -410,34 +723,31 @@ export async function generateBriefing(opts: {
   }
 
   console.log(
-    `[agent] dados carregados — ${dormant.length} dormentes, ` +
-    `${renewal.length} renovações, ${stale.length} leads estagnados`
+    `[agent] dados carregados — ${dormant.length} dormentes, ${renewal.length} renovações, ` +
+    `${stale.length} leads, ${proposals.length} propostas paradas, ${actionPlans.length} planos acção`
   )
 
-  // ── 3. Chamada ao LLM via @anthropic-ai/sdk (SDK oficial, sem camada intermédia)
-  console.log('[agent] chamando Anthropic API — modelo: claude-3-5-haiku-20241022')
+  // ── Chamada ao LLM ──────────────────────────────────────────────────────────
+  console.log('[agent] chamando Anthropic API — modelo: claude-haiku-4-5')
   let briefing: string
   let usage: { promptTokens: number; completionTokens: number }
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-    // claude-haiku-4-5 é o Haiku mais recente disponível na API Anthropic.
-    // Se a tua conta ainda não tiver acesso, tenta 'claude-3-haiku-20240307'.
     const response = await client.messages.create({
       model:      'claude-haiku-4-5',
-      max_tokens: 900,
+      max_tokens: 1200,
       system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
-Analisa dados de CRM de vendas B2B complexas e consultivas (hospitais, clínicas, equipamentos médicos).
-Gera briefings executivos concisos, precisos e acionáveis em português do Brasil.
-Nunca inventa informações. Baseia-se exclusivamente nos dados fornecidos.
-Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
+Especialista em vendas B2B consultivas (hospitais, clínicas, equipamentos médicos).
+Gera briefings executivos precisos, nominais e acionáveis em português do Brasil.
+Tom: consultor sénior directo, como se estivesse numa reunião de vendas.
+NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
       messages: [
-        { role: 'user', content: buildPrompt({ dormant, renewal, stale, today }) }
+        { role: 'user', content: buildPrompt({ dormant, renewal, stale, proposals, actionPlans, today }) }
       ],
     })
 
-    // Extrai o texto da resposta
     const block = response.content.find(b => b.type === 'text')
     briefing = block && block.type === 'text' ? block.text : ''
     usage = {
@@ -447,9 +757,8 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
   } catch (err) {
     const detail = serializeError(err)
     console.error('[agent] ERRO na chamada Anthropic API:')
-    console.error(err)   // log do objecto completo nos Vercel Logs
-    const msg = `Falha na chamada ao modelo Anthropic: ${detail}`
-    return { ok: false, error: msg }
+    console.error(err)
+    return { ok: false, error: `Falha na chamada ao modelo Anthropic: ${detail}` }
   }
 
   console.log('\n========================================')
@@ -458,11 +767,25 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
   console.log(briefing)
   console.log('========================================')
   console.log(
-    `[agent] tokens — input: ${usage.promptTokens} | output: ${usage.completionTokens} | ` +
-    `custo: ~$${((usage.promptTokens * 0.0008 + usage.completionTokens * 0.004) / 1000).toFixed(4)}`
+    `[agent] tokens — input: ${usage.promptTokens} | output: ${usage.completionTokens}`
   )
 
-  // ── 4. Envio WhatsApp (não-bloqueante) ──────────────────────────────────────
+  // ── Criação automática de tarefas no CRM ────────────────────────────────────
+  const shouldCreateTasks = opts.createTasks !== false  // default: true
+  let tasksCreated = 0
+
+  if (shouldCreateTasks) {
+    console.log('[agent] criando tarefas automáticas no CRM...')
+    try {
+      tasksCreated = await createAutomaticTasks(supabase, { dormant, renewal, proposals, actionPlans })
+      console.log(`[agent] ${tasksCreated} tarefas criadas no CRM`)
+    } catch (err) {
+      console.error('[agent] erro ao criar tarefas:', serializeError(err))
+      // Não falha o briefing por causa de tarefas
+    }
+  }
+
+  // ── Envio WhatsApp ──────────────────────────────────────────────────────────
   let whatsapp: WhatsAppResult = { sent: false, error: 'Envio WhatsApp desactivado nesta chamada' }
   if (opts.sendViaWhatsApp) {
     console.log('[agent] enviando via WhatsApp...')
@@ -481,10 +804,13 @@ Tom: profissional e directo, como um analista sénior reportando ao gestor.`,
       dormantOpportunities: dormant.length,
       renewalCandidates:    renewal.length,
       staleLeads:           stale.length,
+      stuckProposals:       proposals.length,
+      pendingActionPlans:   actionPlans.length,
       tokensInput:          usage.promptTokens,
       tokensOutput:         usage.completionTokens,
     },
     briefing,
+    tasksCreated,
     whatsapp,
   }
 }
