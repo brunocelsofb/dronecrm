@@ -163,8 +163,13 @@ export async function fetchDormantOpportunities(
   }
 
   // Nomes dos owners
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ownerIds = [...new Set(
-    runs.map((r: { contracts: { owner_id: string } }) => r.contracts?.owner_id).filter(Boolean)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (runs as any[]).map((r: any) => {
+      const c = Array.isArray(r.contracts) ? r.contracts[0] : r.contracts
+      return c?.owner_id as string | undefined
+    }).filter(Boolean) as string[]
   )]
   const { data: profiles } = ownerIds.length
     ? await supabase.from('profiles').select('id, full_name').in('id', ownerIds)
@@ -176,23 +181,27 @@ export async function fetchDormantOpportunities(
 
   const dormant: DormantRun[] = []
 
-  for (const run of runs) {
-    const contract       = run.contracts as { id: string; process_number: string; client_name: string; owner_id: string }
-    const lastActivityAt = lastActivityByContract.get(run.contract_id) ?? null
-    const referenceDate  = lastActivityAt ?? run.stage_entered_at ?? new Date(0).toISOString()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const run of runs as any[]) {
+    const rawContract    = Array.isArray(run.contracts) ? run.contracts[0] : run.contracts
+    const contract       = rawContract as { id: string; process_number: string; client_name: string; owner_id: string } | null
+    const lastActivityAt = lastActivityByContract.get(run.contract_id as string) ?? null
+    const referenceDate  = lastActivityAt ?? (run.stage_entered_at as string | null) ?? new Date(0).toISOString()
     const daysIdle       = differenceInDays(new Date(), new Date(referenceDate))
 
     if (daysIdle >= 14) {
+      const rawStage    = Array.isArray(run.stages)    ? run.stages[0]    : run.stages
+      const rawPipeline = Array.isArray(run.pipelines) ? run.pipelines[0] : run.pipelines
       dormant.push({
-        contract_id:      run.contract_id,
+        contract_id:      run.contract_id as string,
         process_number:   contract?.process_number ?? '',
         client_name:      contract?.client_name ?? '(sem nome)',
-        value:            run.value ?? null,
-        stage_name:       (run.stages as { name: string } | null)?.name ?? null,
-        pipeline_name:    (run.pipelines as { name: string } | null)?.name ?? null,
+        value:            (run.value as number | null) ?? null,
+        stage_name:       (rawStage as { name: string } | null)?.name ?? null,
+        pipeline_name:    (rawPipeline as { name: string } | null)?.name ?? null,
         days_idle:        daysIdle,
         last_activity_at: lastActivityAt,
-        owner_name:       ownerNameById.get(contract?.owner_id) ?? null,
+        owner_name:       (ownerNameById.get(String(contract?.owner_id ?? '')) ?? null) as string | null,
       })
     }
   }
@@ -323,27 +332,25 @@ export async function fetchStuckProposals(
     (approverProfiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name])
   )
 
-  return (data ?? []).map((p: {
-    id: string; control_code: string; status: string; updated_at: string
-    assigned_technical_approver_id: string | null
-    assigned_commercial_approver_id: string | null
-    contracts: { client_name: string }
-    proposal_items: { subtotal: number }[]
-  }) => {
-    const totalValue = (p.proposal_items ?? []).reduce((s, i) => s + (i.subtotal ?? 0), 0)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((p: any) => {
+    const rawContract  = Array.isArray(p.contracts) ? p.contracts[0] : p.contracts
+    const clientName   = (rawContract as { client_name: string } | null)?.client_name ?? '(sem cliente)'
+    const items        = (p.proposal_items ?? []) as { subtotal: number }[]
+    const totalValue   = items.reduce((s, i) => s + (i.subtotal ?? 0), 0)
     const pendingApprover =
       p.status === 'pending_technical'  ? approverNameById.get(p.assigned_technical_approver_id ?? '') ?? 'Técnico não designado'
       : p.status === 'pending_commercial' ? approverNameById.get(p.assigned_commercial_approver_id ?? '') ?? 'Comercial não designado'
       : null
 
     return {
-      id:              p.id,
-      control_code:    p.control_code,
-      client_name:     p.contracts?.client_name ?? '(sem cliente)',
-      status:          p.status,
-      status_label:    STATUS_LABELS[p.status] ?? p.status,
-      days_waiting:    differenceInDays(new Date(), new Date(p.updated_at)),
-      total_value:     totalValue || null,
+      id:               p.id as string,
+      control_code:     p.control_code as string,
+      client_name:      clientName,
+      status:           p.status as string,
+      status_label:     STATUS_LABELS[p.status as string] ?? (p.status as string),
+      days_waiting:     differenceInDays(new Date(), new Date(p.updated_at as string)),
+      total_value:      totalValue || null,
       pending_approver: pendingApprover,
     }
   })
@@ -373,18 +380,20 @@ export async function fetchPendingActionPlans(
     items: { created_at: string; dept: string | null }[]
   }>()
 
-  for (const item of data ?? []) {
-    const key = item.contract_id
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const item of (data ?? []) as any[]) {
+    const key        = item.contract_id as string
+    const rawContract = Array.isArray(item.contracts) ? item.contracts[0] : item.contracts
     if (!byContract.has(key)) {
       byContract.set(key, {
-        process_number: item.contracts?.process_number ?? '',
-        client_name:    item.contracts?.client_name ?? '',
+        process_number: (rawContract as { process_number: string } | null)?.process_number ?? '',
+        client_name:    (rawContract as { client_name: string } | null)?.client_name ?? '',
         items:          [],
       })
     }
     byContract.get(key)!.items.push({
-      created_at: item.created_at,
-      dept:       item.responsible_department ?? null,
+      created_at: item.created_at as string,
+      dept:       (item.responsible_department as string | null) ?? null,
     })
   }
 
@@ -748,7 +757,7 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
       ],
     })
 
-    const block = response.content.find(b => b.type === 'text')
+    const block = response.content.find((b: { type: string }) => b.type === 'text')
     briefing = block && block.type === 'text' ? block.text : ''
     usage = {
       promptTokens:     response.usage.input_tokens,
