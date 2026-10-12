@@ -5,7 +5,10 @@ export const metadata: Metadata = {
   title: "Contract CRM",
   description: "Gestão de contratos",
   verification: {
-    google: 'Yi2dxGaXjMEc_FsA3GwabGxfDRXyOoBw48OrJXJv85Q',
+    google: [
+      'Yi2dxGaXjMEc_FsA3GwabGxfDRXyOoBw48OrJXJv85Q',
+      'AqPkROuMdsFqF1dyK70O6tACN6O0-AZOabWeGxBLuvw',
+    ],
   },
 };
 
