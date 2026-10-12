@@ -47,16 +47,22 @@ export async function connectSmtpAccount(formData: FormData): Promise<ActionStat
   if (!verify.ok) return { error: `Não consegui conectar: ${verify.error}` }
 
   const adminClient = createAdminClient()
+
+  // Busca o tenant_id do perfil — obrigatório pelo trigger set_tenant_id()
+  const { data: profile } = await adminClient.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
+  if (!profile?.tenant_id) return { error: 'Perfil do utilizador não encontrado. Contacte o administrador.' }
+
   const { error } = await adminClient.from('email_accounts').upsert(
     {
-      user_id: user.id,
+      user_id:      user.id,
+      tenant_id:    profile.tenant_id,
       email,
       connection_type: 'smtp',
-      smtp_host: host,
-      smtp_port: port,
+      smtp_host:    host,
+      smtp_port:    port,
       smtp_username: username,
       smtp_password: password,
-      smtp_secure: secure,
+      smtp_secure:  secure,
       connected_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
