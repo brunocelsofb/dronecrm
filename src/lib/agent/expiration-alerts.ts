@@ -48,9 +48,7 @@ type ExpiringContract = {
   monthly_value: number | null
   contact_phone: string | null
   contact_email: string | null
-  owner_phone: string | null
   owner_name: string | null
-  stage_name: string | null
 }
 
 type AlertLevel = 90 | 60 | 30 | 15 | 0
@@ -88,11 +86,9 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
         phone,
         email
       ),
-      pipeline_runs!left (
-        stages!left ( name ),
-        companies!left (
-          users!left ( phone, full_name )
-        )
+      owner:profiles!contracts_owner_id_fkey (
+        full_name,
+        email
       )
     `)
     .gte('valid_until', `${dateStr}T00:00:00.000Z`)
@@ -106,10 +102,7 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((c: any) => {
     const contact = Array.isArray(c.contacts) ? c.contacts[0] : c.contacts
-    const run     = Array.isArray(c.pipeline_runs) ? c.pipeline_runs[0] : c.pipeline_runs
-    const stage   = run ? (Array.isArray(run.stages) ? run.stages[0] : run.stages) : null
-    const company = run ? (Array.isArray(run.companies) ? run.companies[0] : run.companies) : null
-    const owner   = company ? (Array.isArray(company.users) ? company.users[0] : company.users) : null
+    const owner   = Array.isArray(c.owner) ? c.owner[0] : c.owner
 
     const expiry   = new Date(c.valid_until)
     const today    = new Date()
@@ -126,9 +119,7 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
       monthly_value:    c.monthly_value ?? null,
       contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
       contact_email:    (contact as { email?: string } | null)?.email ?? null,
-      owner_phone:      (owner as { phone?: string } | null)?.phone ?? null,
       owner_name:       (owner as { full_name?: string } | null)?.full_name ?? null,
-      stage_name:       (stage as { name?: string } | null)?.name ?? null,
     } as ExpiringContract
   })
 }
@@ -147,11 +138,9 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
       valid_until,
       monthly_value,
       contacts!left ( phone, email ),
-      pipeline_runs!left (
-        stages!left ( name ),
-        companies!left (
-          users!left ( phone, full_name )
-        )
+      owner:profiles!contracts_owner_id_fkey (
+        full_name,
+        email
       )
     `)
     .lt('valid_until', `${today}T00:00:00.000Z`)
@@ -164,10 +153,7 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((c: any) => {
     const contact = Array.isArray(c.contacts) ? c.contacts[0] : c.contacts
-    const run     = Array.isArray(c.pipeline_runs) ? c.pipeline_runs[0] : c.pipeline_runs
-    const stage   = run ? (Array.isArray(run.stages) ? run.stages[0] : run.stages) : null
-    const company = run ? (Array.isArray(run.companies) ? run.companies[0] : run.companies) : null
-    const owner   = company ? (Array.isArray(company.users) ? company.users[0] : company.users) : null
+    const owner   = Array.isArray(c.owner) ? c.owner[0] : c.owner
 
     const expiry   = new Date(c.valid_until)
     const today2   = new Date()
@@ -184,9 +170,7 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
       monthly_value:    c.monthly_value ?? null,
       contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
       contact_email:    (contact as { email?: string } | null)?.email ?? null,
-      owner_phone:      (owner as { phone?: string } | null)?.phone ?? null,
       owner_name:       (owner as { full_name?: string } | null)?.full_name ?? null,
-      stage_name:       (stage as { name?: string } | null)?.name ?? null,
     } as ExpiringContract
   })
 }
@@ -247,7 +231,7 @@ function buildInternalWhatsAppMessage(contract: ExpiringContract, alertLevel: Al
     `Processo: ${contract.process_number}\n` +
     `Vencimento: ${dataVenc}\n` +
     `Valor: ${valor}\n` +
-    (contract.stage_name ? `Etapa: ${contract.stage_name}\n` : '') +
+    (contract.owner_name ? `Responsável: ${contract.owner_name}\n` : '') +
     `\n` +
     (alertLevel <= 15
       ? `⚠️ *Ação urgente necessária!* Entre em contato com o cliente hoje.`
