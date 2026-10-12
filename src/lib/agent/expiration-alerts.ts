@@ -45,7 +45,7 @@ type ExpiringContract = {
   client_name: string
   valid_until: string
   days_until_expiry: number
-  contract_value: number | null
+  monthly_value: number | null
   contact_phone: string | null
   contact_email: string | null
   owner_phone: string | null
@@ -83,7 +83,7 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
       process_number,
       client_name,
       valid_until,
-      contract_value,
+      monthly_value,
       contacts!left (
         phone,
         email
@@ -97,7 +97,6 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
     `)
     .gte('valid_until', `${dateStr}T00:00:00.000Z`)
     .lte('valid_until', `${dateStr}T23:59:59.999Z`)
-    .eq('status', 'active')
 
   if (error) {
     console.error(`[expiration] erro ao buscar contratos vencendo em ${targetDays}d: ${error.message}`)
@@ -124,7 +123,7 @@ async function fetchContractsExpiringInDays(targetDays: number): Promise<Expirin
       client_name:      c.client_name,
       valid_until:      c.valid_until,
       days_until_expiry: daysLeft,
-      contract_value:   c.contract_value ?? null,
+      monthly_value:    c.monthly_value ?? null,
       contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
       contact_email:    (contact as { email?: string } | null)?.email ?? null,
       owner_phone:      (owner as { phone?: string } | null)?.phone ?? null,
@@ -146,7 +145,7 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
       process_number,
       client_name,
       valid_until,
-      contract_value,
+      monthly_value,
       contacts!left ( phone, email ),
       pipeline_runs!left (
         stages!left ( name ),
@@ -156,7 +155,6 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
       )
     `)
     .lt('valid_until', `${today}T00:00:00.000Z`)
-    .eq('status', 'active')
 
   if (error) {
     console.error(`[expiration] erro ao buscar contratos vencidos: ${error.message}`)
@@ -183,7 +181,7 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
       client_name:      c.client_name,
       valid_until:      c.valid_until,
       days_until_expiry: daysLeft,
-      contract_value:   c.contract_value ?? null,
+      monthly_value:    c.monthly_value ?? null,
       contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
       contact_email:    (contact as { email?: string } | null)?.email ?? null,
       owner_phone:      (owner as { phone?: string } | null)?.phone ?? null,
@@ -197,7 +195,7 @@ async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
 
 function buildClientWhatsAppMessage(contract: ExpiringContract, alertLevel: AlertLevel): string {
   const dataVenc  = formatDateBR(contract.valid_until)
-  const valor     = formatBRL(contract.contract_value)
+  const valor     = formatBRL(contract.monthly_value)
   const num       = contract.process_number
 
   if (alertLevel === 0 || alertLevel < 0) {
@@ -240,7 +238,7 @@ function buildClientWhatsAppMessage(contract: ExpiringContract, alertLevel: Aler
 function buildInternalWhatsAppMessage(contract: ExpiringContract, alertLevel: AlertLevel): string {
   const emoji     = alertLevel <= 15 ? '🚨' : alertLevel <= 30 ? '⚠️' : '📋'
   const dataVenc  = formatDateBR(contract.valid_until)
-  const valor     = formatBRL(contract.contract_value)
+  const valor     = formatBRL(contract.monthly_value)
   const dias      = alertLevel === 0 ? 'VENCIDO' : `${contract.days_until_expiry}d`
 
   return (
@@ -261,7 +259,7 @@ function buildInternalWhatsAppMessage(contract: ExpiringContract, alertLevel: Al
 
 function buildClientEmailHtml(contract: ExpiringContract, alertLevel: AlertLevel): string {
   const dataVenc = formatDateBR(contract.valid_until)
-  const valor    = formatBRL(contract.contract_value)
+  const valor    = formatBRL(contract.monthly_value)
   const dias     = contract.days_until_expiry
   const isExpired = alertLevel === 0 || dias < 0
 
