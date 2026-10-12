@@ -84,6 +84,30 @@ export function EmailConnectionSettings({
             </a>
           ) : (
             <form action={handleConnectSmtp} className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+              {/* Guia rápido por provedor */}
+              <details className="rounded-md border border-blue-100 bg-blue-50 p-2">
+                <summary className="cursor-pointer text-xs font-medium text-blue-700">📋 Configurações por provedor (Outlook, Hotmail, corporativo…)</summary>
+                <div className="mt-2 space-y-2 text-xs text-gray-700">
+                  <div className="rounded border border-gray-200 bg-white p-2">
+                    <p className="font-semibold text-gray-800">Outlook / Hotmail / Microsoft 365</p>
+                    <p>Servidor: <code className="rounded bg-gray-100 px-1">smtp.office365.com</code></p>
+                    <p>Porta: <code className="rounded bg-gray-100 px-1">587</code> · SSL/TLS: <strong>desmarcado</strong> (usa STARTTLS)</p>
+                    <p>Usuário: seu e-mail completo · Senha: sua senha normal</p>
+                  </div>
+                  <div className="rounded border border-gray-200 bg-white p-2">
+                    <p className="font-semibold text-gray-800">Gmail via SMTP (alternativa ao OAuth)</p>
+                    <p>Servidor: <code className="rounded bg-gray-100 px-1">smtp.gmail.com</code></p>
+                    <p>Porta: <code className="rounded bg-gray-100 px-1">587</code> · SSL/TLS: <strong>desmarcado</strong></p>
+                    <p>Usuário: seu Gmail · Senha: <strong>senha de app</strong> (não a senha normal)</p>
+                    <p className="mt-1 text-gray-500">Gere a senha de app em: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-blue-600 underline">myaccount.google.com/apppasswords</a></p>
+                  </div>
+                  <div className="rounded border border-gray-200 bg-white p-2">
+                    <p className="font-semibold text-gray-800">E-mail corporativo próprio</p>
+                    <p>Peça ao seu administrador de TI: servidor SMTP, porta e se usa SSL.</p>
+                    <p className="text-gray-500">Geralmente: porta <code className="rounded bg-gray-100 px-1">465</code> com SSL marcado, ou <code className="rounded bg-gray-100 px-1">587</code> sem SSL.</p>
+                  </div>
+                </div>
+              </details>
               <div>
                 <label className="block text-xs text-gray-500">Seu e-mail</label>
                 <input name="email" type="email" required className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />
