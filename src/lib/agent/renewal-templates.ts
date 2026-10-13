@@ -105,7 +105,7 @@ export type RenewalEmailData = {
 export const RENEWAL_SEVERITY: Record<'60' | '30' | '15' | '0', { label: string; bg: string; fg: string; badgeBg: string; badgeFg: string }> = {
   '60': { label: 'INFORMATIVO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
   '30': { label: 'ATENÇÃO',     bg: '#00AFD1', fg: '#0B3A49', badgeBg: '#0B3A49', badgeFg: '#FFFFFF' },
-  '15': { label: 'URGENTE',     bg: '#E98C5F', fg: '#1B2A33', badgeBg: '#1B2A33', badgeFg: '#FFFFFF' },
+  '15': { label: 'URGENTE',     bg: '#E98C5F', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#E98C5F' },
   '0':  { label: 'CRÍTICO',     bg: '#AF5B65', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#AF5B65' },
 }
 
