@@ -11,6 +11,7 @@ const MAX_TEMPLATE_LENGTH = 3000
 
 export async function saveRenewalTemplates(
   templates: Partial<Record<RenewalLevelKey, string>>,
+  emailSubject?: string,
 ): Promise<{ ok?: true; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas mensagens.' }
 
@@ -24,6 +25,10 @@ export async function saveRenewalTemplates(
     clean[key] = t
   }
 
+  const subject = emailSubject?.trim() ?? ''
+  if (emailSubject !== undefined && !subject) return { error: 'O assunto do e-mail está vazio.' }
+  if (subject.length > 200) return { error: 'O assunto do e-mail passou de 200 caracteres.' }
+
   const admin = createAdminClient()
   const { data, error: readErr } = await admin
     .from('organization_settings')
@@ -35,7 +40,13 @@ export async function saveRenewalTemplates(
   const current = (data?.copilot_settings ?? {}) as Record<string, unknown>
   const { error } = await admin
     .from('organization_settings')
-    .update({ copilot_settings: { ...current, renewal_templates: clean } })
+    .update({
+      copilot_settings: {
+        ...current,
+        renewal_templates: clean,
+        ...(subject ? { renewal_email_subject: subject } : {}),
+      },
+    })
     .eq('id', 'default')
   if (error) return { error: error.message }
 

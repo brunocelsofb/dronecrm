@@ -9,6 +9,13 @@ interface InstanceConfig {
   label?: string
   bot_enabled?: boolean
   private?: boolean   // só envio (ex.: briefing); nada dela entra no CRM
+  user_id?: string    // consultor dono do WhatsApp (assina avisos; remetente do e-mail)
+}
+
+export interface InstanceOwnerOption {
+  id: string
+  full_name: string
+  email: string | null   // e-mail conectado em Minha Conta (null = não conectado)
 }
 
 interface WhatsAppInstance {
@@ -21,6 +28,7 @@ interface WhatsAppInstance {
 interface Props {
   // evo_instance_aliases de organization_settings — suporta string pura (legado) e objeto (novo)
   instanceAliases: Record<string, InstanceConfig | string>
+  users?: InstanceOwnerOption[]
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -37,6 +45,7 @@ function normalizeAliases(
         label: val.label ?? key,
         bot_enabled: val.bot_enabled !== false,
         private: val.private === true,
+        user_id: val.user_id,
       }
     }
   }
@@ -45,7 +54,7 @@ function normalizeAliases(
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
+export function WhatsAppInstancesPanel({ instanceAliases, users = [] }: Props) {
   const normalized = normalizeAliases(instanceAliases ?? {})
 
   // Estado local de instâncias (inclui bot_enabled para optimistic UI)
@@ -155,6 +164,32 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
       setPrivErrors(prev => ({ ...prev, [instanceKey]: err?.message ?? 'Erro ao salvar' }))
     } finally {
       setPrivSaving(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [instances])
+
+  // ── Consultor dono do WhatsApp ─────────────────────────────────────────
+  const [ownerSaving, setOwnerSaving] = useState<Record<string, boolean>>({})
+  const [ownerErrors, setOwnerErrors] = useState<Record<string, string>>({})
+  const userById = new Map(users.map(u => [u.id, u]))
+
+  const changeOwner = useCallback(async (instanceKey: string, userId: string) => {
+    const previous = instances[instanceKey]?.user_id
+    setInstances(prev => ({ ...prev, [instanceKey]: { ...prev[instanceKey], user_id: userId || undefined } }))
+    setOwnerSaving(prev => ({ ...prev, [instanceKey]: true }))
+    setOwnerErrors(prev => ({ ...prev, [instanceKey]: '' }))
+    try {
+      const res = await fetch('/api/settings/whatsapp-instance', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey, user_id: userId || null }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok === false) throw new Error(data?.error ?? `HTTP ${res.status}`)
+    } catch (err) {
+      setInstances(prev => ({ ...prev, [instanceKey]: { ...prev[instanceKey], user_id: previous } }))
+      setOwnerErrors(prev => ({ ...prev, [instanceKey]: err instanceof Error ? err.message : 'Erro ao salvar' }))
+    } finally {
+      setOwnerSaving(prev => ({ ...prev, [instanceKey]: false }))
     }
   }, [instances])
 
@@ -410,6 +445,33 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
                 </button>
               </div>
             </div>
+            )}
+
+            {/* Consultor dono do WhatsApp (só instâncias públicas) */}
+            {!isPrivate && (
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-gray-700">Consultor deste WhatsApp</span>
+                  {(() => {
+                    const owner = config.user_id ? userById.get(config.user_id) : null
+                    if (!owner) return <span className="text-[11px] text-amber-600">Defina para enviar avisos de renovação por e-mail</span>
+                    return owner.email
+                      ? <span className="text-[11px] text-gray-400">E-mail de envio: {owner.email}</span>
+                      : <span className="text-[11px] text-amber-600">{owner.full_name} ainda não conectou o e-mail em Minha Conta</span>
+                  })()}
+                  {ownerErrors[key] && <span className="text-[11px] text-red-500">⚠ {ownerErrors[key]}</span>}
+                </div>
+                <select
+                  value={config.user_id ?? ''}
+                  disabled={ownerSaving[key] === true}
+                  onChange={e => changeOwner(key, e.target.value)}
+                  aria-label={`Consultor do WhatsApp ${label}`}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 disabled:opacity-60"
+                >
+                  <option value="">Selecione…</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              </div>
             )}
 
             {/* Instância privada */}

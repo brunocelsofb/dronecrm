@@ -6,6 +6,7 @@ import {
   RENEWAL_LEVELS,
   RENEWAL_VARIABLES,
   DEFAULT_RENEWAL_TEMPLATES,
+  DEFAULT_RENEWAL_EMAIL_SUBJECT,
   renderRenewalTemplate,
   type RenewalLevelKey,
 } from '@/lib/agent/renewal-templates'
@@ -21,12 +22,15 @@ const SAMPLE_VARS = {
 
 export function CopilotRenewalTemplatesForm({
   initial,
+  initialSubject,
   companyName,
 }: {
   initial: Record<RenewalLevelKey, string>
+  initialSubject: string
   companyName: string
 }) {
   const [templates, setTemplates] = useState(initial)
+  const [subject, setSubject] = useState(initialSubject)
   const [active, setActive] = useState<RenewalLevelKey>('60')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -48,7 +52,7 @@ export function CopilotRenewalTemplatesForm({
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const res = await saveRenewalTemplates(templates)
+    const res = await saveRenewalTemplates(templates, subject)
     setSaving(false)
     if (res.error) setError(res.error)
     else setSaved(true)
@@ -60,7 +64,21 @@ export function CopilotRenewalTemplatesForm({
         <h2 className="text-sm font-semibold text-[#1B556B]">Avisos de renovação ao cliente</h2>
         <p className="mt-1 text-xs text-gray-500">
           O Copiloto prepara estas mensagens nos marcos de vencimento e abre uma atividade para o responsável
-          do contrato. Nada é enviado sem o consultor revisar e clicar em enviar.
+          do contrato. O aviso vai por WhatsApp e e-mail juntos (mesmo texto), saindo do WhatsApp e do e-mail
+          do consultor escolhido. Nada é enviado sem o consultor revisar e clicar em enviar.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="renewal-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail (todos os marcos)</label>
+        <input
+          id="renewal-subject"
+          value={subject}
+          onChange={e => { setSubject(e.target.value); setSaved(false) }}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none"
+        />
+        <p className="mt-1 text-[11px] text-gray-400">
+          Prévia: {renderRenewalTemplate(subject || DEFAULT_RENEWAL_EMAIL_SUBJECT, { ...SAMPLE_VARS, empresa: companyName || 'Sua empresa' })}
         </p>
       </div>
 

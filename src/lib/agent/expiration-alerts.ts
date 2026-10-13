@@ -24,7 +24,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
-import { resolveRenewalTemplates, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
+import { resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 
 function getAdminClient() {
   return createClient(
@@ -50,6 +50,7 @@ type RenewalCandidate = {
   monthly_value: number | null
   contact_name: string | null
   contact_phone: string | null
+  contact_email: string | null
   owner_id: string | null
   owner_name: string | null
 }
@@ -65,7 +66,7 @@ type AlertResult = {
   validUntil: string
   ownerName: string | null
   monthlyValue: number | null
-  pending: 'preparar' | 'enviar' | 'sem_telefone'
+  pending: 'preparar' | 'enviar' | 'sem_contato'
 }
 
 export type ExpirationAlertsReport = {
@@ -137,8 +138,8 @@ async function fetchCandidates(
 
   const contactIds = [...new Set(contactIdFor.values())]
   const { data: contacts } = contactIds.length
-    ? await supabase.from('contacts').select('id, name, phone').in('id', contactIds)
-    : { data: [] as { id: string; name: string | null; phone: string | null }[] }
+    ? await supabase.from('contacts').select('id, name, phone, email').in('id', contactIds)
+    : { data: [] as { id: string; name: string | null; phone: string | null; email: string | null }[] }
   const contactById = new Map((contacts ?? []).map(c => [c.id, c]))
 
   // Responsável: owner_id, senão current_assignee_id
@@ -161,13 +162,14 @@ async function fetchCandidates(
       monthly_value:     c.monthly_value ?? null,
       contact_name:      contact?.name ?? null,
       contact_phone:     phone && phone.length >= 10 ? phone : null,
+      contact_email:     contact?.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim()) ? contact.email.trim() : null,
       owner_id:          ownerId,
       owner_name:        ownerId ? ownerById.get(ownerId) ?? null : null,
     }
   })
 }
 
-type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string> }
+type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string>; emailSubject: string }
 
 async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Promise<OrgConfig> {
   const { data } = await supabase
@@ -175,10 +177,11 @@ async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Prom
     .select('company_name, copilot_settings')
     .eq('id', 'default')
     .maybeSingle()
-  const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown }
+  const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown }
   return {
     companyName: data?.company_name?.trim() || 'Equipe Comercial',
     templates:   resolveRenewalTemplates(copilot.renewal_templates),
+    emailSubject: resolveRenewalEmailSubject(copilot.renewal_email_subject),
   }
 }
 
@@ -186,16 +189,20 @@ async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Prom
 
 // Monta o rascunho a partir do modelo de Configurações → Copiloto IA.
 // {{consultor}} fica no texto e é preenchido no envio com o WhatsApp escolhido.
-function buildClientMessage(c: RenewalCandidate, level: AlertLevel, org: OrgConfig): string {
-  const key = String(level) as RenewalLevelKey
-  return renderRenewalTemplate(org.templates[key], {
+function templateVars(c: RenewalCandidate, org: OrgConfig): Record<string, string> {
+  return {
     contato:    c.contact_name?.split(' ')[0] ?? c.client_name,
     cliente:    c.client_name,
     contrato:   c.process_number ?? '',
     vencimento: formatDateBR(c.valid_until),
     dias:       String(Math.abs(c.days_until_expiry)),
     empresa:    org.companyName,
-  })
+  }
+}
+
+function buildClientMessage(c: RenewalCandidate, level: AlertLevel, org: OrgConfig): string {
+  const key = String(level) as RenewalLevelKey
+  return renderRenewalTemplate(org.templates[key], templateVars(c, org))
 }
 
 function levelLabel(level: AlertLevel, days: number): string {
@@ -214,7 +221,7 @@ async function processContract(
     contractId: c.id, processNumber: c.process_number, clientName: c.client_name,
     daysUntilExpiry: c.days_until_expiry, alertLevel: level,
     validUntil: c.valid_until, ownerName: c.owner_name, monthlyValue: c.monthly_value,
-    pending: (level === 90 ? 'preparar' : c.contact_phone ? 'enviar' : 'sem_telefone') as AlertResult['pending'],
+    pending: (level === 90 ? 'preparar' : c.contact_phone && c.contact_email ? 'enviar' : 'sem_contato') as AlertResult['pending'],
   }
   const dedupeKey = `renewal:${c.valid_until}:${level}`
   const dueInDays = level === 0 ? 0 : level === 15 ? 1 : level === 30 ? 3 : level === 60 ? 5 : 7
@@ -236,20 +243,23 @@ async function processContract(
   }
 
   // 60 / 30 / 15 / vencido: aviso ao cliente, aguardando aprovação do consultor
-  if (!c.contact_phone) {
+  // Aviso vai por WhatsApp E e-mail juntos: exige os dois no contato
+  const missing = [!c.contact_phone && 'WhatsApp', !c.contact_email && 'e-mail'].filter(Boolean) as string[]
+  if (missing.length > 0) {
     const r = await createAgentActivity(supabase, {
       contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
       activityType: 'task',
-      title: `Aviso de renovação sem telefone — ${c.client_name}`,
+      title: `Aviso de renovação sem ${missing.join(' e ')} — ${c.client_name}`,
       content:
-        `${header}\n\nO aviso de renovação ao cliente não pôde ser preparado porque o contrato ` +
-        `não tem contato com WhatsApp cadastrado. Cadastre o contato e fale com o cliente.`,
-      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until, missing: 'contact_phone' },
+        `${header}\n\nO aviso de renovação vai por WhatsApp e e-mail juntos, mas o contato do contrato ` +
+        `está sem ${missing.join(' e ')}. Cadastre no contato e fale com o cliente.`,
+      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until, missing },
     })
-    return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : 'sem telefone' }
+    return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : `sem ${missing.join(' e ')}` }
   }
 
   const draft = buildClientMessage(c, level, org)
+  const draftSubject = renderRenewalTemplate(org.emailSubject, templateVars(c, org))
   const r = await createAgentActivity(supabase, {
     contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
     activityType: 'whatsapp',
@@ -258,7 +268,8 @@ async function processContract(
       : `Enviar aviso de renovação (${level} dias) — ${c.client_name}`,
     content:
       `${header}\n\n` +
-      `Aviso ao cliente pronto para revisão — para ${c.contact_name ?? 'o contato'} (${c.contact_phone}). ` +
+      `Aviso ao cliente (WhatsApp + e-mail) pronto para revisão — para ${c.contact_name ?? 'o contato'} ` +
+      `(${c.contact_phone} · ${c.contact_email}). ` +
       `Clique em "Revisar e enviar".`,
     metadata: {
       kind:          'renewal_alert',
@@ -266,6 +277,8 @@ async function processContract(
       valid_until:   c.valid_until,
       draft_message: draft,
       target_phone:  c.contact_phone,
+      target_email:  c.contact_email,
+      draft_subject: draftSubject,
       contact_name:  c.contact_name,
       approval:      'pending',
     },
@@ -281,7 +294,7 @@ function escapeHtml(t: string): string {
 
 const PENDING_LABEL: Record<AlertResult['pending'], { text: string; color: string }> = {
   enviar:       { text: 'Aviso ao cliente aguardando revisão e envio', color: '#c2410c' },
-  sem_telefone: { text: 'Sem WhatsApp do contato — cadastrar e falar com o cliente', color: '#b91c1c' },
+  sem_contato:  { text: 'Falta WhatsApp e/ou e-mail do contato — cadastrar e falar com o cliente', color: '#b91c1c' },
   preparar:     { text: 'Preparar a renovação (90 dias)', color: '#1d4ed8' },
 }
 

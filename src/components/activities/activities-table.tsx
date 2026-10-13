@@ -246,6 +246,8 @@ export function ActivitiesTable({
                             contractId={contractId}
                             draft={md.draft_message as string}
                             phone={md.target_phone as string}
+                            email={typeof md.target_email === 'string' ? md.target_email : null}
+                            draftSubject={typeof md.draft_subject === 'string' ? md.draft_subject : null}
                             contactName={typeof md.contact_name === 'string' ? md.contact_name : null}
                             onSent={r => setLocalActivities(prev => prev.map(x => x.id === a.id
                               ? { ...x, status: 'done', completed: true, title: r.title ?? x.title, content: r.content ?? x.content,

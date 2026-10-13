@@ -38,6 +38,8 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const { instance, bot_enabled } = body
     const isPrivate: unknown = body.private
+    const hasUserId = Object.prototype.hasOwnProperty.call(body, 'user_id')
+    const userId: unknown = body.user_id
 
     if (typeof instance !== 'string' || instance.trim() === '') {
       return NextResponse.json({ ok: false, error: 'instance é obrigatório' }, { status: 400 })
@@ -48,7 +50,10 @@ export async function PATCH(request: Request) {
     if (isPrivate !== undefined && typeof isPrivate !== 'boolean') {
       return NextResponse.json({ ok: false, error: 'private deve ser boolean' }, { status: 400 })
     }
-    if (bot_enabled === undefined && isPrivate === undefined) {
+    if (hasUserId && userId !== null && typeof userId !== 'string') {
+      return NextResponse.json({ ok: false, error: 'user_id deve ser texto ou null' }, { status: 400 })
+    }
+    if (bot_enabled === undefined && isPrivate === undefined && !hasUserId) {
       return NextResponse.json({ ok: false, error: 'nada para alterar' }, { status: 400 })
     }
 
@@ -79,6 +84,16 @@ export async function PATCH(request: Request) {
 
     const prev = typeof aliases[instance] === 'string' ? { label: aliases[instance] } : aliases[instance]
     const next = { ...prev }
+    // Consultor dono deste WhatsApp: assina os avisos e é o remetente do e-mail
+    if (hasUserId) {
+      if (userId) {
+        const { data: prof } = await supabase.from('profiles').select('id').eq('id', userId as string).maybeSingle()
+        if (!prof) return NextResponse.json({ ok: false, error: 'Usuário não encontrado' }, { status: 400 })
+        next.user_id = userId
+      } else {
+        delete next.user_id
+      }
+    }
     if (bot_enabled !== undefined) next.bot_enabled = bot_enabled
     if (isPrivate !== undefined) {
       next.private = isPrivate

@@ -19,7 +19,7 @@ export const RENEWAL_VARIABLES: { key: string; description: string }[] = [
   { key: 'vencimento', description: 'Data de vencimento (dd/mm/aaaa)' },
   { key: 'dias',       description: 'Dias até o vencimento (ou dias vencido)' },
   { key: 'empresa',    description: 'Nome da sua empresa (Configurações Gerais)' },
-  { key: 'consultor',  description: 'Nome do WhatsApp que envia (preenchido no envio)' },
+  { key: 'consultor',  description: 'Nome do consultor que envia (WhatsApp escolhido no envio)' },
 ]
 
 export const DEFAULT_RENEWAL_TEMPLATES: Record<RenewalLevelKey, string> = {
@@ -66,4 +66,21 @@ export function renderRenewalTemplate(template: string, vars: Record<string, str
     const v = vars[key]
     return v === undefined || v === null ? match : v
   })
+}
+
+// ─── Assunto do e-mail (o corpo usa o mesmo texto do WhatsApp) ───────────────
+
+export const DEFAULT_RENEWAL_EMAIL_SUBJECT = 'Renovação do contrato {{contrato}} — {{cliente}}'
+
+export function resolveRenewalEmailSubject(saved: unknown): string {
+  return typeof saved === 'string' && saved.trim() ? saved : DEFAULT_RENEWAL_EMAIL_SUBJECT
+}
+
+/** Converte o texto do WhatsApp em HTML de e-mail (*negrito* → <strong>, quebras de linha → <br>). */
+export function whatsappTextToEmailHtml(text: string): string {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return escaped
+    .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>')
+    .replace(/\r\n|\r|\n/g, '<br>')
 }
