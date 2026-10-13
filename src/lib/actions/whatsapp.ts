@@ -8,6 +8,7 @@ import { sendEvoTextMessage, sendEvoImageMessage, sendEvoDocumentMessage, verify
 import type { EvoCredentials } from '@/lib/whatsapp/evolution'
 import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
 import { getActiveTenantId } from '@/lib/supabase/server'
+import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 
 async function getTenantId(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
   // Durante impersonation, o tenant ativo é lido do header injetado pelo middleware
@@ -45,6 +46,11 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
 
   if (!serverUrl || !apiKey || !instanceName) return { error: 'Preencha Server URL, API Key e Instance Name.' }
 
+  // Instância privada (ex.: WhatsApp pessoal do gestor, só para o briefing):
+  // NÃO vira a instância principal do CRM e NÃO recebe webhook.
+  // O QR Code é gerado em getEvoQrCodeAction(formData).
+  if (isPrivateInstance(instanceName)) return { privateInstance: true }
+
   const supabase = await createClient()
   const { error } = await supabase
     .from('organization_settings')
@@ -61,11 +67,38 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
   return {}
 }
 
-export async function getEvoQrCodeAction(_formData?: any): Promise<{ base64?: string; status?: string; error?: string }> {
+export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: string; status?: string; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Acesso negado.' }
+
+  // Instância privada: usa os dados do formulário (não os da instância principal),
+  // gera o QR e garante que a instância fique sem webhook.
+  const formInstance = (formData?.get?.('evo_instance_name') as string | undefined)?.trim()
+  if (formInstance && isPrivateInstance(formInstance)) {
+    const serverUrl = (formData.get('evo_server_url') as string)?.trim().replace(/\/$/, '')
+    const apiKey    = (formData.get('evo_api_key') as string)?.trim()
+    if (!serverUrl || !apiKey) return { error: 'Preencha Server URL e API Key.' }
+    const qr = await getEvoQrCode({ serverUrl, apiKey, instanceName: formInstance })
+    await disableEvoWebhook(serverUrl, apiKey, formInstance)
+    return qr
+  }
+
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'Credenciais da Evolution API não configuradas.' }
   return getEvoQrCode(creds)
+}
+
+// Desliga o webhook de uma instância (melhor esforço — não falha o fluxo)
+async function disableEvoWebhook(serverUrl: string, apiKey: string, instanceName: string): Promise<void> {
+  try {
+    const res = await fetch(`${serverUrl}/webhook/set/${encodeURIComponent(instanceName)}`, {
+      method: 'POST',
+      headers: { apikey: apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook: { enabled: false, url: '', events: [] } }),
+    })
+    if (!res.ok) console.warn('[evo] não foi possível desligar webhook de', instanceName, res.status)
+  } catch (e) {
+    console.warn('[evo] erro ao desligar webhook de', instanceName, e)
+  }
 }
 
 export async function configureEvoWebhook(_formData?: any): Promise<ActionState> {

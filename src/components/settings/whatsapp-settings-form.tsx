@@ -21,10 +21,11 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
     const fd = new FormData(e.currentTarget)
     setLoadingQr(true); setQrCode(null); setStatus(null); setFormState(null)
 
-    // Salva credenciais primeiro
+    // Salva credenciais primeiro (instância privada não é salva como principal)
     const res = await connectEvo(fd)
     setFormState(res)
     if (res.error) { setLoadingQr(false); return }
+    const isPrivate = res.privateInstance === true
 
     // Busca QR Code
     const serverUrl = (fd.get('evo_server_url') as string).trim()
@@ -33,10 +34,13 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
 
     try {
     // Busca QR Code via Server Action (evita CORS)
-    const data = await getEvoQrCodeAction()
+    const data = await getEvoQrCodeAction(isPrivate ? fd : undefined)
     console.log('[evo qr] resposta:', data)
     if (data.error) setStatus(`❌ ${data.error}`)
-    else if (data.base64) setQrCode(data.base64)
+    else if (data.base64) {
+      setQrCode(data.base64)
+      if (isPrivate) setStatus(`🔒 Instância privada "${instance}": só envio do briefing. Não vira a instância principal do CRM e nenhuma mensagem dela entra no CRM.`)
+    }
     else if (data.status) setStatus(data.status)
     else setStatus('QR Code não disponível. Verifique se a instância está desconectada.')
     } catch (e: any) {
