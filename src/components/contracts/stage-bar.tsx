@@ -25,6 +25,7 @@ export function StageBar({
   contractId, stages, currentStageId, timings, status,
   wonLabel, lostLabel, canChangeStage, pipelineType,
   contractNature, contractValue, otherPipelines, lostReasons,
+  accountOwnerOptions, currentOwnerId,
 }: {
   contractId: string; stages: Stage[]; currentStageId: string
   timings: StageTiming[]; status: string; wonLabel: string; lostLabel: string
@@ -33,6 +34,8 @@ export function StageBar({
   contractValue?: number
   otherPipelines?: OtherPipeline[]
   lostReasons?: { id: string; name: string }[]
+  accountOwnerOptions?: { id: string; full_name: string }[]   // consultores para assumir a conta no ganho
+  currentOwnerId?: string | null
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +50,7 @@ export function StageBar({
   const [cnpjBilling, setCnpjBilling] = useState(CNPJS_ORBIS[0].value)
   const [contractType, setContractType] = useState('')
   const [monthlyValue, setMonthlyValue] = useState(contractValue ? String(contractValue) : '')
+  const [accountOwnerId, setAccountOwnerId] = useState('')
 
   const currentIndex = stages.findIndex((s) => s.id === currentStageId)
   const currentStage = stages[currentIndex]
@@ -58,6 +62,7 @@ export function StageBar({
   const inp: React.CSSProperties = { width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }
   const lbl: React.CSSProperties = { display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4 }
   const modalValid = !!validFrom && !!validUntil && (isGestaoContratos || !!contractType)
+    && (!isVendas || !!accountOwnerId)
 
   const selectedTransferPipeline = (otherPipelines ?? []).find(p => p.id === transferPipelineId)
 
@@ -100,6 +105,7 @@ export function StageBar({
     validFrom?: string; validUntil?: string
     cnpjBilling?: string; contractType?: string; monthlyValue?: string
     lostReason?: string
+    accountOwnerId?: string
   }) {
     setError(null)
     startTransition(async () => {
@@ -123,7 +129,7 @@ export function StageBar({
           }
         } catch { setError('Erro de conexão.'); return }
       }
-      const result = await closeRun(contractId, outcome, extraData?.lostReason)
+      const result = await closeRun(contractId, outcome, extraData?.lostReason, extraData?.accountOwnerId || null)
       if (result.error) setError(result.error)
       else setShowWonModal(false)
     })
@@ -215,6 +221,20 @@ export function StageBar({
                       <input type="number" value={monthlyValue} onChange={e => setMonthlyValue(e.target.value)} style={inp} />
                     </div>
                   </div>
+                  <div>
+                    <label style={lbl}>Consultor responsável pela conta <span style={{ color: '#b91c1c' }}>*</span></label>
+                    <select value={accountOwnerId} onChange={e => setAccountOwnerId(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                      <option value="">Selecione quem assume a conta (retenção)...</option>
+                      {(accountOwnerOptions ?? []).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}{p.id === currentOwnerId ? ' (responsável atual)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>
+                      Quem cuidará da conta depois do ganho — renovação, alertas e relacionamento.
+                    </p>
+                  </div>
                   {contractNature && (
                     <div style={{ padding: '8px 12px', borderRadius: 8, background: '#eef3ff', fontSize: 11, color: '#3b5bdb' }}>
                       📋 Natureza: <strong>{contractNature === 'eng_clinica' ? 'Engenharia Clínica' : 'Engenharia Hospitalar'}</strong> — pré-preenchida pela tag
@@ -225,7 +245,9 @@ export function StageBar({
             )}
 
             {!modalValid && <p style={{ fontSize: 11, color: '#92400e', marginBottom: 12 }}>
-              ⚠ {!validFrom || !validUntil ? 'Preencha início e fim da vigência.' : 'Selecione o tipo de contrato.'}
+              ⚠ {!validFrom || !validUntil ? 'Preencha início e fim da vigência.'
+                : !isGestaoContratos && !contractType ? 'Selecione o tipo de contrato.'
+                : 'Indique o consultor responsável pela conta.'}
             </p>}
             {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8 }}>{error}</p>}
 
@@ -235,7 +257,7 @@ export function StageBar({
                 Cancelar
               </button>
               <button disabled={isPending || !modalValid}
-                onClick={() => handleClose('won', { validFrom, validUntil, cnpjBilling, contractType, monthlyValue })}
+                onClick={() => handleClose('won', { validFrom, validUntil, cnpjBilling, contractType, monthlyValue, accountOwnerId })}
                 style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: !modalValid ? '#d1d8e8' : '#1a7c3e', color: '#fff', cursor: !modalValid ? 'not-allowed' : 'pointer' }}>
                 {isPending ? 'Salvando...' : `Confirmar ${wonLabel}`}
               </button>

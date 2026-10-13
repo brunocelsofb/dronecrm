@@ -332,7 +332,12 @@ export async function moveContractStage(
 // Isso é o que permite marcar "Renovado" com o contrato ainda em
 // "Gestão de Contratos" — a etapa do processo e o desfecho final são
 // duas coisas independentes agora, não uma etapa fixa no funil.
-export async function closeRun(contractId: string, outcome: 'won' | 'lost', lostReason?: string): Promise<MoveResult> {
+export async function closeRun(
+  contractId: string,
+  outcome: 'won' | 'lost',
+  lostReason?: string,
+  accountOwnerId?: string | null,
+): Promise<MoveResult> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -372,6 +377,14 @@ export async function closeRun(contractId: string, outcome: 'won' | 'lost', lost
 
     // NOTA: a trava de dimensionamento foi removida temporariamente.
     // Pode ser reativada quando o fluxo de dimensionamento estiver em uso.
+
+    // TRAVA DO FUNIL DE VENDAS (Mercado Privado / Público): ao ganhar, a conta
+    // passa para o consultor de retenção. Exige indicar quem fica responsável
+    // pela conta (owner_id). Não se aplica ao Avulso nem a Gestão de Contratos.
+    if (pipelineForGate?.type === 'vendas') {
+      const ownerErr = await assignAccountOwner(contractId, accountOwnerId)
+      if (ownerErr) return { error: ownerErr }
+    }
 
     // TRAVA ESPECÍFICA DO FUNIL DE GESTÃO DE CONTRATOS: marcar sucesso
     // aqui normalmente significa "renovação concluída" — exige que a
@@ -864,4 +877,45 @@ export async function transferRunToPipeline(
   revalidatePath(`/contracts/${contractId}`)
   revalidatePath('/pipeline')
   return { success: true }
+}
+
+
+// Define o consultor responsável pela conta (owner_id) ao ganhar no funil de
+// vendas. Retorna mensagem de erro ou null. Registra a troca nas atividades.
+async function assignAccountOwner(
+  contractId: string,
+  accountOwnerId: string | null | undefined,
+): Promise<string | null> {
+  if (!accountOwnerId) {
+    return 'Indique o consultor que ficará responsável pela conta antes de confirmar o ganho.'
+  }
+
+  const admin = createAdminClient()
+
+  const [{ data: contract }, { data: owner }] = await Promise.all([
+    admin.from('contracts').select('owner_id, tenant_id').eq('id', contractId).maybeSingle(),
+    admin.from('profiles').select('id, full_name, tenant_id').eq('id', accountOwnerId).maybeSingle(),
+  ])
+  if (!contract) return 'Contrato não encontrado.'
+  if (!owner || (owner.tenant_id && contract.tenant_id && owner.tenant_id !== contract.tenant_id)) {
+    return 'Consultor responsável inválido.'
+  }
+  if (contract.owner_id === accountOwnerId) return null
+
+  const { error } = await admin.from('contracts').update({ owner_id: accountOwnerId }).eq('id', contractId)
+  if (error) return `Não foi possível definir o responsável pela conta: ${error.message}`
+
+  let previousName: string | null = null
+  if (contract.owner_id) {
+    const { data: prev } = await admin.from('profiles').select('full_name').eq('id', contract.owner_id).maybeSingle()
+    previousName = prev?.full_name ?? null
+  }
+  await admin.from('activities').insert({
+    contract_id: contractId,
+    tenant_id:   contract.tenant_id,
+    type:        'transfer',
+    content:     `Responsável pela conta definido no ganho: ${previousName ? `${previousName} → ` : ''}${owner.full_name}.`,
+    metadata:    { kind: 'account_owner_on_won', from: contract.owner_id, to: accountOwnerId },
+  })
+  return null
 }

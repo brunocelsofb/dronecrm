@@ -189,9 +189,10 @@ function buildClientMessage(c: RenewalCandidate, level: AlertLevel, companyName:
     )
   }
 
+  const Ref = ref.charAt(0).toUpperCase() + ref.slice(1)
   const abertura =
-    level === 15 ? `⚠️ ${ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
-    : level === 30 ? `${ref.charAt(0).toUpperCase() + ref.slice(1)} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
+    level === 15 ? `⚠️ ${Ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
+    : level === 30 ? `${Ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
     : `Passando para lembrar que ${ref} (${c.client_name}) tem vigência até *${dataVenc}* (${c.days_until_expiry} dias).`
 
   const pedido =

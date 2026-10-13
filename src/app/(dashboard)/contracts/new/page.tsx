@@ -37,6 +37,7 @@ export default function NewContractPage() {
   const [fieldConfigs, setFieldConfigs] = useState<PipelineFieldConfig[]>([])
   const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([])
   const [orgCnpj, setOrgCnpj] = useState<string>('')
+  const [accountOwners, setAccountOwners] = useState<{ id: string; full_name: string }[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -81,6 +82,10 @@ export default function NewContractPage() {
         setTags(tagsData ?? [])
         setOrgCnpj(orgData?.company_cnpj ?? '')
       }
+
+      // Consultores para "responsável pela conta" (obrigatório no funil Contratos)
+      const { data: profilesData } = await supabase.from('profiles').select('id, full_name').order('full_name')
+      setAccountOwners((profilesData ?? []).map(p => ({ id: p.id, full_name: p.full_name ?? '' })))
     }
 
     load()
@@ -168,6 +173,19 @@ export default function NewContractPage() {
               <option value="mrr">MRR — Recorrente mensal</option>
               <option value="spot">Spot — Avulso / único</option>
             </select>
+          </div>
+        )}
+
+        {/* Cadastro direto no funil Contratos: exige o responsável pela conta
+            (no fluxo normal ele é definido ao dar ganho em Mercado Privado/Público) */}
+        {pipelineType === 'gestao_contratos' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Consultor responsável pela conta <span style={{ color: '#b91c1c' }}>*</span></label>
+            <select name="account_owner_id" required className={inputCls} defaultValue="">
+              <option value="">Selecione quem cuida da conta (retenção)...</option>
+              {accountOwners.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">Recebe as atividades de renovação e os alertas deste contrato.</p>
           </div>
         )}
 

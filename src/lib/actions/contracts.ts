@@ -156,13 +156,30 @@ export async function createContract(
     return { error: 'Etapa selecionada é inválida.' }
   }
 
+  // Cadastro direto no funil Contratos (gestão de contratos): exige o
+  // consultor responsável pela conta — no fluxo normal ele é definido ao
+  // dar ganho em Mercado Privado/Público.
+  const { data: stagePipeline } = await supabase
+    .from('pipelines').select('type').eq('id', stage.pipeline_id).maybeSingle()
+  let ownerId = user.id
+  if (stagePipeline?.type === 'gestao_contratos') {
+    const accountOwnerId = (formData.get('account_owner_id') as string) || ''
+    if (!accountOwnerId) {
+      return { error: 'Indique o consultor responsável pela conta.' }
+    }
+    const { data: ownerProfile } = await supabase
+      .from('profiles').select('id').eq('id', accountOwnerId).maybeSingle()
+    if (!ownerProfile) return { error: 'Consultor responsável inválido.' }
+    ownerId = accountOwnerId
+  }
+
   const { data: contract, error: contractError } = await supabase
     .from('contracts')
     .insert({
       ...contractFields,
       company_id: companyId,
       contact_id: contactId,
-      owner_id: user.id,
+      owner_id: ownerId,
       current_assignee_id: user.id,
       valid_from: (formData.get('valid_from') as string) || null,
       valid_until: (formData.get('valid_until') as string) || null,

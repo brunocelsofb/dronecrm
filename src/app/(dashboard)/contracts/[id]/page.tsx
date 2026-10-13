@@ -388,6 +388,8 @@ export default async function ContractDetailPage({
           wonLabel={pipelineById.get(displayRun.pipeline_id)?.won_label ?? 'Ganho'}
           lostLabel={pipelineById.get(displayRun.pipeline_id)?.lost_label ?? 'Perdido'}
           canChangeStage={canChangeStage}
+          accountOwnerOptions={(allProfiles ?? []).map((p) => ({ id: p.id, full_name: p.full_name ?? '' })).sort((a, b) => a.full_name.localeCompare(b.full_name))}
+          currentOwnerId={contract.owner_id ?? null}
           pipelineType={pipelineById.get(displayRun.pipeline_id)?.type}
           contractNature={(contract as any).nature ?? null}
           contractValue={Number(displayRun.value) || 0}
