@@ -21,7 +21,7 @@ export function RenewalSendButton({
   draft: string
   phone: string
   contactName?: string | null
-  onSent?: (r: { title?: string; content?: string }) => void
+  onSent?: (r: { title?: string; content?: string; metadata?: Record<string, unknown> }) => void
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -55,7 +55,7 @@ export function RenewalSendButton({
     setSending(false)
     if (res.error) { setError(res.error); return }
     setOpen(false)
-    onSent?.({ title: res.title, content: res.content })
+    onSent?.({ title: res.title, content: res.content, metadata: res.metadata })
     router.refresh()
   }
 

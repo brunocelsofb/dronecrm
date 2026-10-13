@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
 import { CreateActivityModal } from './create-activity-modal'
 import { RenewalSendButton } from './renewal-send-button'
+import { SentMessageDialog } from './sent-message-dialog'
 
 type Activity = {
   id: string
@@ -62,6 +63,7 @@ export function ActivitiesTable({
   const [showModal, setShowModal] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [viewingSent, setViewingSent] = useState<Activity | null>(null)
 
   const profileById = new Map(profiles.map(p => [p.id, p.full_name]))
 
@@ -203,9 +205,20 @@ export function ActivitiesTable({
 
                     {/* Título + descrição */}
                     <td style={td}>
-                      <p style={{ margin: 0, fontWeight: 500, textDecoration: done ? 'line-through' : 'none', color: done ? '#b0b8c8' : '#1a1f36' }}>
-                        {a.title || meta.label}
-                      </p>
+                      {renewalSent ? (
+                        <button
+                          type="button"
+                          onClick={() => setViewingSent(a)}
+                          title="Ver a mensagem enviada ao cliente"
+                          style={{ margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontWeight: 500, fontSize: 'inherit', color: '#1B556B', textDecoration: 'underline' }}
+                        >
+                          {a.title || meta.label}
+                        </button>
+                      ) : (
+                        <p style={{ margin: 0, fontWeight: 500, textDecoration: done ? 'line-through' : 'none', color: done ? '#b0b8c8' : '#1a1f36' }}>
+                          {a.title || meta.label}
+                        </p>
+                      )}
                       {renewalPending && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio ao cliente</span>
                       )}
@@ -236,7 +249,7 @@ export function ActivitiesTable({
                             contactName={typeof md.contact_name === 'string' ? md.contact_name : null}
                             onSent={r => setLocalActivities(prev => prev.map(x => x.id === a.id
                               ? { ...x, status: 'done', completed: true, title: r.title ?? x.title, content: r.content ?? x.content,
-                                  metadata: { ...(x.metadata ?? {}), approval: 'sent' } }
+                                  metadata: r.metadata ?? { ...(x.metadata ?? {}), approval: 'sent' } }
                               : x))}
                           />
                         </span>
@@ -264,6 +277,17 @@ export function ActivitiesTable({
           onCreated={handleCreated}
           profiles={profiles}
           currentUserId={currentUserId}
+        />
+      )}
+      {viewingSent && (
+        <SentMessageDialog
+          title={viewingSent.title ?? 'Aviso de renovação enviado'}
+          metadata={(viewingSent.metadata ?? {}) as Record<string, unknown>}
+          senderName={(() => {
+            const id = (viewingSent.metadata as Record<string, unknown> | null)?.sent_by
+            return typeof id === 'string' ? profileById.get(id) ?? null : null
+          })()}
+          onClose={() => setViewingSent(null)}
         />
       )}
     </div>

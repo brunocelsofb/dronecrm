@@ -60,7 +60,7 @@ export async function sendRenewalAlert(
   activityId: string,
   message: string,
   instanceName: string,
-): Promise<{ ok?: true; error?: string; title?: string; content?: string }> {
+): Promise<{ ok?: true; error?: string; title?: string; content?: string; metadata?: Record<string, unknown> }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
@@ -123,6 +123,15 @@ export async function sendRenewalAlert(
     `${sender?.full_name ? `, por ${sender.full_name}` : ''}` +
     `${consultor ? `, pelo WhatsApp de ${consultor}` : ''}.`
 
+  const sentMeta = {
+    ...meta,
+    approval:      'sent',
+    sent_at:       sentAt.toISOString(),
+    sent_by:       user.id,
+    sent_instance: instanceName,
+    final_message: finalMessage,
+  }
+
   await admin
     .from('activities')
     .update({
@@ -130,17 +139,10 @@ export async function sendRenewalAlert(
       completed: true,
       title: sentTitle,
       content: sentContent,
-      metadata: {
-        ...meta,
-        approval:      'sent',
-        sent_at:       sentAt.toISOString(),
-        sent_by:       user.id,
-        sent_instance: instanceName,
-        final_message: finalMessage,
-      },
+      metadata: sentMeta,
     })
     .eq('id', activityId)
 
   revalidatePath(`/contracts/${activity.contract_id}`)
-  return { ok: true, title: sentTitle, content: sentContent }
+  return { ok: true, title: sentTitle, content: sentContent, metadata: sentMeta }
 }
