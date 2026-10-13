@@ -71,7 +71,10 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/captura') ||
     request.nextUrl.pathname.startsWith('/suporte') ||
     request.nextUrl.pathname.startsWith('/acompanhar-ticket') ||
-    request.nextUrl.pathname.startsWith('/proposals/client')
+    request.nextUrl.pathname.startsWith('/proposals/client') ||
+    // Políticas públicas — exigidas pelo Google para publicar o OAuth (Gmail)
+    request.nextUrl.pathname === '/privacy' ||
+    request.nextUrl.pathname === '/terms'
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()
