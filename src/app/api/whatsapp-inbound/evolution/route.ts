@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut } from '@/lib/whatsapp/guardrails'
+import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 
 function toCanonicalPhone(rawPhone: string): string {
   let cleaned = rawPhone.replace(/\D/g, '')
@@ -38,6 +39,11 @@ export async function POST(request: Request) {
     const eventRaw = body?.event ?? body?.type ?? ''
     const event = eventRaw.toLowerCase().replace(/[.\-]/g, '_')
     const instanceName = body?.instance ?? body?.instanceName ?? null
+
+    // Instância privada (ex.: WhatsApp pessoal do gestor): nada entra no CRM
+    if (isPrivateInstance(instanceName)) {
+      return NextResponse.json({ ok: true, skipped: 'private instance' })
+    }
 
     if (!['messages_upsert', 'messages_delete', 'messages.delete', 'call'].includes(event)) {
       return NextResponse.json({ ok: true, skipped: `event=${eventRaw}` })

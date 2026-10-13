@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 
 async function getEvoCreds() {
   const admin = createAdminClient()
@@ -31,7 +32,11 @@ export async function GET(req: Request) {
     headers: { apikey: creds.evo_api_key },
   })
   const data = await res.json().catch(() => [])
-  const instances = Array.isArray(data) ? data : []
+  // Instâncias privadas não aparecem no CRM nem recebem webhook
+  type EvoInstance = { instance?: { instanceName?: string }; name?: string; instanceName?: string }
+  const instances = (Array.isArray(data) ? data : []).filter((inst: EvoInstance) =>
+    !isPrivateInstance(inst.instance?.instanceName ?? inst.name ?? inst.instanceName)
+  )
 
   if (searchParams.get('action') === 'sync-webhooks') {
     const results = await Promise.all(instances.map(async (inst: any) => {
@@ -57,6 +62,7 @@ export async function POST(req: Request) {
 
   const { instanceName } = await req.json()
   if (!instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
+  if (isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
 
   const res = await fetch(`${creds.evo_server_url}/instance/create`, {
     method: 'POST',
@@ -84,6 +90,7 @@ export async function PUT(req: Request) {
 
   const { instanceName } = await req.json()
   if (!instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
+  if (isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
 
   const res = await fetch(`${creds.evo_server_url}/instance/restart/${instanceName}`, {
     method: 'PUT',
@@ -100,6 +107,7 @@ export async function DELETE(req: Request) {
   if (!creds) return NextResponse.json({ error: 'Credenciais não configuradas' }, { status: 400 })
 
   const { instanceName } = await req.json()
+  if (isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
   const res = await fetch(`${creds.evo_server_url}/instance/delete/${instanceName}`, {
     method: 'DELETE',
     headers: { apikey: creds.evo_api_key },
@@ -114,6 +122,7 @@ export async function PATCH(req: Request) {
   if (!creds) return NextResponse.json({ error: 'Credenciais não configuradas' }, { status: 400 })
 
   const { instanceName } = await req.json()
+  if (isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
   const res = await fetch(`${creds.evo_server_url}/instance/connect/${instanceName}`, {
     headers: { apikey: creds.evo_api_key },
   })

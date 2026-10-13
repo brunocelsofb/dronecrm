@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 
 // Mapeia o mimetype devolvido pela Evolution para extensão e Content-Type
 const MIME_MAP: Record<string, string> = {
@@ -59,6 +60,9 @@ export async function GET(request: NextRequest) {
 
   // Usa a instância do parâmetro, com fallback para a instância padrão
   const instance = instanceParam ?? orgSettings.evo_instance_name
+  if (isPrivateInstance(instance)) {
+    return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  }
   if (!instance) {
     return NextResponse.json({ error: 'instance não encontrada' }, { status: 400 })
   }
