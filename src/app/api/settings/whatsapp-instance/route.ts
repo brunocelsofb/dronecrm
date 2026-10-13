@@ -109,3 +109,82 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }
+
+// DELETE { instance } — remove a instância da lista do CRM e da Evolution.
+// Só administradores. Recusa a instância principal e instâncias conectadas.
+// Histórico de mensagens já gravado no CRM não é apagado.
+export async function DELETE(request: Request) {
+  try {
+    if (!(await isCurrentUserAdmin())) {
+      return NextResponse.json({ ok: false, error: 'Acesso negado' }, { status: 403 })
+    }
+    const { instance } = await request.json().catch(() => ({}))
+    if (typeof instance !== 'string' || instance.trim() === '') {
+      return NextResponse.json({ ok: false, error: 'instance é obrigatório' }, { status: 400 })
+    }
+
+    const supabase = createAdminClient()
+    const { data: current } = await supabase
+      .from('organization_settings')
+      .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')
+      .eq('id', 'default')
+      .maybeSingle()
+    if (!current) {
+      return NextResponse.json({ ok: false, error: 'organization_settings não encontrado' }, { status: 404 })
+    }
+
+    if (current.evo_instance_name?.trim().toLowerCase() === instance.trim().toLowerCase()) {
+      return NextResponse.json(
+        { ok: false, error: 'Esta é a instância principal do CRM e não pode ser excluída.' },
+        { status: 400 }
+      )
+    }
+
+    const base = current.evo_server_url?.replace(/\/$/, '')
+    const apiKey = current.evo_api_key
+    const name = encodeURIComponent(instance)
+
+    // Confere na Evolution que NÃO está conectada (o status da tela pode estar desatualizado)
+    if (base && apiKey) {
+      try {
+        const st = await fetch(`${base}/instance/connectionState/${name}`, { headers: { apikey: apiKey } })
+        if (st.ok) {
+          const d = await st.json().catch(() => ({}))
+          const state = d?.instance?.state ?? d?.state
+          if (state === 'open') {
+            return NextResponse.json(
+              { ok: false, error: 'A instância está conectada. Desconecte o aparelho antes de excluir.' },
+              { status: 409 }
+            )
+          }
+        }
+      } catch { /* servidor fora do ar: segue e remove só do CRM */ }
+    }
+
+    // Remove da Evolution (melhor esforço; 404 = já não existe lá)
+    let evolution: 'deleted' | 'not_found' | 'failed' | 'skipped' = 'skipped'
+    if (base && apiKey) {
+      try {
+        const r = await fetch(`${base}/instance/delete/${name}`, { method: 'DELETE', headers: { apikey: apiKey } })
+        evolution = r.ok ? 'deleted' : r.status === 404 ? 'not_found' : 'failed'
+      } catch {
+        evolution = 'failed'
+      }
+    }
+
+    // Remove da lista do CRM
+    const aliases = { ...((current.evo_instance_aliases ?? {}) as Record<string, unknown>) }
+    delete aliases[instance]
+    const { error } = await supabase
+      .from('organization_settings')
+      .update({ evo_instance_aliases: aliases })
+      .eq('id', 'default')
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+
+    return NextResponse.json({ ok: true, instance, evolution })
+  } catch (err) {
+    console.error('[settings/whatsapp-instance] erro no DELETE:', err)
+    const message = err instanceof Error ? err.message : 'erro interno'
+    return NextResponse.json({ ok: false, error: message }, { status: 500 })
+  }
+}

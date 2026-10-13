@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2, Loader2, Trash2 } from 'lucide-react'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -158,6 +158,39 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
     }
   }, [instances])
 
+  // ── Excluir instância (só desconectadas) ───────────────────────────────
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({})
+  const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({})
+
+  const deleteInstance = useCallback(async (instanceKey: string, label: string) => {
+    const ok = window.confirm(
+      `Excluir a instância "${label}" (${instanceKey})?\n\n` +
+      'Ela será removida desta lista e do servidor da Evolution. ' +
+      'O histórico de conversas já salvo no CRM não é apagado.\n\nEssa ação não pode ser desfeita.'
+    )
+    if (!ok) return
+    setDeleting(prev => ({ ...prev, [instanceKey]: true }))
+    setDeleteErrors(prev => ({ ...prev, [instanceKey]: '' }))
+    try {
+      const res = await fetch('/api/settings/whatsapp-instance', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok === false) throw new Error(data?.error ?? `HTTP ${res.status}`)
+      setInstances(prev => {
+        const next = { ...prev }
+        delete next[instanceKey]
+        return next
+      })
+    } catch (err) {
+      setDeleteErrors(prev => ({ ...prev, [instanceKey]: err instanceof Error ? err.message : 'Erro ao excluir' }))
+    } finally {
+      setDeleting(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [])
+
   // ── Reiniciar conexão ────────────────────────────────────────────────────
   const [restarting, setRestarting] = useState<Record<string, boolean>>({})
 
@@ -260,6 +293,21 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
                   </span>
                 )}
 
+                {/* Botão excluir — só para instâncias não conectadas */}
+                {!isConnected && !isConnecting && (
+                  <button
+                    onClick={() => deleteInstance(key, label)}
+                    disabled={deleting[key] === true}
+                    title="Excluir instância"
+                    aria-label={`Excluir instância ${label}`}
+                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {deleting[key]
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Trash2 className="h-4 w-4" />}
+                  </button>
+                )}
+
                 {/* Botão reiniciar */}
                 <button
                   onClick={() => restartInstance(key)}
@@ -273,6 +321,10 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
                 </button>
               </div>
             </div>
+
+            {deleteErrors[key] && (
+              <p className="text-[11px] text-red-500">⚠ {deleteErrors[key]}</p>
+            )}
 
             {/* Divisor */}
             <div className="h-px bg-gray-100" />
