@@ -103,10 +103,11 @@ export type RenewalEmailData = {
 
 // Paleta da marca por gravidade do aviso (Configurações → Copiloto IA)
 export const RENEWAL_SEVERITY: Record<'60' | '30' | '15' | '0', { label: string; bg: string; fg: string; badgeBg: string; badgeFg: string }> = {
+  // Todos os níveis na cor institucional (petróleo); o nível fica no selo
   '60': { label: 'INFORMATIVO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
-  '30': { label: 'ATENÇÃO',     bg: '#524E9C', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#524E9C' },
-  '15': { label: 'URGENTE',     bg: '#E98C5F', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#E98C5F' },
-  '0':  { label: 'CRÍTICO',     bg: '#AF5B65', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#AF5B65' },
+  '30': { label: 'ATENÇÃO',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
+  '15': { label: 'URGENTE',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
+  '0':  { label: 'CRÍTICO',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
 }
 
 export const DEFAULT_COMMERCIAL_EMAIL = 'comercial@orbisengenharia.com.br'
