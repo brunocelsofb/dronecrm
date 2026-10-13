@@ -23,7 +23,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
-import { formatBRL, formatDateBR } from './notifications'
+import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
 import { resolveRenewalTemplates, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 
 function getAdminClient() {
@@ -62,6 +62,10 @@ type AlertResult = {
   alertLevel: AlertLevel
   activity: 'created' | 'skipped' | 'error'
   detail?: string
+  validUntil: string
+  ownerName: string | null
+  monthlyValue: number | null
+  pending: 'preparar' | 'enviar' | 'sem_telefone'
 }
 
 export type ExpirationAlertsReport = {
@@ -70,6 +74,7 @@ export type ExpirationAlertsReport = {
   results:  AlertResult[]
   by_level: Record<string, number>
   internal_whatsapp: { sent: boolean; error?: string } | null
+  internal_email: { sent: boolean; error?: string } | null
   errors:   string[]
 }
 
@@ -208,6 +213,8 @@ async function processContract(
   const base = {
     contractId: c.id, processNumber: c.process_number, clientName: c.client_name,
     daysUntilExpiry: c.days_until_expiry, alertLevel: level,
+    validUntil: c.valid_until, ownerName: c.owner_name, monthlyValue: c.monthly_value,
+    pending: (level === 90 ? 'preparar' : c.contact_phone ? 'enviar' : 'sem_telefone') as AlertResult['pending'],
   }
   const dedupeKey = `renewal:${c.valid_until}:${level}`
   const dueInDays = level === 0 ? 0 : level === 15 ? 1 : level === 30 ? 3 : level === 60 ? 5 : 7
@@ -266,6 +273,68 @@ async function processContract(
   return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
 }
 
+// ─── E-mail de resumo para o gestor ───────────────────────────────────────────
+
+function escapeHtml(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+const PENDING_LABEL: Record<AlertResult['pending'], { text: string; color: string }> = {
+  enviar:       { text: 'Aviso ao cliente aguardando revisão e envio', color: '#c2410c' },
+  sem_telefone: { text: 'Sem WhatsApp do contato — cadastrar e falar com o cliente', color: '#b91c1c' },
+  preparar:     { text: 'Preparar a renovação (90 dias)', color: '#1d4ed8' },
+}
+
+function buildSummaryEmail(items: AlertResult[], companyName: string): string {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app').replace(/\/$/, '')
+  const rows = [...items]
+    .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry)
+    .map(r => {
+      const p = PENDING_LABEL[r.pending]
+      const when = levelLabel(r.alertLevel, r.daysUntilExpiry)
+      return `
+        <tr>
+          <td style="padding:12px;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+            <a href="${appUrl}/contracts/${r.contractId}" style="color:#1B556B;font-weight:bold;text-decoration:none;">${escapeHtml(r.clientName)}</a>
+            <div style="color:#6b7280;font-size:12px;margin-top:2px;">${escapeHtml(r.processNumber ?? '')} · ${formatBRL(r.monthlyValue)}</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:13px;color:#111;">
+            ${formatDateBR(r.validUntil)}<div style="color:#6b7280;font-size:12px;">${when}</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:13px;color:#111;">${escapeHtml(r.ownerName ?? '—')}</td>
+          <td style="padding:12px;border-bottom:1px solid #e5e7eb;vertical-align:top;font-size:12px;color:${p.color};">${p.text}</td>
+        </tr>`
+    })
+    .join('')
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:24px 0;"><tr><td align="center">
+    <table width="680" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;">
+      <tr><td style="background:#1B556B;padding:20px 24px;">
+        <p style="margin:0;color:#fff;font-size:17px;font-weight:bold;">Copiloto — Renovações para acompanhar</p>
+        <p style="margin:4px 0 0;color:#cfe3ea;font-size:13px;">${items.length} nova(s) atividade(s) aberta(s) para os responsáveis</p>
+      </td></tr>
+      <tr><td style="padding:8px 12px 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <th align="left" style="padding:10px 12px;font-size:11px;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Cliente</th>
+            <th align="left" style="padding:10px 12px;font-size:11px;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Vencimento</th>
+            <th align="left" style="padding:10px 12px;font-size:11px;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Responsável</th>
+            <th align="left" style="padding:10px 12px;font-size:11px;color:#6b7280;text-transform:uppercase;border-bottom:2px solid #e5e7eb;">Pendência</th>
+          </tr>
+          ${rows}
+        </table>
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:14px 24px;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;color:#888;font-size:12px;">Nenhuma mensagem foi enviada a clientes: os avisos aguardam revisão do consultor no CRM. Gerado automaticamente pelo Copiloto IA — ${escapeHtml(companyName)}.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+}
+
 // ─── Exportação principal ─────────────────────────────────────────────────────
 
 export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
@@ -314,6 +383,20 @@ export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
     )
   }
 
+  // Resumo por e-mail para o gestor — só quando há alerta novo
+  let internalEmail: ExpirationAlertsReport['internal_email'] = null
+  if (created.length > 0) {
+    const to = process.env.AGENT_ALERT_EMAIL
+    internalEmail = to
+      ? await sendAgentEmail({
+          to,
+          subject: `[Copiloto] ${created.length} renovação(ões) para acompanhar — ${org.companyName}`,
+          htmlBody: buildSummaryEmail(created, org.companyName),
+        })
+      : { sent: false, error: 'AGENT_ALERT_EMAIL não configurado' }
+    if (!internalEmail.sent) console.error(`[expiration] e-mail de resumo não enviado: ${internalEmail.error}`)
+  }
+
   console.log(`[expiration] concluído — ${created.length} atividade(s) nova(s) | ${errors.length} erro(s)`)
 
   return {
@@ -322,6 +405,7 @@ export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
     results,
     by_level: byLevel,
     internal_whatsapp: internal,
+    internal_email: internalEmail,
     errors,
   }
 }

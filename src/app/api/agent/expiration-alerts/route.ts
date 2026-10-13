@@ -36,6 +36,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       by_level: report.by_level,
       results:  report.results,
       internal_whatsapp: report.internal_whatsapp,
+      internal_email:    report.internal_email,
       errors:   report.errors,
     })
   } catch (err) {
