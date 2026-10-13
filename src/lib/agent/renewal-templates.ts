@@ -84,3 +84,70 @@ export function whatsappTextToEmailHtml(text: string): string {
     .replace(/_([^_\n]+)_/g, '<em>$1</em>')
     .replace(/\r\n|\r|\n/g, '<br>')
 }
+
+// ─── E-mail ao cliente no formato "automático" (faixa + detalhes do contrato) ─
+
+export type RenewalEmailData = {
+  level: number                  // 60 | 30 | 15 | 0
+  daysUntilExpiry: number
+  messageText: string            // texto final (mesmo do WhatsApp)
+  contractNumber: string | null
+  clientName: string
+  validUntil: string | null      // dd/mm/aaaa
+  monthlyValue: string | null    // já formatado (R$ ...)
+  consultorName: string | null
+  consultorEmail: string | null
+  companyName: string
+}
+
+function esc(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+export function buildRenewalEmailHtml(d: RenewalEmailData): string {
+  const expired = d.level === 0 || d.daysUntilExpiry < 0
+  const color = expired ? '#dc2626' : d.level <= 15 ? '#ea580c' : d.level <= 30 ? '#d97706' : '#1B556B'
+  const header = expired
+    ? 'Contrato vencido — regularização e renovação'
+    : d.level <= 15 ? `Aviso urgente: ${d.daysUntilExpiry} dias para o vencimento`
+    : d.level <= 30 ? `Aviso de vencimento: ${d.daysUntilExpiry} dias`
+    : `Renovação do contrato: ${d.daysUntilExpiry} dias para o vencimento`
+
+  const detail = (label: string, value: string | null) =>
+    value ? `<p style="margin:0 0 4px;color:#333;font-size:14px;">${label}: <strong>${esc(value)}</strong></p>` : ''
+
+  const contact = [
+    d.consultorName ? `👤 ${esc(d.consultorName)}` : '',
+    d.consultorEmail ? `📧 <a href="mailto:${esc(d.consultorEmail)}" style="color:#1B556B;">${esc(d.consultorEmail)}</a>` : '',
+    `🏢 ${esc(d.companyName)}`,
+  ].filter(Boolean).join('<br>')
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;"><tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+      <tr><td style="background:${color};padding:24px 32px;">
+        <p style="margin:0;color:#fff;font-size:18px;font-weight:bold;">${esc(header)}</p>
+      </td></tr>
+      <tr><td style="padding:32px;color:#1a1a1a;font-size:15px;line-height:1.6;">
+        ${whatsappTextToEmailHtml(d.messageText)}
+        <table cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;width:100%;margin:24px 0;">
+          <tr><td style="padding:16px;">
+            <p style="margin:0 0 8px;color:#555;font-size:13px;"><strong>📄 Detalhes do contrato</strong></p>
+            ${detail('Cliente', d.clientName)}
+            ${detail('Número', d.contractNumber)}
+            ${detail('Vencimento', d.validUntil)}
+            ${detail('Valor de referência', d.monthlyValue)}
+          </td></tr>
+        </table>
+        <p style="margin:0 0 6px;color:#444;font-size:14px;">Em caso de dúvidas, fale com:</p>
+        <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${contact}</p>
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;color:#888;font-size:12px;">Mensagem enviada pelo sistema de gestão de contratos da ${esc(d.companyName)}. Responda este e-mail para falar com o consultor.</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+}

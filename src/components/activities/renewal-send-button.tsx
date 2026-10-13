@@ -42,7 +42,8 @@ export function RenewalSendButton({
   const [error, setError] = useState<string | null>(null)
 
   const selected = instances.find(i => i.name === instance)
-  const consultor = selected?.label ?? ''
+  // Mesmo critério do envio: consultor vinculado ao WhatsApp; sem vínculo, o rótulo
+  const consultor = selected?.ownerName ?? selected?.label ?? ''
   const preview = renderRenewalTemplate(message, { consultor }).replace(/\n{3,}/g, '\n\n').trim()
   const previewSubject = renderRenewalTemplate(subject, { consultor }).trim()
 
@@ -133,7 +134,7 @@ export function RenewalSendButton({
               style={{ ...input, lineHeight: 1.5, resize: 'vertical' }}
             />
             <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>
-              <code>{'{{consultor}}'}</code> vira o nome do WhatsApp escolhido.
+              <code>{'{{consultor}}'}</code> vira o nome do consultor vinculado ao WhatsApp escolhido. O e-mail vai no formato padrão (faixa, detalhes do contrato e contato).
             </p>
 
             {!loading && instance && (

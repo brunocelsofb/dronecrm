@@ -10,10 +10,10 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendContractWhatsApp } from '@/lib/actions/whatsapp'
-import { sendEmailForUser, getEmailAccountInfo, wrapEmailHtml } from '@/lib/email/send'
+import { sendEmailForUser, getEmailAccountInfo } from '@/lib/email/send'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
-import { renderRenewalTemplate, whatsappTextToEmailHtml } from '@/lib/agent/renewal-templates'
+import { renderRenewalTemplate, buildRenewalEmailHtml } from '@/lib/agent/renewal-templates'
 
 export type SendableInstance = {
   name: string
@@ -79,11 +79,12 @@ export async function getSendableInstances(contractId: string): Promise<{
   const userIds = [...new Set(publicEntries.map(([, v]) => aliasUser(v)).filter(Boolean))] as string[]
   const [{ data: profiles }, { data: accounts }] = userIds.length
     ? await Promise.all([
-        admin.from('profiles').select('id, full_name').in('id', userIds),
+        admin.from('profiles').select('id, full_name, job_title').in('id', userIds),
         admin.from('email_accounts').select('user_id, email').in('user_id', userIds),
       ])
     : [{ data: [] }, { data: [] }]
-  const nameById = new Map((profiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]))
+  const nameById = new Map((profiles ?? []).map((p: { id: string; full_name: string | null; job_title: string | null }) =>
+    [p.id, p.full_name ? (p.job_title ? `${p.full_name} - ${p.job_title}` : p.full_name) : null]))
   const emailById = new Map((accounts ?? []).map((a: { user_id: string; email: string }) => [a.user_id, a.email]))
 
   const instances: SendableInstance[] = publicEntries.map(([name, v]) => {
@@ -154,7 +155,13 @@ export async function sendRenewalAlert(
   if (!account) {
     return { error: 'O consultor desse WhatsApp ainda não conectou o e-mail em Minha Conta.' }
   }
-  const consultor = aliasLabel(instanceName, alias)
+  // {{consultor}} = consultor vinculado ao WhatsApp (o mesmo dono do e-mail de
+  // envio), para assinatura e remetente sempre baterem. Sem nome, usa o rótulo.
+  const { data: ownerProfile } = await admin
+    .from('profiles').select('full_name, job_title').eq('id', ownerUserId).maybeSingle()
+  const consultor = ownerProfile?.full_name
+    ? (ownerProfile.job_title ? `${ownerProfile.full_name} - ${ownerProfile.job_title}` : ownerProfile.full_name)
+    : aliasLabel(instanceName, alias)
 
   // Trava contra clique duplo: marca como "enviando" só se ainda estiver pendente
   const { data: locked } = await admin
@@ -190,7 +197,30 @@ export async function sendRenewalAlert(
     const trackingToken = crypto.randomUUID()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'
     const pixel = `<img src="${appUrl}/api/email-track/${trackingToken}" width="1" height="1" style="display:none" alt="" />`
-    const html = wrapEmailHtml(whatsappTextToEmailHtml(finalMessage), null, pixel)
+    // E-mail no formato "automático": faixa colorida, mensagem, detalhes do contrato e contato
+    const [{ data: contractInfo }, { data: orgInfo }] = await Promise.all([
+      admin.from('contracts').select('process_number, client_name, valid_until, monthly_value').eq('id', activity.contract_id).maybeSingle(),
+      admin.from('organization_settings').select('company_name').eq('id', 'default').maybeSingle(),
+    ])
+    const validUntilIso = contractInfo?.valid_until ? String(contractInfo.valid_until).slice(0, 10) : null
+    const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+    const daysLeft = validUntilIso
+      ? Math.round((new Date(`${validUntilIso}T12:00:00Z`).getTime() - new Date(`${todayBr}T12:00:00Z`).getTime()) / 86_400_000)
+      : 0
+    const html = buildRenewalEmailHtml({
+      level: typeof meta.alert_level === 'number' ? meta.alert_level : 0,
+      daysUntilExpiry: daysLeft,
+      messageText: finalMessage,
+      contractNumber: contractInfo?.process_number ?? null,
+      clientName: contractInfo?.client_name ?? '',
+      validUntil: validUntilIso ? validUntilIso.split('-').reverse().join('/') : null,
+      monthlyValue: contractInfo?.monthly_value != null
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(contractInfo.monthly_value))
+        : null,
+      consultorName: consultor,
+      consultorEmail: account.fromEmail,
+      companyName: orgInfo?.company_name?.trim() || 'Equipe Comercial',
+    }).replace('</body>', `${pixel}</body>`)
 
     try {
       const res = await sendEmailForUser(ownerUserId, toEmail, finalSubject, html, { replyTo })
