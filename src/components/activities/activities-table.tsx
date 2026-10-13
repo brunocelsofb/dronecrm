@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
 import { CreateActivityModal } from './create-activity-modal'
+import { RenewalSendButton } from './renewal-send-button'
 
 type Activity = {
   id: string
@@ -19,6 +20,7 @@ type Activity = {
   user_id?: string | null
   assigned_to?: string | null
   completed?: boolean | null
+  metadata?: Record<string, unknown> | null
 }
 
 type Profile = { id: string; full_name: string }
@@ -27,6 +29,7 @@ const TYPE_META: Record<string, { icon: string; label: string }> = {
   call:     { icon: '📞', label: 'Ligação' },
   meeting:  { icon: '📅', label: 'Reunião' },
   task:     { icon: '✅', label: 'Tarefa' },
+  whatsapp: { icon: '💬', label: 'WhatsApp' },
   reminder: { icon: '🔔', label: 'Lembrete' },
   activity: { icon: '📝', label: 'Atividade' },
 }
@@ -155,6 +158,10 @@ export function ActivitiesTable({
                 const respId = a.assigned_to ?? a.user_id
                 const resp = respId ? profileById.get(respId) : null
                 const rowBg = done ? '#fafafa' : overdue ? '#fef2f2' : '#fff'
+                const md = (a.metadata ?? {}) as Record<string, unknown>
+                const renewalPending = md.kind === 'renewal_alert' && md.approval === 'pending'
+                  && typeof md.target_phone === 'string' && typeof md.draft_message === 'string'
+                const renewalSent = md.kind === 'renewal_alert' && md.approval === 'sent'
 
                 return (
                   <tr key={a.id} style={{ background: rowBg }}>
@@ -199,6 +206,12 @@ export function ActivitiesTable({
                       <p style={{ margin: 0, fontWeight: 500, textDecoration: done ? 'line-through' : 'none', color: done ? '#b0b8c8' : '#1a1f36' }}>
                         {a.title || meta.label}
                       </p>
+                      {renewalPending && (
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio ao cliente</span>
+                      )}
+                      {renewalSent && (
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
+                      )}
                       {a.content && (
                         <p style={{ margin: '2px 0 0', fontSize: 11, color: '#8892a4', lineHeight: 1.4 }}>
                           {a.content.slice(0, 120)}{a.content.length > 120 ? '…' : ''}
@@ -212,7 +225,18 @@ export function ActivitiesTable({
                     </td>
 
                     {/* Ações */}
-                    <td style={{ ...td, textAlign: 'right' }}>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {renewalPending && !done && contractId && (
+                        <span style={{ marginRight: 6 }}>
+                          <RenewalSendButton
+                            activityId={a.id}
+                            contractId={contractId}
+                            draft={md.draft_message as string}
+                            phone={md.target_phone as string}
+                            contactName={typeof md.contact_name === 'string' ? md.contact_name : null}
+                          />
+                        </span>
+                      )}
                       <button
                         onClick={() => handleDelete(a.id)}
                         disabled={deletingId === a.id}

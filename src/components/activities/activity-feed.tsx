@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { CreateActivityModal } from './create-activity-modal'
 import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
 import { ACTIVITY_TYPE_ICON } from '@/lib/utils/activity-types'
+import { RenewalSendButton } from './renewal-send-button'
 
 type Activity = {
   id: string
@@ -21,6 +22,7 @@ type Activity = {
   user_id?: string | null
   assigned_to?: string | null
   is_pinned?: boolean | null
+  metadata?: Record<string, unknown> | null
 }
 
 type Profile = { id: string; full_name: string }
@@ -88,6 +90,11 @@ export function ActivityFeed({
         const isSystemEvent = isSystem(a)
         const isDone = a.status === 'done'
         const isPlanned = a.status === 'planned'
+        const meta = (a.metadata ?? {}) as Record<string, unknown>
+        const isRenewalAlert = meta.kind === 'renewal_alert'
+        const renewalPending = isRenewalAlert && meta.approval === 'pending'
+          && typeof meta.target_phone === 'string' && typeof meta.draft_message === 'string'
+        const renewalSent = isRenewalAlert && meta.approval === 'sent'
 
         return (
           <div key={a.id} style={{ display: 'flex', gap: 10, paddingBottom: 14, marginBottom: 14, borderBottom: '0.5px solid #f1f3f8' }}>
@@ -104,9 +111,24 @@ export function ActivityFeed({
                   {isPlanned && (
                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef3ff', color: '#3b5bdb', fontWeight: 500 }}>Planejada</span>
                   )}
+                  {renewalPending && (
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio</span>
+                  )}
+                  {renewalSent && (
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
+                  )}
                 </div>
                 {!isSystemEvent && (
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {renewalPending && isPlanned && contractId && (
+                      <RenewalSendButton
+                        activityId={a.id}
+                        contractId={contractId}
+                        draft={meta.draft_message as string}
+                        phone={meta.target_phone as string}
+                        contactName={typeof meta.contact_name === 'string' ? meta.contact_name : null}
+                      />
+                    )}
                     {isPlanned && (
                       <button onClick={() => handleToggleDone(a.id, a.status ?? null)}
                         style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '0.5px solid #1a7c3e', background: '#eaf5ee', color: '#1a7c3e', cursor: 'pointer' }}>

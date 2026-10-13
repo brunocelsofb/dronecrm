@@ -176,7 +176,8 @@ function buildClientMessage(c: RenewalCandidate, level: AlertLevel, companyName:
   const dataVenc  = formatDateBR(c.valid_until)
   const ref       = c.process_number ? `o contrato *${c.process_number}*` : 'o contrato'
   const saudacao  = c.contact_name ? `Olá, *${c.contact_name.split(' ')[0]}*!` : `Prezado(a) cliente *${c.client_name}*,`
-  const assinatura = c.owner_name ? `${c.owner_name}\n${companyName}` : companyName
+  // O nome de quem envia é acrescentado no topo pelo envio do CRM (sendContractWhatsApp)
+  const assinatura = companyName
 
   if (level === 0) {
     return (
