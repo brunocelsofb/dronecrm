@@ -33,6 +33,21 @@ type SendResult = {
   metadata?: Record<string, unknown>
 }
 
+// Traduz erros técnicos de envio para algo que o consultor consegue resolver
+function friendlyEmailError(raw: string): string {
+  if (/insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficientPermissions/i.test(raw)) {
+    return 'O e-mail do consultor foi conectado sem a permissão de enviar e-mails. ' +
+      'Ele precisa ir em Minha Conta, desconectar e conectar o Gmail de novo, marcando "Enviar e-mail em seu nome".'
+  }
+  if (/invalid_grant|Token has been expired or revoked/i.test(raw)) {
+    return 'A conexão do e-mail do consultor expirou ou foi revogada. Ele precisa conectar o Gmail de novo em Minha Conta.'
+  }
+  if (/Conta de e-mail não conectada/i.test(raw)) {
+    return 'O consultor desse WhatsApp não tem e-mail conectado em Minha Conta.'
+  }
+  return raw.length > 300 ? `${raw.slice(0, 300)}…` : raw
+}
+
 function aliasLabel(name: string, v: AliasValue | undefined): string {
   return typeof v === 'string' ? v : v?.label ?? name
 }
@@ -150,9 +165,12 @@ export async function sendRenewalAlert(
     .select('id')
   if (!locked?.length) return { error: 'Este aviso já está sendo enviado.' }
 
+  // Volta para pendente guardando o erro (aparece na atividade). Sem
+  // revalidatePath: recarregar a página fechava a janela antes de ler o erro.
   const unlock = async (extra: Record<string, unknown>) => {
-    await admin.from('activities').update({ metadata: { ...meta, ...extra, approval: 'pending' } }).eq('id', activityId)
-    revalidatePath(`/contracts/${activity.contract_id}`)
+    await admin.from('activities').update({
+      metadata: { ...meta, ...extra, approval: 'pending', last_error_at: new Date().toISOString() },
+    }).eq('id', activityId)
   }
 
   const finalMessage = renderRenewalTemplate(message.trim(), { consultor }).replace(/\n{3,}/g, '\n\n').trim()
@@ -191,7 +209,8 @@ export async function sendRenewalAlert(
         tracking_token: trackingToken,
       })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Falha ao enviar e-mail.'
+      const technical = e instanceof Error ? e.message : 'Falha ao enviar e-mail.'
+      const msg = friendlyEmailError(technical)
       await admin.from('contract_emails').insert({
         contract_id: activity.contract_id,
         sent_by: user.id,
@@ -200,7 +219,7 @@ export async function sendRenewalAlert(
         subject: finalSubject,
         body: finalMessage,
         status: 'falhou',
-        error_message: msg,
+        error_message: technical,
       })
       await unlock({ last_error: `E-mail: ${msg}` })
       return { error: `Nada foi enviado — o e-mail falhou: ${msg}` }

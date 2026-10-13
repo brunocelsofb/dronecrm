@@ -19,6 +19,7 @@ export function RenewalSendButton({
   email,
   contactName,
   onSent,
+  onFailed,
 }: {
   activityId: string
   contractId: string
@@ -28,6 +29,7 @@ export function RenewalSendButton({
   email?: string | null
   contactName?: string | null
   onSent?: (r: { title?: string; content?: string; metadata?: Record<string, unknown> }) => void
+  onFailed?: (error: string) => void
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -70,7 +72,7 @@ export function RenewalSendButton({
     setError(null)
     const res = await sendRenewalAlert(activityId, message, subject, instance)
     setSending(false)
-    if (res.error) { setError(res.error); return }
+    if (res.error) { setError(res.error); onFailed?.(res.error); return }
     setOpen(false)
     onSent?.({ title: res.title, content: res.content, metadata: res.metadata })
     router.refresh()

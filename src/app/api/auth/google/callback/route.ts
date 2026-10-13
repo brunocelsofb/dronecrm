@@ -35,6 +35,18 @@ export async function GET(request: Request) {
       )
     }
 
+    // O Google deixa a pessoa desmarcar permissões na tela de consentimento.
+    // Sem gmail.send a conta não consegue enviar nada — recusa em vez de
+    // gravar uma conexão que vai falhar no primeiro envio.
+    const granted = (tokens.scope ?? '').split(/\s+/)
+    if (!granted.includes('https://www.googleapis.com/auth/gmail.send')) {
+      return NextResponse.redirect(
+        `${accountPage}?email_error=${encodeURIComponent(
+          'A permissão "Enviar e-mail em seu nome" não foi concedida. Clique em Conectar Gmail de novo e, na tela do Google, marque essa opção.'
+        )}`
+      )
+    }
+
     const email = await getGoogleUserEmail(tokens.access_token)
     const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
 

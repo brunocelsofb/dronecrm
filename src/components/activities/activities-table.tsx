@@ -222,6 +222,15 @@ export function ActivitiesTable({
                       {renewalPending && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio ao cliente</span>
                       )}
+                      {renewalPending && typeof md.last_error === 'string' && md.last_error && (
+                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
+                          ⚠ Última tentativa falhou
+                          {typeof md.last_error_at === 'string'
+                            ? ` (${new Date(md.last_error_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`
+                            : ''}
+                          : {md.last_error}
+                        </p>
+                      )}
                       {renewalSent && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
                       )}
@@ -252,6 +261,9 @@ export function ActivitiesTable({
                             onSent={r => setLocalActivities(prev => prev.map(x => x.id === a.id
                               ? { ...x, status: 'done', completed: true, title: r.title ?? x.title, content: r.content ?? x.content,
                                   metadata: r.metadata ?? { ...(x.metadata ?? {}), approval: 'sent' } }
+                              : x))}
+                            onFailed={err => setLocalActivities(prev => prev.map(x => x.id === a.id
+                              ? { ...x, metadata: { ...(x.metadata ?? {}), last_error: err.replace(/^Nada foi enviado — /, ''), last_error_at: new Date().toISOString() } }
                               : x))}
                           />
                         </span>

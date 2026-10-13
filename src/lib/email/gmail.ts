@@ -44,7 +44,7 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string) {
     throw new Error(`Falha ao trocar código por token: ${text}`)
   }
 
-  return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number }>
+  return response.json() as Promise<{ access_token: string; refresh_token?: string; expires_in: number; scope?: string }>
 }
 
 export async function getGoogleUserEmail(accessToken: string): Promise<string> {
