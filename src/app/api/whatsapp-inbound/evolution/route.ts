@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const instanceName = body?.instance ?? body?.instanceName ?? null
 
     // Instância privada (ex.: WhatsApp pessoal do gestor): nada entra no CRM
-    if (isPrivateInstance(instanceName)) {
+    if (await isPrivateInstance(instanceName)) {
       return NextResponse.json({ ok: true, skipped: 'private instance' })
     }
 

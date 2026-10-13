@@ -48,8 +48,15 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
 
   // Instância privada (ex.: WhatsApp pessoal do gestor, só para o briefing):
   // NÃO vira a instância principal do CRM e NÃO recebe webhook.
+  // Marcada pela caixa "Instância privada" do formulário ou já marcada antes.
   // O QR Code é gerado em getEvoQrCodeAction(formData).
-  if (isPrivateInstance(instanceName)) return { privateInstance: true }
+  const wantsPrivate = formData?.get?.('evo_private') === 'on'
+  if (wantsPrivate || await isPrivateInstance(instanceName)) {
+    const marked = await markInstancePrivate(instanceName)
+    if (!marked.ok) return { error: `Não foi possível marcar a instância como privada: ${marked.error}` }
+    revalidatePath('/settings/whatsapp-conexoes')
+    return { privateInstance: true }
+  }
 
   const supabase = await createClient()
   const { error } = await supabase
@@ -73,7 +80,7 @@ export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: str
   // Instância privada: usa os dados do formulário (não os da instância principal),
   // gera o QR e garante que a instância fique sem webhook.
   const formInstance = (formData?.get?.('evo_instance_name') as string | undefined)?.trim()
-  if (formInstance && isPrivateInstance(formInstance)) {
+  if (formInstance && await isPrivateInstance(formInstance)) {
     const serverUrl = (formData.get('evo_server_url') as string)?.trim().replace(/\/$/, '')
     const apiKey    = (formData.get('evo_api_key') as string)?.trim()
     if (!serverUrl || !apiKey) return { error: 'Preencha Server URL e API Key.' }
@@ -85,6 +92,33 @@ export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: str
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'Credenciais da Evolution API não configuradas.' }
   return getEvoQrCode(creds)
+}
+
+// Grava a instância em evo_instance_aliases com private=true e bot desligado
+async function markInstancePrivate(instanceName: string): Promise<{ ok: boolean; error?: string }> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('organization_settings')
+    .select('evo_instance_aliases')
+    .eq('id', 'default')
+    .maybeSingle()
+  if (error) return { ok: false, error: error.message }
+
+  const aliases = (data?.evo_instance_aliases ?? {}) as Record<string, any>
+  const current = typeof aliases[instanceName] === 'string'
+    ? { label: aliases[instanceName] }
+    : (aliases[instanceName] ?? {})
+
+  const { error: upErr } = await admin
+    .from('organization_settings')
+    .update({
+      evo_instance_aliases: {
+        ...aliases,
+        [instanceName]: { ...current, label: current.label ?? instanceName, bot_enabled: false, private: true },
+      },
+    })
+    .eq('id', 'default')
+  return upErr ? { ok: false, error: upErr.message } : { ok: true }
 }
 
 // Desliga o webhook de uma instância (melhor esforço — não falha o fluxo)

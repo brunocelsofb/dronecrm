@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
   // Usa a instância do parâmetro, com fallback para a instância padrão
   const instance = instanceParam ?? orgSettings.evo_instance_name
-  if (isPrivateInstance(instance)) {
+  if (await isPrivateInstance(instance)) {
     return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
   }
   if (!instance) {

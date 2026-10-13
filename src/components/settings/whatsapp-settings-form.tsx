@@ -101,6 +101,17 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none" />
         </div>
 
+        <label className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 cursor-pointer">
+          <input type="checkbox" name="evo_private" className="mt-0.5 h-4 w-4 accent-[#1B556B]" />
+          <span className="text-sm text-gray-700">
+            <span className="font-semibold">🔒 Instância privada</span>
+            <span className="block text-xs text-gray-500 mt-0.5">
+              Só para envio (ex.: briefing no seu WhatsApp pessoal). Não vira a instância principal,
+              não recebe webhook e nenhuma mensagem dela entra no CRM. Pode ser desfeito depois na lista abaixo.
+            </span>
+          </span>
+        </label>
+
         {formState?.error && (
           <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{formState.error}</p>
         )}

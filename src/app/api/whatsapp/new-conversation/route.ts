@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const { phone, message, instance } = await req.json()
-    if (isPrivateInstance(instance)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+    if (await isPrivateInstance(instance)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
     const cleanPhone = sanitizePhoneForEvo(phone)
     const admin = createAdminClient()
 

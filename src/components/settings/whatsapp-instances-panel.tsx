@@ -8,6 +8,7 @@ import { Wifi, WifiOff, RefreshCw, AlertCircle, CheckCircle2, Loader2 } from 'lu
 interface InstanceConfig {
   label?: string
   bot_enabled?: boolean
+  private?: boolean   // só envio (ex.: briefing); nada dela entra no CRM
 }
 
 interface WhatsAppInstance {
@@ -35,6 +36,7 @@ function normalizeAliases(
       out[key] = {
         label: val.label ?? key,
         bot_enabled: val.bot_enabled !== false,
+        private: val.private === true,
       }
     }
   }
@@ -120,6 +122,42 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
     }
   }, [instances])
 
+  // ── Toggle de instância privada ─────────────────────────────────────────
+  const [privSaving, setPrivSaving] = useState<Record<string, boolean>>({})
+  const [privErrors, setPrivErrors] = useState<Record<string, string>>({})
+
+  const togglePrivate = useCallback(async (instanceKey: string, newValue: boolean) => {
+    const msg = newValue
+      ? 'Tornar esta instância PRIVADA?\n\nEla deixa de receber webhook, o bot é desligado e nenhuma mensagem dela entra no CRM. Ela continua podendo enviar (ex.: briefing).'
+      : 'Tornar esta instância PÚBLICA?\n\nO webhook será ligado e as mensagens NOVAS desse número passarão a entrar no CRM (conversas, leads, bot de triagem). Mensagens antigas não entram.'
+    if (!window.confirm(msg)) return
+
+    const previous = instances[instanceKey]
+    setPrivSaving(prev => ({ ...prev, [instanceKey]: true }))
+    setPrivErrors(prev => ({ ...prev, [instanceKey]: '' }))
+    try {
+      const res = await fetch('/api/settings/whatsapp-instance', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey, private: newValue }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok === false) throw new Error(data?.error ?? `HTTP ${res.status}`)
+      setInstances(prev => ({
+        ...prev,
+        [instanceKey]: { ...prev[instanceKey], private: newValue, bot_enabled: data?.bot_enabled ?? prev[instanceKey].bot_enabled },
+      }))
+      if (data?.webhook && data.webhook.ok === false) {
+        setPrivErrors(prev => ({ ...prev, [instanceKey]: `Salvo, mas o webhook não foi alterado na Evolution: ${data.webhook.error}` }))
+      }
+    } catch (err: any) {
+      setInstances(prev => ({ ...prev, [instanceKey]: previous }))
+      setPrivErrors(prev => ({ ...prev, [instanceKey]: err?.message ?? 'Erro ao salvar' }))
+    } finally {
+      setPrivSaving(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [instances])
+
   // ── Reiniciar conexão ────────────────────────────────────────────────────
   const [restarting, setRestarting] = useState<Record<string, boolean>>({})
 
@@ -171,6 +209,9 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
         const botEnabled = config.bot_enabled !== false
         const isBotSaving = botSaving[key] === true
         const botError = botErrors[key]
+        const isPrivate = config.private === true
+        const isPrivSaving = privSaving[key] === true
+        const privError = privErrors[key]
 
         return (
           <div
@@ -181,8 +222,13 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
             <div className="flex items-center justify-between gap-4">
               {/* Info */}
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm font-semibold text-gray-900">
+                <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-gray-900">
                   {label}
+                  {isPrivate && (
+                    <span className="inline-flex items-center rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+                      🔒 Privada
+                    </span>
+                  )}
                 </span>
                 <span className="truncate font-mono text-[11px] text-gray-400">
                   {key}
@@ -231,7 +277,8 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
             {/* Divisor */}
             <div className="h-px bg-gray-100" />
 
-            {/* Linha inferior: toggle do bot */}
+            {/* Linha inferior: toggle do bot (não se aplica a instância privada) */}
+            {!isPrivate && (
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <span className="text-xs font-medium text-gray-700">
@@ -310,6 +357,43 @@ export function WhatsAppInstancesPanel({ instanceAliases }: Props) {
                   )}
                 </button>
               </div>
+            </div>
+            )}
+
+            {/* Instância privada */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium text-gray-700">Instância privada</span>
+                <span className="text-[11px] text-gray-400">
+                  {isPrivate
+                    ? 'Só envio (ex.: briefing). Nada desse número entra no CRM.'
+                    : 'Mensagens desse número entram no CRM.'}
+                </span>
+                {privError && <span className="text-[11px] text-red-500">⚠ {privError}</span>}
+              </div>
+              <button
+                role="switch"
+                aria-checked={isPrivate}
+                aria-label={`${isPrivate ? 'Tornar pública' : 'Tornar privada'} a instância ${label}`}
+                disabled={isPrivSaving}
+                onClick={() => togglePrivate(key, !isPrivate)}
+                className={`
+                  relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full
+                  border-2 border-transparent transition-colors duration-200 ease-in-out
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B556B] focus-visible:ring-offset-2
+                  disabled:cursor-not-allowed disabled:opacity-60
+                  ${isPrivate ? 'bg-gray-900' : 'bg-gray-200'}
+                `}
+              >
+                <span
+                  className={`
+                    pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md
+                    transition-all duration-200 ease-in-out
+                    ${isPrivate ? 'translate-x-5' : 'translate-x-0'}
+                    ${isPrivSaving ? 'opacity-60' : ''}
+                  `}
+                />
+              </button>
             </div>
           </div>
         )

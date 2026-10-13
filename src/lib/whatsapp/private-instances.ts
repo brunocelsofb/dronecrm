@@ -4,26 +4,42 @@
 // WhatsApp pessoal do gestor). O CRM nunca lê, lista, importa nem grava nada
 // vindo dela, mesmo que um webhook seja ativado por engano.
 //
-// Configuração (Vercel → Environment Variables):
-//   EVOLUTION_PRIVATE_INSTANCES = "bruno_gerencial"          (uma)
-//   EVOLUTION_PRIVATE_INSTANCES = "bruno_gerencial,outra"    (várias, separadas por vírgula)
-//
-// Para tornar uma instância "pública" de novo: tire o nome da variável,
-// faça redeploy e use "sincronizar webhooks" nas Conexões WhatsApp do CRM.
-// Mensagens anteriores não entram retroativamente.
+// Onde fica a marcação: organization_settings.evo_instance_aliases[nome].private = true
+// Como mudar: Configurações → Conexões → chave "Instância privada" de cada instância,
+// ou a caixa "Instância privada" ao conectar uma nova pelo QR Code.
+
+import { createAdminClient } from '@/lib/supabase/admin'
+
+type AliasValue = string | { label?: string; bot_enabled?: boolean; private?: boolean }
 
 function normalize(name: string): string {
   return name.trim().toLowerCase()
 }
 
-export function getPrivateInstances(): Set<string> {
-  const raw = process.env.EVOLUTION_PRIVATE_INSTANCES ?? ''
-  return new Set(raw.split(',').map(normalize).filter(Boolean))
+export async function getPrivateInstances(): Promise<Set<string>> {
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('organization_settings')
+      .select('evo_instance_aliases')
+      .eq('id', 'default')
+      .maybeSingle()
+    if (error) throw error
+
+    const aliases = (data?.evo_instance_aliases ?? {}) as Record<string, AliasValue>
+    const names = Object.entries(aliases)
+      .filter(([, v]) => typeof v === 'object' && v !== null && v.private === true)
+      .map(([k]) => normalize(k))
+    return new Set(names)
+  } catch (err) {
+    console.error('[private-instances] erro ao ler instâncias privadas:', err)
+    return new Set()
+  }
 }
 
-export function isPrivateInstance(name: string | null | undefined): boolean {
+export async function isPrivateInstance(name: string | null | undefined): Promise<boolean> {
   if (!name) return false
-  return getPrivateInstances().has(normalize(name))
+  return (await getPrivateInstances()).has(normalize(name))
 }
 
 export const PRIVATE_INSTANCE_ERROR = 'Instância reservada (privada) — não disponível no CRM'

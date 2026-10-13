@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   }
 
   const instance = instanceName ?? org.evo_instance_name
-  if (isPrivateInstance(instance)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  if (await isPrivateInstance(instance)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
   const cleanPhone = phone.replace(/\D/g, '')
   const remoteJid = `${cleanPhone}@s.whatsapp.net`
 
