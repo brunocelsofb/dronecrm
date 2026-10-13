@@ -24,6 +24,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR } from './notifications'
+import { resolveRenewalTemplates, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 
 function getAdminClient() {
   return createClient(
@@ -161,46 +162,35 @@ async function fetchCandidates(
   })
 }
 
-async function fetchCompanyName(supabase: ReturnType<typeof getAdminClient>): Promise<string> {
+type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string> }
+
+async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Promise<OrgConfig> {
   const { data } = await supabase
     .from('organization_settings')
-    .select('company_name')
+    .select('company_name, copilot_settings')
     .eq('id', 'default')
     .maybeSingle()
-  return data?.company_name?.trim() || 'Equipe Comercial'
+  const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown }
+  return {
+    companyName: data?.company_name?.trim() || 'Equipe Comercial',
+    templates:   resolveRenewalTemplates(copilot.renewal_templates),
+  }
 }
 
 // ─── Mensagens ────────────────────────────────────────────────────────────────
 
-function buildClientMessage(c: RenewalCandidate, level: AlertLevel, companyName: string): string {
-  const dataVenc  = formatDateBR(c.valid_until)
-  const ref       = c.process_number ? `o contrato *${c.process_number}*` : 'o contrato'
-  const saudacao  = c.contact_name ? `Olá, *${c.contact_name.split(' ')[0]}*!` : `Prezado(a) cliente *${c.client_name}*,`
-  // O nome de quem envia é acrescentado no topo pelo envio do CRM (sendContractWhatsApp)
-  const assinatura = companyName
-
-  if (level === 0) {
-    return (
-      `${saudacao}\n\n` +
-      `Identificamos que ${ref} (${c.client_name}), com vigência até *${dataVenc}*, está vencido.\n\n` +
-      `Para evitar interrupção dos serviços, gostaríamos de tratar a regularização e a renovação com você o quanto antes. ` +
-      `Podemos conversar ainda esta semana?\n\n` +
-      assinatura
-    )
-  }
-
-  const Ref = ref.charAt(0).toUpperCase() + ref.slice(1)
-  const abertura =
-    level === 15 ? `⚠️ ${Ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
-    : level === 30 ? `${Ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
-    : `Passando para lembrar que ${ref} (${c.client_name}) tem vigência até *${dataVenc}* (${c.days_until_expiry} dias).`
-
-  const pedido =
-    level === 15 ? `Para garantir a continuidade dos serviços sem interrupção, precisamos alinhar a renovação com urgência. Podemos falar hoje ou amanhã?`
-    : level === 30 ? `Para garantir a continuidade dos serviços, que tal agendarmos uma conversa para tratar da renovação?`
-    : `Gostaríamos de iniciar com antecedência a conversa sobre a renovação. Qual o melhor momento para falarmos?`
-
-  return `${saudacao}\n\n${abertura}\n\n${pedido}\n\n${assinatura}`
+// Monta o rascunho a partir do modelo de Configurações → Copiloto IA.
+// {{consultor}} fica no texto e é preenchido no envio com o WhatsApp escolhido.
+function buildClientMessage(c: RenewalCandidate, level: AlertLevel, org: OrgConfig): string {
+  const key = String(level) as RenewalLevelKey
+  return renderRenewalTemplate(org.templates[key], {
+    contato:    c.contact_name?.split(' ')[0] ?? c.client_name,
+    cliente:    c.client_name,
+    contrato:   c.process_number ?? '',
+    vencimento: formatDateBR(c.valid_until),
+    dias:       String(Math.abs(c.days_until_expiry)),
+    empresa:    org.companyName,
+  })
 }
 
 function levelLabel(level: AlertLevel, days: number): string {
@@ -213,7 +203,7 @@ async function processContract(
   supabase: ReturnType<typeof getAdminClient>,
   c: RenewalCandidate,
   level: AlertLevel,
-  companyName: string,
+  org: OrgConfig,
 ): Promise<AlertResult> {
   const base = {
     contractId: c.id, processNumber: c.process_number, clientName: c.client_name,
@@ -252,7 +242,7 @@ async function processContract(
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : 'sem telefone' }
   }
 
-  const draft = buildClientMessage(c, level, companyName)
+  const draft = buildClientMessage(c, level, org)
   const r = await createAgentActivity(supabase, {
     contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
     activityType: 'whatsapp',
@@ -282,7 +272,7 @@ export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
   console.log('[expiration] iniciando varredura de renovações...')
   const supabase = getAdminClient()
 
-  const [candidates, companyName] = await Promise.all([fetchCandidates(supabase), fetchCompanyName(supabase)])
+  const [candidates, org] = await Promise.all([fetchCandidates(supabase), fetchOrgConfig(supabase)])
   console.log(`[expiration] ${candidates.length} contrato(s) na janela de -90 a +90 dias`)
 
   const results: AlertResult[] = []
@@ -292,7 +282,7 @@ export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
     const level = levelFor(c.days_until_expiry)
     if (level === null) continue
     try {
-      const r = await processContract(supabase, c, level, companyName)
+      const r = await processContract(supabase, c, level, org)
       results.push(r)
       if (r.activity === 'error') errors.push(`${c.process_number ?? c.id}: ${r.detail}`)
       console.log(`[expiration] ${c.process_number ?? c.id} (${c.client_name}) ${level}d → ${r.activity}${r.detail ? ` (${r.detail})` : ''}`)

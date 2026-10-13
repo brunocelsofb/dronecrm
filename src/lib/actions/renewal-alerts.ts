@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendContractWhatsApp } from '@/lib/actions/whatsapp'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
+import { renderRenewalTemplate } from '@/lib/agent/renewal-templates'
 
 export type SendableInstance = { name: string; label: string }
 
@@ -93,7 +94,14 @@ export async function sendRenewalAlert(
     .select('id')
   if (!locked?.length) return { error: 'Este aviso já está sendo enviado.' }
 
-  const result = await sendContractWhatsApp(activity.contract_id, phone, message.trim(), null, instanceName)
+  // {{consultor}} = pessoa dona do WhatsApp escolhido (rótulo da instância)
+  const { data: org } = await admin
+    .from('organization_settings').select('evo_instance_aliases').eq('id', 'default').maybeSingle()
+  const alias = ((org?.evo_instance_aliases ?? {}) as Record<string, AliasValue>)[instanceName]
+  const consultor = typeof alias === 'string' ? alias : alias?.label ?? ''
+  const finalMessage = renderRenewalTemplate(message.trim(), { consultor }).replace(/\n{3,}/g, '\n\n').trim()
+
+  const result = await sendContractWhatsApp(activity.contract_id, phone, finalMessage, null, instanceName, { signWithSender: false })
 
   if (result.error) {
     await admin.from('activities').update({ metadata: { ...meta, approval: 'pending', last_error: result.error } }).eq('id', activityId)
@@ -112,7 +120,7 @@ export async function sendRenewalAlert(
         sent_at:       new Date().toISOString(),
         sent_by:       user.id,
         sent_instance: instanceName,
-        final_message: message.trim(),
+        final_message: finalMessage,
       },
     })
     .eq('id', activityId)

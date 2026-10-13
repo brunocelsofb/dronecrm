@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSendableInstances, sendRenewalAlert, type SendableInstance } from '@/lib/actions/renewal-alerts'
+import { renderRenewalTemplate } from '@/lib/agent/renewal-templates'
 
 export function RenewalSendButton({
   activityId,
@@ -28,6 +29,9 @@ export function RenewalSendButton({
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const consultor = instances.find(i => i.name === instance)?.label ?? ''
+  const preview = renderRenewalTemplate(message, { consultor }).replace(/\n{3,}/g, '\n\n').trim()
 
   async function handleOpen() {
     setOpen(true)
@@ -72,7 +76,7 @@ export function RenewalSendButton({
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 520, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
             <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1f36', margin: 0 }}>Revisar aviso de renovação</p>
             <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 14px' }}>
-              Para {contactName ?? 'o contato'} · {phone}. Seu nome será incluído no início da mensagem.
+              Para {contactName ?? 'o contato'} · {phone}. <code>{'{{consultor}}'}</code> vira o nome do WhatsApp escolhido.
             </p>
 
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Mensagem</label>
@@ -98,6 +102,15 @@ export function RenewalSendButton({
                   <option key={i.name} value={i.name}>{i.label}{i.label !== i.name ? ` (${i.name})` : ''}</option>
                 ))}
               </select>
+            )}
+
+            {!loading && instance && (
+              <>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', margin: '12px 0 4px' }}>Como o cliente vai receber</label>
+                <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto' }}>
+                  {preview}
+                </div>
+              </>
             )}
 
             {error && (

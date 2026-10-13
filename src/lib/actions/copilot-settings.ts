@@ -1,0 +1,44 @@
+'use server'
+
+// Configurações do Copiloto IA (organization_settings.copilot_settings)
+
+import { revalidatePath } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { RENEWAL_LEVELS, type RenewalLevelKey } from '@/lib/agent/renewal-templates'
+
+const MAX_TEMPLATE_LENGTH = 3000
+
+export async function saveRenewalTemplates(
+  templates: Partial<Record<RenewalLevelKey, string>>,
+): Promise<{ ok?: true; error?: string }> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas mensagens.' }
+
+  const clean: Partial<Record<RenewalLevelKey, string>> = {}
+  for (const { key, label } of RENEWAL_LEVELS) {
+    const v = templates[key]
+    if (typeof v !== 'string') continue
+    const t = v.trim()
+    if (!t) return { error: `O texto de "${label}" está vazio.` }
+    if (t.length > MAX_TEMPLATE_LENGTH) return { error: `O texto de "${label}" passou de ${MAX_TEMPLATE_LENGTH} caracteres.` }
+    clean[key] = t
+  }
+
+  const admin = createAdminClient()
+  const { data, error: readErr } = await admin
+    .from('organization_settings')
+    .select('copilot_settings')
+    .eq('id', 'default')
+    .maybeSingle()
+  if (readErr) return { error: readErr.message }
+
+  const current = (data?.copilot_settings ?? {}) as Record<string, unknown>
+  const { error } = await admin
+    .from('organization_settings')
+    .update({ copilot_settings: { ...current, renewal_templates: clean } })
+    .eq('id', 'default')
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings/copiloto')
+  return { ok: true }
+}

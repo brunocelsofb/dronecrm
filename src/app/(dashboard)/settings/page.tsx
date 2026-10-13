@@ -28,6 +28,12 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
+    title: 'Copiloto IA',
+    items: [
+      { href: '/settings/copiloto', label: '🧠 Avisos de renovação', description: 'Textos que o Copiloto prepara para o cliente nos marcos de vencimento (60, 30, 15 dias e vencido)' },
+    ],
+  },
+  {
     title: 'Oportunidades',
     items: [
       { href: '/settings/layout-abas', label: '🗂️ Layout das Abas', description: 'Configure a ordem e visibilidade das abas por funil' },

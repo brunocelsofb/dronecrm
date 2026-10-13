@@ -161,7 +161,10 @@ export async function sendContractWhatsApp(
   phone: string,
   message: string,
   templateId: string | null,
-  instanceName?: string | null
+  instanceName?: string | null,
+  // signWithSender=false: não acrescenta "*Nome:*" de quem clicou (ex.: avisos
+  // de renovação, que já assinam com o dono do WhatsApp via {{consultor}})
+  opts?: { signWithSender?: boolean }
 ): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -183,7 +186,7 @@ export async function sendContractWhatsApp(
   const signature = senderName
     ? (jobTitle ? `*${senderName} - ${jobTitle}:*` : `*${senderName}:*`)
     : null
-  const signedMessage = signature ? `${signature} ${message}` : message
+  const signedMessage = signature && opts?.signWithSender !== false ? `${signature} ${message}` : message
   const evoCreds = instanceName ? { ...creds, instanceName } : creds
 
   try {
