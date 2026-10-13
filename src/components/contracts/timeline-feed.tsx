@@ -12,6 +12,7 @@ type Event = {
   metadata: any | null
   is_pinned?: boolean | null
   opportunity_badge?: string | null
+  status?: string | null
 }
 
 const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; label: string }> = {
@@ -26,6 +27,13 @@ const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; lab
   proposal:             { icon: '📋', color: '#3b5bdb', bg: '#eef3ff',  label: 'Proposta' },
   client_decision:      { icon: '🤝', color: '#166534', bg: '#dcfce7',  label: 'Proposta Aceita' },
   client_rejection:     { icon: '✕',  color: '#b91c1c', bg: '#fef2f2',  label: 'Proposta Encerrada' },
+  whatsapp_sent:        { icon: '📲', color: '#166534', bg: '#dcfce7',  label: 'WhatsApp enviado' },
+}
+
+// Tarefas do Copiloto ainda abertas ficam só na aba Atividades; no Histórico
+// entra apenas o registro depois de concluídas (ex.: aviso enviado ao cliente).
+function isOpenCopilotTask(e: Event): boolean {
+  return e.metadata?.source === 'copiloto_ia' && e.status !== 'done'
 }
 
 function fmtDate(d: string) {
@@ -96,8 +104,9 @@ export function TimelineFeed({
     setDeletingId(null)
   }
 
-  const pinned = events.filter(e => localPins[e.id])
-  const rest = events.filter(e => !localPins[e.id])
+  const visible = events.filter(e => !isOpenCopilotTask(e))
+  const pinned = visible.filter(e => localPins[e.id])
+  const rest = visible.filter(e => !localPins[e.id])
   const sorted = [...pinned, ...rest]
 
   return (
@@ -149,6 +158,8 @@ export function TimelineFeed({
             const cfgKey = (e.type === 'client_decision' && (e.metadata?.outcome === 'recusado' || e.metadata?.outcome === 'declinada')) ||
               (e.type === 'proposal' && e.content?.includes('RECUSADA'))
               ? 'client_rejection'
+              : e.metadata?.kind === 'renewal_alert' && e.metadata?.approval === 'sent'
+              ? 'whatsapp_sent'
               : e.type
             const cfg = TYPE_CONFIG[cfgKey] ?? TYPE_CONFIG['note']
             const isPinned = !!localPins[e.id]

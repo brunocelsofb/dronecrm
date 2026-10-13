@@ -251,8 +251,8 @@ async function processContract(
       : `Enviar aviso de renovação (${level} dias) — ${c.client_name}`,
     content:
       `${header}\n\n` +
-      `Mensagem sugerida para ${c.contact_name ?? 'o contato'} (${c.contact_phone}). ` +
-      `Revise antes de enviar:\n\n${draft}`,
+      `Aviso ao cliente pronto para revisão — para ${c.contact_name ?? 'o contato'} (${c.contact_phone}). ` +
+      `Clique em "Revisar e enviar".`,
     metadata: {
       kind:          'renewal_alert',
       alert_level:   level,

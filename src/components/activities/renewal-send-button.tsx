@@ -14,12 +14,14 @@ export function RenewalSendButton({
   draft,
   phone,
   contactName,
+  onSent,
 }: {
   activityId: string
   contractId: string
   draft: string
   phone: string
   contactName?: string | null
+  onSent?: (r: { title?: string; content?: string }) => void
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -53,6 +55,7 @@ export function RenewalSendButton({
     setSending(false)
     if (res.error) { setError(res.error); return }
     setOpen(false)
+    onSent?.({ title: res.title, content: res.content })
     router.refresh()
   }
 

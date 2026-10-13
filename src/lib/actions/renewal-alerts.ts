@@ -60,7 +60,7 @@ export async function sendRenewalAlert(
   activityId: string,
   message: string,
   instanceName: string,
-): Promise<{ ok?: true; error?: string }> {
+): Promise<{ ok?: true; error?: string; title?: string; content?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
@@ -109,15 +109,31 @@ export async function sendRenewalAlert(
     return { error: result.error }
   }
 
+  // Vira o registro do envio (é o que aparece no Histórico do contrato)
+  const { data: sender } = await admin.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+  const sentAt = new Date()
+  const quando = sentAt.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).replace(',', ' às')
+  const marco = meta.alert_level === 0 ? 'contrato vencido' : `${meta.alert_level} dias`
+  const contato = typeof meta.contact_name === 'string' ? `${meta.contact_name} ` : ''
+  const sentTitle = `Aviso de renovação (${marco}) enviado ao cliente`
+  const sentContent =
+    `📲 WhatsApp de aviso de renovação (${marco}) enviado para ${contato}(${phone}) em ${quando}` +
+    `${sender?.full_name ? `, por ${sender.full_name}` : ''}` +
+    `${consultor ? `, pelo WhatsApp de ${consultor}` : ''}.`
+
   await admin
     .from('activities')
     .update({
       status: 'done',
       completed: true,
+      title: sentTitle,
+      content: sentContent,
       metadata: {
         ...meta,
         approval:      'sent',
-        sent_at:       new Date().toISOString(),
+        sent_at:       sentAt.toISOString(),
         sent_by:       user.id,
         sent_instance: instanceName,
         final_message: finalMessage,
@@ -126,5 +142,5 @@ export async function sendRenewalAlert(
     .eq('id', activityId)
 
   revalidatePath(`/contracts/${activity.contract_id}`)
-  return { ok: true }
+  return { ok: true, title: sentTitle, content: sentContent }
 }
