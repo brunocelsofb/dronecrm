@@ -1,30 +1,29 @@
-// ─── Alertas de vencimento de contratos ──────────────────────────────────────
+// ─── Alertas de renovação de contratos ───────────────────────────────────────
 // Executado diariamente pelo CRON /api/agent/expiration-alerts
 //
-// Lógica:
-//   90 dias → aviso antecipado interno (time)
-//   60 dias → primeira notificação ao cliente
-//   30 dias → segunda notificação ao cliente (urgência moderada)
-//   15 dias → alerta crítico ao cliente + escalada interna
-//    0 dias ou já vencido → alerta de inadimplência/renovação urgente
+// Marcos (pelo nº de dias até valid_until):
+//   ≤ 90 dias → preparar renovação (tarefa interna)
+//   ≤ 60 dias → 1º aviso ao cliente
+//   ≤ 30 dias → 2º aviso ao cliente
+//   ≤ 15 dias → aviso urgente ao cliente
+//   vencido   → regularização (até 90 dias após o vencimento)
 //
-// Canais:
-//   - Interno: WhatsApp (instância "retenção") para o número do responsável
-//              + atividade no CRM
-//   - Cliente: WhatsApp (instância "retenção") para o contato do contrato
-//              + e-mail para bruno.barbosa@orbisengenharia.com.br
-//              + atividade no CRM registrando o envio
+// Regras:
+//   - NADA é enviado ao cliente automaticamente. O agente abre uma atividade
+//     planejada para o responsável do contrato com a mensagem pronta; o
+//     consultor revisa e envia (fase 2: botão "Enviar ao cliente").
+//   - Uma atividade por marco e por vigência (dedupe_key inclui valid_until):
+//     não repete todo dia; se o contrato for renovado (nova valid_until), os
+//     marcos voltam a valer.
+//   - Usa janelas (≤ N dias), não dia exato: se o cron falhar um dia, o
+//     alerta sai no dia seguinte.
+//   - Resumo interno vai para o gestor pelo WhatsApp do briefing
+//     (EVOLUTION_INSTANCE_NAME → WHATSAPP_NUMBER), só quando há alerta novo.
 
 import { createClient } from '@supabase/supabase-js'
-import {
-  sendEvolutionWhatsApp,
-  sendAgentEmail,
-  createCrmActivity,
-  formatBRL,
-  formatDateBR,
-} from './notifications'
-
-// ─── Cliente Supabase ─────────────────────────────────────────────────────────
+import { createAgentActivity } from './agent-activity'
+import { sendWhatsApp } from './briefing-core'
+import { formatBRL, formatDateBR } from './notifications'
 
 function getAdminClient() {
   return createClient(
@@ -39,406 +38,298 @@ function getAdminClient() {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type ExpiringContract = {
+type AlertLevel = 90 | 60 | 30 | 15 | 0
+
+type RenewalCandidate = {
   id: string
-  process_number: string
+  process_number: string | null
   client_name: string
-  valid_until: string
+  valid_until: string            // YYYY-MM-DD
   days_until_expiry: number
   monthly_value: number | null
+  contact_name: string | null
   contact_phone: string | null
-  contact_email: string | null
+  owner_id: string | null
   owner_name: string | null
 }
 
-type AlertLevel = 90 | 60 | 30 | 15 | 0
-
 type AlertResult = {
   contractId: string
-  processNumber: string
+  processNumber: string | null
   clientName: string
   daysUntilExpiry: number
   alertLevel: AlertLevel
-  whatsappClient: { sent: boolean; error?: string }
-  emailInternal: { sent: boolean; error?: string }
-  crmActivity: { ok: boolean; error?: string }
+  activity: 'created' | 'skipped' | 'error'
+  detail?: string
 }
 
-// ─── Busca contratos por janela de vencimento ─────────────────────────────────
+export type ExpirationAlertsReport = {
+  ran_at:   string
+  total:    number             // atividades novas criadas
+  results:  AlertResult[]
+  by_level: Record<string, number>
+  internal_whatsapp: { sent: boolean; error?: string } | null
+  errors:   string[]
+}
 
-async function fetchContractsExpiringInDays(targetDays: number): Promise<ExpiringContract[]> {
-  const supabase = getAdminClient()
+// ─── Datas (Brasília, UTC-3) ──────────────────────────────────────────────────
 
-  // Calcula o range do dia alvo: [targetDate 00:00, targetDate 23:59]
-  const targetDate = new Date()
-  targetDate.setDate(targetDate.getDate() + targetDays)
-  const dateStr = targetDate.toISOString().split('T')[0]
+function todayBR(): string {
+  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
 
-  const { data, error } = await supabase
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const a = new Date(`${fromIso}T12:00:00Z`).getTime()
+  const b = new Date(`${toIso}T12:00:00Z`).getTime()
+  return Math.round((b - a) / 86_400_000)
+}
+
+function levelFor(daysLeft: number): AlertLevel | null {
+  if (daysLeft < 0)   return 0
+  if (daysLeft <= 15) return 15
+  if (daysLeft <= 30) return 30
+  if (daysLeft <= 60) return 60
+  if (daysLeft <= 90) return 90
+  return null
+}
+
+// ─── Busca de contratos ───────────────────────────────────────────────────────
+
+async function fetchCandidates(
+  supabase: ReturnType<typeof getAdminClient>,
+): Promise<RenewalCandidate[]> {
+  const today = todayBR()
+
+  const { data: contracts, error } = await supabase
     .from('contracts')
-    .select(`
-      id,
-      process_number,
-      client_name,
-      valid_until,
-      monthly_value,
-      contacts!left (
-        phone,
-        email
-      ),
-      owner:profiles!contracts_owner_id_fkey (
-        full_name,
-        email
-      )
-    `)
-    .gte('valid_until', `${dateStr}T00:00:00.000Z`)
-    .lte('valid_until', `${dateStr}T23:59:59.999Z`)
+    .select('id, process_number, client_name, valid_until, monthly_value, contact_id, owner_id, current_assignee_id')
+    .not('valid_until', 'is', null)
+    .gte('valid_until', addDays(today, -90))
+    .lte('valid_until', addDays(today, 90))
 
-  if (error) {
-    console.error(`[expiration] erro ao buscar contratos vencendo em ${targetDays}d: ${error.message}`)
-    return []
+  if (error) throw new Error(`erro ao buscar contratos: ${error.message}`)
+  if (!contracts?.length) return []
+
+  // Contato: contracts.contact_id, senão o principal em contract_contacts
+  const ids = contracts.map(c => c.id)
+  const { data: links } = await supabase
+    .from('contract_contacts')
+    .select('contract_id, contact_id, is_primary')
+    .in('contract_id', ids)
+
+  const contactIdFor = new Map<string, string>()
+  for (const c of contracts) if (c.contact_id) contactIdFor.set(c.id, c.contact_id)
+  for (const l of (links ?? []).sort((a, b) => Number(b.is_primary) - Number(a.is_primary))) {
+    if (!contactIdFor.has(l.contract_id)) contactIdFor.set(l.contract_id, l.contact_id)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((c: any) => {
-    const contact = Array.isArray(c.contacts) ? c.contacts[0] : c.contacts
-    const owner   = Array.isArray(c.owner) ? c.owner[0] : c.owner
+  const contactIds = [...new Set(contactIdFor.values())]
+  const { data: contacts } = contactIds.length
+    ? await supabase.from('contacts').select('id, name, phone').in('id', contactIds)
+    : { data: [] as { id: string; name: string | null; phone: string | null }[] }
+  const contactById = new Map((contacts ?? []).map(c => [c.id, c]))
 
-    const expiry   = new Date(c.valid_until)
-    const today    = new Date()
-    today.setHours(0, 0, 0, 0)
-    const diffMs   = expiry.getTime() - today.getTime()
-    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+  // Responsável: owner_id, senão current_assignee_id
+  const ownerIds = [...new Set(contracts.map(c => c.owner_id ?? c.current_assignee_id).filter(Boolean))] as string[]
+  const { data: owners } = ownerIds.length
+    ? await supabase.from('profiles').select('id, full_name').in('id', ownerIds)
+    : { data: [] as { id: string; full_name: string | null }[] }
+  const ownerById = new Map((owners ?? []).map(o => [o.id, o.full_name]))
 
+  return contracts.map(c => {
+    const contact = contactById.get(contactIdFor.get(c.id) ?? '')
+    const ownerId = c.owner_id ?? c.current_assignee_id ?? null
+    const phone = contact?.phone?.replace(/\D/g, '') || null
     return {
-      id:               c.id,
-      process_number:   c.process_number,
-      client_name:      c.client_name,
-      valid_until:      c.valid_until,
-      days_until_expiry: daysLeft,
-      monthly_value:    c.monthly_value ?? null,
-      contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
-      contact_email:    (contact as { email?: string } | null)?.email ?? null,
-      owner_name:       (owner as { full_name?: string } | null)?.full_name ?? null,
-    } as ExpiringContract
+      id:                c.id,
+      process_number:    c.process_number,
+      client_name:       c.client_name,
+      valid_until:       String(c.valid_until).slice(0, 10),
+      days_until_expiry: daysBetween(today, String(c.valid_until).slice(0, 10)),
+      monthly_value:     c.monthly_value ?? null,
+      contact_name:      contact?.name ?? null,
+      contact_phone:     phone && phone.length >= 10 ? phone : null,
+      owner_id:          ownerId,
+      owner_name:        ownerId ? ownerById.get(ownerId) ?? null : null,
+    }
   })
 }
 
-// Busca contratos já vencidos (valid_until < hoje) que ainda estão ativos
-async function fetchExpiredContracts(): Promise<ExpiringContract[]> {
-  const supabase = getAdminClient()
-  const today    = new Date().toISOString().split('T')[0]
-
-  const { data, error } = await supabase
-    .from('contracts')
-    .select(`
-      id,
-      process_number,
-      client_name,
-      valid_until,
-      monthly_value,
-      contacts!left ( phone, email ),
-      owner:profiles!contracts_owner_id_fkey (
-        full_name,
-        email
-      )
-    `)
-    .lt('valid_until', `${today}T00:00:00.000Z`)
-
-  if (error) {
-    console.error(`[expiration] erro ao buscar contratos vencidos: ${error.message}`)
-    return []
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((c: any) => {
-    const contact = Array.isArray(c.contacts) ? c.contacts[0] : c.contacts
-    const owner   = Array.isArray(c.owner) ? c.owner[0] : c.owner
-
-    const expiry   = new Date(c.valid_until)
-    const today2   = new Date()
-    today2.setHours(0, 0, 0, 0)
-    const diffMs   = expiry.getTime() - today2.getTime()
-    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) // negativo = já venceu
-
-    return {
-      id:               c.id,
-      process_number:   c.process_number,
-      client_name:      c.client_name,
-      valid_until:      c.valid_until,
-      days_until_expiry: daysLeft,
-      monthly_value:    c.monthly_value ?? null,
-      contact_phone:    (contact as { phone?: string } | null)?.phone ?? null,
-      contact_email:    (contact as { email?: string } | null)?.email ?? null,
-      owner_name:       (owner as { full_name?: string } | null)?.full_name ?? null,
-    } as ExpiringContract
-  })
+async function fetchCompanyName(supabase: ReturnType<typeof getAdminClient>): Promise<string> {
+  const { data } = await supabase
+    .from('organization_settings')
+    .select('company_name')
+    .eq('id', 'default')
+    .maybeSingle()
+  return data?.company_name?.trim() || 'Equipe Comercial'
 }
 
-// ─── Geração de mensagens ─────────────────────────────────────────────────────
+// ─── Mensagens ────────────────────────────────────────────────────────────────
 
-function buildClientWhatsAppMessage(contract: ExpiringContract, alertLevel: AlertLevel): string {
-  const dataVenc  = formatDateBR(contract.valid_until)
-  const valor     = formatBRL(contract.monthly_value)
-  const num       = contract.process_number
+function buildClientMessage(c: RenewalCandidate, level: AlertLevel, companyName: string): string {
+  const dataVenc  = formatDateBR(c.valid_until)
+  const ref       = c.process_number ? `o contrato *${c.process_number}*` : 'o contrato'
+  const saudacao  = c.contact_name ? `Olá, *${c.contact_name.split(' ')[0]}*!` : `Prezado(a) cliente *${c.client_name}*,`
+  const assinatura = c.owner_name ? `${c.owner_name}\n${companyName}` : companyName
 
-  if (alertLevel === 0 || alertLevel < 0) {
+  if (level === 0) {
     return (
-      `⚠️ *CONTRATO VENCIDO — AÇÃO URGENTE* ⚠️\n\n` +
-      `Prezado(a) *${contract.client_name}*,\n\n` +
-      `Identificamos que o contrato *${num}*, com vigência até *${dataVenc}*, encontra-se expirado.\n\n` +
-      `O valor de referência do contrato é de *${valor}*.\n\n` +
-      `Para evitar interrupção dos serviços e regularização da situação contratual, ` +
-      `solicitamos que entre em contato com nossa equipe *com urgência*.\n\n` +
-      `📞 Equipe Comercial — Orbis Engenharia`
+      `${saudacao}\n\n` +
+      `Identificamos que ${ref} (${c.client_name}), com vigência até *${dataVenc}*, está vencido.\n\n` +
+      `Para evitar interrupção dos serviços, gostaríamos de tratar a regularização e a renovação com você o quanto antes. ` +
+      `Podemos conversar ainda esta semana?\n\n` +
+      assinatura
     )
   }
 
-  const urgencia =
-    alertLevel === 15
-      ? '⚠️ *AVISO URGENTE*'
-      : alertLevel === 30
-      ? '📋 *Aviso de Vencimento*'
-      : '📌 *Lembrete Contratual*'
+  const abertura =
+    level === 15 ? `⚠️ ${ref} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
+    : level === 30 ? `${ref.charAt(0).toUpperCase() + ref.slice(1)} (${c.client_name}) vence em *${c.days_until_expiry} dias*, em *${dataVenc}*.`
+    : `Passando para lembrar que ${ref} (${c.client_name}) tem vigência até *${dataVenc}* (${c.days_until_expiry} dias).`
 
-  const diasTexto =
-    alertLevel === 15
-      ? `apenas *${contract.days_until_expiry} dias*`
-      : `*${contract.days_until_expiry} dias*`
+  const pedido =
+    level === 15 ? `Para garantir a continuidade dos serviços sem interrupção, precisamos alinhar a renovação com urgência. Podemos falar hoje ou amanhã?`
+    : level === 30 ? `Para garantir a continuidade dos serviços, que tal agendarmos uma conversa para tratar da renovação?`
+    : `Gostaríamos de iniciar com antecedência a conversa sobre a renovação. Qual o melhor momento para falarmos?`
 
-  return (
-    `${urgencia}\n\n` +
-    `Prezado(a) *${contract.client_name}*,\n\n` +
-    `Informamos que o contrato *${num}* vencerá em ${diasTexto}, em *${dataVenc}*.\n\n` +
-    `📄 Valor de referência: *${valor}*\n\n` +
-    (alertLevel <= 30
-      ? `Para garantir a continuidade dos serviços, recomendamos iniciar o processo de renovação com antecedência.\n\n`
-      : `Nossa equipe estará à disposição para tratar da renovação no momento oportuno.\n\n`) +
-    `Em caso de dúvidas, entre em contato com nossa equipe comercial.\n\n` +
-    `📞 Orbis Engenharia — Equipe Comercial`
-  )
+  return `${saudacao}\n\n${abertura}\n\n${pedido}\n\n${assinatura}`
 }
 
-function buildInternalWhatsAppMessage(contract: ExpiringContract, alertLevel: AlertLevel): string {
-  const emoji     = alertLevel <= 15 ? '🚨' : alertLevel <= 30 ? '⚠️' : '📋'
-  const dataVenc  = formatDateBR(contract.valid_until)
-  const valor     = formatBRL(contract.monthly_value)
-  const dias      = alertLevel === 0 ? 'VENCIDO' : `${contract.days_until_expiry}d`
-
-  return (
-    `${emoji} *[COPILOTO] Contrato vencendo em ${dias}*\n\n` +
-    `Cliente: *${contract.client_name}*\n` +
-    `Processo: ${contract.process_number}\n` +
-    `Vencimento: ${dataVenc}\n` +
-    `Valor: ${valor}\n` +
-    (contract.owner_name ? `Responsável: ${contract.owner_name}\n` : '') +
-    `\n` +
-    (alertLevel <= 15
-      ? `⚠️ *Ação urgente necessária!* Entre em contato com o cliente hoje.`
-      : alertLevel <= 30
-      ? `Iniciar processo de renovação — verificar intenção do cliente.`
-      : `Monitorar — agendar contato nos próximos dias.`)
-  )
+function levelLabel(level: AlertLevel, days: number): string {
+  return level === 0 ? `vencido há ${Math.abs(days)} dia(s)` : `vence em ${days} dia(s)`
 }
 
-function buildClientEmailHtml(contract: ExpiringContract, alertLevel: AlertLevel): string {
-  const dataVenc = formatDateBR(contract.valid_until)
-  const valor    = formatBRL(contract.monthly_value)
-  const dias     = contract.days_until_expiry
-  const isExpired = alertLevel === 0 || dias < 0
-
-  const headerColor = isExpired ? '#dc2626' : alertLevel <= 15 ? '#ea580c' : alertLevel <= 30 ? '#d97706' : '#2563eb'
-  const headerText  = isExpired ? 'Contrato Expirado — Regularização Urgente'
-                    : alertLevel <= 15 ? `Aviso Urgente: ${dias} dias para o vencimento`
-                    : alertLevel <= 30 ? `Aviso de Vencimento: ${dias} dias`
-                    : `Lembrete Contratual: ${dias} dias para o vencimento`
-
-  return `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-        <tr><td style="background:${headerColor};padding:24px 32px;">
-          <p style="margin:0;color:#fff;font-size:18px;font-weight:bold;">${headerText}</p>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="margin:0 0 16px;color:#111;font-size:15px;">Prezado(a) <strong>${contract.client_name}</strong>,</p>
-          ${isExpired
-            ? `<p style="color:#dc2626;font-weight:bold;margin:0 0 16px;">O seu contrato <strong>${contract.process_number}</strong> com vigência até <strong>${dataVenc}</strong> está <u>expirado</u>.</p>
-               <p style="color:#444;margin:0 0 16px;">Para evitar interrupção dos serviços e regularizar a situação contratual, entre em contato com nossa equipe com <strong>urgência</strong>.</p>`
-            : `<p style="color:#333;margin:0 0 16px;">O contrato <strong>${contract.process_number}</strong> vencerá em <strong>${dataVenc}</strong> (${dias} dias).</p>
-               <p style="color:#444;margin:0 0 16px;">${alertLevel <= 30 ? 'Para garantir a continuidade dos serviços, recomendamos iniciar o processo de renovação com antecedência.' : 'Nossa equipe estará à disposição para tratar da renovação no momento oportuno.'}</p>`
-          }
-          <table cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;width:100%;margin:0 0 24px;">
-            <tr><td style="padding:16px;">
-              <p style="margin:0 0 8px;color:#555;font-size:13px;"><strong>📄 Detalhes do contrato</strong></p>
-              <p style="margin:0 0 4px;color:#333;font-size:14px;">Número: <strong>${contract.process_number}</strong></p>
-              <p style="margin:0 0 4px;color:#333;font-size:14px;">Vencimento: <strong>${dataVenc}</strong></p>
-              <p style="margin:0;color:#333;font-size:14px;">Valor de referência: <strong>${valor}</strong></p>
-            </td></tr>
-          </table>
-          <p style="color:#444;margin:0 0 8px;font-size:14px;">Em caso de dúvidas, entre em contato:</p>
-          <p style="color:#444;margin:0;font-size:14px;">📧 comercial@orbisengenharia.com.br<br>📞 Equipe Comercial — Orbis Engenharia</p>
-        </td></tr>
-        <tr><td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;">
-          <p style="margin:0;color:#888;font-size:12px;">Esta mensagem foi gerada automaticamente pelo sistema de gestão de contratos da Orbis Engenharia.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`
-}
-
-function buildClientEmailSubject(contract: ExpiringContract, alertLevel: AlertLevel): string {
-  const dias = contract.days_until_expiry
-  if (alertLevel === 0 || dias < 0) return `[URGENTE] Contrato ${contract.process_number} expirado — regularização necessária`
-  if (alertLevel === 15) return `[URGENTE] Contrato ${contract.process_number} vence em ${dias} dias`
-  if (alertLevel === 30) return `Aviso: Contrato ${contract.process_number} vence em ${dias} dias`
-  return `Lembrete: Contrato ${contract.process_number} vence em ${dias} dias`
-}
-
-// ─── Processa um único contrato ───────────────────────────────────────────────
+// ─── Processa um contrato ─────────────────────────────────────────────────────
 
 async function processContract(
-  contract: ExpiringContract,
-  alertLevel: AlertLevel,
+  supabase: ReturnType<typeof getAdminClient>,
+  c: RenewalCandidate,
+  level: AlertLevel,
+  companyName: string,
 ): Promise<AlertResult> {
-  const alertEmail = process.env.AGENT_ALERT_EMAIL ?? 'bruno.barbosa@orbisengenharia.com.br'
+  const base = {
+    contractId: c.id, processNumber: c.process_number, clientName: c.client_name,
+    daysUntilExpiry: c.days_until_expiry, alertLevel: level,
+  }
+  const dedupeKey = `renewal:${c.valid_until}:${level}`
+  const dueInDays = level === 0 ? 0 : level === 15 ? 1 : level === 30 ? 3 : level === 60 ? 5 : 7
+  const when      = levelLabel(level, c.days_until_expiry)
+  const header    = `[Copiloto IA] Contrato ${c.process_number ?? ''} — ${c.client_name} — ${when} (${formatDateBR(c.valid_until)}). Valor: ${formatBRL(c.monthly_value)}.`
 
-  console.log(
-    `[expiration] processando ${contract.process_number} (${contract.client_name}) ` +
-    `— alerta ${alertLevel}d | vence em ${contract.days_until_expiry}d`
-  )
-
-  // 1. WhatsApp para o RESPONSÁVEL interno (instância retenção)
-  const internalNumber = process.env.AGENT_INTERNAL_WHATSAPP ?? process.env.WHATSAPP_NUMBER
-  let waInternal: { sent: boolean; error?: string } = { sent: false, error: 'número interno não configurado' }
-  if (internalNumber) {
-    const internalMsg = buildInternalWhatsAppMessage(contract, alertLevel)
-    waInternal = await sendEvolutionWhatsApp('retencao', internalNumber, internalMsg)
+  // 90 dias: só tarefa interna de preparação
+  if (level === 90) {
+    const r = await createAgentActivity(supabase, {
+      contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+      activityType: 'task',
+      title: `Preparar renovação — ${c.client_name}`,
+      content:
+        `${header}\n\nPreparar a renovação: conferir cláusula de reajuste (índice e data-base), ` +
+        `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.`,
+      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until },
+    })
+    return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
   }
 
-  // 2. WhatsApp para o CLIENTE (só a partir de 60 dias)
-  let waClient: { sent: boolean; error?: string } = { sent: false, error: 'cliente sem telefone ou nível > 60d' }
-  if (alertLevel <= 60 && contract.contact_phone) {
-    const clientMsg = buildClientWhatsAppMessage(contract, alertLevel)
-    waClient = await sendEvolutionWhatsApp('retencao', contract.contact_phone, clientMsg)
+  // 60 / 30 / 15 / vencido: aviso ao cliente, aguardando aprovação do consultor
+  if (!c.contact_phone) {
+    const r = await createAgentActivity(supabase, {
+      contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+      activityType: 'task',
+      title: `Aviso de renovação sem telefone — ${c.client_name}`,
+      content:
+        `${header}\n\nO aviso de renovação ao cliente não pôde ser preparado porque o contrato ` +
+        `não tem contato com WhatsApp cadastrado. Cadastre o contato e fale com o cliente.`,
+      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until, missing: 'contact_phone' },
+    })
+    return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : 'sem telefone' }
   }
 
-  // 3. E-mail interno + cópia para cliente se disponível (a partir de 60 dias)
-  const emailResult = await sendAgentEmail({
-    to:       alertEmail,
-    subject:  buildClientEmailSubject(contract, alertLevel),
-    htmlBody: buildClientEmailHtml(contract, alertLevel),
-    fromEmail: process.env.AGENT_FROM_EMAIL,
+  const draft = buildClientMessage(c, level, companyName)
+  const r = await createAgentActivity(supabase, {
+    contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+    activityType: 'whatsapp',
+    title: level === 0
+      ? `Enviar aviso de contrato vencido — ${c.client_name}`
+      : `Enviar aviso de renovação (${level} dias) — ${c.client_name}`,
+    content:
+      `${header}\n\n` +
+      `Mensagem sugerida para ${c.contact_name ?? 'o contato'} (${c.contact_phone}). ` +
+      `Revise antes de enviar:\n\n${draft}`,
+    metadata: {
+      kind:          'renewal_alert',
+      alert_level:   level,
+      valid_until:   c.valid_until,
+      draft_message: draft,
+      target_phone:  c.contact_phone,
+      contact_name:  c.contact_name,
+      approval:      'pending',
+    },
   })
-
-  // 4. Atividade no CRM
-  const diasDesc = alertLevel === 0 || contract.days_until_expiry < 0
-    ? 'VENCIDO'
-    : `${contract.days_until_expiry} dias`
-
-  const activityContent =
-    `[COPILOTO] Alerta de vencimento disparado (${diasDesc}). ` +
-    `Contrato ${contract.process_number} — ${contract.client_name}. ` +
-    `Canais: WhatsApp interno=${waInternal.sent ? '✓' : '✗'} | ` +
-    `WhatsApp cliente=${waClient.sent ? '✓' : '✗'} | ` +
-    `E-mail=${emailResult.sent ? '✓' : '✗'}`
-
-  const crmResult = await createCrmActivity({
-    contractId: contract.id,
-    type:       'system',
-    content:    activityContent,
-    dueInDays:  alertLevel <= 15 ? 1 : alertLevel <= 30 ? 3 : 7,
-    metadata:   { alert_level: alertLevel, days_until_expiry: contract.days_until_expiry },
-  })
-
-  return {
-    contractId:      contract.id,
-    processNumber:   contract.process_number,
-    clientName:      contract.client_name,
-    daysUntilExpiry: contract.days_until_expiry,
-    alertLevel,
-    whatsappClient:  waClient,
-    emailInternal:   emailResult,
-    crmActivity:     crmResult,
-  }
+  return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
 }
 
 // ─── Exportação principal ─────────────────────────────────────────────────────
 
-export type ExpirationAlertsReport = {
-  ran_at:     string
-  total:      number
-  results:    AlertResult[]
-  by_level:   Record<string, number>
-  errors:     string[]
-}
-
 export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
-  console.log('[expiration] iniciando varredura de vencimentos...')
+  console.log('[expiration] iniciando varredura de renovações...')
+  const supabase = getAdminClient()
 
-  const levels: AlertLevel[] = [90, 60, 30, 15]
-
-  const [
-    contracts90,
-    contracts60,
-    contracts30,
-    contracts15,
-    contractsExpired,
-  ] = await Promise.all([
-    fetchContractsExpiringInDays(90),
-    fetchContractsExpiringInDays(60),
-    fetchContractsExpiringInDays(30),
-    fetchContractsExpiringInDays(15),
-    fetchExpiredContracts(),
-  ])
-
-  console.log(
-    `[expiration] contratos encontrados — 90d:${contracts90.length} 60d:${contracts60.length} ` +
-    `30d:${contracts30.length} 15d:${contracts15.length} vencidos:${contractsExpired.length}`
-  )
-
-  const allJobs: Array<{ contract: ExpiringContract; level: AlertLevel }> = [
-    ...contracts90.map(c => ({ contract: c, level: 90 as AlertLevel })),
-    ...contracts60.map(c => ({ contract: c, level: 60 as AlertLevel })),
-    ...contracts30.map(c => ({ contract: c, level: 30 as AlertLevel })),
-    ...contracts15.map(c => ({ contract: c, level: 15 as AlertLevel })),
-    ...contractsExpired.map(c => ({ contract: c, level: 0 as AlertLevel })),
-  ]
+  const [candidates, companyName] = await Promise.all([fetchCandidates(supabase), fetchCompanyName(supabase)])
+  console.log(`[expiration] ${candidates.length} contrato(s) na janela de -90 a +90 dias`)
 
   const results: AlertResult[] = []
   const errors:  string[]      = []
 
-  // Processa sequencialmente para não sobrecarregar a Evolution API
-  for (const { contract, level } of allJobs) {
+  for (const c of candidates) {
+    const level = levelFor(c.days_until_expiry)
+    if (level === null) continue
     try {
-      const result = await processContract(contract, level)
-      results.push(result)
+      const r = await processContract(supabase, c, level, companyName)
+      results.push(r)
+      if (r.activity === 'error') errors.push(`${c.process_number ?? c.id}: ${r.detail}`)
+      console.log(`[expiration] ${c.process_number ?? c.id} (${c.client_name}) ${level}d → ${r.activity}${r.detail ? ` (${r.detail})` : ''}`)
     } catch (err) {
-      const msg = `${contract.process_number}: ${err instanceof Error ? err.message : String(err)}`
+      const msg = `${c.process_number ?? c.id}: ${err instanceof Error ? err.message : String(err)}`
       console.error(`[expiration] erro ao processar ${msg}`)
       errors.push(msg)
     }
   }
 
+  const created = results.filter(r => r.activity === 'created')
   const byLevel: Record<string, number> = {}
-  for (const r of results) {
-    const key = r.daysUntilExpiry < 0 ? 'vencido' : `${r.alertLevel}d`
+  for (const r of created) {
+    const key = r.alertLevel === 0 ? 'vencido' : `${r.alertLevel}d`
     byLevel[key] = (byLevel[key] ?? 0) + 1
   }
 
-  console.log(`[expiration] concluído — ${results.length} alertas | ${errors.length} erros`)
+  // Resumo interno para o gestor — só quando há alerta novo
+  let internal: ExpirationAlertsReport['internal_whatsapp'] = null
+  if (created.length > 0) {
+    const lines = created
+      .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry)
+      .map(r => `• ${r.clientName}${r.processNumber ? ` (${r.processNumber})` : ''} — ${levelLabel(r.alertLevel, r.daysUntilExpiry)}`)
+    internal = await sendWhatsApp(
+      `🔔 *Copiloto — Renovações*\n\n` +
+      `${created.length} nova(s) atividade(s) aberta(s) para os responsáveis:\n\n` +
+      `${lines.join('\n')}\n\n` +
+      `Os avisos aos clientes aguardam revisão do consultor no CRM.`
+    )
+  }
+
+  console.log(`[expiration] concluído — ${created.length} atividade(s) nova(s) | ${errors.length} erro(s)`)
 
   return {
     ran_at:   new Date().toISOString(),
-    total:    results.length,
+    total:    created.length,
     results,
     by_level: byLevel,
+    internal_whatsapp: internal,
     errors,
   }
 }

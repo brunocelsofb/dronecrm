@@ -16,7 +16,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (cronSecret) {
     const authHeader = req.headers.get('authorization') ?? ''
     const token      = authHeader.replace(/^Bearer\s+/i, '')
-    if (token !== cronSecret) {
+    const query      = new URL(req.url).searchParams.get('cron_secret')
+    if (token !== cronSecret && query !== cronSecret) {
       console.warn('[expiration-alerts] token inválido')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -33,6 +34,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ran_at:   report.ran_at,
       total:    report.total,
       by_level: report.by_level,
+      results:  report.results,
+      internal_whatsapp: report.internal_whatsapp,
       errors:   report.errors,
     })
   } catch (err) {

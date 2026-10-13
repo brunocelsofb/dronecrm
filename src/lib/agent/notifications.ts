@@ -260,7 +260,20 @@ export async function createCrmActivity(opts: {
   }
 
   if (opts.contractId) row.contract_id = opts.contractId
-  if (opts.leadId)     row.lead_id     = opts.leadId
+  // activities não tem coluna lead_id — o lead vai no metadata
+  if (opts.leadId) row.metadata = { ...(row.metadata as Record<string, unknown>), lead_id: opts.leadId }
+
+  // Multi-tenant: service role não tem JWT → tenant do contrato ou da organização
+  let tenantId: string | null = null
+  if (opts.contractId) {
+    const { data } = await supabase.from('contracts').select('tenant_id').eq('id', opts.contractId).maybeSingle()
+    tenantId = data?.tenant_id ?? null
+  }
+  if (!tenantId) {
+    const { data } = await supabase.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
+    tenantId = data?.tenant_id ?? null
+  }
+  if (tenantId) row.tenant_id = tenantId
 
   const { error } = await supabase.from('activities').insert(row)
   if (error) {

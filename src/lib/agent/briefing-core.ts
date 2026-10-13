@@ -8,6 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
+import { createAgentActivity } from './agent-activity'
 import { differenceInDays, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -405,7 +406,9 @@ export async function fetchPendingActionPlans(
 }
 
 // ─── Criar tarefa no CRM em nome do agente ────────────────────────────────────
-type AgentTaskKind = 'dormant' | 'renewal' | 'proposal'
+// Usa createAgentActivity: formato de atividade planejada da tela do CRM,
+// tenant_id do contrato e sem duplicar (uma aberta por contrato e tipo).
+type AgentTaskKind = 'dormant' | 'proposal'
 
 async function createAgentTask(
   supabase: ReturnType<typeof getAdminClient>,
@@ -414,65 +417,21 @@ async function createAgentTask(
   content: string,
   dueInDays = 2
 ): Promise<boolean> {
-  // Multi-tenant: o agente roda com service role (sem JWT), então o tenant_id
-  // precisa vir do próprio contrato.
-  const { data: contract, error: contractErr } = await supabase
-    .from('contracts')
-    .select('tenant_id')
-    .eq('id', contractId)
-    .maybeSingle()
-
-  if (contractErr || !contract?.tenant_id) {
-    console.warn(
-      `[agent] tarefa ${kind} ignorada — contrato ${contractId} não encontrado` +
-      (contractErr ? `: ${contractErr.message}` : '')
-    )
-    return false
-  }
-
-  // Evita duplicar: o briefing roda todo dia e o texto muda ("há N dias").
-  // Se já existe tarefa do Copiloto em aberto para este contrato e tipo, não cria outra.
-  // Tarefas antigas (sem metadata.kind) contam como do mesmo tipo.
-  const { data: open, error: openErr } = await supabase
-    .from('activities')
-    .select('id, metadata')
-    .eq('contract_id', contractId)
-    .eq('type', 'task')
-    .eq('completed', false)
-    .eq('metadata->>source', 'copiloto_ia')
-
-  if (openErr) {
-    console.error(`[agent] erro ao verificar tarefas abertas (${contractId}):`, openErr.message)
-    return false  // na dúvida, não cria (evita duplicata)
-  }
-  const exists = (open ?? []).some(
-    (a: { metadata: { kind?: string } | null }) => !a.metadata?.kind || a.metadata.kind === kind
-  )
-  if (exists) {
-    console.log(`[agent] tarefa ${kind} já aberta para ${contractId} — não duplicada`)
-    return false
-  }
-
-  const dueDate = new Date()
-  dueDate.setDate(dueDate.getDate() + dueInDays)
-
-  const { error } = await supabase
-    .from('activities')
-    .insert({
-      contract_id: contractId,
-      tenant_id:   contract.tenant_id,
-      type:        'task',
-      content,
-      due_date:    dueDate.toISOString(),
-      completed:   false,
-      metadata:    { source: 'copiloto_ia', auto_created: true, kind },
-    })
-
-  if (error) {
-    console.error(`[agent] erro ao criar tarefa para contrato ${contractId}:`, error.message)
-    return false
-  }
-  return true
+  const title = kind === 'dormant'
+    ? 'Retomar oportunidade parada'
+    : 'Cobrar aprovação de proposta parada'
+  const r = await createAgentActivity(supabase, {
+    contractId,
+    dedupeKey: `briefing:${kind}`,
+    title,
+    content,
+    dueInDays,
+    activityType: 'task',
+    metadata: { kind },
+  })
+  if (r.status === 'error') console.error(`[agent] erro ao criar tarefa ${kind} (${contractId}):`, r.error)
+  if (r.status === 'skipped') console.log(`[agent] tarefa ${kind} para ${contractId} não criada: ${r.reason}`)
+  return r.status === 'created'
 }
 
 // ─── Prompt builder — consultor comercial, dados por nome ─────────────────────
@@ -620,20 +579,7 @@ async function createAutomaticTasks(
     if (ok) created++
   }
 
-  // Tarefa para contratos vencidos ou vencendo em 15 dias
-  for (const r of data.renewal.filter(r => (r.days_until_expiry ?? 99) <= 15)) {
-    const ok = await createAgentTask(
-      supabase,
-      r.id,
-      'renewal',
-      `[Copiloto IA] Contrato ${r.days_until_expiry !== null && r.days_until_expiry < 0
-        ? `VENCIDO há ${Math.abs(r.days_until_expiry)} dias`
-        : `vence em ${r.days_until_expiry} dias`
-      }. Ligar para ${r.client_name} e confirmar renovação ou negociar condições.`,
-      r.days_until_expiry !== null && r.days_until_expiry < 0 ? 0 : 2
-    )
-    if (ok) created++
-  }
+  // Renovações: tratadas pelo agente de alertas (expiration-alerts.ts)
 
   // Tarefa para propostas paradas (top 2)
   for (const p of data.proposals.slice(0, 2)) {
