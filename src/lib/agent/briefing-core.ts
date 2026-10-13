@@ -405,12 +405,54 @@ export async function fetchPendingActionPlans(
 }
 
 // ─── Criar tarefa no CRM em nome do agente ────────────────────────────────────
+type AgentTaskKind = 'dormant' | 'renewal' | 'proposal'
+
 async function createAgentTask(
   supabase: ReturnType<typeof getAdminClient>,
   contractId: string,
+  kind: AgentTaskKind,
   content: string,
   dueInDays = 2
 ): Promise<boolean> {
+  // Multi-tenant: o agente roda com service role (sem JWT), então o tenant_id
+  // precisa vir do próprio contrato.
+  const { data: contract, error: contractErr } = await supabase
+    .from('contracts')
+    .select('tenant_id')
+    .eq('id', contractId)
+    .maybeSingle()
+
+  if (contractErr || !contract?.tenant_id) {
+    console.warn(
+      `[agent] tarefa ${kind} ignorada — contrato ${contractId} não encontrado` +
+      (contractErr ? `: ${contractErr.message}` : '')
+    )
+    return false
+  }
+
+  // Evita duplicar: o briefing roda todo dia e o texto muda ("há N dias").
+  // Se já existe tarefa do Copiloto em aberto para este contrato e tipo, não cria outra.
+  // Tarefas antigas (sem metadata.kind) contam como do mesmo tipo.
+  const { data: open, error: openErr } = await supabase
+    .from('activities')
+    .select('id, metadata')
+    .eq('contract_id', contractId)
+    .eq('type', 'task')
+    .eq('completed', false)
+    .eq('metadata->>source', 'copiloto_ia')
+
+  if (openErr) {
+    console.error(`[agent] erro ao verificar tarefas abertas (${contractId}):`, openErr.message)
+    return false  // na dúvida, não cria (evita duplicata)
+  }
+  const exists = (open ?? []).some(
+    (a: { metadata: { kind?: string } | null }) => !a.metadata?.kind || a.metadata.kind === kind
+  )
+  if (exists) {
+    console.log(`[agent] tarefa ${kind} já aberta para ${contractId} — não duplicada`)
+    return false
+  }
+
   const dueDate = new Date()
   dueDate.setDate(dueDate.getDate() + dueInDays)
 
@@ -418,11 +460,12 @@ async function createAgentTask(
     .from('activities')
     .insert({
       contract_id: contractId,
+      tenant_id:   contract.tenant_id,
       type:        'task',
       content,
       due_date:    dueDate.toISOString(),
       completed:   false,
-      metadata:    { source: 'copiloto_ia', auto_created: true },
+      metadata:    { source: 'copiloto_ia', auto_created: true, kind },
     })
 
   if (error) {
@@ -569,6 +612,7 @@ async function createAutomaticTasks(
     const ok = await createAgentTask(
       supabase,
       d.contract_id,
+      'dormant',
       `[Copiloto IA] Oportunidade parada há ${d.days_idle} dias na etapa "${d.stage_name ?? 'desconhecida'}". ` +
       `Retomar contato com ${d.client_name} e registar próximo passo até amanhã.`,
       1
@@ -581,6 +625,7 @@ async function createAutomaticTasks(
     const ok = await createAgentTask(
       supabase,
       r.id,
+      'renewal',
       `[Copiloto IA] Contrato ${r.days_until_expiry !== null && r.days_until_expiry < 0
         ? `VENCIDO há ${Math.abs(r.days_until_expiry)} dias`
         : `vence em ${r.days_until_expiry} dias`
@@ -596,7 +641,7 @@ async function createAutomaticTasks(
       const ok = await createAgentTask(
         supabase,
         // proposals não têm contract_id directo — busca via control_code
-        p.id, // usará proposal_id como fallback; não é ideal mas evita join extra
+        p.id, 'proposal', // usará proposal_id como fallback; não é ideal mas evita join extra
         `[Copiloto IA] Proposta ${p.control_code} para ${p.client_name} aguarda aprovação ` +
         `(${p.status_label}) há ${p.days_waiting} dias. ` +
         `Cobrar ${p.pending_approver ?? 'o responsável'} para dar andamento.`,
