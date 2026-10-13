@@ -12,6 +12,7 @@ const MAX_TEMPLATE_LENGTH = 3000
 export async function saveRenewalTemplates(
   templates: Partial<Record<RenewalLevelKey, string>>,
   emailSubject?: string,
+  commercialEmail?: string,
 ): Promise<{ ok?: true; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas mensagens.' }
 
@@ -29,6 +30,9 @@ export async function saveRenewalTemplates(
   if (emailSubject !== undefined && !subject) return { error: 'O assunto do e-mail está vazio.' }
   if (subject.length > 200) return { error: 'O assunto do e-mail passou de 200 caracteres.' }
 
+  const commercial = commercialEmail?.trim() ?? ''
+  if (commercial && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commercial)) return { error: 'O e-mail comercial não é válido.' }
+
   const admin = createAdminClient()
   const { data, error: readErr } = await admin
     .from('organization_settings')
@@ -45,6 +49,7 @@ export async function saveRenewalTemplates(
         ...current,
         renewal_templates: clean,
         ...(subject ? { renewal_email_subject: subject } : {}),
+        ...(commercialEmail !== undefined ? { commercial_email: commercial || null } : {}),
       },
     })
     .eq('id', 'default')

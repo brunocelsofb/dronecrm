@@ -97,7 +97,22 @@ export type RenewalEmailData = {
   monthlyValue: string | null    // já formatado (R$ ...)
   consultorName: string | null
   consultorEmail: string | null
+  commercialEmail?: string | null   // e-mail comercial da empresa, exibido junto ao do consultor
   companyName: string
+}
+
+// Paleta da marca por gravidade do aviso (Configurações → Copiloto IA)
+export const RENEWAL_SEVERITY: Record<'60' | '30' | '15' | '0', { label: string; bg: string; fg: string; badgeBg: string; badgeFg: string }> = {
+  '60': { label: 'INFORMATIVO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
+  '30': { label: 'ATENÇÃO',     bg: '#FFE596', fg: '#1B556B', badgeBg: '#1B556B', badgeFg: '#FFE596' },
+  '15': { label: 'URGENTE',     bg: '#E98C5F', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#E98C5F' },
+  '0':  { label: 'CRÍTICO',     bg: '#AF5B65', fg: '#FFFFFF', badgeBg: '#FFFFFF', badgeFg: '#AF5B65' },
+}
+
+export const DEFAULT_COMMERCIAL_EMAIL = 'comercial@orbisengenharia.com.br'
+
+export function resolveCommercialEmail(saved: unknown): string {
+  return typeof saved === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(saved.trim()) ? saved.trim() : DEFAULT_COMMERCIAL_EMAIL
 }
 
 function esc(t: string): string {
@@ -106,7 +121,7 @@ function esc(t: string): string {
 
 export function buildRenewalEmailHtml(d: RenewalEmailData): string {
   const expired = d.level === 0 || d.daysUntilExpiry < 0
-  const color = expired ? '#dc2626' : d.level <= 15 ? '#ea580c' : d.level <= 30 ? '#d97706' : '#1B556B'
+  const sev = RENEWAL_SEVERITY[expired ? '0' : d.level <= 15 ? '15' : d.level <= 30 ? '30' : '60']
   const header = expired
     ? 'Contrato vencido — regularização e renovação'
     : d.level <= 15 ? `Aviso urgente: ${d.daysUntilExpiry} dias para o vencimento`
@@ -119,6 +134,9 @@ export function buildRenewalEmailHtml(d: RenewalEmailData): string {
   const contact = [
     d.consultorName ? `👤 ${esc(d.consultorName)}` : '',
     d.consultorEmail ? `📧 <a href="mailto:${esc(d.consultorEmail)}" style="color:#1B556B;">${esc(d.consultorEmail)}</a>` : '',
+    d.commercialEmail && d.commercialEmail !== d.consultorEmail
+      ? `📧 <a href="mailto:${esc(d.commercialEmail)}" style="color:#1B556B;">${esc(d.commercialEmail)}</a> (Comercial)`
+      : '',
     `🏢 ${esc(d.companyName)}`,
   ].filter(Boolean).join('<br>')
 
@@ -127,8 +145,9 @@ export function buildRenewalEmailHtml(d: RenewalEmailData): string {
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;"><tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-      <tr><td style="background:${color};padding:24px 32px;">
-        <p style="margin:0;color:#fff;font-size:18px;font-weight:bold;">${esc(header)}</p>
+      <tr><td style="background:${sev.bg};padding:22px 32px;">
+        <span style="display:inline-block;background:${sev.badgeBg};color:${sev.badgeFg};font-size:11px;font-weight:bold;letter-spacing:1px;padding:3px 10px;border-radius:20px;">${sev.label}</span>
+        <p style="margin:10px 0 0;color:${sev.fg};font-size:18px;font-weight:bold;">${esc(header)}</p>
       </td></tr>
       <tr><td style="padding:32px;color:#1a1a1a;font-size:15px;line-height:1.6;">
         ${whatsappTextToEmailHtml(d.messageText)}

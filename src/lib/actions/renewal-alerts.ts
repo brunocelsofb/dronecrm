@@ -13,7 +13,7 @@ import { sendContractWhatsApp } from '@/lib/actions/whatsapp'
 import { sendEmailForUser, getEmailAccountInfo } from '@/lib/email/send'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
-import { renderRenewalTemplate, buildRenewalEmailHtml } from '@/lib/agent/renewal-templates'
+import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
 
 export type SendableInstance = {
   name: string
@@ -200,7 +200,7 @@ export async function sendRenewalAlert(
     // E-mail no formato "automático": faixa colorida, mensagem, detalhes do contrato e contato
     const [{ data: contractInfo }, { data: orgInfo }] = await Promise.all([
       admin.from('contracts').select('process_number, client_name, valid_until, monthly_value').eq('id', activity.contract_id).maybeSingle(),
-      admin.from('organization_settings').select('company_name').eq('id', 'default').maybeSingle(),
+      admin.from('organization_settings').select('company_name, copilot_settings').eq('id', 'default').maybeSingle(),
     ])
     const validUntilIso = contractInfo?.valid_until ? String(contractInfo.valid_until).slice(0, 10) : null
     const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
@@ -219,6 +219,7 @@ export async function sendRenewalAlert(
         : null,
       consultorName: consultor,
       consultorEmail: account.fromEmail,
+      commercialEmail: resolveCommercialEmail((orgInfo?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email),
       companyName: orgInfo?.company_name?.trim() || 'Equipe Comercial',
     }).replace('</body>', `${pixel}</body>`)
 

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CopilotRenewalTemplatesForm } from '@/components/settings/copilot-renewal-templates-form'
-import { resolveRenewalTemplates, resolveRenewalEmailSubject } from '@/lib/agent/renewal-templates'
+import { resolveRenewalTemplates, resolveRenewalEmailSubject, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
 
 export default async function CopilotSettingsPage() {
   const supabase = await createClient()
@@ -18,7 +18,7 @@ export default async function CopilotSettingsPage() {
     .eq('id', 'default')
     .maybeSingle()
 
-  const copilot = (settings?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown }
+  const copilot = (settings?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown; commercial_email?: unknown }
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -32,6 +32,7 @@ export default async function CopilotSettingsPage() {
       <CopilotRenewalTemplatesForm
         initial={resolveRenewalTemplates(copilot.renewal_templates)}
         initialSubject={resolveRenewalEmailSubject(copilot.renewal_email_subject)}
+        initialCommercialEmail={resolveCommercialEmail(copilot.commercial_email)}
         companyName={settings?.company_name ?? ''}
       />
     </div>
