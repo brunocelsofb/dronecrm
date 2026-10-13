@@ -613,7 +613,8 @@ async function createAutomaticTasks(
 export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
   const baseUrl  = process.env.EVOLUTION_API_URL
   const apiKey   = process.env.EVOLUTION_API_KEY
-  const instance = process.env.EVOLUTION_INSTANCE_NAME
+  // Instância do briefing; se não definida, usa a de "novos negócios" (Matheus)
+  const instance = process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS
   const number   = process.env.WHATSAPP_NUMBER
 
   if (!baseUrl || !apiKey || !instance || !number) {
@@ -628,7 +629,8 @@ export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
   }
 
   const cleanNumber = number.replace(/\D/g, '')
-  const url         = `${baseUrl.replace(/\/$/, '')}/message/sendText/${instance}`
+  // encodeURIComponent: o nome da instância tem espaços ("drone_whatsapp - Matheus")
+  const url         = `${baseUrl.replace(/\/$/, '')}/message/sendText/${encodeURIComponent(instance)}`
 
   console.log(`[whatsapp] target → ${cleanNumber.slice(0, 4)}**** | instância: ${instance}`)
   console.log(`[whatsapp] endpoint → POST ${url}`)
@@ -793,7 +795,10 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
 
   // ── Envio WhatsApp ──────────────────────────────────────────────────────────
   let whatsapp: WhatsAppResult = { sent: false, error: 'Envio WhatsApp desactivado nesta chamada' }
-  if (opts.sendViaWhatsApp) {
+  if (opts.sendViaWhatsApp && !briefing.trim()) {
+    whatsapp = { sent: false, error: 'Briefing vazio — nada enviado' }
+    console.error('[agent] ✗ briefing vazio, envio WhatsApp ignorado')
+  } else if (opts.sendViaWhatsApp) {
     console.log('[agent] enviando via WhatsApp...')
     whatsapp = await sendWhatsApp(briefing)
     if (whatsapp.sent) {

@@ -2,18 +2,22 @@
  * Copiloto Estratégico — API Route
  * GET /api/agent/briefing
  *
- * Cron: Segunda e Quinta às 07h (vercel.json)
+ * Cron: diário às 07h de Brasília / 10h UTC (vercel.json)
  * Toda a lógica de negócio vive em src/lib/agent/briefing-core.ts
  *
  * Env vars: CRON_SECRET, ANTHROPIC_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
  *   SUPABASE_SERVICE_ROLE_KEY, EVOLUTION_API_URL, EVOLUTION_API_KEY,
- *   EVOLUTION_INSTANCE_NAME, WHATSAPP_NUMBER
+ *   EVOLUTION_INSTANCE_NAME (fallback: EVOLUTION_INSTANCE_NOVOS), WHATSAPP_NUMBER
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateBriefing } from '@/lib/agent/briefing-core'
 
+export const maxDuration = 60  // queries + chamada ao modelo + envio WhatsApp
+
 function isAuthorized(req: NextRequest): boolean {
+  // O Vercel Cron envia "Authorization: Bearer <CRON_SECRET>"
+  const bearer       = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
   const headerSecret = req.headers.get('x-cron-secret')
   const querySecret  = new URL(req.url).searchParams.get('cron_secret')
   const expected     = process.env.CRON_SECRET
@@ -21,7 +25,7 @@ function isAuthorized(req: NextRequest): boolean {
     console.warn('[agent] CRON_SECRET não configurado — rota desprotegida!')
     return true
   }
-  return headerSecret === expected || querySecret === expected
+  return bearer === expected || headerSecret === expected || querySecret === expected
 }
 
 export async function GET(req: NextRequest) {

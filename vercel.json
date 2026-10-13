@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/agent/briefing",
-      "schedule": "0 7 * * 1,4"
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/agent/expiration-alerts",
