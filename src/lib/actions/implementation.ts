@@ -60,6 +60,14 @@ export async function createImplementationSchedule(
     console.log('[impl] tarefas inseridas:', taskRows.length, 'erro:', insertError?.message)
     if (insertError) return { error: `Erro ao inserir tarefas: ${insertError.message}` }
 
+    // Copiloto: acompanhamento da evolução + pedido do relatório final (N semanas)
+    try {
+      const { onImplementationStarted } = await import('@/lib/agent/internal-notices')
+      await onImplementationStarted(contractId, startDate)
+    } catch (e) {
+      console.error('[impl] atividades do Copiloto não criadas:', e)
+    }
+
     revalidatePath(`/contracts/${contractId}`)
     console.log('[impl] sucesso! scheduleId:', schedule.id)
     return { scheduleId: schedule.id }

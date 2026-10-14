@@ -667,6 +667,24 @@ export async function closeRun(
     }
   }
 
+  // Rodadas internas do Copiloto (time Orbis): e-mail interno de fechamento ou
+  // renovação para o consultor revisar e enviar; no fechamento, também a
+  // tarefa de acionar o time técnico para a implantação. Não bloqueiam.
+  if (outcome === 'won' && (pipelineForGateType === 'vendas' || pipelineForGateType === 'gestao_contratos')) {
+    try {
+      const { createInternalNotice, createImplementationKickoff } = await import('@/lib/agent/internal-notices')
+      const key = pipelineForGateType === 'vendas' ? 'ganho' : 'renovado'
+      const r = await createInternalNotice(contractId, key)
+      if (!r.ok) console.error('[closeRun] e-mail interno não criado:', r.detail)
+      if (pipelineForGateType === 'vendas') {
+        const k = await createImplementationKickoff(contractId)
+        if (!k.ok) console.error('[closeRun] tarefa de implantação não criada:', k.detail)
+      }
+    } catch (internalError) {
+      console.error('[closeRun] erro nas rodadas internas:', internalError)
+    }
+  }
+
   // Automação por desfecho — falhas aqui não devem bloquear o fechamento
   try {
     const { checkAndTriggerOutcomeAutomations } = await import('./automations')

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { runExpirationAlerts } from '@/lib/agent/expiration-alerts'
+import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
 
 export const maxDuration = 60  // segundos — Vercel Pro permite até 300s
 
@@ -29,6 +30,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const report = await runExpirationAlerts()
     console.log(`[expiration-alerts] ✓ concluído — ${report.total} alertas | ${report.errors.length} erros`)
 
+    // Relatório mensal de implantação (1x por mês, a partir do dia configurado)
+    let implReport: { status: string; id?: string; detail?: string }
+    try {
+      implReport = await createMonthlyImplementationReport()
+    } catch (e) {
+      implReport = { status: 'error', detail: e instanceof Error ? e.message : String(e) }
+    }
+
     return NextResponse.json({
       ok:       true,
       ran_at:   report.ran_at,
@@ -37,6 +46,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       results:  report.results,
       internal_whatsapp: report.internal_whatsapp,
       internal_email:    report.internal_email,
+      impl_report:       implReport,
       errors:   report.errors,
     })
   } catch (err) {

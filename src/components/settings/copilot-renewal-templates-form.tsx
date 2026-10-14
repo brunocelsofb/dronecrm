@@ -28,18 +28,21 @@ export function CopilotRenewalTemplatesForm({
   initialSubject,
   initialConfirmationSubject,
   initialCommercialEmail,
+  initialExtraCc,
   companyName,
 }: {
   initial: Record<RenewalLevelKey, string>
   initialSubject: string
   initialConfirmationSubject: string
   initialCommercialEmail: string
+  initialExtraCc: string
   companyName: string
 }) {
   const [templates, setTemplates] = useState(initial)
   const [subject, setSubject] = useState(initialSubject)
   const [confirmationSubject, setConfirmationSubject] = useState(initialConfirmationSubject)
   const [commercialEmail, setCommercialEmail] = useState(initialCommercialEmail)
+  const [extraCc, setExtraCc] = useState(initialExtraCc)
   const [active, setActive] = useState<RenewalLevelKey>('60')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -63,7 +66,7 @@ export function CopilotRenewalTemplatesForm({
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const res = await saveRenewalTemplates(templates, subject, commercialEmail, confirmationSubject)
+    const res = await saveRenewalTemplates(templates, subject, commercialEmail, confirmationSubject, extraCc)
     setSaving(false)
     if (res.error) setError(res.error)
     else setSaved(true)
@@ -115,6 +118,20 @@ export function CopilotRenewalTemplatesForm({
           onChange={e => { setCommercialEmail(e.target.value); setSaved(false) }}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none"
         />
+      </div>
+
+      <div>
+        <label htmlFor="extra-cc" className="block text-xs font-semibold text-gray-700 mb-1">Cópia extra (opcional — outros internos da Orbis)</label>
+        <input
+          id="extra-cc"
+          value={extraCc}
+          onChange={e => { setExtraCc(e.target.value); setSaved(false) }}
+          placeholder="contratos@orbisengenharia.com.br, ..."
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none"
+        />
+        <p className="mt-1 text-[11px] text-gray-400">
+          Separe por vírgula. Vai em cópia junto com o comercial; o consultor pode tirar ou incluir outros na hora do envio.
+        </p>
       </div>
 
       {/* Abas dos marcos */}

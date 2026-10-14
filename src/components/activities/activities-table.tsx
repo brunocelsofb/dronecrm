@@ -6,6 +6,7 @@ import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
 import { CreateActivityModal } from './create-activity-modal'
 import { RenewalSendButton } from './renewal-send-button'
 import { SentMessageDialog } from './sent-message-dialog'
+import { InternalEmailButton } from './internal-email-button'
 
 type Activity = {
   id: string
@@ -165,6 +166,10 @@ export function ActivitiesTable({
                 const renewalPending = isRenewalKind && md.approval === 'pending'
                   && typeof md.target_phone === 'string' && typeof md.draft_message === 'string'
                 const renewalSent = isRenewalKind && md.approval === 'sent'
+                const isInternalKind = md.kind === 'internal_notice' || md.kind === 'internal_impl_report'
+                const internalPending = isInternalKind && md.approval === 'pending' && typeof md.draft_message === 'string'
+                const internalSent = isInternalKind && md.approval === 'sent'
+                const anySent = renewalSent || internalSent
 
                 return (
                   <tr key={a.id} style={{ background: rowBg }}>
@@ -206,11 +211,11 @@ export function ActivitiesTable({
 
                     {/* Título + descrição */}
                     <td style={td}>
-                      {renewalSent ? (
+                      {anySent ? (
                         <button
                           type="button"
                           onClick={() => setViewingSent(a)}
-                          title="Ver a mensagem enviada ao cliente"
+                          title="Ver a mensagem enviada"
                           style={{ margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontWeight: 500, fontSize: 'inherit', color: '#1B556B', textDecoration: 'underline' }}
                         >
                           {a.title || meta.label}
@@ -234,6 +239,17 @@ export function ActivitiesTable({
                       )}
                       {renewalSent && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
+                      )}
+                      {internalPending && (
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef6fb', color: '#1B556B', fontWeight: 500 }}>E-mail interno aguardando envio</span>
+                      )}
+                      {internalPending && typeof md.last_error === 'string' && md.last_error && (
+                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
+                          ⚠ Última tentativa falhou: {md.last_error}
+                        </p>
+                      )}
+                      {internalSent && (
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao time interno</span>
                       )}
                       {a.content && (
                         <p style={{ margin: '2px 0 0', fontSize: 11, color: '#8892a4', lineHeight: 1.4 }}>
@@ -265,6 +281,24 @@ export function ActivitiesTable({
                               : x))}
                             onFailed={err => setLocalActivities(prev => prev.map(x => x.id === a.id
                               ? { ...x, metadata: { ...(x.metadata ?? {}), last_error: err.replace(/^Nada foi enviado — /, ''), last_error_at: new Date().toISOString() } }
+                              : x))}
+                          />
+                        </span>
+                      )}
+                      {internalPending && !done && (
+                        <span style={{ marginRight: 6 }}>
+                          <InternalEmailButton
+                            activityId={a.id}
+                            draft={md.draft_message as string}
+                            draftSubject={typeof md.draft_subject === 'string' ? md.draft_subject : null}
+                            draftTo={Array.isArray(md.draft_to) ? (md.draft_to as string[]) : []}
+                            draftCc={Array.isArray(md.draft_cc) ? (md.draft_cc as string[]) : []}
+                            onSent={r => setLocalActivities(prev => prev.map(x => x.id === a.id
+                              ? { ...x, status: 'done', completed: true, title: r.title ?? x.title, content: r.content ?? x.content,
+                                  metadata: r.metadata ?? { ...(x.metadata ?? {}), approval: 'sent' } }
+                              : x))}
+                            onFailed={err => setLocalActivities(prev => prev.map(x => x.id === a.id
+                              ? { ...x, metadata: { ...(x.metadata ?? {}), last_error: err, last_error_at: new Date().toISOString() } }
                               : x))}
                           />
                         </span>

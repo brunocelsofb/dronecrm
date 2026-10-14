@@ -36,7 +36,7 @@ export function RenewalSendButton({
   const [message, setMessage] = useState(draft)
   const [subject, setSubject] = useState(draftSubject ?? '')
   const [instances, setInstances] = useState<SendableInstance[]>([])
-  const [ccEmail, setCcEmail] = useState<string | null>(null)
+  const [cc, setCc] = useState('')
   const [instance, setInstance] = useState('')
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -65,7 +65,7 @@ export function RenewalSendButton({
     setLoading(false)
     if (res.error) { setError(res.error); return }
     setInstances(res.instances)
-    setCcEmail(res.ccEmail ?? null)
+    setCc((res.ccEmails ?? (res.ccEmail ? [res.ccEmail] : [])).join(', '))
     setInstance(res.suggested ?? res.instances[0]?.name ?? '')
   }
 
@@ -73,7 +73,7 @@ export function RenewalSendButton({
     if (!confirm(`Enviar o aviso para ${contactName ?? 'o cliente'} por WhatsApp (${phone}) e e-mail (${email})?`)) return
     setSending(true)
     setError(null)
-    const res = await sendRenewalAlert(activityId, message, subject, instance)
+    const res = await sendRenewalAlert(activityId, message, subject, instance, cc)
     setSending(false)
     if (res.error) { setError(res.error); onFailed?.(res.error); return }
     setOpen(false)
@@ -122,11 +122,13 @@ export function RenewalSendButton({
                 {selected?.senderEmail && (
                   <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
                     E-mail sai de: {selected.senderEmail}
-                    {ccEmail && ccEmail.toLowerCase() !== selected.senderEmail.toLowerCase() && <> · cópia para {ccEmail}</>}
                   </p>
                 )}
               </>
             )}
+
+            <label style={label} htmlFor={`cc-${activityId}`}>Cópia do e-mail (separe por vírgula)</label>
+            <input id={`cc-${activityId}`} value={cc} onChange={e => setCc(e.target.value)} style={input} />
 
             <label style={label}>Assunto do e-mail</label>
             <input value={subject} onChange={e => setSubject(e.target.value)} style={input} />

@@ -15,6 +15,7 @@ import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
 import { getContractTenantName } from '@/lib/agent/tenant-name'
+import { resolveInternalSettings, parseEmailList, invalidEmails } from '@/lib/agent/internal-settings'
 import { sendWhatsApp } from '@/lib/agent/briefing-core'
 
 export type SendableInstance = {
@@ -64,6 +65,7 @@ export async function getSendableInstances(contractId: string): Promise<{
   instances: SendableInstance[]
   suggested: string | null
   ccEmail?: string | null
+  ccEmails?: string[]
   error?: string
 }> {
   const supabase = await createClient()
@@ -112,7 +114,10 @@ export async function getSendableInstances(contractId: string): Promise<{
   const suggested = byOwner?.name ?? principal ?? instances[0]?.name ?? null
 
   const ccEmail = resolveCommercialEmail((org?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email) || null
-  return { instances, suggested, ccEmail }
+  // Cópia padrão: comercial + cópias extras de Configurações (editável na janela)
+  const extra = resolveInternalSettings(org?.copilot_settings).extraCcEmails
+  const ccEmails = parseEmailList([ccEmail ?? '', ...extra].join(','))
+  return { instances, suggested, ccEmail, ccEmails }
 }
 
 export async function sendRenewalAlert(
@@ -120,6 +125,7 @@ export async function sendRenewalAlert(
   message: string,
   subject: string,
   instanceName: string,
+  ccText?: string,   // cópia editada na janela; ausente = padrão (comercial + extras)
 ): Promise<SendResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -127,6 +133,10 @@ export async function sendRenewalAlert(
   if (!message.trim()) return { error: 'A mensagem está vazia.' }
   if (!subject.trim()) return { error: 'O assunto do e-mail está vazio.' }
   if (!instanceName) return { error: 'Escolha o WhatsApp de envio.' }
+  if (ccText !== undefined) {
+    const bad = invalidEmails(ccText)
+    if (bad.length) return { error: `E-mail de cópia inválido: ${bad.join(', ')}` }
+  }
 
   const admin = createAdminClient()
   const { data: activity, error: aErr } = await admin
@@ -210,8 +220,13 @@ export async function sendRenewalAlert(
       getContractTenantName(admin, activity.contract_id),
     ])
     const commercialEmail = resolveCommercialEmail((orgInfo?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email)
-    // Comercial sempre em cópia (exceto se ele mesmo for o remetente)
-    ccEmail = commercialEmail && commercialEmail.toLowerCase() !== account.fromEmail.toLowerCase() ? commercialEmail : null
+    // Cópia: o que veio da janela; sem isso, comercial + extras de Configurações.
+    // Nunca copia o próprio remetente.
+    const ccList = ccText !== undefined
+      ? parseEmailList(ccText)
+      : parseEmailList([commercialEmail, ...resolveInternalSettings(orgInfo?.copilot_settings).extraCcEmails].join(','))
+    const ccFiltered = ccList.filter(e => e.toLowerCase() !== account.fromEmail.toLowerCase() && e.toLowerCase() !== toEmail.toLowerCase())
+    ccEmail = ccFiltered.length ? ccFiltered.join(', ') : null
     const validUntilIso = contractInfo?.valid_until ? String(contractInfo.valid_until).slice(0, 10) : null
     const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
     const daysLeft = validUntilIso

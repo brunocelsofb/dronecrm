@@ -20,7 +20,7 @@ export function SentMessageDialog({ title, metadata, senderName, onClose }: Prop
   const phone    = str(metadata.target_phone)
   const contact  = str(metadata.contact_name)
   const instance = str(metadata.sent_instance)
-  const toEmail  = str(metadata.target_email)
+  const toEmail  = str(metadata.target_email) ?? (Array.isArray(metadata.email_to) ? (metadata.email_to as string[]).join(', ') : null)
   const fromEmail = str(metadata.email_from)
   const ccEmail  = str(metadata.email_cc)
   const subject  = str(metadata.final_subject)

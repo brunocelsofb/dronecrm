@@ -77,6 +77,7 @@ export function NotificationBell({ userId }: { userId: string }) {
     }
     setOpen(false)
     if (n.contract_id) router.push(`/contracts/${n.contract_id}`)
+    else if (n.message?.includes('Relatório mensal de implantação')) router.push('/copiloto/relatorios')
   }
 
   async function handleMarkAllRead() {

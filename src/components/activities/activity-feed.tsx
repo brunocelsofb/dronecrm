@@ -7,6 +7,7 @@ import { CreateActivityModal } from './create-activity-modal'
 import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
 import { ACTIVITY_TYPE_ICON } from '@/lib/utils/activity-types'
 import { RenewalSendButton } from './renewal-send-button'
+import { InternalEmailButton } from './internal-email-button'
 
 type Activity = {
   id: string
@@ -95,6 +96,9 @@ export function ActivityFeed({
         const renewalPending = isRenewalAlert && meta.approval === 'pending'
           && typeof meta.target_phone === 'string' && typeof meta.draft_message === 'string'
         const renewalSent = isRenewalAlert && meta.approval === 'sent'
+        const isInternal = meta.kind === 'internal_notice' || meta.kind === 'internal_impl_report'
+        const internalPending = isInternal && meta.approval === 'pending' && typeof meta.draft_message === 'string'
+        const internalSent = isInternal && meta.approval === 'sent'
 
         return (
           <div key={a.id} style={{ display: 'flex', gap: 10, paddingBottom: 14, marginBottom: 14, borderBottom: '0.5px solid #f1f3f8' }}>
@@ -117,6 +121,12 @@ export function ActivityFeed({
                   {renewalSent && (
                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
                   )}
+                  {internalPending && (
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef6fb', color: '#1B556B', fontWeight: 500 }}>E-mail interno aguardando envio</span>
+                  )}
+                  {internalSent && (
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao time interno</span>
+                  )}
                 </div>
                 {!isSystemEvent && (
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -129,6 +139,15 @@ export function ActivityFeed({
                         email={typeof meta.target_email === 'string' ? meta.target_email : null}
                         draftSubject={typeof meta.draft_subject === 'string' ? meta.draft_subject : null}
                         contactName={typeof meta.contact_name === 'string' ? meta.contact_name : null}
+                      />
+                    )}
+                    {internalPending && isPlanned && (
+                      <InternalEmailButton
+                        activityId={a.id}
+                        draft={meta.draft_message as string}
+                        draftSubject={typeof meta.draft_subject === 'string' ? meta.draft_subject : null}
+                        draftTo={Array.isArray(meta.draft_to) ? (meta.draft_to as string[]) : []}
+                        draftCc={Array.isArray(meta.draft_cc) ? (meta.draft_cc as string[]) : []}
                       />
                     )}
                     {isPlanned && (
