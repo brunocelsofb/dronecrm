@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from '@/lib/auth/role'
+import { requireTenantId } from '@/lib/tenant/context'
 import { updateUserRole, updateUserDepartment, deleteUser, toggleUserActive } from '@/lib/actions/users'
 import { UserRoleSelect } from '@/components/users/user-role-select'
 import { UserDepartmentSelect } from '@/components/users/user-department-select'
@@ -13,9 +14,13 @@ export default async function UsersPage() {
 
   // Usa adminClient para bypassar RLS e ver todos os usuários
   const admin = createAdminClient()
+  // Só a equipe desta empresa (Super Admin da plataforma não aparece)
+  const tenantId = await requireTenantId()
   const { data: profiles } = await admin
     .from('profiles')
     .select('id, full_name, email, role, department, created_at')
+    .eq('tenant_id', tenantId)
+    .not('is_super_admin', 'is', true)
     .order('created_at')
 
   // Busca status de ban via auth admin
