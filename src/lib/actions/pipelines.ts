@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = {
   error?: string
@@ -16,7 +17,7 @@ export async function createPipeline(
 ): Promise<ActionState> {
   // Cliente admin — mesmo motivo do updatePipelineInfo (tabela
   // "pipelines" sem regra de UPDATE/INSERT completa no banco).
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const name = (formData.get('name') as string)?.trim()
   const description = (formData.get('description') as string) || null
   const type = (formData.get('type') as string) === 'vendas' ? 'vendas' : 'gestao_contratos'
@@ -38,7 +39,7 @@ export async function updatePipelineInfo(
   // Cliente admin (service_role) — mesmo padrão que já corrigiu esse
   // exato tipo de falha silenciosa em "stages" antes. A tabela
   // "pipelines" também não tinha uma regra de UPDATE completa no banco.
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const name = (formData.get('name') as string)?.trim()
   const description = (formData.get('description') as string) || null
   const typeRaw = formData.get('type') as string
@@ -81,7 +82,7 @@ export async function deletePipeline(pipelineId: string) {
   // linha acima — não precisamos repetir essa verificação via política
   // de banco, e isso evita depender de uma regra de RLS mais frágil
   // (que consulta outra tabela dentro dela mesma).
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('pipelines').delete().eq('id', pipelineId)
   revalidatePath('/pipelines')
   // NOTA: erros aqui (ex: pipeline com contratos ativos, bloqueado por FK)
@@ -145,7 +146,7 @@ export async function deleteStage(
   const isAdmin = await isCurrentUserAdmin()
   if (!isAdmin) return { error: 'Você não tem permissão de administrador para excluir etapas.' }
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: openRun } = await supabase
     .from('pipeline_runs')
@@ -172,7 +173,7 @@ export async function moveStage(stageId: string, direction: 'up' | 'down'): Prom
   // Uso o cliente admin (service_role) aqui — a mesma correção que já
   // resolveu a exclusão de etapa antes. Evita depender de uma política
   // de RLS que pode estar faltando/incompleta para UPDATE em "stages".
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: stage } = await supabase
     .from('stages')

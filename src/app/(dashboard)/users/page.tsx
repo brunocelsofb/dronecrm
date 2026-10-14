@@ -7,13 +7,14 @@ import { UserRoleSelect } from '@/components/users/user-role-select'
 import { UserDepartmentSelect } from '@/components/users/user-department-select'
 import { NewUserForm } from '@/components/users/new-user-form'
 import { DeleteUserButton, ToggleUserButton } from '@/components/users/delete-user-button'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function UsersPage() {
   const currentProfile = await getCurrentProfile()
   if (currentProfile?.role !== 'admin') redirect('/')
 
   // Usa adminClient para bypassar RLS e ver todos os usuários
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   // Só a equipe desta empresa (Super Admin da plataforma não aparece)
   const tenantId = await requireTenantId()
   const { data: profiles } = await admin

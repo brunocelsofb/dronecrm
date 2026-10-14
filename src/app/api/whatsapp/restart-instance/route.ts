@@ -6,6 +6,7 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(request: Request) {
   if (!(await isCurrentUserAdmin())) return NextResponse.json({ ok: false, error: 'Acesso negado' }, { status: 403 })
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'instância não encontrada' }, { status: 404 })
   }
 
-  const { data: org__raw } = await createAdminClient()
+  const { data: org__raw } = await (await createScopedAdmin())
     .from('organization_settings')
     .select('evo_server_url, evo_api_key')
     .eq('tenant_id', await resolveTenantId())

@@ -5,6 +5,7 @@ import { sanitizePhoneForEvo } from '@/lib/whatsapp/evolution'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
     const { phone, message, instance } = await req.json()
     if (await isPrivateInstance(instance)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
     const cleanPhone = sanitizePhoneForEvo(phone)
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
 
     // Busca credenciais da Evolution
     const { data: org__raw } = await admin

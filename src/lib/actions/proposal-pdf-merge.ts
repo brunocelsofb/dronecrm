@@ -5,12 +5,13 @@
 //    o rascunho — pra conferir antes de mandar pra aprovação)
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function buildMergedProposalBytes(proposalId: string): Promise<{ bytes?: Uint8Array; error?: string }> {
   const { PDFDocument } = await import('pdf-lib')
   const { buildStandardProposalPage } = await import('./proposal-pdf-builder')
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: proposal } = await supabase.from('proposals').select('*').eq('id', proposalId).single()
   if (!proposal) return { error: 'Proposta não encontrada.' }

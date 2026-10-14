@@ -1,11 +1,12 @@
 import { createClient, getActiveTenantId } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PropostasTable } from '@/components/proposals/propostas-table'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 
 export default async function PropostasPage() {
   const supabase = await createClient()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const impTenantId = await getActiveTenantId()
 
   const { data: { user } } = await supabase.auth.getUser()

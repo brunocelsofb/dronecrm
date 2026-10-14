@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -99,7 +100,7 @@ export async function executeAutomationAction(
   contractId: string,
   pipelineRunId: string | null
 ): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   if ((rule.action_type === 'move_to_stage' || rule.action_type === 'move_to_pipeline') && rule.target_stage_id) {
     await supabase.from('activities').insert({
@@ -140,7 +141,7 @@ export async function executeAutomationAction(
 }
 
 export async function deleteAutomationRule(ruleId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('automation_rules').delete().eq('id', ruleId)
   revalidatePath('/automations')
 }
@@ -163,7 +164,7 @@ export async function checkAndTriggerTagAutomations(
   tagId: string,
   kind: 'tag_added' | 'tag_removed'
 ): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: rules } = await supabase
     .from('automation_rules')
@@ -180,7 +181,7 @@ export async function checkAndTriggerTagAutomations(
 }
 
 export async function checkAndTriggerTicketLinkedAutomations(ticketId: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: rules } = await supabase
     .from('automation_rules')
@@ -205,7 +206,7 @@ export async function checkAndTriggerOutcomeAutomations(
   pipelineRunId: string,
   outcome: 'won' | 'lost'
 ): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: rules } = await supabase
     .from('automation_rules')
@@ -227,7 +228,7 @@ export async function checkAndTriggerOutcomeAutomations(
 // todo dia enquanto o contrato continuasse parado ali.
 // ------------------------------------------------------------
 export async function checkAndTriggerTimeBasedAutomations(): Promise<{ checked: number; triggered: number }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: rules } = await supabase
     .from('automation_rules')
@@ -302,7 +303,7 @@ export async function checkAndTriggerTimeBasedAutomations(): Promise<{ checked: 
 // dispara quando faltar exatamente o número de dias configurado.
 // ------------------------------------------------------------
 export async function checkAndTriggerExpirationAutomations(): Promise<{ checked: number; triggered: number }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: rules } = await supabase
     .from('automation_rules')

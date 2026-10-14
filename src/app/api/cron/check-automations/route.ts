@@ -1,15 +1,18 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { checkAndTriggerTimeBasedAutomations, checkAndTriggerExpirationAutomations } from '@/lib/actions/automations'
 import { checkAndSendWhatsAppCaptureReminders } from '@/lib/actions/whatsapp'
+import { isCronAuthorized, forEachActiveTenant } from '@/lib/tenant/cron'
 
-// NOTA DE INCERTEZA: pensada pra ser chamada pela Vercel Cron
-// (configurada em vercel.json) — não testada ao vivo. Se não disparar
-// sozinha, confira em Vercel → Project → Settings → Cron Jobs.
-export async function GET() {
-  const [progressResult, expirationResult, captureReminderResult] = await Promise.all([
-    checkAndTriggerTimeBasedAutomations(),
-    checkAndTriggerExpirationAutomations(),
-    checkAndSendWhatsAppCaptureReminders(),
-  ])
-  return NextResponse.json({ ok: true, checked_at: new Date().toISOString(), progress: progressResult, expiration: expirationResult, captureReminders: captureReminderResult })
+// Vercel Cron (vercel.json). Roda empresa por empresa.
+export async function GET(req: NextRequest) {
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const results = await forEachActiveTenant(async () => {
+    const [progress, expiration, captureReminders] = await Promise.all([
+      checkAndTriggerTimeBasedAutomations(),
+      checkAndTriggerExpirationAutomations(),
+      checkAndSendWhatsAppCaptureReminders(),
+    ])
+    return { progress, expiration, captureReminders }
+  })
+  return NextResponse.json({ ok: true, checked_at: new Date().toISOString(), results })
 }

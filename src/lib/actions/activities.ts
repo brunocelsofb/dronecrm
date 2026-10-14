@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ActivityType } from '@/lib/utils/activity-types'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 // Não re-exportamos ActivityType aqui — importar tipos de 'use server'
 // quebra o bundle em runtime. Use @/lib/utils/activity-types diretamente.
@@ -98,7 +99,7 @@ export async function updateActivityStatus(
 
 export async function deleteActivity(id: string): Promise<{ error?: string }> {
   // Usa adminClient para garantir permissão mesmo com RLS restritivo
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   // Busca para saber onde revalidar — ignora erro se colunas não existem
   const { data: act } = await supabase

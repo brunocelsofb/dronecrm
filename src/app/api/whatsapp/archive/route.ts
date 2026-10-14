@@ -7,6 +7,7 @@ import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 async function doArchive(
   phone: string,
@@ -15,7 +16,7 @@ async function doArchive(
   instanceName: string | null,
   tenantId: string | null,
 ) {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const cleanPhone = String(phone).replace(/\D/g, '')
   const last8 = cleanPhone.slice(-8)
   

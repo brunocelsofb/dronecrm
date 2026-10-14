@@ -22,6 +22,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendAutomatedTemplateEmail } from '@/lib/actions/email'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type MoveResult = { success?: true; error?: string }
 
@@ -38,7 +39,7 @@ export type MoveResult = { success?: true; error?: string }
 // mesmo sem ninguém usando o sistema) é possível de configurar depois
 // na Vercel, se for necessário.
 export async function checkAndTriggerRenewals() {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: pipelinesWithRenewal } = await supabase
     .from('pipelines')
@@ -457,7 +458,7 @@ export async function closeRun(
 
   if (outcome === 'lost') {
     const { createAdminClient } = await import('@/lib/supabase/admin')
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
     const { data: activeProposals } = await admin
       .from('proposals')
       .select('id, control_code')
@@ -925,7 +926,7 @@ async function assignAccountOwner(
     return 'Indique o consultor que ficará responsável pela conta antes de confirmar o ganho.'
   }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   const [{ data: contract }, { data: owner }] = await Promise.all([
     admin.from('contracts').select('owner_id, tenant_id').eq('id', contractId).maybeSingle(),

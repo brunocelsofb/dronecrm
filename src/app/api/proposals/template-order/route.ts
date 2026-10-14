@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
   const { order, miolo_after_id, service_type } = await req.json()
   if (!order || !Array.isArray(order)) return NextResponse.json({ error: 'order obrigatório' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Reseta is_miolo_after APENAS para o service_type ativo
   if (service_type) {

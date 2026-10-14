@@ -10,9 +10,16 @@
 // Nada aqui deve ser importado em Client Components.
 
 import { cache } from 'react'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+
+// Rotinas automáticas (crons): roda um bloco "como" uma empresa
+const tenantScope = new AsyncLocalStorage<string>()
+export function runAsTenant<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+  return tenantScope.run(tenantId, fn)
+}
 
 export const getCurrentTenantId = cache(async (): Promise<string | null> => {
   const supabase = await createClient()
@@ -20,8 +27,10 @@ export const getCurrentTenantId = cache(async (): Promise<string | null> => {
   if (!user) return null
   const admin = createAdminClient()
   const { data: profile } = await admin
-    .from('profiles').select('tenant_id, is_super_admin').eq('id', user.id).maybeSingle()
+    .from('profiles').select('tenant_id, is_super_admin, impersonating_tenant_id').eq('id', user.id).maybeSingle()
   if (profile?.is_super_admin) {
+    // "Acessar" do Super Admin: gravado no perfil (o banco usa o mesmo valor no RLS)
+    if (profile.impersonating_tenant_id) return profile.impersonating_tenant_id as string
     try {
       const imp = (await headers()).get('x-orbis-imp-tenant-id')
       if (imp) return imp
@@ -80,6 +89,7 @@ export async function ensureOrgSettings(tenantId: string): Promise<void> {
 // Empresa para ler/gravar organization_settings em qualquer contexto:
 // contrato/instância informados > usuário logado > empresa padrão (rotinas antigas).
 export async function resolveTenantId(hint?: { contractId?: string | null; instanceName?: string | null }): Promise<string> {
+  const scoped = tenantScope.getStore()
   if (hint?.contractId) {
     const t = await tenantIdForContract(hint.contractId)
     if (t) return t
@@ -88,6 +98,7 @@ export async function resolveTenantId(hint?: { contractId?: string | null; insta
     const t = await tenantIdForInstance(hint.instanceName)
     if (t) return t
   }
+  if (scoped) return scoped
   let fromUser: string | null = null
   try { fromUser = await getCurrentTenantId() } catch { fromUser = null }
   if (fromUser) return fromUser

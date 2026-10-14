@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
   if (!['eng_clinica', 'eng_hospitalar'].includes(nature))
     return NextResponse.json({ error: 'Natureza inválida' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { error } = await admin.from('abc_config').upsert(
     { nature, billing_tier1_max, billing_tier2_max, curve_a_min, curve_b_min, updated_at: new Date().toISOString() },
     { onConflict: 'nature' }

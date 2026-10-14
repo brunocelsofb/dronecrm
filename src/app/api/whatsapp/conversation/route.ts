@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(req: Request) {
   try {
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
     const cleanPhone = phone.replace(/\D/g, '')
     const last8 = cleanPhone.slice(-8)
 

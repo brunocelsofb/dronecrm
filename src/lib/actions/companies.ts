@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = {
   error?: string
@@ -129,7 +130,7 @@ export async function createContact(
 
 export async function deleteContact(contactId: string, companyId: string): Promise<{ error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem remover contatos.' }
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   // Limpa a referência de "contato principal" nos contratos que
   // apontavam pra esse contato — sem isso, a exclusão falha calada (a
@@ -156,7 +157,7 @@ export async function deleteCompany(companyId: string): Promise<DeleteState> {
   const isAdmin = await isCurrentUserAdmin()
   if (!isAdmin) return { error: 'Só administradores podem excluir empresas.' }
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { count } = await supabase
     .from('contracts')

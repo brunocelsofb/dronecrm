@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { ImplementationTemplatesEditor } from '@/components/implementation/implementation-templates-editor'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function ImplementationTemplatesPage() {
   const supabase = await createClient()
@@ -10,7 +11,7 @@ export default async function ImplementationTemplatesPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: templates } = await admin
     .from('implementation_templates')
     .select('*, implementation_template_tasks(*)')

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -51,7 +52,7 @@ export async function createCustomField(formData: FormData): Promise<ActionState
 }
 
 export async function deleteCustomField(fieldId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('custom_fields').delete().eq('id', fieldId)
   revalidatePath('/custom-fields')
 }
@@ -76,7 +77,7 @@ export async function saveContractCustomFieldValues(contractId: string, formData
 }
 
 export async function getContractCustomFieldValues(contractId: string): Promise<Record<string, string>> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data: fields } = await supabase.from('custom_fields').select('id, field_key')
   const { data: values } = await supabase.from('contract_custom_field_values').select('custom_field_id, value').eq('contract_id', contractId)
 

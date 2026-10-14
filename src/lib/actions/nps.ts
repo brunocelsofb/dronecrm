@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function createNpsSurvey(contractId: string) {
   const supabase = await createClient()
@@ -111,7 +112,7 @@ export async function submitNpsResponse(
     return { error: 'Informe seu telefone.' }
   }
 
-  const adminClient = createAdminClient()
+  const adminClient = (await createScopedAdmin())
 
   const { data: survey } = await adminClient
     .from('nps_surveys')

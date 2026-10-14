@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 // ---- Criar cronograma a partir de template ----
 export async function createImplementationSchedule(
@@ -21,7 +22,7 @@ export async function createImplementationSchedule(
     }
     console.log('[impl] user:', user.id)
 
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
 
     const { data: tasks, error: tasksError } = await admin
       .from('implementation_template_tasks')
@@ -87,7 +88,7 @@ export async function completeImplementationTask(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const now = new Date().toISOString()
 
   await admin.from('implementation_tasks').update({
@@ -137,7 +138,7 @@ export async function assignImplementationTask(
   taskId: string,
   userId: string | null
 ): Promise<void> {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   await admin.from('implementation_tasks').update({ assigned_to: userId, updated_at: new Date().toISOString() }).eq('id', taskId)
   revalidatePath('/')
 }
@@ -152,7 +153,7 @@ export async function addTaskComment(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   await admin.from('task_comments').insert({
     task_id: taskId, text, author_id: user.id,
     ...(delegatedTo ? { delegated_to: delegatedTo } : {}),
@@ -163,7 +164,7 @@ export async function addTaskComment(
 
 // ---- Buscar cronograma do contrato ----
 export async function getContractSchedule(contractId: string) {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca schedule
   const { data: schedule, error: schedErr } = await admin
@@ -226,7 +227,7 @@ export async function getContractSchedule(contractId: string) {
 
 // ---- Buscar templates disponíveis ----
 export async function getImplementationTemplates() {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data } = await admin.from('implementation_templates').select('id, name, trigger_tags, description').order('name')
   return data ?? []
 }
@@ -240,7 +241,7 @@ export async function updateImplementationOwner(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { error } = await admin
     .from('implementation_schedules')
     .update({ owner_id: newOwnerId, updated_at: new Date().toISOString() })

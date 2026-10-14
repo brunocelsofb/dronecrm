@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(
   req: Request,
@@ -10,7 +11,7 @@ export async function GET(
   const contractId = searchParams.get('contract_id')
   if (!contractId) return NextResponse.json({ logs: [] })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca APENAS logs com metadata.proposal_id = id (isolamento absoluto)
   const { data: logs, error } = await admin

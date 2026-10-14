@@ -11,6 +11,7 @@ import { getActiveTenantId } from '@/lib/supabase/server'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo, getTenantEvoCreds, instanceNameForTenant, canTenantUseInstance, getWhatsAppLimit, getTenantInstanceNames, registerInstanceForTenant } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getTenantId(_admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
@@ -28,7 +29,7 @@ export type ActionState = {
 }
 
 async function getEvoCredentials(): Promise<EvoCredentials | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data: raw } = await supabase.from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token')
     .eq('tenant_id', await resolveTenantId())
@@ -42,7 +43,7 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
 
   const tenantId = await resolveTenantId()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: current } = await admin.from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name').eq('tenant_id', tenantId).maybeSingle()
 
@@ -124,7 +125,7 @@ export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: str
 
 // Grava a instância em evo_instance_aliases com private=true e bot desligado
 async function markInstancePrivate(instanceName: string): Promise<{ ok: boolean; error?: string }> {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data, error } = await admin
     .from('organization_settings')
     .select('evo_instance_aliases')
@@ -203,7 +204,7 @@ export async function sendContractWhatsApp(
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'WhatsApp não está conectado. Vá em Configurações.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const tenantId = await getTenantId(admin)
 
   const rawPhone = phone.replace(/\D/g, '')
@@ -282,7 +283,7 @@ export async function sendContractWhatsAppMedia(
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const tenantId = await getTenantId(admin)
   const rawPhone = phone.replace(/\D/g, '')
   const normalizedPhone = rawPhone.length <= 11 ? `55${rawPhone}` : rawPhone
@@ -349,7 +350,7 @@ function fillTemplateVariables(text: string, vars: Record<string, string>): stri
 }
 
 export async function buildWhatsAppFromTemplate(templateId: string, contractId: string): Promise<{ message: string; phone: string | null } | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: template } = await supabase.from('email_templates').select('body').eq('id', templateId).maybeSingle()
   if (!template) return null
@@ -396,7 +397,7 @@ export async function buildWhatsAppFromTemplate(templateId: string, contractId: 
 }
 
 export async function sendAutomatedWhatsAppTemplateMessage(contractId: string, templateId: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const creds = await getEvoCredentials()
   if (!creds) return
 
@@ -449,7 +450,7 @@ export type UnlinkedConversation = {
 }
 
 export async function getUnlinkedWhatsAppConversations(): Promise<UnlinkedConversation[]> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data } = await supabase
     .from('contract_whatsapp_messages')
     .select('phone, unlinked_sender_name, sender_photo_url, message, media_type, created_at, instance_name')
@@ -477,7 +478,7 @@ export async function getUnlinkedWhatsAppConversations(): Promise<UnlinkedConver
 }
 
 export async function getUnlinkedMessagesByPhone(phone: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const cleanPhone = phone.replace(/\D/g, '')
   const last8 = cleanPhone.slice(-8)
   const { data } = await supabase
@@ -494,7 +495,7 @@ export async function getConversationByPhone(phone: string): Promise<{
   displayName: string | null
   manualName: string | null
 }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const cleanPhone = phone.replace(/\D/g, '')
   const last10 = cleanPhone.slice(-10)
 
@@ -594,7 +595,7 @@ export async function saveWhatsAppConversationAsNote(contractId: string, noteTex
 }
 
 export async function resolveContactNameByPhone(phone: string): Promise<string | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const cleanPhone = phone.replace(/\D/g, '')
   const last8 = cleanPhone.slice(-8)
   const { data } = await supabase.from('contacts').select('name').ilike('phone', `%${last8}%`).limit(1).maybeSingle()
@@ -602,7 +603,7 @@ export async function resolveContactNameByPhone(phone: string): Promise<string |
 }
 
 export async function searchContractsForLinking(query: string): Promise<{ id: string; label: string }[]> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data } = await supabase
     .from('contracts')
     .select('id, title, client_name')
@@ -635,7 +636,7 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
   const last8 = normalizedPhone.slice(-8)
 
   const targetCreds = instanceName ? { ...creds, instanceName } : creds
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const tenantId = await getTenantId(admin)
 
   // 2. Busca de vínculo infalível
@@ -717,7 +718,7 @@ export async function sendUnlinkedWhatsAppMedia(
   const last8 = normalizedPhone.slice(-8)
 
   const targetCreds = instanceName ? { ...creds, instanceName } : creds
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // 2. Busca de vínculo infalível
   let contractId: string | null = null
@@ -783,7 +784,7 @@ export async function sendUnlinkedWhatsAppMedia(
 }
 
 export async function checkAndSendWhatsAppCaptureReminders(): Promise<{ checked: number; sent: number }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
@@ -832,7 +833,7 @@ export async function checkAndSendWhatsAppCaptureReminders(): Promise<{ checked:
 }
 
 export async function getWhatsAppMessagesByLead(leadId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data } = await supabase
     .from('contract_whatsapp_messages')
     .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status')
@@ -845,7 +846,7 @@ export type ConversationAssignment = { assigned_to: string; assigned_to_name: st
 
 export async function getWhatsAppAssignments(phones: string[]): Promise<Record<string, ConversationAssignment>> {
   if (phones.length === 0) return {}
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data } = await supabase
     .from('whatsapp_conversation_assignments')
     .select('phone, assigned_to, assigned_at, profiles(full_name)')
@@ -865,7 +866,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
   if (error) return { error: error.message }
 
   try {
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
     const tenantId = await getTenantId(admin)
     const [{ data: profile }, { data: orgRaw }] = await Promise.all([
       admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
@@ -950,7 +951,7 @@ export async function importExistingWhatsAppChats(): Promise<ActionState & { imp
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'WhatsApp ainda não está conectado.' }
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   let chats: Array<{ phone: string; isGroup: boolean; name?: string }> = []
   try {
@@ -1050,7 +1051,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const tenantId = await getTenantId(admin)
   const inst = instanceName ?? ''
   const cleanPhone = String(phone).replace(/\D/g, '')
@@ -1140,7 +1141,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
 }
 
 export async function unarchiveWhatsAppConversation(phone: string, instanceName?: string | null, tenantId?: string | null): Promise<void> {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const inst = instanceName ?? ''
 
   let updateQ = admin
@@ -1165,7 +1166,7 @@ export async function saveUnlinkedContactName(phone: string, name: string): Prom
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const cleanPhone = phone.replace(/\D/g, '')
   const last10 = cleanPhone.slice(-10)
   const trimmed = name.trim() || null
@@ -1200,7 +1201,7 @@ export async function deleteWhatsAppMessage(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   await admin.from('contract_whatsapp_messages').delete().eq('id', messageId)
 
@@ -1239,7 +1240,7 @@ export async function deleteWhatsAppConversation(phone: string): Promise<{ error
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const cleanPhone = phone.replace(/\D/g, '')
   const last10 = cleanPhone.slice(-10)
 
@@ -1279,7 +1280,7 @@ export async function saveTriagemMenuOptions(options: any[]): Promise<ActionStat
 }
 
 // ── PONTO 4: finishConversationWithNPS corrigido ──────────────────────────────
-// - Usa createAdminClient() em vez de createClient()
+// - Usa (await createScopedAdmin()) em vez de createClient()
 // - Usa chave composta (phone + instance_name) para o update
 // - Envia NPS pela instância correta (a última que recebeu mensagem)
 // - Ao enviar NPS: marca is_archived: true + nps_pending: true simultaneamente
@@ -1291,7 +1292,7 @@ export async function finishConversationWithNPS(
   instanceNameOrSendNPS?: string | boolean | null,
   sendNPSArg?: boolean
 ): Promise<ActionState> {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }

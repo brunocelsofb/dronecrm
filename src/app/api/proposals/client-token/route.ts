@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { randomBytes } from 'crypto'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
 
   const { contract_id, proposal_id } = await req.json()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // NOVO MODELO: busca/salva em proposals (1:N)
   if (proposal_id) {

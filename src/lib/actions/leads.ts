@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -42,7 +43,7 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
 
   // Tenta vincular automaticamente a uma empresa existente por CNPJ
   if (cnpj) {
-    const adminClient = createAdminClient()
+    const adminClient = (await createScopedAdmin())
     const cnpjDigits = cnpj.replace(/\D/g, '')
     const { data: existingCompany } = await adminClient
       .from('companies').select('id')
@@ -62,7 +63,7 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
   // preencher o formulário (fluxo de triagem), vincula a conversa a
   // esse lead agora — fecha o ciclo, o histórico não fica solto.
   if (phone) {
-    const adminClient = createAdminClient()
+    const adminClient = (await createScopedAdmin())
     const cleanPhone = phone.replace(/\D/g, '')
     await adminClient.from('contract_whatsapp_messages').update({ lead_id: data.id, unlinked_sender_name: null }).ilike('phone', `%${cleanPhone.slice(-8)}%`).is('contract_id', null)
     await adminClient.from('whatsapp_capture_prompts').update({ lead_id: data.id }).ilike('phone', `%${cleanPhone.slice(-8)}%`)
@@ -70,7 +71,7 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
 
   // Avisa o time comercial de um lead novo — mesmo padrão de
   // notificação já usado no resto do sistema.
-  const adminClient = createAdminClient()
+  const adminClient = (await createScopedAdmin())
   const { data: commercialProfiles } = await adminClient.from('profiles').select('id').eq('department', 'comercial')
   if (commercialProfiles && commercialProfiles.length > 0) {
     await adminClient.from('notifications').insert(
@@ -116,7 +117,7 @@ export async function addLeadNote(leadId: string, content: string): Promise<Acti
 export async function deleteLead(leadId: string): Promise<{ error?: string }> {
   const isAdmin = await isCurrentUserAdmin()
   if (!isAdmin) return { error: 'Só administradores podem excluir leads.' }
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   // Desvincula o lead de qualquer contrato antes de deletar
   await supabase.from('contracts').update({ contact_id: null }).eq('contact_id', leadId)
   const { error } = await supabase.from('leads').delete().eq('id', leadId)

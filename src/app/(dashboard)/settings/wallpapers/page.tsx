@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { WallpaperManager } from '@/components/settings/wallpaper-manager'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function WallpapersPage() {
   const supabase = await createClient()
@@ -12,7 +13,7 @@ export default async function WallpapersPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: s } = await admin
     .from('organization_settings')
     .select('login_bg_url, support_bg_url, nps_bg_url, survey_clinica_bg_url, survey_hospitalar_bg_url, lead_bg_url, public_bg_color')

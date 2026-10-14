@@ -1,0 +1,72 @@
+// ─── Cliente "admin" preso à empresa ──────────────────────────────────────────
+// O cliente admin (service role) ignora o RLS do banco. Em telas e ações de
+// usuário isso fazia uma empresa enxergar dados de outra. Este cliente continua
+// com poderes de admin, mas em toda tabela que tem tenant_id:
+//   - select / update / delete → filtra .eq('tenant_id', empresa)
+//   - insert / upsert          → grava tenant_id da empresa
+//   - profiles                 → empresa OU o próprio usuário (Super Admin em "Acessar")
+// Rotinas da plataforma (Super Admin, webhooks, crons) seguem com createAdminClient.
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from './context'
+
+export const TENANT_TABLES = new Set([
+  'activities', 'automation_rules', 'billing_records', 'companies', 'contacts', 'contract_whatsapp_messages',
+  'contracts', 'custom_fields', 'custom_surveys', 'email_accounts', 'email_templates', 'implementation_schedules',
+  'implementation_templates', 'lead_routing_rules', 'leads', 'lost_reasons', 'monthly_goals', 'notifications',
+  'nps_surveys', 'organization_settings', 'pipeline_runs', 'pipelines', 'profiles', 'proposals', 'stages', 'tags',
+  'tickets', 'whatsapp_capture_prompts', 'whatsapp_conversation_assignments', 'whatsapp_conversation_status',
+  'whatsapp_protocol_counters', 'zapsign_documents', 'zapsign_templates',
+])
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+function withTenant(rows: unknown, tenantId: string): unknown {
+  if (Array.isArray(rows)) return rows.map(r => (r && typeof r === 'object' && !('tenant_id' in r) ? { ...r, tenant_id: tenantId } : r))
+  if (rows && typeof rows === 'object' && !('tenant_id' in (rows as object))) return { ...(rows as object), tenant_id: tenantId }
+  return rows
+}
+
+export function scopeAdminClient(admin: AdminClient, tenantId: string, userId: string | null): AdminClient {
+  return new Proxy(admin, {
+    get(target, prop, receiver) {
+      if (prop === 'from') {
+        return (table: string) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const qb = (target as any).from(table)
+          if (!TENANT_TABLES.has(table)) return qb
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const scope = (b: any) => table === 'profiles' && userId
+            ? b.or(`tenant_id.eq.${tenantId},id.eq.${userId}`)
+            : b.eq('tenant_id', tenantId)
+          return new Proxy(qb, {
+            get(q, p) {
+              if (p === 'select' || p === 'update' || p === 'delete') {
+                return (...args: unknown[]) => scope(q[p](...args))
+              }
+              if (p === 'insert' || p === 'upsert') {
+                return (rows: unknown, opts?: unknown) => q[p](withTenant(rows, tenantId), opts)
+              }
+              const v = q[p]
+              return typeof v === 'function' ? v.bind(q) : v
+            },
+          })
+        }
+      }
+      const v = Reflect.get(target, prop, receiver)
+      return typeof v === 'function' ? v.bind(target) : v
+    },
+  }) as AdminClient
+}
+
+// Cliente admin da empresa atual (usuário logado / Super Admin em "Acessar")
+export async function createScopedAdmin(tenantId?: string | null): Promise<AdminClient> {
+  const tid = tenantId ?? await resolveTenantId()
+  let userId: string | null = null
+  try {
+    const { data: { user } } = await (await createClient()).auth.getUser()
+    userId = user?.id ?? null
+  } catch { userId = null }
+  return scopeAdminClient(createAdminClient(), tid, userId)
+}

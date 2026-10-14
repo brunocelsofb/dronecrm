@@ -30,7 +30,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, is_super_admin, tenant_id')
+    .select('role, full_name, is_super_admin, tenant_id, impersonating_tenant_id')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -48,6 +48,11 @@ export default async function DashboardLayout({
   const impersonation = await getImpersonationState()
 
   const adminSupa = createAdminClient()
+
+  // "Acessar" expirou (cookie de 4h) mas o perfil ainda aponta para a empresa: volta para a própria conta
+  if (isSuperAdmin && !impersonation.active && (profile as { impersonating_tenant_id?: string | null } | null)?.impersonating_tenant_id) {
+    await adminSupa.from('profiles').update({ impersonating_tenant_id: null }).eq('id', user.id)
+  }
 
   // Abas liberadas: plano do tenant (Super Admin → Planos e abas) + ajustes do cliente.
   // Impersonation mostra exatamente o que o cliente vê; Super Admin fora dela vê tudo.

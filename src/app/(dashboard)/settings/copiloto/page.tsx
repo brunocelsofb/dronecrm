@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
 import { CopilotActivationCard } from '@/components/settings/copilot-activation-card'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function CopilotSettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams
@@ -20,7 +21,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const currentTenantId = await resolveTenantId()
   const { data: settings } = await admin
     .from('organization_settings')

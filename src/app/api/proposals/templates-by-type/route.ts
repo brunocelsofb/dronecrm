@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const serviceType = searchParams.get('service_type') ?? 'clinica'
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   const { data: templates } = await admin
     .from('proposal_templates')

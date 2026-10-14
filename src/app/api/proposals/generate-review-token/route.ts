@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { randomBytes } from 'crypto'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const { contract_id } = await req.json()
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Gera token único
   const token = randomBytes(24).toString('hex')

@@ -42,6 +42,7 @@ import Link from 'next/link'
 import { ImplementationTab } from '@/components/implementation/implementation-tab'
 import { getContractSchedule, getImplementationTemplates } from '@/lib/actions/implementation'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function ContractDetailPage({
   params,
@@ -320,7 +321,7 @@ export default async function ContractDetailPage({
       : null
 
   // CNPJs de faturamento da empresa (Configurações → billing_cnpjs)
-  const { data: billingOrg } = await createAdminClient()
+  const { data: billingOrg } = await (await createScopedAdmin())
     .from('organization_settings').select('billing_cnpjs').eq('tenant_id', await resolveTenantId({ contractId: contract.id })).maybeSingle()
   const billingCnpjs = (Array.isArray(billingOrg?.billing_cnpjs) ? billingOrg.billing_cnpjs : []) as { value: string; label: string }[]
 

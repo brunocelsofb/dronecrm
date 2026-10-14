@@ -51,6 +51,10 @@ export async function startImpersonation(formData: FormData): Promise<void> {
   if (error || !tenant) throw new Error('Tenant nao encontrado')
   if (!tenant.is_active) throw new Error('Tenant inativo')
 
+  // O banco passa a enxergar como essa empresa (RLS usa este campo)
+  const superUser = await assertSuperAdmin()
+  await admin.schema('contract_crm').from('profiles').update({ impersonating_tenant_id: tenantId }).eq('id', superUser.id)
+
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_TENANT_ID,   tenantId,   COOKIE_OPTS)
   cookieStore.set(COOKIE_TENANT_NAME, tenantName, { ...COOKIE_OPTS, httpOnly: false })
@@ -60,6 +64,10 @@ export async function startImpersonation(formData: FormData): Promise<void> {
 
 /** Encerra impersonation: remove cookies e volta ao super-admin */
 export async function stopImpersonation(): Promise<void> {
+  try {
+    const superUser = await assertSuperAdmin()
+    await createAdminClient().schema('contract_crm').from('profiles').update({ impersonating_tenant_id: null }).eq('id', superUser.id)
+  } catch { /* sem sessão: só limpa os cookies */ }
   const cookieStore = await cookies()
   cookieStore.delete(COOKIE_TENANT_ID)
   cookieStore.delete(COOKIE_TENANT_NAME)

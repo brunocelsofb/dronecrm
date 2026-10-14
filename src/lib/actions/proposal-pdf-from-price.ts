@@ -1,6 +1,7 @@
 // Adaptador: converte snapshot do Price + textos em formato do buildStandardProposalPage de julho
 import { buildStandardProposalPage } from './proposal-pdf-builder'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 function san(text: string | null | undefined): string {
   if (!text) return ''
@@ -54,7 +55,7 @@ export async function buildPriceProposalPage(params: {
   let logoIsPng = false
   if (org.logoStoragePath) {
     try {
-      const admin = createAdminClient()
+      const admin = (await createScopedAdmin())
       const { data } = await admin.storage.from('proposal-files').download(org.logoStoragePath)
       if (data) {
         logoBytes = new Uint8Array(await data.arrayBuffer())

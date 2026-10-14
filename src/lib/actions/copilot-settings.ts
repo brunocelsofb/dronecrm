@@ -8,6 +8,7 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { RENEWAL_LEVELS, type RenewalLevelKey } from '@/lib/agent/renewal-templates'
 import { INTERNAL_LEVELS, invalidEmails, parseEmailList, type InternalKey } from '@/lib/agent/internal-settings'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const MAX_TEMPLATE_LENGTH = 3000
 
@@ -45,7 +46,7 @@ export async function saveRenewalTemplates(
     if (bad.length) return { error: `Cópia extra com e-mail inválido: ${bad.join(', ')}` }
   }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data, error: readErr } = await admin
     .from('organization_settings')
     .select('copilot_settings')
@@ -104,7 +105,7 @@ export async function saveInternalSettings(input: {
     return { error: 'O dia do relatório mensal deve ser de 1 a 28.' }
   }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data, error: readErr } = await admin
     .from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantId()).maybeSingle()
   if (readErr) return { error: readErr.message }
@@ -149,7 +150,7 @@ export async function saveAnthropicKey(key: string): Promise<{ ok?: true; error?
   const { encryptSecret } = await import('@/lib/ai/tenant-key')
   let enc: string
   try { enc = encryptSecret(k) } catch (e) { return { error: e instanceof Error ? e.message : 'Falha ao proteger a chave.' } }
-  const { error } = await createAdminClient()
+  const { error } = await (await createScopedAdmin())
     .from('organization_settings').update({ anthropic_api_key_enc: enc }).eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
   revalidatePath('/settings/copiloto')
@@ -158,7 +159,7 @@ export async function saveAnthropicKey(key: string): Promise<{ ok?: true; error?
 
 export async function removeAnthropicKey(): Promise<{ ok?: true; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar a chave.' }
-  const { error } = await createAdminClient()
+  const { error } = await (await createScopedAdmin())
     .from('organization_settings').update({ anthropic_api_key_enc: null }).eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
   revalidatePath('/settings/copiloto')
@@ -183,7 +184,7 @@ export async function saveManagerSettings(input: {
     const { canTenantUseInstance } = await import('@/lib/whatsapp/tenant-evo')
     if (!(await canTenantUseInstance(tenantId, input.managerInstance))) return { error: 'WhatsApp de envio não encontrado.' }
   }
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data } = await admin.from('organization_settings').select('copilot_settings').eq('tenant_id', tenantId).maybeSingle()
   const current = (data?.copilot_settings ?? {}) as Record<string, unknown>
   const { error } = await admin.from('organization_settings').update({

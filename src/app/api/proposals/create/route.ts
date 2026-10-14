@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const { contract_id } = await req.json()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Nova proposta sempre nasce como v1 — versão só incrementa via "Criar versão"
   const version = 1

@@ -7,6 +7,7 @@ import { getActiveTenantId } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { WhatsAppClientShell } from '@/components/whatsapp/whatsapp-client-shell'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function WhatsAppInboxPage({
   searchParams,
@@ -15,7 +16,7 @@ export default async function WhatsAppInboxPage({
 }) {
   const { phone: selectedPhone, instance: selectedInstance } = await searchParams
   const supabase = await createClient()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const activeTenantId = await getActiveTenantId()
 
   const [

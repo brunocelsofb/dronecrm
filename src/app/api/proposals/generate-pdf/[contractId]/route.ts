@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(
   req: Request,
@@ -15,7 +16,7 @@ export async function GET(
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // 1. Busca proposta (novo modelo ou legado)
   let serviceType = 'clinica'

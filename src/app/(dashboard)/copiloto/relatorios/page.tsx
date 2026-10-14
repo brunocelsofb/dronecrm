@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ReportsList } from './reports-list'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 // Relatórios mensais de implantação preparados pelo Copiloto (sem contrato):
 // revisar e enviar ao time técnico.
@@ -11,7 +12,7 @@ export default async function CopilotReportsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const [{ data: rows }, { data: me }] = await Promise.all([
     admin.from('activities')
       .select('id, title, content, status, activity_date, assigned_to, metadata, created_at')

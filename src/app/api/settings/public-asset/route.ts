@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const ALLOWED_COLS = ['support_bg_url','nps_bg_url','survey_clinica_bg_url','survey_hospitalar_bg_url','lead_bg_url','public_bg_color','login_bg_url']
 
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
   if (!ALLOWED_COLS.includes(column))
     return NextResponse.json({ error: 'Coluna não permitida' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('tenant_id', await resolveTenantId())
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
@@ -36,7 +37,7 @@ export async function DELETE(req: Request) {
   if (!ALLOWED_COLS.includes(column))
     return NextResponse.json({ error: 'Coluna não permitida' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca a URL atual para apagar do Storage
   const { data: settings } = await admin

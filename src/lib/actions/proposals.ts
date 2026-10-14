@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -44,7 +45,7 @@ export async function createCatalogItem(
 }
 
 export async function deleteCatalogItem(itemId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('proposal_catalog_items').delete().eq('id', itemId)
   revalidatePath('/proposals/catalog')
 }
@@ -73,7 +74,7 @@ export async function registerProposalTemplate(name: string, filePath: string, f
 }
 
 export async function deleteProposalTemplate(templateId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('proposal_templates').delete().eq('id', templateId)
   revalidatePath('/proposals/templates')
 }
@@ -82,7 +83,7 @@ export async function deleteProposalTemplate(templateId: string) {
 // Criar proposta (rascunho)
 // ------------------------------------------------------------
 async function generateControlCode(): Promise<string> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const year = new Date().getFullYear()
 
   const { data: seqValue } = await supabase.rpc('next_proposal_number_for_year', { p_year: year })
@@ -196,7 +197,7 @@ export async function createProposal(
 }
 
 export async function deleteProposal(proposalId: string, contractId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('proposals').delete().eq('id', proposalId)
   revalidatePath(`/contracts/${contractId}`)
 }
@@ -311,12 +312,12 @@ export async function addTableBlock(proposalId: string, contractId: string, tabl
 }
 
 export async function updateBlockIntroduction(blockId: string, introduction: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('proposal_content_blocks').update({ introduction }).eq('id', blockId)
 }
 
 export async function updateTableBlock(blockId: string, tableData: string[][], headerColor: string, showTotals: boolean, textAlign: string): Promise<ActionState> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { error } = await supabase.from('proposal_content_blocks').update({
     table_data: { rows: tableData },
     header_color: headerColor,
@@ -328,7 +329,7 @@ export async function updateTableBlock(blockId: string, tableData: string[][], h
 }
 
 export async function deleteContentBlock(blockId: string, contractId: string, proposalId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('proposal_content_blocks').delete().eq('id', blockId)
   revalidatePath(`/contracts/${contractId}/proposals/${proposalId}`)
 }
@@ -467,7 +468,7 @@ export async function decideInternalApproval(
 // ------------------------------------------------------------
 export async function generateProposalPdf(proposalId: string, contractId: string): Promise<ActionState> {
   const { buildMergedProposalBytes } = await import('./proposal-pdf-merge')
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: proposal } = await supabase.from('proposals').select('control_code, version').eq('id', proposalId).single()
   if (!proposal) return { error: 'Proposta não encontrada.' }
@@ -541,7 +542,7 @@ export async function submitClientDecision(
   signer?: { name: string; email: string; role: string; phone: string; cpf: string }
 ): Promise<ActionState> {
   const { isValidCPF } = await import('@/lib/utils/cpf')
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   if (!comment.trim()) {
     return { error: 'O comentário é obrigatório.' }
@@ -604,7 +605,7 @@ export async function createProposalFromPrice(contractId: string): Promise<{ err
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca o snapshot do Price
   const { data: proposalStatus } = await admin

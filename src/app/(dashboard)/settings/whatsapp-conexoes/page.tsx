@@ -5,6 +5,7 @@ import { WhatsAppSettingsForm } from '@/components/settings/whatsapp-settings-fo
 import { WhatsAppInstancesPanel } from '@/components/settings/whatsapp-instances-panel'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { getWhatsAppLimit, getTenantInstanceNames } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function WhatsAppConexoesPage() {
   const supabase = await createClient()
@@ -13,7 +14,7 @@ export default async function WhatsAppConexoesPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const tenantId = await resolveTenantId()
   const { data: settings } = await admin.from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases').eq('tenant_id', tenantId).maybeSingle()

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(
   req: Request,
@@ -12,7 +13,7 @@ export async function POST(
 
   const { actor_name } = await req.json()
   const { id } = await params
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca a proposta para pegar contract_id e control_code
   const { data: proposal } = await admin

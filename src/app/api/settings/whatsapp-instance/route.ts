@@ -7,6 +7,7 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const WEBHOOK_URL =
   `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
@@ -63,7 +64,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: false, error: 'nada para alterar' }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
+    const supabase = (await createScopedAdmin())
 
     const { data: current__raw } = await supabase
       .from('organization_settings')
@@ -148,7 +149,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ ok: false, error: 'Instância não encontrada' }, { status: 404 })
     }
 
-    const supabase = createAdminClient()
+    const supabase = (await createScopedAdmin())
     const { data: current__raw } = await supabase
       .from('organization_settings')
       .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')

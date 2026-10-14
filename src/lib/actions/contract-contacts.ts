@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -18,7 +19,7 @@ export type ContractContact = {
 
 export async function getContractContacts(contractId: string): Promise<ContractContact[]> {
   try {
-    const supabase = createAdminClient()
+    const supabase = (await createScopedAdmin())
     const { data } = await supabase
       .from('contract_contacts')
       .select('id, contact_id, is_primary, contacts(name, role, email, phone)')

@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmailForUser, getEmailAccountInfo, wrapEmailHtml } from '@/lib/email/send'
 import { verifySmtpConnection } from '@/lib/email/smtp'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -47,7 +48,7 @@ export async function connectSmtpAccount(formData: FormData): Promise<ActionStat
   const verify = await verifySmtpConnection({ host, port, username, password, secure })
   if (!verify.ok) return { error: `Não consegui conectar: ${verify.error}` }
 
-  const adminClient = createAdminClient()
+  const adminClient = (await createScopedAdmin())
 
   // Busca o tenant_id do perfil — obrigatório pelo trigger set_tenant_id()
   const { data: profile } = await adminClient.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
@@ -143,7 +144,7 @@ export async function createEmailTemplate(_prevState: ActionState, formData: For
 }
 
 export async function deleteEmailTemplate(templateId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('email_templates').delete().eq('id', templateId)
   revalidatePath('/email-templates')
 }
@@ -256,7 +257,7 @@ export async function buildEmailFromTemplate(
   templateId: string,
   contractId: string
 ): Promise<{ subject: string; body: string; toEmail: string | null } | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: template } = await supabase.from('email_templates').select('subject, body').eq('id', templateId).maybeSingle()
   if (!template) return null
@@ -324,7 +325,7 @@ export async function buildEmailFromTemplate(
 // conectado, só não envia — não trava o resto da automação.
 // ------------------------------------------------------------
 export async function sendAutomatedTemplateEmail(contractId: string, templateId: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: contract } = await supabase.from('contracts').select('owner_id').eq('id', contractId).maybeSingle()
   if (!contract?.owner_id) return
@@ -394,7 +395,7 @@ export async function buildTicketEmailFromTemplate(
   templateId: string,
   ticketId: string
 ): Promise<{ subject: string; body: string; toEmail: string | null } | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: template } = await supabase.from('email_templates').select('subject, body').eq('id', templateId).maybeSingle()
   if (!template) return null
@@ -421,7 +422,7 @@ export async function buildTicketEmailFromTemplate(
 // que cuida do atendimento, por padrão de vocês). Se ninguém tiver
 // conectado, só não envia.
 export async function sendAutomatedTicketTemplateEmail(ticketId: string, templateId: string): Promise<void> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: ticket } = await supabase.from('tickets').select('assigned_to, contract_id').eq('id', ticketId).maybeSingle()
   if (!ticket) return

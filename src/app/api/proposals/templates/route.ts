@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   const file = fd.get('file') as File
   if (!file || !name) return NextResponse.json({ error: 'Campos obrigatórios' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const fileName = file.name
   const filePath = `templates/${Date.now()}-${fileName}`
 
@@ -36,7 +37,7 @@ export async function DELETE(req: Request) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: t } = await admin.from('proposal_templates').select('file_storage_path').eq('id', id).maybeSingle()
   if (t?.file_storage_path) await admin.storage.from('proposal-files').remove([t.file_storage_path])
   await admin.from('proposal_templates').delete().eq('id', id)

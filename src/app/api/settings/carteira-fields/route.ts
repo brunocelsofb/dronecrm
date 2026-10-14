@@ -3,9 +3,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET() {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data } = await admin
     .from('organization_settings')
     .select('carteira_active_fields')
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   const { activeFields } = await req.json()
   if (!Array.isArray(activeFields)) return NextResponse.json({ error: 'activeFields deve ser array' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // UPDATE direto (registro 'default' sempre existe)
   const { error } = await admin

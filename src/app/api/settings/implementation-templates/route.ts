@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 async function guardAdmin() {
   const s = await createClient()
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
   const { id, name, description, trigger_tags, tasks } = await req.json()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   let templateId = id
   if (id) {
@@ -44,7 +45,7 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 })
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   await admin.from('implementation_templates').delete().eq('id', id)
   return NextResponse.json({ ok: true })
 }

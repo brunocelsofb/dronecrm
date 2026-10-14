@@ -6,11 +6,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { PRIORITY_SLA_DAYS, type PriorityTier } from '@/lib/utils/gut-matrix'
 import { departmentLabel } from '@/lib/constants/departments'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
 async function generateTicketNumber(tenantId: string): Promise<string> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const year = new Date().getFullYear()
 
   // O incremento em si é atômico (UPDATE...RETURNING trava a linha do
@@ -29,7 +30,7 @@ async function generateTicketNumber(tenantId: string): Promise<string> {
 export async function createTicket(formData: FormData): Promise<ActionState & { ticketId?: string; publicToken?: string }> {
   // Usa o adminClient para o insert funcionar sem autenticação
   // (formulário público acessado por terceiros sem login)
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   // Empresa: contrato informado > ?empresa=<slug> do formulário > usuário logado > padrão
   const tenantIdFromContract = (formData.get('contract_id') as string) || null
@@ -62,7 +63,7 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
   // Se não veio um contrato já escolhido (caso do formulário público),
   // tenta achar pelo CNPJ automaticamente.
   if (!contract_id) {
-    const adminClient = createAdminClient()
+    const adminClient = (await createScopedAdmin())
     const { data: company } = await adminClient.from('companies').select('id').eq('cnpj', requester_cnpj).maybeSingle()
 
     if (company) {
@@ -128,7 +129,7 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
 
   // Avisa o time COMERCIAL — é onde o atendimento fica, segundo a
   // estrutura de vocês.
-  const adminClient = createAdminClient()
+  const adminClient = (await createScopedAdmin())
   const { data: supportProfiles } = await adminClient.from('profiles').select('id').eq('department', 'comercial')
   if (supportProfiles && supportProfiles.length > 0) {
     await adminClient.from('notifications').insert(
@@ -283,7 +284,7 @@ export async function addTicketMessage(ticketId: string, message: string, isInte
 
 // Resposta do CLIENTE via link público (token, sem login).
 export async function addPublicTicketReply(token: string, authorName: string, message: string): Promise<ActionState> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   if (!message.trim()) return { error: 'Escreva algo antes de enviar.' }
 
   const { data: ticket } = await supabase.from('tickets').select('id, ticket_number, contract_id, status').eq('public_token', token).maybeSingle()
@@ -314,7 +315,7 @@ export async function addPublicTicketReply(token: string, authorName: string, me
 }
 
 export async function deleteTicket(ticketId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('tickets').delete().eq('id', ticketId)
   revalidatePath('/tickets')
 }
@@ -322,7 +323,7 @@ export async function deleteTicket(ticketId: string) {
 // Resposta da pesquisa rápida de satisfação — pública (sem login),
 // disparada quando o atendimento é finalizado.
 export async function submitTicketSatisfaction(token: string, rating: number, comment: string): Promise<ActionState> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   const { data: ticket } = await supabase.from('tickets').select('id, satisfaction_responded_at').eq('public_token', token).maybeSingle()
   if (!ticket) return { error: 'Link inválido.' }

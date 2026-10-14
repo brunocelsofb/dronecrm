@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PipelineFieldConfig } from '@/lib/pipeline-field-config'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function savePipelineFieldConfigs(
   pipelineId: string,
@@ -27,7 +28,7 @@ export async function savePipelineFieldConfigs(
 }
 
 export async function deletePipelineField(pipelineId: string, fieldKey: string): Promise<{ error?: string }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { error } = await supabase
     .from('pipeline_field_configs')
     .delete()
@@ -44,7 +45,7 @@ export async function addPipelineField(
   fieldLabel: string,
   displayOrder: number
 ): Promise<{ error?: string }> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { error } = await supabase.from('pipeline_field_configs').upsert(
     { pipeline_id: pipelineId, field_key: fieldKey, field_label: fieldLabel, visibility: 'optional', display_order: displayOrder },
     { onConflict: 'pipeline_id,field_key' }

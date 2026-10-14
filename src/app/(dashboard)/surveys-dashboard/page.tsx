@@ -10,6 +10,7 @@ import { calculateNps, categorizeScore } from '@/lib/utils/nps'
 import { calculateResponseScore, calculateAverageScore, extractNpsScore, averageNpsScore } from '@/lib/utils/survey-score'
 import type { Question } from '@/lib/actions/custom-surveys'
 import { WhatsAppNpsTab } from '@/components/whatsapp/whatsapp-nps-tab'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const NPS_CATEGORY_LABELS = { promoter: 'Promotor', passive: 'Neutro', detractor: 'Detrator' } as const
 const NPS_CATEGORY_STYLE = {
@@ -197,7 +198,7 @@ async function NpsTab({ supabase, from, to, selectedTagId }: {
 async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
   supabase: Awaited<ReturnType<typeof createClient>>; from: string; to: string; selectedTemplateId?: string
 }) {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   const [{ data: templates }, { data: tags }] = await Promise.all([
     supabase.from('survey_templates').select('id, name, questions, target_type, target_tag_id').order('name'),

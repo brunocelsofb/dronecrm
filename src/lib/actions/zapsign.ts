@@ -6,17 +6,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { createZapSignDocumentFromTemplate, getZapSignDocument } from '@/lib/zapsign/api'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
 async function getZapSignToken(): Promise<string | null> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data } = await supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return data?.zapsign_api_token ?? null
 }
 
 async function buildContractData(contractId: string): Promise<Record<string, string>> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { data: contract } = await supabase.from('contracts').select('*, companies(name, cnpj), contacts(name, email, phone)').eq('id', contractId).maybeSingle()
   if (!contract) return {}
   const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
@@ -107,7 +108,7 @@ export async function sendContractToZapSign(
 }
 
 export async function syncZapSignDocumentStatus(zapsignDocId: string): Promise<ActionState> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const apiToken = await getZapSignToken()
   if (!apiToken) return { error: 'Token da ZapSign não configurado.' }
 
@@ -167,7 +168,7 @@ export async function createZapSignTemplate(formData: FormData): Promise<ActionS
 }
 
 export async function deleteZapSignTemplate(templateId: string) {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   await supabase.from('zapsign_templates').delete().eq('id', templateId)
   revalidatePath('/zapsign')
 }

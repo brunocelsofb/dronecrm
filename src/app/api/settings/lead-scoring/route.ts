@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 async function guardAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data: p } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  return p?.role === 'admin' ? createAdminClient() : null
+  return p?.role === 'admin' ? (await createScopedAdmin()) : null
 }
 
 export async function POST(req: Request) {

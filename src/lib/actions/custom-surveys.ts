@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type Question = {
   id: string
@@ -166,7 +167,7 @@ export async function submitCustomSurveyResponse(
     return { error: 'Falha ao processar as respostas.' }
   }
 
-  const adminClient = createAdminClient()
+  const adminClient = (await createScopedAdmin())
 
   const { data: survey } = await adminClient
     .from('custom_surveys')
@@ -312,7 +313,7 @@ export async function deletePendingSurveyResponse(surveyId: string): Promise<{ e
     if (profile?.role !== 'admin') return { error: 'Apenas administradores podem excluir pesquisas pendentes.' }
 
     // Usa adminClient para o delete (bypassa RLS)
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
     const { data: survey, error: fetchErr } = await admin
       .from('custom_surveys')
       .select('id, status, contract_id')
@@ -348,7 +349,7 @@ export async function sendBulkSurvey(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Não autenticado.' }
 
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
 
     // Busca contratos ativos (com pipeline_run aberta no funil de gestão_contratos)
     const { data: openRuns } = await admin

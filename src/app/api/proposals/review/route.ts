@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     loggedUserId = user?.id ?? null
   } catch { /* chamado do Price sem sessão CRM */ }
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   // Busca o contrato pelo review_token
   const { data: proposal } = await admin

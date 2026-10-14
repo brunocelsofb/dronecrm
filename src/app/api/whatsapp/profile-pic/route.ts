@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const phone = searchParams.get('phone')
   if (!phone) return NextResponse.json({ url: null })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: org__raw } = await admin
     .from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name')

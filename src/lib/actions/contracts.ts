@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { contractSchema } from '@/lib/validations/contract'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = {
   error?: string
@@ -348,7 +349,7 @@ export async function deleteContract(contractId: string, redirectTo?: string): P
   const isAdmin = await isCurrentUserAdmin()
   if (!isAdmin) return { error: 'Só administradores podem excluir contratos.' }
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   // Limpa a referência no lead antes de deletar — se um lead foi
   // convertido nessa oportunidade, o banco bloquearia o delete por

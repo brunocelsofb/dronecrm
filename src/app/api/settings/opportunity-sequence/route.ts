@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET() {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data } = await admin.from('opportunity_sequence').select('*').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return NextResponse.json(data ?? { prefix: 'OPP', next_number: 1, year_reset: true })
 }
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Só admins' }, { status: 403 })
 
   const body = await req.json()
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { error } = await admin.from('opportunity_sequence').upsert(
     { id: 'default', prefix: body.prefix, next_number: body.next_number, year_reset: body.year_reset },
     { onConflict: 'id' }

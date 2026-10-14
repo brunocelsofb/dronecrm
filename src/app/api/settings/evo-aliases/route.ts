@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 async function guardAdmin() {
   const s = await createClient()
@@ -23,7 +24,7 @@ function normalizeAliases(raw: any): Record<string, { label: string; closingMess
 }
 
 export async function GET() {
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data } = await admin.from('organization_settings')
     .select('evo_instance_aliases').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return NextResponse.json({ aliases: normalizeAliases((data as any)?.evo_instance_aliases) })
@@ -32,7 +33,7 @@ export async function GET() {
 // POST — salva { instanceName, alias, closingMessage? }
 export async function POST(req: Request) {
   if (!await guardAdmin()) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { instanceName, alias, closingMessage } = await req.json()
   if (!instanceName) return NextResponse.json({ error: 'instanceName obrigatório' }, { status: 400 })
 

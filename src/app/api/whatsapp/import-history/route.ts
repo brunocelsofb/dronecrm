@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   const { phone, instanceName } = await req.json()
   if (!phone) return NextResponse.json({ error: 'phone obrigatório' }, { status: 400 })
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: org__raw } = await admin
     .from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name')

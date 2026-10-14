@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
 
   const { contract_id, proposal_id, texto_objetivos, texto_atividades, texto_estrutura_apoio } = await req.json()
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
 
   if (proposal_id) {
     // Novo modelo: salva direto em proposals

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'contract_id e status são obrigatórios' }, { status: 400, headers: CORS })
   }
 
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const now = new Date().toISOString()
 
   // Tenta pegar usuário logado

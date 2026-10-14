@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { WhatsAppBotSettingsForm } from '@/components/settings/whatsapp-bot-settings-form'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export default async function WhatsAppBotPage() {
   const supabase = await createClient()
@@ -13,7 +14,7 @@ export default async function WhatsAppBotPage() {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (profile?.role !== 'admin') redirect('/settings')
 
-  const admin = createAdminClient()
+  const admin = (await createScopedAdmin())
   const { data: settings } = await admin
     .from('organization_settings')
     .select('whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, company_name, triage_enabled, triage_menu_options')

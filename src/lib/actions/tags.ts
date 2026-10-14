@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
 
@@ -29,7 +30,7 @@ export async function createTag(
 
 export async function updateTag(tagId: string, name: string, color: string, context?: string): Promise<ActionState> {
   if (!name?.trim()) return { error: 'Nome é obrigatório.' }
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
   const { error } = await supabase.from('tags').update({
     name: name.trim(),
     color,
@@ -41,7 +42,7 @@ export async function updateTag(tagId: string, name: string, color: string, cont
 }
 
 export async function deleteTag(tagId: string): Promise<ActionState> {
-  const supabase = createAdminClient()
+  const supabase = (await createScopedAdmin())
 
   // Limpa referências em tabelas que têm FK para tags (sem ON DELETE SET NULL)
   await supabase.from('survey_templates').update({ tag_id: null }).eq('tag_id', tagId)

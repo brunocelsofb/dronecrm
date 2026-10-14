@@ -1,11 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { checkAndTriggerRenewals } from '@/lib/actions/pipeline'
+import { isCronAuthorized, forEachActiveTenant } from '@/lib/tenant/cron'
 
-// NOTA DE INCERTEZA: essa rota é pensada pra ser chamada pela Vercel Cron
-// (configurada em vercel.json), não é algo que eu tenha testado ao vivo.
-// Se o cron não disparar sozinho, confira em Vercel → Project → Settings
-// → Cron Jobs se ele aparece configurado e rodando.
-export async function GET() {
-  await checkAndTriggerRenewals()
-  return NextResponse.json({ ok: true, checked_at: new Date().toISOString() })
+// Vercel Cron (vercel.json). Roda empresa por empresa.
+export async function GET(req: NextRequest) {
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const results = await forEachActiveTenant(async () => { await checkAndTriggerRenewals(); return { ok: true } })
+  return NextResponse.json({ ok: true, checked_at: new Date().toISOString(), results })
 }

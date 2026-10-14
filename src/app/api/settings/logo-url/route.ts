@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
     const file = formData.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'Arquivo não encontrado' }, { status: 400 })
 
-    const admin = createAdminClient()
+    const admin = (await createScopedAdmin())
     const ext = file.name.split('.').pop() ?? 'png'
     const path = `logo/${Date.now()}-logo.${ext}`
 
