@@ -8,7 +8,9 @@ import { NotificationBell } from '@/components/layout/notification-bell'
 import { AssistantPanel } from '@/components/assistant/assistant-panel'
 import { RealtimeWatcher } from '@/components/layout/realtime-watcher'
 import { LogOut, Eye, ArrowLeft } from 'lucide-react'
-import { getEffectivePlan } from '@/lib/config/plans'
+import { FEATURE_KEYS, FEATURES, featureForPath } from '@/lib/config/plans'
+import { getTenantFeatures } from '@/lib/config/tenant-features'
+import { headers } from 'next/headers'
 import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
 
 export default async function DashboardLayout({
@@ -46,39 +48,18 @@ export default async function DashboardLayout({
 
   const adminSupa = createAdminClient()
 
-  // Busca plano e trial do tenant correto
-  let tenantData: { plan: string | null; trial_ends_at: string | null } | null = null
-  if (impersonation.active && impersonation.tenantId) {
-    const { data } = await adminSupa
-      .schema('contract_crm')
-      .from('tenants')
-      .select('plan, trial_ends_at')
-      .eq('id', impersonation.tenantId)
-      .single()
-    tenantData = data
-  } else {
-    // Tenant do próprio usuário (pelo perfil). Antes buscava "o único tenant
-    // visível", mas a política do banco deixa ver todos → vinha vazio → starter.
-    const tenantId = (profile as { tenant_id?: string | null } | null)?.tenant_id
-    if (tenantId) {
-      const { data } = await adminSupa
-        .schema('contract_crm')
-        .from('tenants')
-        .select('plan, trial_ends_at')
-        .eq('id', tenantId)
-        .maybeSingle()
-      tenantData = data
-    }
-  }
+  // Abas liberadas: plano do tenant (Super Admin → Planos e abas) + ajustes do cliente.
+  // Impersonation mostra exatamente o que o cliente vê; Super Admin fora dela vê tudo.
+  const viewTenantId = impersonation.active && impersonation.tenantId
+    ? impersonation.tenantId
+    : (profile as { tenant_id?: string | null } | null)?.tenant_id ?? null
+  const { features: tenantFeatures } = await getTenantFeatures(viewTenantId)
+  const enabledFeatures = isSuperAdmin && !impersonation.active ? FEATURE_KEYS : tenantFeatures
 
-  // Plano efetivo: se em trial, libera enterprise
-  // Super Admin tem passe livre
-  const effectivePlan = isSuperAdmin
-    ? 'enterprise'
-    : getEffectivePlan(
-        tenantData?.plan ?? 'starter',
-        tenantData?.trial_ends_at ?? null
-      )
+  // Bloqueio de verdade: aba fora do plano não abre nem digitando o endereço
+  const pathname = (await headers()).get('x-pathname') ?? ''
+  const pathFeature = featureForPath(pathname)
+  const blocked = !!pathFeature && !enabledFeatures.includes(pathFeature)
 
   // Logo dinamica
   const rawLogo = (orgSettings as any)?.logo_storage_path
@@ -124,7 +105,7 @@ export default async function DashboardLayout({
           />
         </div>
         <div className="flex-1">
-          <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} effectivePlan={effectivePlan} />
+          <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} features={enabledFeatures} />
         </div>
         <div className="mt-4 border-t border-white/10 pt-3">
           <div className="flex items-center gap-1.5 px-2.5 pb-2">
@@ -145,7 +126,16 @@ export default async function DashboardLayout({
           </form>
         </div>
       </aside>
-      <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>{children}</main>
+      <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
+        {blocked ? (
+          <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center">
+            <p className="text-base font-semibold text-gray-900">
+              {FEATURES.find(f => f.key === pathFeature)?.label ?? 'Esta área'} não está liberada no seu plano
+            </p>
+            <p className="mt-2 text-sm text-gray-500">Fale com o administrador da sua licença para liberar esta aba.</p>
+          </div>
+        ) : children}
+      </main>
       <RealtimeWatcher />
       {profile?.role === 'admin' && <AssistantPanel />}
     </div>

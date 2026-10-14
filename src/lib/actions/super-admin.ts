@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { FEATURE_KEYS, isPlanId } from '@/lib/config/plans'
 
 async function assertSuperAdmin() {
   const supabase = await createClient()
@@ -28,7 +29,7 @@ export async function getSuperAdminData() {
   const { data: tenants, error } = await admin
     .schema('contract_crm')
     .from('tenants')
-    .select('id, name, slug, plan, is_active, max_users, trial_ends_at, created_at')
+    .select('id, name, slug, plan, is_active, max_users, trial_ends_at, created_at, features_add, features_remove')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
@@ -146,4 +147,33 @@ export async function toggleTenantActive(tenantId: string, isActive: boolean): P
 
   if (error) throw new Error(error.message)
   revalidatePath('/super-admin')
+}
+
+// ─── Planos e abas ────────────────────────────────────────────────────────────
+
+function cleanFeatures(list: string[]): string[] {
+  return [...new Set(list)].filter(f => FEATURE_KEYS.includes(f))
+}
+
+export async function savePlanFeatures(plan: string, features: string[]): Promise<{ ok?: true; error?: string }> {
+  await assertSuperAdmin()
+  if (!isPlanId(plan)) return { error: 'Plano inválido.' }
+  const admin = createAdminClient()
+  const { error } = await admin.schema('contract_crm').from('plan_features')
+    .upsert({ plan, features: cleanFeatures(features), updated_at: new Date().toISOString() })
+  if (error) return { error: error.message }
+  revalidatePath('/', 'layout')
+  return { ok: true }
+}
+
+export async function saveTenantFeatures(tenantId: string, add: string[], remove: string[]): Promise<{ ok?: true; error?: string }> {
+  await assertSuperAdmin()
+  const a = cleanFeatures(add)
+  const r = cleanFeatures(remove).filter(f => !a.includes(f))
+  const admin = createAdminClient()
+  const { error } = await admin.schema('contract_crm').from('tenants')
+    .update({ features_add: a, features_remove: r }).eq('id', tenantId)
+  if (error) return { error: error.message }
+  revalidatePath('/', 'layout')
+  return { ok: true }
 }

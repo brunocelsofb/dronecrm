@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation'
 import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive } from '@/lib/actions/super-admin'
 import { startImpersonation } from '@/lib/actions/impersonate'
 import { EditTenantRow } from './edit-tenant-row'
+import { PlanFeaturesMatrix, TenantFeaturesEditor } from './plan-features'
+import { getPlanFeatureMatrix } from '@/lib/config/tenant-features'
+import { getEffectivePlan } from '@/lib/config/plans'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +58,7 @@ function TrialBadge({ trialEndsAt }: { trialEndsAt: string | null }) {
 export default async function SuperAdminPage() {
   await checkSuperAdmin()
   const tenants = await getSuperAdminData()
+  const planMatrix = await getPlanFeatureMatrix()
 
   return (
     <div className="space-y-8">
@@ -62,6 +66,8 @@ export default async function SuperAdminPage() {
         <h1 className="text-2xl font-bold text-gray-900">Super Admin</h1>
         <p className="text-sm text-gray-500">Gerenciamento de tenants e licenças</p>
       </div>
+
+      <PlanFeaturesMatrix initial={planMatrix} />
 
       {/* Tabela de Tenants */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -124,6 +130,12 @@ export default async function SuperAdminPage() {
                       >
                         Editar
                       </label>
+                      <label
+                        htmlFor={`abas-${t.id}`}
+                        className="cursor-pointer rounded border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        Abas
+                      </label>
                       {/* Botão Desativar/Ativar: toggle de status */}
                       <form action={async () => {
                         'use server'
@@ -140,6 +152,20 @@ export default async function SuperAdminPage() {
                           {t.is_active ? 'Desativar' : 'Ativar'}
                         </button>
                       </form>
+                    </div>
+                  </td>
+                </tr>
+                <tr key={`abas-row-${t.id}`}>
+                  <td colSpan={6} className="p-0">
+                    <input type="checkbox" id={`abas-${t.id}`} className="hidden peer/abas" />
+                    <div className="hidden peer-checked/abas:block">
+                      <TenantFeaturesEditor
+                        tenantId={t.id}
+                        tenantName={t.name}
+                        planFeatures={planMatrix[getEffectivePlan(t.plan, t.trial_ends_at ?? null)]}
+                        initialAdd={(t as { features_add?: string[] }).features_add ?? []}
+                        initialRemove={(t as { features_remove?: string[] }).features_remove ?? []}
+                      />
                     </div>
                   </td>
                 </tr>

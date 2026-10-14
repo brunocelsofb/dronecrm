@@ -27,6 +27,8 @@ export async function proxy(request: NextRequest) {
   // ficam visiveis para Server Components via headers() do next/headers.
   // Response headers NAO sao visiveis para Server Components.
   const requestHeaders = new Headers(request.headers)
+  // Caminho atual para o layout bloquear abas fora do plano
+  requestHeaders.set('x-pathname', request.nextUrl.pathname)
   const impTenantId = request.cookies.get(COOKIE_TENANT_ID)?.value
   if (impTenantId) {
     requestHeaders.set('x-orbis-imp-tenant-id', impTenantId)

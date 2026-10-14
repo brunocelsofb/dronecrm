@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck, ClipboardList, BrainCircuit } from 'lucide-react'
-import { canAccess, type PlanId } from '@/lib/config/plans'
 
 const ALL_NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
@@ -17,22 +16,22 @@ const ALL_NAV_ITEMS = [
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, feature: 'whatsapp' },
   { href: '/whatsapp/relatorios', label: 'Relatórios WPP', icon: BarChart3, feature: 'whatsapp-relatorios' },
   { href: '/surveys-dashboard', label: 'Pesquisas & NPS', icon: ClipboardList, feature: 'surveys' },
-  { href: '/briefing', label: 'Copiloto IA', icon: BrainCircuit, feature: 'dashboard' },
+  { href: '/briefing', label: 'Copiloto IA', icon: BrainCircuit, feature: 'copiloto' },
 ]
 
 export function SidebarNav({
   isAdmin,
   isSuperAdmin,
-  effectivePlan = 'starter',
+  features,
 }: {
   isAdmin: boolean
   isSuperAdmin?: boolean
-  effectivePlan?: PlanId
+  features: string[]
 }) {
   const pathname = usePathname()
 
   const items = [
-    ...ALL_NAV_ITEMS.filter((item) => canAccess(effectivePlan, item.feature)),
+    ...ALL_NAV_ITEMS.filter((item) => features.includes(item.feature)),
     { href: '/settings', label: 'Configurações', icon: Settings, feature: 'settings' },
     ...(isSuperAdmin ? [{ href: '/super-admin', label: '⚙️ Super Admin', icon: ShieldCheck, feature: 'settings' }] : []),
   ]
