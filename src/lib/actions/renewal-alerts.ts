@@ -15,6 +15,7 @@ import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
 import { getContractTenantName } from '@/lib/agent/tenant-name'
+import { sendWhatsApp } from '@/lib/agent/briefing-core'
 
 export type SendableInstance = {
   name: string
@@ -308,6 +309,27 @@ export async function sendRenewalAlert(
     .from('activities')
     .update({ status: 'done', completed: true, title: sentTitle, content: sentContent, metadata: sentMeta })
     .eq('id', activityId)
+
+  // 4. Avisa o gestor no WhatsApp do briefing (Gerencial). Falha aqui não
+  //    desfaz o envio ao cliente — só fica no log.
+  try {
+    const { data: ci } = await admin
+      .from('contracts').select('process_number, client_name').eq('id', activity.contract_id).maybeSingle()
+    const hora = sentAt.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
+    const quem = sender?.full_name ?? consultor
+    const oQue = isConfirmation ? 'a confirmação de renovação' : `o aviso de renovação (${marco})`
+    const pelo = quem === consultor || consultor.startsWith(`${quem} -`) ? '' : ` pelo WhatsApp de ${consultor}`
+    const managerText =
+      `✅ *Enviado ao cliente*\n` +
+      `${quem} enviou ${oQue}${pelo}.\n` +
+      `Contrato: ${ci?.process_number ?? '—'} — ${ci?.client_name ?? ''}\n` +
+      `Para: ${contato || 'contato '}(${phone} · ${toEmail})\n` +
+      `WhatsApp + e-mail às ${hora}${ccEmail ? ` · cópia ${ccEmail}` : ''}`
+    const r = await sendWhatsApp(managerText)
+    if (!r.sent) console.error('[renewal] aviso ao gestor falhou:', r.error)
+  } catch (e) {
+    console.error('[renewal] aviso ao gestor falhou:', e)
+  }
 
   revalidatePath(`/contracts/${activity.contract_id}`)
   return { ok: true, title: sentTitle, content: sentContent, metadata: sentMeta }

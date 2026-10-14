@@ -434,6 +434,64 @@ async function createAgentTask(
   return r.status === 'created'
 }
 
+// ─── Avisos de renovação: enviados e aguardando envio ─────────────────────────
+// Seção fixa do briefing (montada direto dos dados, sem passar pelo modelo).
+export async function buildRenewalSendsSection(
+  supabase: ReturnType<typeof getAdminClient>,
+  sinceIso: string,
+): Promise<string> {
+  const { data: rows } = await supabase
+    .from('activities')
+    .select('id, contract_id, assigned_to, metadata, created_at')
+    .in('metadata->>kind', ['renewal_alert', 'renewal_confirmation'])
+    .in('metadata->>approval', ['sent', 'pending'])
+    .limit(300)
+
+  type Meta = { kind?: string; approval?: string; sent_at?: string; sent_by?: string; alert_level?: number; contact_name?: string }
+  const all = (rows ?? []) as { id: string; contract_id: string | null; assigned_to: string | null; metadata: Meta; created_at: string }[]
+  const sent = all.filter(a => a.metadata.approval === 'sent' && (a.metadata.sent_at ?? '') >= sinceIso)
+  const pending = all.filter(a => a.metadata.approval === 'pending')
+  if (sent.length === 0 && pending.length === 0) return ''
+
+  const contractIds = [...new Set([...sent, ...pending].map(a => a.contract_id).filter(Boolean))] as string[]
+  const userIds = [...new Set([...sent.map(a => a.metadata.sent_by), ...pending.map(a => a.assigned_to)].filter(Boolean))] as string[]
+  const [{ data: contracts }, { data: users }] = await Promise.all([
+    contractIds.length ? supabase.from('contracts').select('id, process_number, client_name').in('id', contractIds) : Promise.resolve({ data: [] }),
+    userIds.length ? supabase.from('profiles').select('id, full_name').in('id', userIds) : Promise.resolve({ data: [] }),
+  ])
+  const cById = new Map(((contracts ?? []) as { id: string; process_number: string | null; client_name: string }[]).map(c => [c.id, c]))
+  const uById = new Map(((users ?? []) as { id: string; full_name: string | null }[]).map(u => [u.id, u.full_name ?? '']))
+
+  const what = (m: Meta) => m.kind === 'renewal_confirmation' ? 'renovação concluída' : m.alert_level === 0 ? 'vencido' : `${m.alert_level} dias`
+  const who = (id: string | null | undefined) => (id && uById.get(id)) || '(sem responsável)'
+  const contractLabel = (id: string | null) => {
+    const c = id ? cById.get(id) : null
+    return c ? `${c.client_name}${c.process_number ? ` (${c.process_number})` : ''}` : '(contrato)'
+  }
+  const nowMs = Date.now()
+
+  const lines: string[] = ['📨 AVISOS DE RENOVAÇÃO AO CLIENTE']
+  if (sent.length) {
+    lines.push(`Enviados desde o último briefing (${sent.length}):`)
+    for (const a of sent.sort((x, y) => (x.metadata.sent_at ?? '').localeCompare(y.metadata.sent_at ?? ''))) {
+      const when = new Date(a.metadata.sent_at!).toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      })
+      lines.push(`• ${contractLabel(a.contract_id)} — ${what(a.metadata)} — por ${who(a.metadata.sent_by)} em ${when}`)
+    }
+  } else {
+    lines.push('Nenhum aviso enviado desde o último briefing.')
+  }
+  if (pending.length) {
+    lines.push('', `Aguardando envio do consultor (${pending.length}):`)
+    for (const a of pending.sort((x, y) => x.created_at.localeCompare(y.created_at))) {
+      const days = Math.floor((nowMs - new Date(a.created_at).getTime()) / 86_400_000)
+      lines.push(`• ${contractLabel(a.contract_id)} — ${what(a.metadata)} — ${who(a.assigned_to)} — ${days === 0 ? 'desde hoje' : `há ${days} dia(s)`}`)
+    }
+  }
+  return lines.join('\n')
+}
+
 // ─── Prompt builder — consultor comercial, dados por nome ─────────────────────
 export function buildPrompt(data: {
   dormant:        DormantRun[]
@@ -680,6 +738,7 @@ function serializeError(err: unknown): string {
 export async function generateBriefing(opts: {
   sendViaWhatsApp: boolean
   createTasks?: boolean   // default: true (cria tarefas no CRM)
+  renewalSince?: string   // ISO: envios de avisos a listar a partir de (default: 24h atrás)
 }): Promise<BriefingResult | BriefingError> {
 
   console.log('[agent] verificando variáveis de ambiente...')
@@ -768,6 +827,15 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
   console.log(
     `[agent] tokens — input: ${usage.promptTokens} | output: ${usage.completionTokens}`
   )
+
+  // ── Seção fixa: avisos de renovação enviados / aguardando ───────────────────
+  try {
+    const since = opts.renewalSince ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+    const section = await buildRenewalSendsSection(supabase, since)
+    if (section && briefing.trim()) briefing = `${briefing.trim()}\n\n${section}`
+  } catch (err) {
+    console.error('[agent] erro na seção de avisos de renovação:', serializeError(err))
+  }
 
   // ── Criação automática de tarefas no CRM ────────────────────────────────────
   const shouldCreateTasks = opts.createTasks !== false  // default: true
