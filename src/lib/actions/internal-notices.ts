@@ -153,7 +153,7 @@ export async function sendInternalEmail(
 
 export async function generateImplementationReportNow(): Promise<{ ok?: true; error?: string; detail?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem gerar o relatório.' }
-  const r = await createMonthlyImplementationReport(true)
+  const r = await createMonthlyImplementationReport(await resolveTenantId(), true)
   if (r.status === 'error') return { error: r.detail ?? 'Falha ao gerar.' }
   revalidatePath('/copiloto/relatorios')
   return { ok: true, detail: r.status === 'skipped' ? r.detail : undefined }

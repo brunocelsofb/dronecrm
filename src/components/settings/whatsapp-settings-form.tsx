@@ -7,9 +7,11 @@ type Props = {
   isConnected: boolean
   currentServerUrl: string | null
   currentInstanceName: string | null
+  usesPlatformServer?: boolean   // servidor da plataforma: empresa só dá nome e lê o QR
+  limitInfo?: string | null
 }
 
-export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentInstanceName }: Props) {
+export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentInstanceName, usesPlatformServer = false, limitInfo = null }: Props) {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [loadingQr, setLoadingQr] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -27,14 +29,13 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
     if (res.error) { setLoadingQr(false); return }
     const isPrivate = res.privateInstance === true
 
-    // Busca QR Code
-    const serverUrl = (fd.get('evo_server_url') as string).trim()
-    const apiKey    = (fd.get('evo_api_key') as string).trim()
-    const instance  = (fd.get('evo_instance_name') as string).trim()
+    // Nome final (empresas no servidor compartilhado ganham prefixo)
+    const instance = (res.instanceName as string | undefined) ?? (fd.get('evo_instance_name') as string).trim()
+    fd.set('evo_instance_name', instance)
 
     try {
     // Busca QR Code via Server Action (evita CORS)
-    const data = await getEvoQrCodeAction(isPrivate ? fd : undefined)
+    const data = await getEvoQrCodeAction(fd)
     console.log('[evo qr] resposta:', data)
     if (data.error) setStatus(`❌ ${data.error}`)
     else if (data.base64) {
@@ -64,7 +65,7 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
         <div className="rounded-xl border border-green-200 bg-green-50 p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-green-800">✅ WhatsApp conectado via Evolution API</p>
-            <p className="text-xs text-green-600 mt-0.5">{currentServerUrl} · instância: {currentInstanceName}</p>
+            <p className="text-xs text-green-600 mt-0.5">{usesPlatformServer ? 'principal' : currentServerUrl} · instância: {currentInstanceName}</p>
           </div>
           <button onClick={handleDisconnect} disabled={disconnecting}
             className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
@@ -75,8 +76,13 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
 
       {/* Formulário de configuração */}
       <form onSubmit={handleGetQr} className="space-y-4 rounded-xl border border-gray-200 bg-white p-6">
-        <h3 className="text-sm font-semibold text-[#1B556B]">Configurações da Evolution API</h3>
+        <h3 className="text-sm font-semibold text-[#1B556B]">{usesPlatformServer ? 'Conectar um WhatsApp' : 'Configurações da Evolution API'}</h3>
+        {usesPlatformServer && (
+          <p className="text-xs text-gray-500">Dê um nome, clique em obter QR Code e leia com o WhatsApp do número. {limitInfo}</p>
+        )}
 
+{!usesPlatformServer && (
+        <>
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Server URL *</label>
           <input name="evo_server_url" required
@@ -93,11 +99,13 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
           <p className="mt-1 text-xs text-gray-400">Configure como variável de ambiente AUTHENTICATION_API_KEY no Railway.</p>
         </div>
 
+        </>
+        )}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">Instance Name *</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">{usesPlatformServer ? 'Nome deste WhatsApp *' : 'Instance Name *'}</label>
           <input name="evo_instance_name" required
-            defaultValue={currentInstanceName ?? 'drone_whatsapp'}
-            placeholder="drone_whatsapp"
+            defaultValue={usesPlatformServer ? '' : (currentInstanceName ?? 'drone_whatsapp')}
+            placeholder={usesPlatformServer ? 'ex.: comercial, atendimento' : 'drone_whatsapp'}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none" />
         </div>
 

@@ -341,7 +341,7 @@ export async function sendRenewalAlert(
       `Contrato: ${ci?.process_number ?? '—'} — ${ci?.client_name ?? ''}\n` +
       `Para: ${contato || 'contato '}(${phone} · ${toEmail})\n` +
       `WhatsApp + e-mail às ${hora}${ccEmail ? ` · cópia ${ccEmail}` : ''}`
-    const r = await sendWhatsApp(managerText)
+    const r = await sendWhatsApp(managerText, await resolveTenantId({ contractId: activity.contract_id }))
     if (!r.sent) console.error('[renewal] aviso ao gestor falhou:', r.error)
   } catch (e) {
     console.error('[renewal] aviso ao gestor falhou:', e)

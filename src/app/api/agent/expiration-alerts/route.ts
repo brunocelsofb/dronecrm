@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { runExpirationAlerts } from '@/lib/agent/expiration-alerts'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
 
 export const maxDuration = 60  // segundos — Vercel Pro permite até 300s
@@ -27,28 +28,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── Executa varredura ────────────────────────────────────────────────────
   try {
     console.log('[expiration-alerts] ▶ iniciando via API route')
-    const report = await runExpirationAlerts()
-    console.log(`[expiration-alerts] ✓ concluído — ${report.total} alertas | ${report.errors.length} erros`)
+    const admin = createAdminClient()
+    const [{ data: orgs }, { data: tenants }] = await Promise.all([
+      admin.from('organization_settings').select('tenant_id'),
+      admin.from('tenants').select('id, is_active'),
+    ])
+    const activeIds = new Set((tenants ?? []).filter(t => t.is_active).map(t => t.id as string))
+    const byTenant: Record<string, unknown>[] = []
 
-    // Relatório mensal de implantação (1x por mês, a partir do dia configurado)
-    let implReport: { status: string; id?: string; detail?: string }
-    try {
-      implReport = await createMonthlyImplementationReport()
-    } catch (e) {
-      implReport = { status: 'error', detail: e instanceof Error ? e.message : String(e) }
+    // Uma rodada por empresa ativa (contratos, textos e gestor de cada uma)
+    for (const o of orgs ?? []) {
+      const tenantId = o.tenant_id as string
+      if (!activeIds.has(tenantId)) continue
+      try {
+        const report = await runExpirationAlerts(tenantId)
+        let implReport: { status: string; id?: string; detail?: string }
+        try {
+          implReport = await createMonthlyImplementationReport(tenantId)
+        } catch (e) {
+          implReport = { status: 'error', detail: e instanceof Error ? e.message : String(e) }
+        }
+        byTenant.push({
+          tenantId,
+          total:    report.total,
+          by_level: report.by_level,
+          results:  report.results,
+          internal_whatsapp: report.internal_whatsapp,
+          internal_email:    report.internal_email,
+          impl_report:       implReport,
+          errors:   report.errors,
+        })
+      } catch (e) {
+        byTenant.push({ tenantId, error: e instanceof Error ? e.message : String(e) })
+      }
     }
 
-    return NextResponse.json({
-      ok:       true,
-      ran_at:   report.ran_at,
-      total:    report.total,
-      by_level: report.by_level,
-      results:  report.results,
-      internal_whatsapp: report.internal_whatsapp,
-      internal_email:    report.internal_email,
-      impl_report:       implReport,
-      errors:   report.errors,
-    })
+    return NextResponse.json({ ok: true, ran_at: new Date().toISOString(), tenants: byTenant })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[expiration-alerts] erro fatal: ${msg}`)

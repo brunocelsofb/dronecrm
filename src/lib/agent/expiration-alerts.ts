@@ -26,7 +26,6 @@ import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
 import { resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 import { getTenantNamesById } from './tenant-name'
-import { resolveTenantId } from '@/lib/tenant/context'
 
 function getAdminClient() {
   return createClient(
@@ -113,6 +112,7 @@ function levelFor(daysLeft: number): AlertLevel | null {
 
 async function fetchCandidates(
   supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<RenewalCandidate[]> {
   const today = todayBR()
 
@@ -122,6 +122,7 @@ async function fetchCandidates(
     .not('valid_until', 'is', null)
     .gte('valid_until', addDays(today, -90))
     .lte('valid_until', addDays(today, 90))
+    .eq('tenant_id', tenantId)
 
   if (error) throw new Error(`erro ao buscar contratos: ${error.message}`)
   if (!contracts?.length) return []
@@ -176,11 +177,11 @@ async function fetchCandidates(
 
 type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string>; emailSubject: string }
 
-async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Promise<OrgConfig> {
+async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>, tenantId: string): Promise<OrgConfig> {
   const { data } = await supabase
     .from('organization_settings')
     .select('company_name, copilot_settings')
-    .eq('tenant_id', await resolveTenantId())
+    .eq('tenant_id', tenantId)
     .maybeSingle()
   const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown }
   return {
@@ -355,11 +356,11 @@ function buildSummaryEmail(items: AlertResult[], companyName: string): string {
 
 // ─── Exportação principal ─────────────────────────────────────────────────────
 
-export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
+export async function runExpirationAlerts(tenantId: string): Promise<ExpirationAlertsReport> {
   console.log('[expiration] iniciando varredura de renovações...')
   const supabase = getAdminClient()
 
-  const [candidates, org] = await Promise.all([fetchCandidates(supabase), fetchOrgConfig(supabase)])
+  const [candidates, org] = await Promise.all([fetchCandidates(supabase, tenantId), fetchOrgConfig(supabase, tenantId)])
   console.log(`[expiration] ${candidates.length} contrato(s) na janela de -90 a +90 dias`)
 
   const results: AlertResult[] = []
@@ -397,21 +398,24 @@ export async function runExpirationAlerts(): Promise<ExpirationAlertsReport> {
       `🔔 *Copiloto — Renovações*\n\n` +
       `${created.length} nova(s) atividade(s) aberta(s) para os responsáveis:\n\n` +
       `${lines.join('\n')}\n\n` +
-      `Os avisos aos clientes aguardam revisão do consultor no CRM.`
+      `Os avisos aos clientes aguardam revisão do consultor no CRM.`,
+      tenantId,
     )
   }
 
   // Resumo por e-mail para o gestor — só quando há alerta novo
   let internalEmail: ExpirationAlertsReport['internal_email'] = null
   if (created.length > 0) {
-    const to = process.env.AGENT_ALERT_EMAIL
+    const { getManagerChannel } = await import('./briefing-core')
+    const to = (await getManagerChannel(tenantId)).email
     internalEmail = to
       ? await sendAgentEmail({
+          tenantId,
           to,
           subject: `[Copiloto] ${created.length} renovação(ões) para acompanhar — ${org.companyName}`,
           htmlBody: buildSummaryEmail(created, org.companyName),
         })
-      : { sent: false, error: 'AGENT_ALERT_EMAIL não configurado' }
+      : { sent: false, error: 'e-mail do gestor não configurado (Configurações → Copiloto IA → Gestor)' }
     if (!internalEmail.sent) console.error(`[expiration] e-mail de resumo não enviado: ${internalEmail.error}`)
   }
 

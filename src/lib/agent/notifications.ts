@@ -180,7 +180,28 @@ export async function sendAgentEmail(opts: {
   subject: string
   htmlBody: string
   fromEmail?: string
+  tenantId?: string   // envia do e-mail de um administrador da empresa (conectado em Minha Conta)
 }): Promise<EmailSendResult> {
+  if (opts.tenantId) {
+    try {
+      const admin = getAdminClient()
+      const { data: admins } = await admin.from('profiles').select('id').eq('tenant_id', opts.tenantId).eq('role', 'admin')
+      const ids = (admins ?? []).map((a: { id: string }) => a.id)
+      const { data: accounts } = ids.length
+        ? await admin.from('email_accounts').select('user_id').in('user_id', ids).limit(1)
+        : { data: [] as { user_id: string }[] }
+      const senderId = accounts?.[0]?.user_id
+      if (senderId) {
+        const { sendEmailForUser } = await import('@/lib/email/send')
+        const r = await sendEmailForUser(senderId, opts.to, opts.subject, opts.htmlBody)
+        return { sent: true, messageId: r.messageId }
+      }
+      console.warn('[notifications/email] nenhum administrador da empresa com e-mail conectado; tentando o padrão')
+    } catch (err) {
+      console.warn('[notifications/email] envio pelo admin da empresa falhou:', err instanceof Error ? err.message : err)
+    }
+  }
+
   // Tenta Gmail OAuth primeiro
   const agentUserId = process.env.AGENT_USER_ID
   if (agentUserId) {

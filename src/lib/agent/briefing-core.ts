@@ -118,7 +118,8 @@ function getAdminClient() {
 
 // ─── Query 1: Oportunidades dormentes no funil de vendas ──────────────────────
 export async function fetchDormantOpportunities(
-  supabase: ReturnType<typeof getAdminClient>
+  supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<DormantRun[]> {
   // Busca runs abertas em pipelines de vendas
   const { data: runs, error: runsErr } = await supabase
@@ -131,6 +132,7 @@ export async function fetchDormantOpportunities(
     `)
     .eq('status', 'open')
     .eq('pipelines.type', 'vendas')
+    .eq('tenant_id', tenantId)
 
   if (runsErr) {
     console.error('[agent] erro pipeline_runs:', runsErr.message)
@@ -212,7 +214,8 @@ export async function fetchDormantOpportunities(
 
 // ─── Query 2: Contratos a vencer ─────────────────────────────────────────────
 export async function fetchRenewalCandidates(
-  supabase: ReturnType<typeof getAdminClient>
+  supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<RenewalCandidate[]> {
   const today    = new Date()
   const in90Days = new Date(today)
@@ -227,6 +230,7 @@ export async function fetchRenewalCandidates(
     `)
     .lte('valid_until', in90Days.toISOString().slice(0, 10))
     .not('valid_until', 'is', null)
+    .eq('tenant_id', tenantId)
     .order('valid_until', { ascending: true })
     .limit(20)
 
@@ -253,7 +257,8 @@ export async function fetchRenewalCandidates(
 
 // ─── Query 3: Leads estagnados ─────────────────────────────────────────────────
 export async function fetchStaleLeds(
-  supabase: ReturnType<typeof getAdminClient>
+  supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<StaleLead[]> {
   // Leads sem actualização há 30 dias
   const cutoff = new Date()
@@ -264,6 +269,7 @@ export async function fetchStaleLeds(
     .select('id, name, company_name, status, score, source, created_at, updated_at')
     .in('status', ['novo', 'em_qualificacao'])
     .lt('updated_at', cutoff.toISOString())
+    .eq('tenant_id', tenantId)
     .order('score', { ascending: false })
     .limit(10)
 
@@ -284,7 +290,8 @@ export async function fetchStaleLeds(
 
 // ─── Query 4: Propostas paradas (aguardando aprovação interna ou cliente) ─────
 export async function fetchStuckProposals(
-  supabase: ReturnType<typeof getAdminClient>
+  supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<StuckProposal[]> {
   const STATUS_LABELS: Record<string, string> = {
     draft:               'Rascunho',
@@ -310,6 +317,7 @@ export async function fetchStuckProposals(
     `)
     .in('status', ['pending_technical', 'pending_commercial', 'pending_client', 'draft'])
     .lt('updated_at', cutoff.toISOString())
+    .eq('tenant_id', tenantId)
     .order('updated_at', { ascending: true })
     .limit(10)
 
@@ -356,7 +364,8 @@ export async function fetchStuckProposals(
 
 // ─── Query 5: Planos de acção com itens pendentes há muito tempo ──────────────
 export async function fetchPendingActionPlans(
-  supabase: ReturnType<typeof getAdminClient>
+  supabase: ReturnType<typeof getAdminClient>,
+  tenantId: string,
 ): Promise<PendingActionPlan[]> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 7)
@@ -365,9 +374,10 @@ export async function fetchPendingActionPlans(
     .from('action_plan_items')
     .select(`
       id, contract_id, responsible_department, status, created_at,
-      contracts!inner(process_number, client_name)
+      contracts!inner(process_number, client_name, tenant_id)
     `)
     .in('status', ['pending', 'in_progress'])
+    .eq('contracts.tenant_id', tenantId)
     .lt('created_at', cutoff.toISOString())
 
   if (error) { console.error('[agent] erro action_plan:', error.message); return [] }
@@ -439,12 +449,14 @@ async function createAgentTask(
 export async function buildRenewalSendsSection(
   supabase: ReturnType<typeof getAdminClient>,
   sinceIso: string,
+  tenantId: string,
 ): Promise<string> {
   const { data: rows } = await supabase
     .from('activities')
     .select('id, contract_id, assigned_to, metadata, created_at')
     .in('metadata->>kind', ['renewal_alert', 'renewal_confirmation'])
     .in('metadata->>approval', ['sent', 'pending'])
+    .eq('tenant_id', tenantId)
     .limit(300)
 
   type Meta = { kind?: string; approval?: string; sent_at?: string; sent_by?: string; alert_level?: number; contact_name?: string }
@@ -659,19 +671,49 @@ async function createAutomaticTasks(
 }
 
 // ─── Envio WhatsApp ───────────────────────────────────────────────────────────
-export async function sendWhatsApp(text: string): Promise<WhatsAppResult> {
-  const baseUrl  = process.env.EVOLUTION_API_URL
-  const apiKey   = process.env.EVOLUTION_API_KEY
+// Canal do gestor de cada empresa (Configurações → Copiloto IA → Gestor):
+// número que recebe briefing/avisos e o WhatsApp da empresa que envia.
+// A empresa padrão (Orbis) cai nas variáveis do Vercel enquanto não preencher.
+export async function getManagerChannel(tenantId: string): Promise<{
+  baseUrl: string | null; apiKey: string | null; instance: string | null; number: string | null; email: string | null
+}> {
+  const { getTenantEvoCreds } = await import('@/lib/whatsapp/tenant-evo')
+  const { getDefaultTenantId } = await import('@/lib/tenant/context')
+  const supabase = getAdminClient()
+  const [{ data: org }, creds, defaultTenant] = await Promise.all([
+    supabase.from('organization_settings').select('copilot_settings, evo_instance_name').eq('tenant_id', tenantId).maybeSingle(),
+    getTenantEvoCreds(tenantId),
+    getDefaultTenantId(),
+  ])
+  const cfg = (org?.copilot_settings ?? {}) as Record<string, unknown>
+  const isDefault = tenantId === defaultTenant
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  return {
+    baseUrl:  creds?.serverUrl ?? null,
+    apiKey:   creds?.apiKey ?? null,
+    instance: str(cfg.manager_instance) ?? (isDefault ? (process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS ?? null) : null) ?? str(org?.evo_instance_name),
+    number:   str(cfg.manager_whatsapp) ?? (isDefault ? (process.env.WHATSAPP_NUMBER ?? null) : null),
+    email:    str(cfg.manager_email) ?? (isDefault ? (process.env.AGENT_ALERT_EMAIL ?? null) : null),
+  }
+}
+
+export async function sendWhatsApp(text: string, tenantId?: string | null): Promise<WhatsAppResult> {
+  let baseUrl: string | null | undefined = process.env.EVOLUTION_API_URL
+  let apiKey: string | null | undefined  = process.env.EVOLUTION_API_KEY
   // Instância do briefing; se não definida, usa a de "novos negócios" (Matheus)
-  const instance = process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS
-  const number   = process.env.WHATSAPP_NUMBER
+  let instance: string | null | undefined = process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS
+  let number: string | null | undefined   = process.env.WHATSAPP_NUMBER
+  if (tenantId) {
+    const ch = await getManagerChannel(tenantId)
+    baseUrl = ch.baseUrl; apiKey = ch.apiKey; instance = ch.instance; number = ch.number
+  }
 
   if (!baseUrl || !apiKey || !instance || !number) {
     const missing = [
       !baseUrl  && 'EVOLUTION_API_URL',
       !apiKey   && 'EVOLUTION_API_KEY',
-      !instance && 'EVOLUTION_INSTANCE_NAME',
-      !number   && 'WHATSAPP_NUMBER',
+      !instance && (tenantId ? 'WhatsApp que envia (Configurações → Copiloto IA → Gestor)' : 'EVOLUTION_INSTANCE_NAME'),
+      !number   && (tenantId ? 'número do gestor (Configurações → Copiloto IA → Gestor)' : 'WHATSAPP_NUMBER'),
     ].filter(Boolean).join(', ')
     console.error(`[whatsapp] configuração incompleta — variáveis em falta: ${missing}`)
     return { sent: false, error: `Variáveis de ambiente em falta: ${missing}` }
@@ -736,6 +778,7 @@ function serializeError(err: unknown): string {
 
 // ─── Função principal ─────────────────────────────────────────────────────────
 export async function generateBriefing(opts: {
+  tenantId: string        // empresa do briefing (dados, chave da IA e WhatsApp do gestor)
   sendViaWhatsApp: boolean
   createTasks?: boolean   // default: true (cria tarefas no CRM)
   renewalSince?: string   // ISO: envios de avisos a listar a partir de (default: 24h atrás)
@@ -746,7 +789,6 @@ export async function generateBriefing(opts: {
   const missingVars: string[] = []
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL)  missingVars.push('NEXT_PUBLIC_SUPABASE_URL')
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) missingVars.push('SUPABASE_SERVICE_ROLE_KEY')
-  if (!process.env.ANTHROPIC_API_KEY)         missingVars.push('ANTHROPIC_API_KEY')
 
   if (missingVars.length > 0) {
     const msg = `Variáveis de ambiente em falta no Vercel: ${missingVars.join(', ')}`
@@ -754,8 +796,11 @@ export async function generateBriefing(opts: {
     return { ok: false, error: msg }
   }
 
-  const keyPreview = process.env.ANTHROPIC_API_KEY!
-  console.log(`[agent] ANTHROPIC_API_KEY presente — prefixo: ${keyPreview.slice(0, 7)}... (${keyPreview.length} chars)`)
+  // Chave da Anthropic da empresa (sem chave, o Copiloto está desligado)
+  const { getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } = await import('@/lib/ai/tenant-key')
+  const aiKey = await getAnthropicKeyForTenant(opts.tenantId)
+  if (!aiKey.key) return { ok: false, error: NO_AI_KEY_MESSAGE }
+  console.log(`[agent] chave da IA: ${aiKey.source} (…${aiKey.last4})`)
 
   // ── Queries ao Supabase ──────────────────────────────────────────────────────
   const today    = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
@@ -768,11 +813,11 @@ export async function generateBriefing(opts: {
 
   try {
     ;[dormant, renewal, stale, proposals, actionPlans] = await Promise.all([
-      fetchDormantOpportunities(supabase),
-      fetchRenewalCandidates(supabase),
-      fetchStaleLeds(supabase),
-      fetchStuckProposals(supabase),
-      fetchPendingActionPlans(supabase),
+      fetchDormantOpportunities(supabase, opts.tenantId),
+      fetchRenewalCandidates(supabase, opts.tenantId),
+      fetchStaleLeds(supabase, opts.tenantId),
+      fetchStuckProposals(supabase, opts.tenantId),
+      fetchPendingActionPlans(supabase, opts.tenantId),
     ])
   } catch (err) {
     const msg = `Erro nas queries ao Supabase: ${serializeError(err)}`
@@ -791,7 +836,7 @@ export async function generateBriefing(opts: {
   let usage: { promptTokens: number; completionTokens: number }
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const client = new Anthropic({ apiKey: aiKey.key })
 
     const response = await client.messages.create({
       model:      'claude-haiku-4-5',
@@ -831,7 +876,7 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
   // ── Seção fixa: avisos de renovação enviados / aguardando ───────────────────
   try {
     const since = opts.renewalSince ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-    const section = await buildRenewalSendsSection(supabase, since)
+    const section = await buildRenewalSendsSection(supabase, since, opts.tenantId)
     if (section && briefing.trim()) briefing = `${briefing.trim()}\n\n${section}`
   } catch (err) {
     console.error('[agent] erro na seção de avisos de renovação:', serializeError(err))
@@ -859,7 +904,7 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
     console.error('[agent] ✗ briefing vazio, envio WhatsApp ignorado')
   } else if (opts.sendViaWhatsApp) {
     console.log('[agent] enviando via WhatsApp...')
-    whatsapp = await sendWhatsApp(briefing)
+    whatsapp = await sendWhatsApp(briefing, opts.tenantId)
     if (whatsapp.sent) {
       console.log(`[agent] ✓ WhatsApp entregue (HTTP ${whatsapp.statusCode})`)
     } else {

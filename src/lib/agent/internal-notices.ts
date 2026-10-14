@@ -30,6 +30,13 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((new Date(`${toIso}T12:00:00Z`).getTime() - new Date(`${fromIso}T12:00:00Z`).getTime()) / 86_400_000)
 }
 
+async function loadSettingsForTenant(tenantId: string) {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('organization_settings').select('company_name, copilot_settings, tenant_id').eq('tenant_id', tenantId).maybeSingle()
+  return { admin, org: data, settings: resolveInternalSettings(data?.copilot_settings) }
+}
+
 async function loadSettings(contractId?: string | null) {
   const admin = createAdminClient()
   const { data } = await admin
@@ -177,11 +184,12 @@ export async function onImplementationStarted(contractId: string, startDate: str
 type ScheduleRow = { id: string; contract_id: string; start_date: string | null; status: string | null; template_id: string | null }
 type TaskRow = { schedule_id: string; title: string; start_week: number | null; end_week: number | null; is_completed: boolean | null; sort_order: number | null }
 
-export async function buildImplementationReportText(): Promise<{ text: string; count: number }> {
-  const { admin, settings } = await loadSettings()
+export async function buildImplementationReportText(tenantId: string): Promise<{ text: string; count: number }> {
+  const { admin, settings } = await loadSettingsForTenant(tenantId)
   const { data: schedules } = await admin
     .from('implementation_schedules')
     .select('id, contract_id, start_date, status, template_id')
+    .eq('tenant_id', tenantId)
     .order('start_date', { ascending: true })
   const all = (schedules ?? []) as ScheduleRow[]
 
@@ -195,7 +203,7 @@ export async function buildImplementationReportText(): Promise<{ text: string; c
   const [{ data: tasks }, { data: contracts }, { data: templates }] = await Promise.all([
     ids.length ? admin.from('implementation_tasks').select('schedule_id, title, start_week, end_week, is_completed, sort_order').in('schedule_id', ids) : Promise.resolve({ data: [] }),
     contractIds.length ? admin.from('contracts').select('id, client_name, process_number').in('id', contractIds) : Promise.resolve({ data: [] }),
-    admin.from('implementation_templates').select('id, name'),
+    admin.from('implementation_templates').select('id, name').eq('tenant_id', tenantId),
   ])
   const cById = new Map(((contracts ?? []) as { id: string; client_name: string; process_number: string | null }[]).map(c => [c.id, c]))
   const tplById = new Map(((templates ?? []) as { id: string; name: string }[]).map(t => [t.id, t.name]))
@@ -255,8 +263,8 @@ export async function buildImplementationReportText(): Promise<{ text: string; c
 
 // Cria (1x por mês) a atividade do relatório mensal para revisão.
 // force = true: gera agora, mesmo fora do dia configurado.
-export async function createMonthlyImplementationReport(force = false): Promise<{ status: string; id?: string; detail?: string }> {
-  const { admin, org, settings } = await loadSettings()
+export async function createMonthlyImplementationReport(tenantId: string, force = false): Promise<{ status: string; id?: string; detail?: string }> {
+  const { admin, org, settings } = await loadSettingsForTenant(tenantId)
   const today = todayBrIso()
   const day = Number(today.slice(8, 10))
   if (!force && day < settings.implReportDay) return { status: 'skipped', detail: `dia ${settings.implReportDay} ainda não chegou` }
@@ -264,7 +272,7 @@ export async function createMonthlyImplementationReport(force = false): Promise<
   const month = today.slice(0, 7)
   const dedupeKey = `impl_report:${month}`
   const { data: existing } = await admin
-    .from('activities').select('id, status').eq('metadata->>dedupe_key', dedupeKey).limit(1)
+    .from('activities').select('id, status').eq('metadata->>dedupe_key', dedupeKey).eq('tenant_id', tenantId).limit(1)
   if (existing && existing.length > 0 && !force) return { status: 'skipped', detail: 'relatório do mês já criado' }
   if (existing && existing.length > 0 && force && existing[0].status !== 'done') {
     return { status: 'skipped', id: existing[0].id, detail: 'já existe relatório deste mês aguardando envio' }
@@ -276,10 +284,9 @@ export async function createMonthlyImplementationReport(force = false): Promise<
     const { data: admins } = await admin.from('profiles').select('id').eq('role', 'admin').eq('tenant_id', org?.tenant_id ?? '').limit(1)
     ownerId = admins?.[0]?.id ?? null
   }
-  const tenantId = org?.tenant_id as string | undefined
-  if (!tenantId) return { status: 'error', detail: 'organization_settings sem tenant' }
+  if (!org) return { status: 'error', detail: 'empresa sem configurações' }
 
-  const { text, count } = await buildImplementationReportText()
+  const { text, count } = await buildImplementationReportText(tenantId)
   const mes = new Date(`${today}T12:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
   const { data, error } = await admin.from('activities').insert({

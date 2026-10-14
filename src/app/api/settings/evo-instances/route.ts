@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { getPrivateInstances, isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
+import {
+  getTenantEvoCreds, filterInstancesForTenant, canTenantUseInstance, getWhatsAppLimit,
+  getTenantInstanceNames, instanceNameForTenant, registerInstanceForTenant, unregisterInstanceForTenant,
+} from '@/lib/whatsapp/tenant-evo'
 
+// Servidor da empresa: próprio (exceção) ou o da plataforma
 async function getEvoCreds() {
-  const admin = createAdminClient()
-  const { data } = await admin.from('organization_settings')
-    .select('evo_server_url, evo_api_key').eq('tenant_id', await resolveTenantId()).maybeSingle()
-  return data?.evo_server_url && data?.evo_api_key ? data : null
+  const c = await getTenantEvoCreds(await resolveTenantId())
+  return c ? { evo_server_url: c.serverUrl, evo_api_key: c.apiKey } : null
 }
+
+const nameOf = (inst: any): string | undefined => inst?.instance?.instanceName ?? inst?.name ?? inst?.instanceName
 
 async function guardAdmin() {
   const s = await createClient()
@@ -36,10 +40,14 @@ export async function GET(req: Request) {
   // Instâncias privadas não aparecem no CRM nem recebem webhook
   type EvoInstance = { instance?: { instanceName?: string }; name?: string; instanceName?: string }
   const privateSet = await getPrivateInstances()
-  const instances = (Array.isArray(data) ? data : []).filter((inst: EvoInstance) => {
+  const visible = (Array.isArray(data) ? data : []).filter((inst: EvoInstance) => {
     const name = inst.instance?.instanceName ?? inst.name ?? inst.instanceName
     return !name || !privateSet.has(name.trim().toLowerCase())
   })
+  // Servidor compartilhado: só as instâncias desta empresa
+  const tenantId = await resolveTenantId()
+  const instances = await filterInstancesForTenant(tenantId, visible, nameOf)
+  const limit = await getWhatsAppLimit(tenantId)
 
   if (searchParams.get('action') === 'sync-webhooks') {
     const results = await Promise.all(instances.map(async (inst: any) => {
@@ -54,7 +62,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ synced: results })
   }
 
-  return NextResponse.json({ instances })
+  return NextResponse.json({ instances, limit })
 }
 
 // POST — cria nova instância
@@ -63,9 +71,19 @@ export async function POST(req: Request) {
   const creds = await getEvoCreds()
   if (!creds) return NextResponse.json({ error: 'Credenciais não configuradas' }, { status: 400 })
 
-  const { instanceName } = await req.json()
-  if (!instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
+  const body = await req.json()
+  if (!body?.instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
+  const tenantId = await resolveTenantId()
+  const instanceName = await instanceNameForTenant(tenantId, String(body.instanceName))
   if (await isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  if (!(await canTenantUseInstance(tenantId, instanceName))) {
+    return NextResponse.json({ error: 'Esse nome já está em uso. Escolha outro.' }, { status: 409 })
+  }
+  // Limite de números do plano
+  const [limit, owned] = await Promise.all([getWhatsAppLimit(tenantId), getTenantInstanceNames(tenantId)])
+  if (!owned.includes(instanceName) && owned.length >= limit) {
+    return NextResponse.json({ error: `Seu plano permite ${limit} WhatsApp(s). Fale com o administrador da licença para ampliar.` }, { status: 403 })
+  }
 
   const res = await fetch(`${creds.evo_server_url}/instance/create`, {
     method: 'POST',
@@ -82,7 +100,8 @@ export async function POST(req: Request) {
     body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, webhookByEvents: true, webhookBase64: false, events: ['MESSAGES_UPSERT', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CONNECTION_UPDATE'] } }),
   })
 
-  return NextResponse.json({ ok: res.ok, data })
+  if (res.ok) await registerInstanceForTenant(tenantId, instanceName, String(body.instanceName))
+  return NextResponse.json({ ok: res.ok, data, instanceName })
 }
 
 // PUT — reinicia instância (reconecta sessão travada)
@@ -94,6 +113,7 @@ export async function PUT(req: Request) {
   const { instanceName } = await req.json()
   if (!instanceName) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 })
   if (await isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  if (!(await canTenantUseInstance(await resolveTenantId(), instanceName))) return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
 
   const res = await fetch(`${creds.evo_server_url}/instance/restart/${instanceName}`, {
     method: 'PUT',
@@ -111,10 +131,13 @@ export async function DELETE(req: Request) {
 
   const { instanceName } = await req.json()
   if (await isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  const tenantId = await resolveTenantId()
+  if (!(await canTenantUseInstance(tenantId, instanceName))) return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
   const res = await fetch(`${creds.evo_server_url}/instance/delete/${instanceName}`, {
     method: 'DELETE',
     headers: { apikey: creds.evo_api_key },
   })
+  if (res.ok) await unregisterInstanceForTenant(tenantId, instanceName)
   return NextResponse.json({ ok: res.ok })
 }
 
@@ -126,6 +149,7 @@ export async function PATCH(req: Request) {
 
   const { instanceName } = await req.json()
   if (await isPrivateInstance(instanceName)) return NextResponse.json({ error: PRIVATE_INSTANCE_ERROR }, { status: 403 })
+  if (!(await canTenantUseInstance(await resolveTenantId(), instanceName))) return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
   const res = await fetch(`${creds.evo_server_url}/instance/connect/${instanceName}`, {
     headers: { apikey: creds.evo_api_key },
   })

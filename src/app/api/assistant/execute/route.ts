@@ -5,6 +5,8 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { ALL_TOOLS } from '@/lib/ai/assistant-tools'
 import { executeWriteTool } from '@/lib/ai/write-tools'
 import { checkBudgetAvailable, logAssistantUsage } from '@/lib/ai/budget'
+import { resolveTenantId } from '@/lib/tenant/context'
+import { getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } from '@/lib/ai/tenant-key'
 
 const SYSTEM_PROMPT = `Você é o Théo, assistente de IA do CRM da ORBIS. Confirme brevemente o resultado da ação em português, de forma direta.`
 
@@ -18,9 +20,8 @@ export async function POST(request: Request) {
   if (!(await isCurrentUserAdmin())) {
     return NextResponse.json({ error: 'Só administradores podem usar o Théo.' }, { status: 403 })
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurada.' }, { status: 500 })
-  }
+  const aiKey = await getAnthropicKeyForTenant(await resolveTenantId())
+  if (!aiKey.key) return NextResponse.json({ error: NO_AI_KEY_MESSAGE }, { status: 400 })
 
   const { messages, toolUseId, toolName, toolInput } = await request.json()
 
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ messages: conversation, finalText: result.error ? `Falhou: ${result.error}` : result.summary })
   }
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const anthropic = new Anthropic({ apiKey: aiKey.key })
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 512,

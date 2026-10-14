@@ -11,6 +11,7 @@
 import { Suspense } from 'react'
 import { generateBriefing, type BriefingResult, type BriefingError } from '@/lib/agent/briefing-core'
 import { BriefingClient } from './briefing-client'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 function BriefingSkeleton() {
@@ -43,7 +44,7 @@ async function BriefingContent() {
   let data: BriefingResult | BriefingError
 
   try {
-    data = await generateBriefing({ sendViaWhatsApp: false })
+    data = await generateBriefing({ tenantId: await resolveTenantId(), sendViaWhatsApp: false })
   } catch (err) {
     // Serializa o erro completo — incluindo campos da Anthropic SDK
     let msg: string

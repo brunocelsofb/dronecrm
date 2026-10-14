@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 
 // Mapeia o mimetype devolvido pela Evolution para extensão e Content-Type
 const MIME_MAP: Record<string, string> = {
@@ -49,11 +50,12 @@ export async function GET(request: NextRequest) {
 
   // Busca configurações da Evolution no Supabase
   const supabase = createAdminClient()
-  const { data: orgSettings } = await supabase
+  const { data: orgSettings__raw } = await supabase
     .from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
+  const orgSettings = withPlatformEvo(orgSettings__raw)
 
   if (!orgSettings?.evo_server_url || !orgSettings?.evo_api_key) {
     return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 503 })

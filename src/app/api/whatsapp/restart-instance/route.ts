@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
 
 export async function POST(request: Request) {
   if (!(await isCurrentUserAdmin())) return NextResponse.json({ ok: false, error: 'Acesso negado' }, { status: 403 })
@@ -12,12 +14,16 @@ export async function POST(request: Request) {
   if (typeof instance !== 'string' || !instance.trim()) {
     return NextResponse.json({ ok: false, error: 'instance obrigatório' }, { status: 400 })
   }
+  if (!(await canTenantUseInstance(await resolveTenantId(), instance))) {
+    return NextResponse.json({ ok: false, error: 'instância não encontrada' }, { status: 404 })
+  }
 
-  const { data: org } = await createAdminClient()
+  const { data: org__raw } = await createAdminClient()
     .from('organization_settings')
     .select('evo_server_url, evo_api_key')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
+  const org = withPlatformEvo(org__raw)
   if (!org?.evo_server_url || !org?.evo_api_key) {
     return NextResponse.json({ ok: false, error: 'Evolution API não configurada' }, { status: 400 })
   }

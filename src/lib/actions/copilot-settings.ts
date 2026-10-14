@@ -131,3 +131,70 @@ export async function saveInternalSettings(input: {
   revalidatePath('/settings/copiloto')
   return { ok: true }
 }
+
+// ─── Ativação do Copiloto (chave da Anthropic) e canal do gestor ─────────────
+export async function saveAnthropicKey(key: string): Promise<{ ok?: true; error?: string }> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar a chave.' }
+  const k = key.trim()
+  if (!/^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(k)) return { error: 'Chave inválida. Ela começa com "sk-ant-" (Claude Console → API Keys).' }
+  // Testa a chave antes de salvar (lista de modelos não consome créditos)
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/models', {
+      headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' },
+    })
+    if (res.status === 401 || res.status === 403) return { error: 'A Anthropic recusou essa chave. Confira se copiou inteira e se está ativa.' }
+  } catch {
+    // Sem rede para testar: salva mesmo assim
+  }
+  const { encryptSecret } = await import('@/lib/ai/tenant-key')
+  let enc: string
+  try { enc = encryptSecret(k) } catch (e) { return { error: e instanceof Error ? e.message : 'Falha ao proteger a chave.' } }
+  const { error } = await createAdminClient()
+    .from('organization_settings').update({ anthropic_api_key_enc: enc }).eq('tenant_id', await resolveTenantId())
+  if (error) return { error: error.message }
+  revalidatePath('/settings/copiloto')
+  return { ok: true }
+}
+
+export async function removeAnthropicKey(): Promise<{ ok?: true; error?: string }> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar a chave.' }
+  const { error } = await createAdminClient()
+    .from('organization_settings').update({ anthropic_api_key_enc: null }).eq('tenant_id', await resolveTenantId())
+  if (error) return { error: error.message }
+  revalidatePath('/settings/copiloto')
+  return { ok: true }
+}
+
+export async function saveManagerSettings(input: {
+  managerWhatsapp: string
+  managerInstance: string
+  managerEmail: string
+  briefingEnabled: boolean
+}): Promise<{ ok?: true; error?: string }> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas configurações.' }
+  const phone = input.managerWhatsapp.replace(/\D/g, '')
+  if (phone && (phone.length < 12 || phone.length > 13)) return { error: 'WhatsApp do gestor: use DDI + DDD + número (ex.: 5562999990000).' }
+  const email = input.managerEmail.trim()
+  if (email && invalidEmails(email).length) return { error: 'E-mail do gestor inválido.' }
+
+  const tenantId = await resolveTenantId()
+  if (input.managerInstance) {
+    const { canTenantUseInstance } = await import('@/lib/whatsapp/tenant-evo')
+    if (!(await canTenantUseInstance(tenantId, input.managerInstance))) return { error: 'WhatsApp de envio não encontrado.' }
+  }
+  const admin = createAdminClient()
+  const { data } = await admin.from('organization_settings').select('copilot_settings').eq('tenant_id', tenantId).maybeSingle()
+  const current = (data?.copilot_settings ?? {}) as Record<string, unknown>
+  const { error } = await admin.from('organization_settings').update({
+    copilot_settings: {
+      ...current,
+      manager_whatsapp: phone || null,
+      manager_instance: input.managerInstance || null,
+      manager_email: email || null,
+      briefing_enabled: input.briefingEnabled,
+    },
+  }).eq('tenant_id', tenantId)
+  if (error) return { error: error.message }
+  revalidatePath('/settings/copiloto')
+  return { ok: true }
+}

@@ -15,7 +15,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateBriefing } from '@/lib/agent/briefing-core'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveTenantId } from '@/lib/tenant/context'
 
 export const maxDuration = 60  // queries + chamada ao modelo + envio WhatsApp
 
@@ -39,39 +38,60 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const force = new URL(req.url).searchParams.get('force') === '1'
+    const url = new URL(req.url)
+    const force = url.searchParams.get('force') === '1'
+    const onlyTenant = url.searchParams.get('tenant')
     const admin = createAdminClient()
-    const { data: org } = await admin
-      .from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantId()).maybeSingle()
-    const copilot = (org?.copilot_settings ?? {}) as Record<string, unknown>
-    const lastSentAt = typeof copilot.briefing_last_sent_at === 'string' ? copilot.briefing_last_sent_at : null
 
     // Data/dia da semana em Brasília
     const brNow = new Date(Date.now() - 3 * 3600 * 1000)
     const todayBr = brNow.toISOString().slice(0, 10)
     const weekday = brNow.getUTCDay() // 0 = domingo, 6 = sábado
-    if (!force) {
-      if (weekday === 0 || weekday === 6) {
-        return NextResponse.json({ ok: true, skipped: 'fim de semana — briefing só de segunda a sexta' })
-      }
+    if (!force && (weekday === 0 || weekday === 6)) {
+      return NextResponse.json({ ok: true, skipped: 'fim de semana — briefing só de segunda a sexta' })
+    }
+
+    // Uma rodada por empresa ativa (cada uma com a própria chave da IA e o próprio gestor)
+    const [{ data: orgs }, { data: tenants }] = await Promise.all([
+      admin.from('organization_settings').select('tenant_id, copilot_settings'),
+      admin.from('tenants').select('id, name, is_active'),
+    ])
+    const activeIds = new Set((tenants ?? []).filter(t => t.is_active).map(t => t.id as string))
+    const results: Record<string, unknown>[] = []
+
+    for (const org of orgs ?? []) {
+      const tenantId = org.tenant_id as string
+      if (!activeIds.has(tenantId)) continue
+      if (onlyTenant && onlyTenant !== tenantId) continue
+      const copilot = (org.copilot_settings ?? {}) as Record<string, unknown>
+      if (copilot.briefing_enabled === false) { results.push({ tenantId, skipped: 'briefing desligado' }); continue }
+      const lastSentAt = typeof copilot.briefing_last_sent_at === 'string' ? copilot.briefing_last_sent_at : null
       const lastBr = lastSentAt ? new Date(new Date(lastSentAt).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10) : null
-      if (lastBr === todayBr) {
-        return NextResponse.json({ ok: true, skipped: `briefing já enviado hoje (${lastSentAt})` })
+      if (!force && lastBr === todayBr) { results.push({ tenantId, skipped: `já enviado hoje (${lastSentAt})` }); continue }
+
+      try {
+        const result = await generateBriefing({
+          tenantId,
+          sendViaWhatsApp: true,
+          // Envios de avisos desde o último briefing (segunda pega sexta → domingo)
+          renewalSince: lastSentAt ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+        })
+        if (result.ok && result.whatsapp.sent) {
+          await admin.from('organization_settings')
+            .update({ copilot_settings: { ...copilot, briefing_last_sent_at: new Date().toISOString() } })
+            .eq('tenant_id', tenantId)
+        }
+        results.push({
+          tenantId,
+          ok: result.ok,
+          ...(result.ok ? { whatsapp: result.whatsapp, stats: result.stats } : { error: result.error }),
+        })
+      } catch (e) {
+        results.push({ tenantId, ok: false, error: e instanceof Error ? e.message : String(e) })
       }
     }
 
-    const result = await generateBriefing({
-      sendViaWhatsApp: true,
-      // Envios de avisos desde o último briefing (segunda pega sexta → domingo)
-      renewalSince: lastSentAt ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-    })
-    if (result.ok && result.whatsapp.sent) {
-      await admin.from('organization_settings')
-        .update({ copilot_settings: { ...copilot, briefing_last_sent_at: new Date().toISOString() } })
-        .eq('tenant_id', await resolveTenantId())
-    }
-    const status = result.ok ? 200 : 500
-    return NextResponse.json(result, { status })
+    return NextResponse.json({ ok: true, results })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
     console.error('[agent] erro crítico:', message)

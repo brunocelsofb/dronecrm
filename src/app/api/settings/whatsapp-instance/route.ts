@@ -5,6 +5,8 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
 
 const WEBHOOK_URL =
   `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
@@ -45,6 +47,9 @@ export async function PATCH(request: Request) {
     if (typeof instance !== 'string' || instance.trim() === '') {
       return NextResponse.json({ ok: false, error: 'instance é obrigatório' }, { status: 400 })
     }
+    if (!(await canTenantUseInstance(await resolveTenantId(), instance))) {
+      return NextResponse.json({ ok: false, error: 'Instância não encontrada' }, { status: 404 })
+    }
     if (bot_enabled !== undefined && typeof bot_enabled !== 'boolean') {
       return NextResponse.json({ ok: false, error: 'bot_enabled deve ser boolean' }, { status: 400 })
     }
@@ -60,11 +65,12 @@ export async function PATCH(request: Request) {
 
     const supabase = createAdminClient()
 
-    const { data: current } = await supabase
+    const { data: current__raw } = await supabase
       .from('organization_settings')
       .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')
       .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
+    const current = withPlatformEvo(current__raw)
 
     if (!current) {
       return NextResponse.json({ ok: false, error: 'organization_settings não encontrado' }, { status: 404 })
@@ -138,13 +144,17 @@ export async function DELETE(request: Request) {
     if (typeof instance !== 'string' || instance.trim() === '') {
       return NextResponse.json({ ok: false, error: 'instance é obrigatório' }, { status: 400 })
     }
+    if (!(await canTenantUseInstance(await resolveTenantId(), instance))) {
+      return NextResponse.json({ ok: false, error: 'Instância não encontrada' }, { status: 404 })
+    }
 
     const supabase = createAdminClient()
-    const { data: current } = await supabase
+    const { data: current__raw } = await supabase
       .from('organization_settings')
       .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')
       .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
+    const current = withPlatformEvo(current__raw)
     if (!current) {
       return NextResponse.json({ ok: false, error: 'organization_settings não encontrado' }, { status: 404 })
     }

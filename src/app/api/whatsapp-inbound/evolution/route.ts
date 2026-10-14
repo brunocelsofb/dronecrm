@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 
 function toCanonicalPhone(rawPhone: string): string {
   let cleaned = rawPhone.replace(/\D/g, '')
@@ -469,11 +470,12 @@ export async function POST(request: Request) {
       const statusInstance: string = currentStatus?.instance_name ?? instKey
 
       // ── Busca configurações globais + verificação de bot por instância ────────
-      const { data: orgSettings } = await supabase
+      const { data: orgSettings__raw } = await supabase
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
         .eq('tenant_id', await resolveTenantId({ instanceName }))
         .maybeSingle()
+      const orgSettings = withPlatformEvo(orgSettings__raw)
 
       // VERIFICAÇÃO: bot habilitado para esta instância específica?
       // evo_instance_aliases é um objeto JSON { "instancia_a": { alias: "...", bot_enabled: true }, ... }
@@ -513,11 +515,12 @@ export async function POST(request: Request) {
             .eq('phone', statusPhone)
             .eq('instance_name', statusInstance)
 
-          const { data: orgSettingsNps } = await supabase
+          const { data: orgSettingsNps__raw } = await supabase
             .from('organization_settings')
             .select('evo_server_url, evo_api_key, evo_instance_name')
             .eq('tenant_id', await resolveTenantId({ instanceName }))
             .maybeSingle()
+          const orgSettingsNps = withPlatformEvo(orgSettingsNps__raw)
 
           const npsAgradecimento = `Obrigado pela sua avaliação! Sua nota ${scoreNum} foi registrada com sucesso. Tenha um ótimo dia!`
           await sendAndRecordBotMessage(supabase, tenantId, orgSettingsNps, instanceName, rawPhone, phone, npsAgradecimento)

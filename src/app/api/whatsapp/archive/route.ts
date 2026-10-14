@@ -6,6 +6,7 @@ import { cookies } from 'next/headers'
 import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 
 async function doArchive(
   phone: string,
@@ -98,9 +99,10 @@ async function doArchive(
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
       .eq('tenant_id', await resolveTenantId())
-    const { data: org } = tenantId
+    const { data: orgRaw } = tenantId
       ? await (orgQ as any).eq('tenant_id', tenantId).maybeSingle()
       : await (orgQ as any).maybeSingle()
+    const org = withPlatformEvo(orgRaw)
 
     if (org?.evo_server_url && org?.evo_api_key) {
       const aliases = (org as any)?.evo_instance_aliases ?? {}

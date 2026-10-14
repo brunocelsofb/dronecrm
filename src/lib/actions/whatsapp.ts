@@ -10,6 +10,7 @@ import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
 import { getActiveTenantId } from '@/lib/supabase/server'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { withPlatformEvo, getTenantEvoCreds, instanceNameForTenant, canTenantUseInstance, getWhatsAppLimit, getTenantInstanceNames, registerInstanceForTenant } from '@/lib/whatsapp/tenant-evo'
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getTenantId(_admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
@@ -28,10 +29,11 @@ export type ActionState = {
 
 async function getEvoCredentials(): Promise<EvoCredentials | null> {
   const supabase = createAdminClient()
-  const { data } = await supabase.from('organization_settings')
+  const { data: raw } = await supabase.from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
+  const data = withPlatformEvo(raw)
   if (!data?.evo_server_url || !data?.evo_api_key || !data?.evo_instance_name) return null
   return { serverUrl: data.evo_server_url, apiKey: data.evo_api_key, instanceName: data.evo_instance_name, instanceToken: (data as any).evo_instance_token ?? null }
 }
@@ -39,38 +41,59 @@ async function getEvoCredentials(): Promise<EvoCredentials | null> {
 export async function connectEvo(formData?: any): Promise<ActionState> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
 
-  const serverUrl     = (formData?.get?.('evo_server_url') as string)?.trim()
-  const apiKey        = (formData?.get?.('evo_api_key') as string)?.trim()
-  const instanceName  = (formData?.get?.('evo_instance_name') as string)?.trim()
+  const tenantId = await resolveTenantId()
+  const admin = createAdminClient()
+  const { data: current } = await admin.from('organization_settings')
+    .select('evo_server_url, evo_api_key, evo_instance_name').eq('tenant_id', tenantId).maybeSingle()
 
-  if (!serverUrl || !apiKey || !instanceName) return { error: 'Preencha Server URL, API Key e Instance Name.' }
+  // Servidor: o próprio da empresa (se ela informar / já tiver) ou o da plataforma
+  const formServer = (formData?.get?.('evo_server_url') as string)?.trim() || ''
+  const formKey    = (formData?.get?.('evo_api_key') as string)?.trim() || ''
+  const ownServer  = !!(formServer && formKey) || !!(current?.evo_server_url && current?.evo_api_key)
+  const creds = formServer && formKey
+    ? { serverUrl: formServer.replace(/\/$/, ''), apiKey: formKey }
+    : await getTenantEvoCreds(tenantId)
+  if (!creds) return { error: 'Servidor de WhatsApp não configurado na plataforma. Avise o administrador.' }
+
+  const requested = (formData?.get?.('evo_instance_name') as string)?.trim()
+  if (!requested) return { error: 'Dê um nome para este WhatsApp (ex.: comercial).' }
+  const instanceName = ownServer ? requested : await instanceNameForTenant(tenantId, requested)
 
   // Instância privada (ex.: WhatsApp pessoal do gestor, só para o briefing):
   // NÃO vira a instância principal do CRM e NÃO recebe webhook.
-  // Marcada pela caixa "Instância privada" do formulário ou já marcada antes.
-  // O QR Code é gerado em getEvoQrCodeAction(formData).
   const wantsPrivate = formData?.get?.('evo_private') === 'on'
   if (wantsPrivate || await isPrivateInstance(instanceName)) {
     const marked = await markInstancePrivate(instanceName)
     if (!marked.ok) return { error: `Não foi possível marcar a instância como privada: ${marked.error}` }
     revalidatePath('/settings/whatsapp-conexoes')
-    return { privateInstance: true }
+    return { privateInstance: true, instanceName }
   }
 
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('organization_settings')
-    .update({ evo_server_url: serverUrl, evo_api_key: apiKey, evo_instance_name: instanceName, updated_at: new Date().toISOString() })
-    .eq('tenant_id', await resolveTenantId())
+  // Servidor compartilhado: nome não pode ser de outra empresa + limite do plano
+  if (!(await canTenantUseInstance(tenantId, instanceName))) return { error: 'Esse nome já está em uso. Escolha outro.' }
+  const [limit, owned] = await Promise.all([getWhatsAppLimit(tenantId), getTenantInstanceNames(tenantId)])
+  if (!owned.includes(instanceName) && owned.length >= limit) {
+    return { error: `Seu plano permite ${limit} WhatsApp(s). Fale com o administrador da licença para ampliar.` }
+  }
 
+  const { error } = await admin
+    .from('organization_settings')
+    .update({
+      // Chave da plataforma nunca é gravada na empresa; só servidor próprio
+      ...(formServer && formKey ? { evo_server_url: creds.serverUrl, evo_api_key: creds.apiKey } : {}),
+      ...(!current?.evo_instance_name ? { evo_instance_name: instanceName } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenantId)
   if (error) return { error: error.message }
+  await registerInstanceForTenant(tenantId, instanceName, requested)
 
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
-  const webhookRes = await setEvoWebhook({ serverUrl, apiKey, instanceName, webhookUrl })
+  const webhookRes = await setEvoWebhook({ ...creds, instanceName, webhookUrl })
   if (!webhookRes.ok) console.warn('[evo] webhook não configurado:', webhookRes.error)
 
   revalidatePath('/settings')
-  return {}
+  return { instanceName }
 }
 
 export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: string; status?: string; error?: string }> {
@@ -80,17 +103,23 @@ export async function getEvoQrCodeAction(formData?: any): Promise<{ base64?: str
   // gera o QR e garante que a instância fique sem webhook.
   const formInstance = (formData?.get?.('evo_instance_name') as string | undefined)?.trim()
   if (formInstance && await isPrivateInstance(formInstance)) {
-    const serverUrl = (formData.get('evo_server_url') as string)?.trim().replace(/\/$/, '')
-    const apiKey    = (formData.get('evo_api_key') as string)?.trim()
-    if (!serverUrl || !apiKey) return { error: 'Preencha Server URL e API Key.' }
+    const fallback  = await getTenantEvoCreds(await resolveTenantId())
+    const serverUrl = ((formData.get('evo_server_url') as string)?.trim().replace(/\/$/, '')) || fallback?.serverUrl
+    const apiKey    = ((formData.get('evo_api_key') as string)?.trim()) || fallback?.apiKey
+    if (!serverUrl || !apiKey) return { error: 'Servidor de WhatsApp não configurado.' }
     const qr = await getEvoQrCode({ serverUrl, apiKey, instanceName: formInstance })
     await disableEvoWebhook(serverUrl, apiKey, formInstance)
     return qr
   }
 
-  const creds = await getEvoCredentials()
-  if (!creds) return { error: 'Credenciais da Evolution API não configuradas.' }
-  return getEvoQrCode(creds)
+  const tenantId = await resolveTenantId()
+  const server = await getTenantEvoCreds(tenantId)
+  if (!server) return { error: 'Servidor de WhatsApp não configurado.' }
+  // Instância informada (a recém-criada) ou a principal da empresa
+  const target = formInstance || (await getEvoCredentials())?.instanceName
+  if (!target) return { error: 'Nenhum WhatsApp configurado.' }
+  if (!(await canTenantUseInstance(tenantId, target))) return { error: 'Instância não encontrada.' }
+  return getEvoQrCode({ ...server, instanceName: target })
 }
 
 // Grava a instância em evo_instance_aliases com private=true e bot desligado
@@ -838,10 +867,11 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
   try {
     const admin = createAdminClient()
     const tenantId = await getTenantId(admin)
-    const [{ data: profile }, { data: org }] = await Promise.all([
+    const [{ data: profile }, { data: orgRaw }] = await Promise.all([
       admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
       admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, tenant_id').eq('tenant_id', tenantId ?? '').maybeSingle(),
     ])
+    const org = withPlatformEvo(orgRaw)
     const nome = (profile as any)?.full_name ?? 'nossa equipe'
     const transferText = `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🙏`
 
@@ -1176,10 +1206,11 @@ export async function deleteWhatsAppMessage(
 
   if (zApiMessageId) {
     try {
-      const { data: org } = await admin
+      const { data: org__raw } = await admin
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name')
         .eq('tenant_id', await resolveTenantId()).maybeSingle()
+      const org = withPlatformEvo(org__raw)
 
       if (org?.evo_server_url) {
         const cleanPhone = phone.replace(/\D/g, '')
@@ -1294,11 +1325,12 @@ export async function finishConversationWithNPS(
 
   if (sendNPS === true) {
     // ── PASSO 1: buscar credenciais e instância ANTES de qualquer update de status ──
-    const { data: org } = await admin
+    const { data: org__raw } = await admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
       .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
+    const org = withPlatformEvo(org__raw)
 
     // Descobrir a instância usada na última mensagem
     const { data: lastMsg } = await admin

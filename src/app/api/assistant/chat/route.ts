@@ -5,6 +5,8 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { ALL_TOOLS, WRITE_TOOL_NAMES } from '@/lib/ai/assistant-tools'
 import { executeReadTool } from '@/lib/ai/read-tools'
 import { checkBudgetAvailable, logAssistantUsage } from '@/lib/ai/budget'
+import { resolveTenantId } from '@/lib/tenant/context'
+import { getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } from '@/lib/ai/tenant-key'
 
 // NOTA DE INCERTEZA: a API do SDK @anthropic-ai/sdk usada aqui é a que
 // eu conheço, mas nunca rodei isso de verdade neste ambiente — se algo
@@ -39,12 +41,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Só administradores podem usar o Théo.' }, { status: 403 })
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY não configurada no servidor. Peça pro admin configurar isso na Vercel.' },
-      { status: 500 }
-    )
-  }
+  // Chave da Anthropic da empresa (Configurações → Copiloto IA)
+  const aiKey = await getAnthropicKeyForTenant(await resolveTenantId())
+  if (!aiKey.key) return NextResponse.json({ error: NO_AI_KEY_MESSAGE }, { status: 400 })
 
   const budgetCheck = await checkBudgetAvailable()
   if (!budgetCheck.ok) {
@@ -53,7 +52,7 @@ export async function POST(request: Request) {
 
   const { messages } = await request.json()
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const anthropic = new Anthropic({ apiKey: aiKey.key })
 
   const conversation = [...messages]
   let iterations = 0

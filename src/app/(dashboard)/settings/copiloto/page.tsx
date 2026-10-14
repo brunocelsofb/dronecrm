@@ -7,6 +7,8 @@ import { resolveInternalSettings } from '@/lib/agent/internal-settings'
 import { CopilotInternalForm } from '@/components/settings/copilot-internal-form'
 import Link from 'next/link'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
+import { CopilotActivationCard } from '@/components/settings/copilot-activation-card'
 
 export default async function CopilotSettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams
@@ -19,11 +21,19 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
   if (profile?.role !== 'admin') redirect('/settings')
 
   const admin = createAdminClient()
+  const currentTenantId = await resolveTenantId()
   const { data: settings } = await admin
     .from('organization_settings')
-    .select('company_name, copilot_settings, tenant_id')
-    .eq('tenant_id', await resolveTenantId())
+    .select('company_name, copilot_settings, tenant_id, evo_instance_aliases')
+    .eq('tenant_id', currentTenantId)
     .maybeSingle()
+  const keyInfo = await getAnthropicKeyForTenant(currentTenantId)
+  const cs = (settings?.copilot_settings ?? {}) as Record<string, unknown>
+  const aliasMap = (settings?.evo_instance_aliases ?? {}) as Record<string, unknown>
+  const instanceOptions = Object.entries(aliasMap).map(([name, v]) => ({
+    name,
+    label: typeof v === 'string' ? v : ((v as { label?: string })?.label ?? name),
+  }))
   // Razão social da conta (tenant) — é o que assina os e-mails
   const { data: tenant } = settings?.tenant_id
     ? await admin.from('tenants').select('name').eq('id', settings.tenant_id).maybeSingle()
@@ -45,6 +55,17 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
           Textos e regras do assistente que acompanha renovações, briefing e alertas.
         </p>
       </div>
+
+      <CopilotActivationCard
+        keyStatus={{ source: keyInfo.source, last4: keyInfo.last4 }}
+        manager={{
+          whatsapp: typeof cs.manager_whatsapp === 'string' ? cs.manager_whatsapp : '',
+          instance: typeof cs.manager_instance === 'string' ? cs.manager_instance : '',
+          email: typeof cs.manager_email === 'string' ? cs.manager_email : '',
+          briefingEnabled: cs.briefing_enabled !== false,
+        }}
+        instances={instanceOptions}
+      />
 
       <div className="flex gap-1 border-b border-gray-200" role="tablist">
         {[
