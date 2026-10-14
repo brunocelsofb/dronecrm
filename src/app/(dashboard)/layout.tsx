@@ -27,7 +27,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, is_super_admin')
+    .select('role, full_name, is_super_admin, tenant_id')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -57,11 +57,18 @@ export default async function DashboardLayout({
       .single()
     tenantData = data
   } else {
-    const { data } = await supabase
-      .from('tenants')
-      .select('plan, trial_ends_at')
-      .maybeSingle()
-    tenantData = data
+    // Tenant do próprio usuário (pelo perfil). Antes buscava "o único tenant
+    // visível", mas a política do banco deixa ver todos → vinha vazio → starter.
+    const tenantId = (profile as { tenant_id?: string | null } | null)?.tenant_id
+    if (tenantId) {
+      const { data } = await adminSupa
+        .schema('contract_crm')
+        .from('tenants')
+        .select('plan, trial_ends_at')
+        .eq('id', tenantId)
+        .maybeSingle()
+      tenantData = data
+    }
   }
 
   // Plano efetivo: se em trial, libera enterprise
