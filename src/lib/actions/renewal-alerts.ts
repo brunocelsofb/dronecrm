@@ -14,6 +14,7 @@ import { sendEmailForUser, getEmailAccountInfo } from '@/lib/email/send'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
+import { getContractTenantName } from '@/lib/agent/tenant-name'
 
 export type SendableInstance = {
   name: string
@@ -61,6 +62,7 @@ function aliasUser(v: AliasValue | undefined): string | null {
 export async function getSendableInstances(contractId: string): Promise<{
   instances: SendableInstance[]
   suggested: string | null
+  ccEmail?: string | null
   error?: string
 }> {
   const supabase = await createClient()
@@ -69,7 +71,7 @@ export async function getSendableInstances(contractId: string): Promise<{
 
   const admin = createAdminClient()
   const [{ data: org }, { data: contract }] = await Promise.all([
-    admin.from('organization_settings').select('evo_instance_aliases, evo_instance_name').eq('id', 'default').maybeSingle(),
+    admin.from('organization_settings').select('evo_instance_aliases, evo_instance_name, copilot_settings').eq('id', 'default').maybeSingle(),
     admin.from('contracts').select('owner_id, current_assignee_id').eq('id', contractId).maybeSingle(),
   ])
 
@@ -108,7 +110,8 @@ export async function getSendableInstances(contractId: string): Promise<{
   const byOwner = ownerId ? instances.find(i => i.ownerUserId === ownerId) : null
   const suggested = byOwner?.name ?? principal ?? instances[0]?.name ?? null
 
-  return { instances, suggested }
+  const ccEmail = resolveCommercialEmail((org?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email) || null
+  return { instances, suggested, ccEmail }
 }
 
 export async function sendRenewalAlert(
@@ -188,6 +191,7 @@ export async function sendRenewalAlert(
   //    Se uma tentativa anterior já enviou o e-mail, não reenvia.
   let emailSentAt = typeof meta.email_sent_at === 'string' ? meta.email_sent_at : null
   let fromEmail = typeof meta.email_from === 'string' ? meta.email_from : account.fromEmail
+  let ccEmail: string | null = typeof meta.email_cc === 'string' ? meta.email_cc : null
   if (!emailSentAt) {
     const { data: contractForReply } = await admin
       .from('contracts').select('inbound_email_code').eq('id', activity.contract_id).maybeSingle()
@@ -199,10 +203,14 @@ export async function sendRenewalAlert(
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'
     const pixel = `<img src="${appUrl}/api/email-track/${trackingToken}" width="1" height="1" style="display:none" alt="" />`
     // E-mail no formato "automático": faixa colorida, mensagem, detalhes do contrato e contato
-    const [{ data: contractInfo }, { data: orgInfo }] = await Promise.all([
+    const [{ data: contractInfo }, { data: orgInfo }, tenantName] = await Promise.all([
       admin.from('contracts').select('process_number, client_name, valid_until, monthly_value').eq('id', activity.contract_id).maybeSingle(),
       admin.from('organization_settings').select('company_name, copilot_settings').eq('id', 'default').maybeSingle(),
+      getContractTenantName(admin, activity.contract_id),
     ])
+    const commercialEmail = resolveCommercialEmail((orgInfo?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email)
+    // Comercial sempre em cópia (exceto se ele mesmo for o remetente)
+    ccEmail = commercialEmail && commercialEmail.toLowerCase() !== account.fromEmail.toLowerCase() ? commercialEmail : null
     const validUntilIso = contractInfo?.valid_until ? String(contractInfo.valid_until).slice(0, 10) : null
     const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
     const daysLeft = validUntilIso
@@ -222,12 +230,12 @@ export async function sendRenewalAlert(
         : null,
       consultorName: consultor,
       consultorEmail: account.fromEmail,
-      commercialEmail: resolveCommercialEmail((orgInfo?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email),
-      companyName: orgInfo?.company_name?.trim() || 'Equipe Comercial',
+      commercialEmail,
+      companyName: tenantName || orgInfo?.company_name?.trim() || 'Equipe Comercial',
     }).replace('</body>', `${pixel}</body>`)
 
     try {
-      const res = await sendEmailForUser(ownerUserId, toEmail, finalSubject, html, { replyTo })
+      const res = await sendEmailForUser(ownerUserId, toEmail, finalSubject, html, { replyTo, ...(ccEmail ? { cc: ccEmail } : {}) })
       emailSentAt = new Date().toISOString()
       fromEmail = res.fromEmail
       await admin.from('contract_emails').insert({
@@ -263,7 +271,7 @@ export async function sendRenewalAlert(
   // 2. WhatsApp
   const wa = await sendContractWhatsApp(activity.contract_id, phone, finalMessage, null, instanceName, { signWithSender: false })
   if (wa.error) {
-    await unlock({ last_error: `WhatsApp: ${wa.error}`, email_sent_at: emailSentAt, email_from: fromEmail })
+    await unlock({ last_error: `WhatsApp: ${wa.error}`, email_sent_at: emailSentAt, email_from: fromEmail, email_cc: ccEmail })
     return { error: `O e-mail foi enviado, mas o WhatsApp falhou: ${wa.error}. Tente de novo — o e-mail não será reenviado.` }
   }
 
@@ -279,7 +287,8 @@ export async function sendRenewalAlert(
   const sentContent =
     `📲✉️ ${isConfirmation ? 'Confirmação de renovação (novo período)' : `Aviso de renovação (${marco})`} enviado para ${contato}por WhatsApp (${phone}) e e-mail (${toEmail}) em ${quando}` +
     `${sender?.full_name ? `, por ${sender.full_name}` : ''}` +
-    `, pelo WhatsApp e e-mail de ${consultor} (${fromEmail}).`
+    `, pelo WhatsApp e e-mail de ${consultor} (${fromEmail})` +
+    `${ccEmail ? `, com cópia para ${ccEmail}` : ''}.`
 
   const sentMeta: Record<string, unknown> = {
     ...meta,
@@ -291,6 +300,7 @@ export async function sendRenewalAlert(
     final_subject: finalSubject,
     email_sent_at: emailSentAt,
     email_from:    fromEmail,
+    email_cc:      ccEmail,
     last_error:    null,
   }
 

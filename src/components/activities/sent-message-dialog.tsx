@@ -22,6 +22,7 @@ export function SentMessageDialog({ title, metadata, senderName, onClose }: Prop
   const instance = str(metadata.sent_instance)
   const toEmail  = str(metadata.target_email)
   const fromEmail = str(metadata.email_from)
+  const ccEmail  = str(metadata.email_cc)
   const subject  = str(metadata.final_subject)
 
   const when = sentAt
@@ -53,6 +54,7 @@ export function SentMessageDialog({ title, metadata, senderName, onClose }: Prop
           {row('Para', contact ?? null)}
           {row('WhatsApp', phone && instance ? `${phone} · pelo WhatsApp ${instance}` : phone)}
           {row('E-mail', toEmail && fromEmail ? `${toEmail} · de ${fromEmail}` : toEmail)}
+          {row('Cópia', ccEmail)}
           {row('Assunto', subject)}
           {row('Enviado por', senderName ?? null)}
         </div>

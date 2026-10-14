@@ -11,6 +11,7 @@ import {
   resolveRenewalConfirmationSubject,
   renderRenewalTemplate,
 } from './renewal-templates'
+import { getContractTenantName } from './tenant-name'
 
 function brDate(iso: string | null | undefined): string | null {
   if (!iso) return null
@@ -69,6 +70,7 @@ export async function createRenewalConfirmation(contractId: string): Promise<{ o
     .from('organization_settings').select('company_name, copilot_settings').eq('id', 'default').maybeSingle()
   const copilot = (org?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_confirmation_subject?: unknown }
   const templates = resolveRenewalTemplates(copilot.renewal_templates)
+  const tenantName = await getContractTenantName(admin, contractId)
   const vars = {
     contato:    contact?.name?.split(' ')[0] ?? c.client_name,
     cliente:    c.client_name,
@@ -76,7 +78,7 @@ export async function createRenewalConfirmation(contractId: string): Promise<{ o
     inicio:     brDate(c.valid_from) ?? '',
     vencimento: brDate(c.valid_until) ?? '',
     dias:       '',
-    empresa:    org?.company_name?.trim() || 'Equipe Comercial',
+    empresa:    tenantName || org?.company_name?.trim() || 'Equipe Comercial',
   }
   const draft = renderRenewalTemplate(templates.renovado, vars)
   const draftSubject = renderRenewalTemplate(resolveRenewalConfirmationSubject(copilot.renewal_confirmation_subject), vars)

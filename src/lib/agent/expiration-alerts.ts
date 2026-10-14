@@ -25,6 +25,7 @@ import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
 import { resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
+import { getTenantNamesById } from './tenant-name'
 
 function getAdminClient() {
   return createClient(
@@ -53,6 +54,7 @@ type RenewalCandidate = {
   contact_email: string | null
   owner_id: string | null
   owner_name: string | null
+  tenant_name: string | null     // razão social da conta dona do contrato
 }
 
 type AlertResult = {
@@ -115,7 +117,7 @@ async function fetchCandidates(
 
   const { data: contracts, error } = await supabase
     .from('contracts')
-    .select('id, process_number, client_name, valid_until, monthly_value, contact_id, owner_id, current_assignee_id')
+    .select('id, tenant_id, process_number, client_name, valid_until, monthly_value, contact_id, owner_id, current_assignee_id')
     .not('valid_until', 'is', null)
     .gte('valid_until', addDays(today, -90))
     .lte('valid_until', addDays(today, 90))
@@ -148,6 +150,7 @@ async function fetchCandidates(
     ? await supabase.from('profiles').select('id, full_name').in('id', ownerIds)
     : { data: [] as { id: string; full_name: string | null }[] }
   const ownerById = new Map((owners ?? []).map(o => [o.id, o.full_name]))
+  const tenantNameById = await getTenantNamesById(supabase, contracts.map(c => c.tenant_id as string))
 
   return contracts.map(c => {
     const contact = contactById.get(contactIdFor.get(c.id) ?? '')
@@ -165,6 +168,7 @@ async function fetchCandidates(
       contact_email:     contact?.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim()) ? contact.email.trim() : null,
       owner_id:          ownerId,
       owner_name:        ownerId ? ownerById.get(ownerId) ?? null : null,
+      tenant_name:       c.tenant_id ? tenantNameById.get(c.tenant_id) ?? null : null,
     }
   })
 }
@@ -196,7 +200,7 @@ function templateVars(c: RenewalCandidate, org: OrgConfig): Record<string, strin
     contrato:   c.process_number ?? '',
     vencimento: formatDateBR(c.valid_until),
     dias:       String(Math.abs(c.days_until_expiry)),
-    empresa:    org.companyName,
+    empresa:    c.tenant_name ?? org.companyName,
   }
 }
 

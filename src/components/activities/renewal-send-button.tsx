@@ -36,6 +36,7 @@ export function RenewalSendButton({
   const [message, setMessage] = useState(draft)
   const [subject, setSubject] = useState(draftSubject ?? '')
   const [instances, setInstances] = useState<SendableInstance[]>([])
+  const [ccEmail, setCcEmail] = useState<string | null>(null)
   const [instance, setInstance] = useState('')
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -64,6 +65,7 @@ export function RenewalSendButton({
     setLoading(false)
     if (res.error) { setError(res.error); return }
     setInstances(res.instances)
+    setCcEmail(res.ccEmail ?? null)
     setInstance(res.suggested ?? res.instances[0]?.name ?? '')
   }
 
@@ -118,7 +120,10 @@ export function RenewalSendButton({
                   ))}
                 </select>
                 {selected?.senderEmail && (
-                  <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>E-mail sai de: {selected.senderEmail}</p>
+                  <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
+                    E-mail sai de: {selected.senderEmail}
+                    {ccEmail && ccEmail.toLowerCase() !== selected.senderEmail.toLowerCase() && <> · cópia para {ccEmail}</>}
+                  </p>
                 )}
               </>
             )}

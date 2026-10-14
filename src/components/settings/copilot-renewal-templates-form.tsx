@@ -76,7 +76,7 @@ export function CopilotRenewalTemplatesForm({
         <p className="mt-1 text-xs text-gray-500">
           O Copiloto prepara estas mensagens nos marcos de vencimento e abre uma atividade para o responsável
           do contrato. O aviso vai por WhatsApp e e-mail juntos (mesmo texto), saindo do WhatsApp e do e-mail
-          do consultor escolhido. Nada é enviado sem o consultor revisar e clicar em enviar.
+          do consultor dono do WhatsApp, com o e-mail comercial em cópia. A assinatura do e-mail usa a razão social da conta. Nada é enviado sem o consultor revisar e clicar em enviar.
         </p>
       </div>
 
@@ -107,7 +107,7 @@ export function CopilotRenewalTemplatesForm({
       </div>
 
       <div>
-        <label htmlFor="commercial-email" className="block text-xs font-semibold text-gray-700 mb-1">E-mail comercial (aparece no contato do e-mail, junto com o do consultor)</label>
+        <label htmlFor="commercial-email" className="block text-xs font-semibold text-gray-700 mb-1">E-mail comercial (vai em cópia em todo envio e aparece no contato do e-mail)</label>
         <input
           id="commercial-email"
           type="email"
