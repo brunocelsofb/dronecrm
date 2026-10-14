@@ -7,6 +7,7 @@ import {
   RENEWAL_VARIABLES,
   DEFAULT_RENEWAL_TEMPLATES,
   DEFAULT_RENEWAL_EMAIL_SUBJECT,
+  DEFAULT_RENEWAL_CONFIRMATION_SUBJECT,
   RENEWAL_SEVERITY,
   renderRenewalTemplate,
   type RenewalLevelKey,
@@ -17,6 +18,7 @@ const SAMPLE_VARS = {
   cliente: 'Hospital Exemplo',
   contrato: 'CT-2026-0001',
   vencimento: '30/11/2026',
+  inicio: '01/12/2026',
   dias: '30',
   consultor: 'Pedro Arruda - Consultor Comercial',
 }
@@ -24,16 +26,19 @@ const SAMPLE_VARS = {
 export function CopilotRenewalTemplatesForm({
   initial,
   initialSubject,
+  initialConfirmationSubject,
   initialCommercialEmail,
   companyName,
 }: {
   initial: Record<RenewalLevelKey, string>
   initialSubject: string
+  initialConfirmationSubject: string
   initialCommercialEmail: string
   companyName: string
 }) {
   const [templates, setTemplates] = useState(initial)
   const [subject, setSubject] = useState(initialSubject)
+  const [confirmationSubject, setConfirmationSubject] = useState(initialConfirmationSubject)
   const [commercialEmail, setCommercialEmail] = useState(initialCommercialEmail)
   const [active, setActive] = useState<RenewalLevelKey>('60')
   const [saving, setSaving] = useState(false)
@@ -41,7 +46,9 @@ export function CopilotRenewalTemplatesForm({
   const [error, setError] = useState<string | null>(null)
 
   const current = templates[active]
-  const preview = renderRenewalTemplate(current, { ...SAMPLE_VARS, empresa: companyName || 'Sua empresa' })
+  // Na renovação concluída, {{vencimento}} é o fim do novo período
+  const sampleVars = active === 'renovado' ? { ...SAMPLE_VARS, vencimento: '30/11/2027' } : SAMPLE_VARS
+  const preview = renderRenewalTemplate(current, { ...sampleVars, empresa: companyName || 'Sua empresa' })
   const isDefault = current.trim() === DEFAULT_RENEWAL_TEMPLATES[active].trim()
 
   function update(value: string) {
@@ -56,7 +63,7 @@ export function CopilotRenewalTemplatesForm({
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const res = await saveRenewalTemplates(templates, subject, commercialEmail)
+    const res = await saveRenewalTemplates(templates, subject, commercialEmail, confirmationSubject)
     setSaving(false)
     if (res.error) setError(res.error)
     else setSaved(true)
@@ -74,7 +81,7 @@ export function CopilotRenewalTemplatesForm({
       </div>
 
       <div>
-        <label htmlFor="renewal-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail (todos os marcos)</label>
+        <label htmlFor="renewal-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail dos avisos (60, 30, 15 dias e vencido)</label>
         <input
           id="renewal-subject"
           value={subject}
@@ -83,6 +90,19 @@ export function CopilotRenewalTemplatesForm({
         />
         <p className="mt-1 text-[11px] text-gray-400">
           Prévia: {renderRenewalTemplate(subject || DEFAULT_RENEWAL_EMAIL_SUBJECT, { ...SAMPLE_VARS, empresa: companyName || 'Sua empresa' })}
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="confirmation-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail da renovação concluída</label>
+        <input
+          id="confirmation-subject"
+          value={confirmationSubject}
+          onChange={e => { setConfirmationSubject(e.target.value); setSaved(false) }}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none"
+        />
+        <p className="mt-1 text-[11px] text-gray-400">
+          Prévia: {renderRenewalTemplate(confirmationSubject || DEFAULT_RENEWAL_CONFIRMATION_SUBJECT, { ...SAMPLE_VARS, empresa: companyName || 'Sua empresa' })}
         </p>
       </div>
 

@@ -134,7 +134,8 @@ export async function sendRenewalAlert(
   if (!activity.contract_id) return { error: 'Atividade sem contrato.' }
 
   const meta = (activity.metadata ?? {}) as Record<string, unknown>
-  if (meta.kind !== 'renewal_alert') return { error: 'Esta atividade não é um aviso de renovação.' }
+  const isConfirmation = meta.kind === 'renewal_confirmation'
+  if (meta.kind !== 'renewal_alert' && !isConfirmation) return { error: 'Esta atividade não é um aviso de renovação.' }
   if (meta.approval !== 'pending') return { error: 'Este aviso já foi enviado ou descartado.' }
   const phone = typeof meta.target_phone === 'string' ? meta.target_phone : ''
   const toEmail = typeof meta.target_email === 'string' ? meta.target_email : ''
@@ -208,6 +209,8 @@ export async function sendRenewalAlert(
       ? Math.round((new Date(`${validUntilIso}T12:00:00Z`).getTime() - new Date(`${todayBr}T12:00:00Z`).getTime()) / 86_400_000)
       : 0
     const html = buildRenewalEmailHtml({
+      kind: isConfirmation ? 'confirmation' : 'alert',
+      validFrom: typeof meta.valid_from === 'string' ? meta.valid_from.slice(0, 10).split('-').reverse().join('/') : null,
       level: typeof meta.alert_level === 'number' ? meta.alert_level : 0,
       daysUntilExpiry: daysLeft,
       messageText: finalMessage,
@@ -270,11 +273,11 @@ export async function sendRenewalAlert(
   const quando = sentAt.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }).replace(',', ' às')
-  const marco = meta.alert_level === 0 ? 'contrato vencido' : `${meta.alert_level} dias`
+  const marco = isConfirmation ? 'renovação concluída' : meta.alert_level === 0 ? 'contrato vencido' : `${meta.alert_level} dias`
   const contato = typeof meta.contact_name === 'string' ? `${meta.contact_name} ` : ''
-  const sentTitle = `Aviso de renovação (${marco}) enviado ao cliente`
+  const sentTitle = isConfirmation ? 'Confirmação de renovação enviada ao cliente' : `Aviso de renovação (${marco}) enviado ao cliente`
   const sentContent =
-    `📲✉️ Aviso de renovação (${marco}) enviado para ${contato}por WhatsApp (${phone}) e e-mail (${toEmail}) em ${quando}` +
+    `📲✉️ ${isConfirmation ? 'Confirmação de renovação (novo período)' : `Aviso de renovação (${marco})`} enviado para ${contato}por WhatsApp (${phone}) e e-mail (${toEmail}) em ${quando}` +
     `${sender?.full_name ? `, por ${sender.full_name}` : ''}` +
     `, pelo WhatsApp e e-mail de ${consultor} (${fromEmail}).`
 

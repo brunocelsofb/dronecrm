@@ -158,7 +158,7 @@ export function TimelineFeed({
             const cfgKey = (e.type === 'client_decision' && (e.metadata?.outcome === 'recusado' || e.metadata?.outcome === 'declinada')) ||
               (e.type === 'proposal' && e.content?.includes('RECUSADA'))
               ? 'client_rejection'
-              : e.metadata?.kind === 'renewal_alert' && e.metadata?.approval === 'sent'
+              : (e.metadata?.kind === 'renewal_alert' || e.metadata?.kind === 'renewal_confirmation') && e.metadata?.approval === 'sent'
               ? 'whatsapp_sent'
               : e.type
             const cfg = TYPE_CONFIG[cfgKey] ?? TYPE_CONFIG['note']

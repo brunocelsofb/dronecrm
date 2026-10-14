@@ -13,6 +13,7 @@ export async function saveRenewalTemplates(
   templates: Partial<Record<RenewalLevelKey, string>>,
   emailSubject?: string,
   commercialEmail?: string,
+  confirmationSubject?: string,
 ): Promise<{ ok?: true; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas mensagens.' }
 
@@ -29,6 +30,9 @@ export async function saveRenewalTemplates(
   const subject = emailSubject?.trim() ?? ''
   if (emailSubject !== undefined && !subject) return { error: 'O assunto do e-mail está vazio.' }
   if (subject.length > 200) return { error: 'O assunto do e-mail passou de 200 caracteres.' }
+
+  const confSubject = confirmationSubject?.trim() ?? ''
+  if (confSubject.length > 200) return { error: 'O assunto da renovação concluída passou de 200 caracteres.' }
 
   const commercial = commercialEmail?.trim() ?? ''
   if (commercial && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commercial)) return { error: 'O e-mail comercial não é válido.' }
@@ -50,6 +54,7 @@ export async function saveRenewalTemplates(
         renewal_templates: clean,
         ...(subject ? { renewal_email_subject: subject } : {}),
         ...(commercialEmail !== undefined ? { commercial_email: commercial || null } : {}),
+        ...(confSubject ? { renewal_confirmation_subject: confSubject } : {}),
       },
     })
     .eq('id', 'default')

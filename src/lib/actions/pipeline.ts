@@ -354,6 +354,10 @@ export async function closeRun(
 
   if (!run) return { error: 'Nenhuma passagem de funil aberta para este contrato.' }
 
+  const { data: runPipeline } = await supabase
+    .from('pipelines').select('type').eq('id', run.pipeline_id).maybeSingle()
+  const pipelineForGateType = runPipeline?.type ?? null
+
   if (outcome === 'won') {
     const { data: currentStage } = await supabase
       .from('stages')
@@ -647,6 +651,19 @@ export async function closeRun(
           metadata: { from_run: run.id, to_run: newRun.id },
         })
       }
+    }
+  }
+
+  // Renovação concluída (funil de Gestão de Contratos): o Copiloto prepara a
+  // confirmação do novo período para o consultor revisar e enviar ao cliente.
+  // Falhas aqui não bloqueiam o fechamento.
+  if (outcome === 'won' && pipelineForGateType === 'gestao_contratos') {
+    try {
+      const { createRenewalConfirmation } = await import('@/lib/agent/renewal-confirmation')
+      const res = await createRenewalConfirmation(contractId)
+      if (!res.ok) console.error('[closeRun] confirmação de renovação não criada:', res.detail)
+    } catch (confirmationError) {
+      console.error('[closeRun] erro ao preparar confirmação de renovação:', confirmationError)
     }
   }
 

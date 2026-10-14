@@ -161,9 +161,10 @@ export function ActivitiesTable({
                 const resp = respId ? profileById.get(respId) : null
                 const rowBg = done ? '#fafafa' : overdue ? '#fef2f2' : '#fff'
                 const md = (a.metadata ?? {}) as Record<string, unknown>
-                const renewalPending = md.kind === 'renewal_alert' && md.approval === 'pending'
+                const isRenewalKind = md.kind === 'renewal_alert' || md.kind === 'renewal_confirmation'
+                const renewalPending = isRenewalKind && md.approval === 'pending'
                   && typeof md.target_phone === 'string' && typeof md.draft_message === 'string'
-                const renewalSent = md.kind === 'renewal_alert' && md.approval === 'sent'
+                const renewalSent = isRenewalKind && md.approval === 'sent'
 
                 return (
                   <tr key={a.id} style={{ background: rowBg }}>

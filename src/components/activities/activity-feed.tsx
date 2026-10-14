@@ -91,7 +91,7 @@ export function ActivityFeed({
         const isDone = a.status === 'done'
         const isPlanned = a.status === 'planned'
         const meta = (a.metadata ?? {}) as Record<string, unknown>
-        const isRenewalAlert = meta.kind === 'renewal_alert'
+        const isRenewalAlert = meta.kind === 'renewal_alert' || meta.kind === 'renewal_confirmation'
         const renewalPending = isRenewalAlert && meta.approval === 'pending'
           && typeof meta.target_phone === 'string' && typeof meta.draft_message === 'string'
         const renewalSent = isRenewalAlert && meta.approval === 'sent'

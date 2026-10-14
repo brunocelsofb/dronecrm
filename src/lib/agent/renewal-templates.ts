@@ -3,20 +3,22 @@
 // Gravados em organization_settings.copilot_settings.renewal_templates.
 // Sem 'use server': usado tanto no servidor (agente) quanto na tela.
 
-export type RenewalLevelKey = '60' | '30' | '15' | '0'
+export type RenewalLevelKey = '60' | '30' | '15' | '0' | 'renovado'
 
 export const RENEWAL_LEVELS: { key: RenewalLevelKey; label: string; hint: string }[] = [
   { key: '60', label: '60 dias antes',  hint: '1º aviso — abrir a conversa sobre renovação com antecedência' },
   { key: '30', label: '30 dias antes',  hint: '2º aviso — reforçar e marcar a reunião' },
   { key: '15', label: '15 dias antes',  hint: 'Aviso urgente — agendar o quanto antes' },
   { key: '0',  label: 'Após o vencimento', hint: 'Contrato vencido — regularizar e renovar' },
+  { key: 'renovado', label: 'Renovação concluída', hint: 'Enviado depois que o consultor marca "Renovado" — confirma o novo período ao cliente' },
 ]
 
 export const RENEWAL_VARIABLES: { key: string; description: string }[] = [
   { key: 'contato',    description: 'Primeiro nome do contato do contrato' },
   { key: 'cliente',    description: 'Nome do cliente (empresa)' },
   { key: 'contrato',   description: 'Número do contrato / processo' },
-  { key: 'vencimento', description: 'Data de vencimento (dd/mm/aaaa)' },
+  { key: 'vencimento', description: 'Data de vencimento (dd/mm/aaaa); na renovação concluída, o fim do novo período' },
+  { key: 'inicio',     description: 'Início do novo período (só na renovação concluída)' },
   { key: 'dias',       description: 'Dias até o vencimento (ou dias vencido)' },
   { key: 'empresa',    description: 'Nome da sua empresa (Configurações Gerais)' },
   { key: 'consultor',  description: 'Nome do consultor que envia (WhatsApp escolhido no envio)' },
@@ -40,6 +42,12 @@ export const DEFAULT_RENEWAL_TEMPLATES: Record<RenewalLevelKey, string> = {
     '⚠️ O contrato *{{contrato}}* ({{cliente}}) vence em *{{dias}} dias*, em *{{vencimento}}*.\n\n' +
     'Para não haver interrupção dos serviços, precisamos agendar a reunião de renovação com prioridade. ' +
     'Você tem disponibilidade ainda esta semana? Me indique o melhor dia e horário.\n\n' +
+    '{{consultor}}\n{{empresa}}',
+  'renovado':
+    'Olá, {{contato}}! Tudo bem?\n\n' +
+    'Temos uma ótima notícia: o contrato *{{contrato}}* ({{cliente}}) foi *renovado*.\n\n' +
+    '📅 Novo período: *{{inicio}}* a *{{vencimento}}*.\n\n' +
+    'Agradecemos a confiança e seguimos à disposição para o que precisar.\n\n' +
     '{{consultor}}\n{{empresa}}',
   '0':
     'Olá, {{contato}}!\n\n' +
@@ -72,6 +80,12 @@ export function renderRenewalTemplate(template: string, vars: Record<string, str
 
 export const DEFAULT_RENEWAL_EMAIL_SUBJECT = 'Renovação do contrato {{contrato}} — {{cliente}}'
 
+export const DEFAULT_RENEWAL_CONFIRMATION_SUBJECT = 'Contrato {{contrato}} renovado — {{cliente}}'
+
+export function resolveRenewalConfirmationSubject(saved: unknown): string {
+  return typeof saved === 'string' && saved.trim() ? saved : DEFAULT_RENEWAL_CONFIRMATION_SUBJECT
+}
+
 export function resolveRenewalEmailSubject(saved: unknown): string {
   return typeof saved === 'string' && saved.trim() ? saved : DEFAULT_RENEWAL_EMAIL_SUBJECT
 }
@@ -88,6 +102,8 @@ export function whatsappTextToEmailHtml(text: string): string {
 // ─── E-mail ao cliente no formato "automático" (faixa + detalhes do contrato) ─
 
 export type RenewalEmailData = {
+  kind?: 'alert' | 'confirmation'  // confirmation = renovação concluída
+  validFrom?: string | null        // dd/mm/aaaa (início do novo período, na confirmação)
   level: number                  // 60 | 30 | 15 | 0
   daysUntilExpiry: number
   messageText: string            // texto final (mesmo do WhatsApp)
@@ -102,12 +118,13 @@ export type RenewalEmailData = {
 }
 
 // Paleta da marca por gravidade do aviso (Configurações → Copiloto IA)
-export const RENEWAL_SEVERITY: Record<'60' | '30' | '15' | '0', { label: string; bg: string; fg: string; badgeBg: string; badgeFg: string }> = {
+export const RENEWAL_SEVERITY: Record<RenewalLevelKey, { label: string; bg: string; fg: string; badgeBg: string; badgeFg: string }> = {
   // Todos os níveis na cor institucional (petróleo); o nível fica no selo
   '60': { label: 'INFORMATIVO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
   '30': { label: 'ATENÇÃO',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
   '15': { label: 'URGENTE',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
   '0':  { label: 'CRÍTICO',     bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#83D0F5', badgeFg: '#1B556B' },
+  'renovado': { label: 'RENOVADO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#32AF9D', badgeFg: '#FFFFFF' },
 }
 
 export const DEFAULT_COMMERCIAL_EMAIL = 'comercial@orbisengenharia.com.br'
@@ -121,9 +138,12 @@ function esc(t: string): string {
 }
 
 export function buildRenewalEmailHtml(d: RenewalEmailData): string {
-  const expired = d.level === 0 || d.daysUntilExpiry < 0
-  const sev = RENEWAL_SEVERITY[expired ? '0' : d.level <= 15 ? '15' : d.level <= 30 ? '30' : '60']
-  const header = expired
+  const confirmation = d.kind === 'confirmation'
+  const expired = !confirmation && (d.level === 0 || d.daysUntilExpiry < 0)
+  const sev = RENEWAL_SEVERITY[confirmation ? 'renovado' : expired ? '0' : d.level <= 15 ? '15' : d.level <= 30 ? '30' : '60']
+  const header = confirmation
+    ? 'Contrato renovado — novo período de vigência'
+    : expired
     ? 'Contrato vencido — regularização e renovação'
     : d.level <= 15 ? `Aviso urgente: ${d.daysUntilExpiry} dias para o vencimento`
     : d.level <= 30 ? `Aviso de vencimento: ${d.daysUntilExpiry} dias`
@@ -157,7 +177,9 @@ export function buildRenewalEmailHtml(d: RenewalEmailData): string {
             <p style="margin:0 0 8px;color:#555;font-size:13px;"><strong>📄 Detalhes do contrato</strong></p>
             ${detail('Cliente', d.clientName)}
             ${detail('Número', d.contractNumber)}
-            ${detail('Vencimento', d.validUntil)}
+            ${confirmation
+              ? detail('Novo período', d.validFrom && d.validUntil ? `${d.validFrom} a ${d.validUntil}` : d.validUntil)
+              : detail('Vencimento', d.validUntil)}
             ${detail('Valor de referência', d.monthlyValue)}
           </td></tr>
         </table>
