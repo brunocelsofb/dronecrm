@@ -12,10 +12,6 @@ type StageTiming = { stageId: string; days: number | null; isOverdue: boolean }
 type OtherPipeline = { id: string; name: string; stages: { id: string; name: string }[] }
 
 const MONTH_SHORTCUTS = [1, 2, 3, 6, 12, 24, 36, 48, 60]
-const CNPJS_ORBIS = [
-  { value: '23129279000103', label: '23.129.279/0001-03' },
-  { value: '23129279000194', label: '23.129.279/0001-94' },
-]
 const CONTRACT_TYPES = [
   { value: 'fixo', label: 'Fixo' },
   { value: 'medicao', label: 'Por Medição' },
@@ -25,7 +21,7 @@ export function StageBar({
   contractId, stages, currentStageId, timings, status,
   wonLabel, lostLabel, canChangeStage, pipelineType,
   contractNature, contractValue, otherPipelines, lostReasons,
-  accountOwnerOptions, currentOwnerId,
+  accountOwnerOptions, currentOwnerId, billingCnpjs = [],
 }: {
   contractId: string; stages: Stage[]; currentStageId: string
   timings: StageTiming[]; status: string; wonLabel: string; lostLabel: string
@@ -36,6 +32,7 @@ export function StageBar({
   lostReasons?: { id: string; name: string }[]
   accountOwnerOptions?: { id: string; full_name: string }[]   // consultores para assumir a conta no ganho
   currentOwnerId?: string | null
+  billingCnpjs?: { value: string; label: string }[]   // CNPJs de faturamento da empresa (Configurações)
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -47,7 +44,7 @@ export function StageBar({
   const [transferStageId, setTransferStageId] = useState('')
   const [validFrom, setValidFrom] = useState('')
   const [validUntil, setValidUntil] = useState('')
-  const [cnpjBilling, setCnpjBilling] = useState(CNPJS_ORBIS[0].value)
+  const [cnpjBilling, setCnpjBilling] = useState(billingCnpjs[0]?.value ?? '')
   const [contractType, setContractType] = useState('')
   const [monthlyValue, setMonthlyValue] = useState(contractValue ? String(contractValue) : '')
   const [accountOwnerId, setAccountOwnerId] = useState('')
@@ -203,10 +200,14 @@ export function StageBar({
                 <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>Dados do contrato</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                   <div>
-                    <label style={lbl}>CNPJ de Faturamento (ORBIS) <span style={{ color: '#b91c1c' }}>*</span></label>
-                    <select value={cnpjBilling} onChange={e => setCnpjBilling(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
-                      {CNPJS_ORBIS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
+                    <label style={lbl}>CNPJ de Faturamento <span style={{ color: '#b91c1c' }}>*</span></label>
+                    {billingCnpjs.length > 0 ? (
+                      <select value={cnpjBilling} onChange={e => setCnpjBilling(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
+                        {billingCnpjs.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    ) : (
+                      <input value={cnpjBilling} onChange={e => setCnpjBilling(e.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="Somente números" style={inp} />
+                    )}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>

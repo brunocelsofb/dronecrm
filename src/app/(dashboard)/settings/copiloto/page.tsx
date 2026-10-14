@@ -63,6 +63,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
           instance: typeof cs.manager_instance === 'string' ? cs.manager_instance : '',
           email: typeof cs.manager_email === 'string' ? cs.manager_email : '',
           briefingEnabled: cs.briefing_enabled !== false,
+          businessContext: typeof cs.business_context === 'string' ? cs.business_context : '',
         }}
         instances={instanceOptions}
       />

@@ -35,7 +35,7 @@ export const DEFAULT_INTERNAL_TEMPLATES: Record<InternalKey, string> = {
     '• Consultor responsável: {{consultor}}\n\n' +
     'Na sequência o contrato entra em implantação. O time técnico deve iniciar o cronograma no CRM ' +
     '(aba Implantação), montar a tabela de aplicabilidade e nos enviar as informações para o acompanhamento do contrato.\n\n' +
-    'Atenciosamente,\nEquipe Comercial Orbis.',
+    'Atenciosamente,\nEquipe {{empresa}}.',
   renovado:
     'Olá, equipe!\n\n' +
     'Informamos a renovação do contrato:\n\n' +
@@ -44,7 +44,7 @@ export const DEFAULT_INTERNAL_TEMPLATES: Record<InternalKey, string> = {
     '• Novo período: *{{inicio}}* a *{{vencimento}}*\n' +
     '• Consultor responsável: {{consultor}}\n\n' +
     'Seguimos com o acompanhamento normal do contrato.\n\n' +
-    'Atenciosamente,\nEquipe Comercial Orbis.',
+    'Atenciosamente,\nEquipe {{empresa}}.',
 }
 
 export const DEFAULT_INTERNAL_SUBJECTS: Record<InternalKey, string> = {

@@ -802,6 +802,14 @@ export async function generateBriefing(opts: {
   if (!aiKey.key) return { ok: false, error: NO_AI_KEY_MESSAGE }
   console.log(`[agent] chave da IA: ${aiKey.source} (…${aiKey.last4})`)
 
+  // Contexto do negócio (Configurações → Copiloto IA → Sobre a empresa)
+  const { data: ctxOrg } = await getAdminClient()
+    .from('organization_settings').select('company_name, copilot_settings').eq('tenant_id', opts.tenantId).maybeSingle()
+  const ctxCfg = (ctxOrg?.copilot_settings ?? {}) as Record<string, unknown>
+  const businessContext = typeof ctxCfg.business_context === 'string' && ctxCfg.business_context.trim()
+    ? ctxCfg.business_context.trim()
+    : `uma empresa brasileira${ctxOrg?.company_name ? ` (${ctxOrg.company_name})` : ''}`
+
   // ── Queries ao Supabase ──────────────────────────────────────────────────────
   const today    = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
   const supabase = getAdminClient()
@@ -841,8 +849,8 @@ export async function generateBriefing(opts: {
     const response = await client.messages.create({
       model:      'claude-haiku-4-5',
       max_tokens: 1200,
-      system: `Você é o Copiloto Estratégico de uma empresa brasileira de Engenharia Clínica e Hospitalar.
-Especialista em vendas B2B consultivas (hospitais, clínicas, equipamentos médicos).
+      system: `Você é o Copiloto Estratégico de ${businessContext}.
+Especialista em vendas B2B consultivas.
 Gera briefings executivos precisos, nominais e acionáveis em português do Brasil.
 Tom: consultor sénior directo, como se estivesse numa reunião de vendas.
 NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,

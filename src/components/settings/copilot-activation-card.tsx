@@ -12,7 +12,7 @@ export function CopilotActivationCard({
   instances,
 }: {
   keyStatus: { source: 'tenant' | 'platform' | null; last4: string | null }
-  manager: { whatsapp: string; instance: string; email: string; briefingEnabled: boolean }
+  manager: { whatsapp: string; instance: string; email: string; briefingEnabled: boolean; businessContext: string }
   instances: { name: string; label: string }[]
 }) {
   const [key, setKey] = useState('')
@@ -23,6 +23,7 @@ export function CopilotActivationCard({
   const [instance, setInstance] = useState(manager.instance)
   const [email, setEmail] = useState(manager.email)
   const [briefing, setBriefing] = useState(manager.briefingEnabled)
+  const [context, setContext] = useState(manager.businessContext)
   const [mgrMsg, setMgrMsg] = useState<string | null>(null)
   const [mgrPending, startMgr] = useTransition()
 
@@ -111,11 +112,21 @@ export function CopilotActivationCard({
             Enviar o briefing diário
           </label>
         </div>
+        <div className="mt-4">
+          <label htmlFor="biz-ctx" className={labelCls}>Sobre a empresa (contexto para a IA)</label>
+          <input
+            id="biz-ctx"
+            value={context}
+            onChange={e => { setContext(e.target.value); setMgrMsg(null) }}
+            placeholder="ex.: empresa de engenharia clínica que atende hospitais e clínicas"
+            className={inputCls}
+          />
+        </div>
         <div className="mt-3 flex items-center gap-3">
           <button
             disabled={mgrPending}
             onClick={() => startMgr(async () => {
-              const r = await saveManagerSettings({ managerWhatsapp: whatsapp, managerInstance: instance, managerEmail: email, briefingEnabled: briefing })
+              const r = await saveManagerSettings({ managerWhatsapp: whatsapp, managerInstance: instance, managerEmail: email, briefingEnabled: briefing, businessContext: context })
               setMgrMsg(r.error ?? '✓ Salvo.')
             })}
             className="rounded-lg bg-[#1B556B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#164659] disabled:opacity-50"

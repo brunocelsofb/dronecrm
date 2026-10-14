@@ -121,12 +121,12 @@ export function CopilotRenewalTemplatesForm({
       </div>
 
       <div>
-        <label htmlFor="extra-cc" className="block text-xs font-semibold text-gray-700 mb-1">Cópia extra (opcional — outros internos da Orbis)</label>
+        <label htmlFor="extra-cc" className="block text-xs font-semibold text-gray-700 mb-1">Cópia extra (opcional — outros e-mails internos)</label>
         <input
           id="extra-cc"
           value={extraCc}
           onChange={e => { setExtraCc(e.target.value); setSaved(false) }}
-          placeholder="contratos@orbisengenharia.com.br, ..."
+          placeholder="contratos@suaempresa.com.br, ..."
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none"
         />
         <p className="mt-1 text-[11px] text-gray-400">

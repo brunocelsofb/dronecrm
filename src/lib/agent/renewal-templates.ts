@@ -127,7 +127,7 @@ export const RENEWAL_SEVERITY: Record<RenewalLevelKey, { label: string; bg: stri
   'renovado': { label: 'RENOVADO', bg: '#1B556B', fg: '#FFFFFF', badgeBg: '#32AF9D', badgeFg: '#FFFFFF' },
 }
 
-export const DEFAULT_COMMERCIAL_EMAIL = 'comercial@orbisengenharia.com.br'
+export const DEFAULT_COMMERCIAL_EMAIL = ''
 
 export function resolveCommercialEmail(saved: unknown): string {
   return typeof saved === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(saved.trim()) ? saved.trim() : DEFAULT_COMMERCIAL_EMAIL

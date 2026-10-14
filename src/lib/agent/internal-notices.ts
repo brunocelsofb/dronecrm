@@ -185,7 +185,7 @@ type ScheduleRow = { id: string; contract_id: string; start_date: string | null;
 type TaskRow = { schedule_id: string; title: string; start_week: number | null; end_week: number | null; is_completed: boolean | null; sort_order: number | null }
 
 export async function buildImplementationReportText(tenantId: string): Promise<{ text: string; count: number }> {
-  const { admin, settings } = await loadSettingsForTenant(tenantId)
+  const { admin, org, settings } = await loadSettingsForTenant(tenantId)
   const { data: schedules } = await admin
     .from('implementation_schedules')
     .select('id, contract_id, start_date, status, template_id')
@@ -257,7 +257,11 @@ export async function buildImplementationReportText(tenantId: string): Promise<{
         inProgress.length ? `\n*EM ANDAMENTO*\n\n${inProgress.map(b => b.text).join('\n\n')}` : '',
         finishedBlocks.length ? `\n\n*FASES CONCLUÍDAS*\n\n${finishedBlocks.map(b => b.text).join('\n\n')}` : '',
       ].join('')
-  const footer = '\n\nPedimos que mantenham as fases atualizadas no CRM (aba Implantação de cada contrato).\n\nAtenciosamente,\nEquipe Comercial Orbis.'
+  const cs = (org?.copilot_settings ?? {}) as Record<string, unknown>
+  const signature = typeof cs.report_signature === 'string' && cs.report_signature.trim()
+    ? cs.report_signature.trim()
+    : `Equipe ${org?.company_name ?? ''}`.trim() + '.'
+  const footer = `\n\nPedimos que mantenham as fases atualizadas no CRM (aba Implantação de cada contrato).\n\nAtenciosamente,\n${signature}`
   return { text: header + body + footer, count: blocks.length }
 }
 

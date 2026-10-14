@@ -73,7 +73,7 @@ export function LeadCaptureForm({
         <input name="cnpj" required placeholder="00.000.000/0000-00" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700">Como você conheceu a ORBIS?</label>
+        <label className="block text-sm font-medium text-gray-700">Como você conheceu a gente?</label>
         <select name="source" defaultValue="formulario_site" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none">
           <option value="indicacao">Indicação de alguém</option>
           <option value="evento">Evento / congresso</option>

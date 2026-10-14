@@ -190,7 +190,7 @@ export function OrganizationSettingsForm({
           <input
             name="company_name"
             defaultValue={currentCompanyName}
-            placeholder="Ex: ORBIS Gestão de Tecnologia em Saúde"
+            placeholder="Ex: Sua Empresa Ltda."
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none"
           />
           <p className="mt-1 text-xs text-gray-400">
@@ -227,7 +227,7 @@ export function OrganizationSettingsForm({
           <input
             name="proposal_header_text"
             defaultValue={currentHeaderText}
-            placeholder="Ex: www.orbisengenharia.com.br"
+            placeholder="Ex: www.suaempresa.com.br"
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none"
           />
         </div>
@@ -237,7 +237,7 @@ export function OrganizationSettingsForm({
           <input
             name="proposal_footer_text"
             defaultValue={currentFooterText}
-            placeholder="Ex: ORBIS Gestão de Tecnologia em Saúde · (62) 0000-0000"
+            placeholder="Ex: Sua Empresa Ltda. · (00) 0000-0000"
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none"
           />
           <p className="mt-1 text-xs text-gray-400">Cabeçalho e rodapé aparecem em todas as páginas de dados da proposta (não nas capas anexadas).</p>

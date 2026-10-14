@@ -190,7 +190,7 @@ export function AssistantPanel() {
           <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-3">
             {displayMessages.length === 0 && (
               <p className="mt-4 text-center text-xs text-gray-400">
-                Pergunte algo como &ldquo;busque o contrato da ORBIS&rdquo; ou &ldquo;crie uma nota no contrato X dizendo Y&rdquo;.
+                Pergunte algo como &ldquo;busque o contrato do cliente X&rdquo; ou &ldquo;crie uma nota no contrato X dizendo Y&rdquo;.
               </p>
             )}
             {displayMessages.map((m, i) => (

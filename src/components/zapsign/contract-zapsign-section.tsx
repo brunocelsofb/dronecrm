@@ -72,7 +72,7 @@ export function ContractZapSignSection({
           </div>
           <div>
             <label className="block text-xs text-gray-500">Nome do documento</label>
-            <input value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="Ex: Contrato ORBIS — Cliente XYZ" className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />
+            <input value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="Ex: Contrato — Cliente XYZ" className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />
           </div>
           <div className="space-y-2">
             <p className="text-xs font-medium text-gray-600">Signatários</p>

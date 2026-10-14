@@ -82,11 +82,11 @@ export function InternalEmailButton({
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 600, maxHeight: '92vh', overflowY: 'auto', padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,0.2)' }}>
             <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1f36', margin: 0 }}>Revisar e-mail interno</p>
             <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0' }}>
-              Comunicação para o time Orbis — sem valores. {sender === undefined ? 'Verificando seu e-mail…' : sender ? <>Sai de <strong>{sender}</strong>.</> : null}
+              Comunicação para o time interno — sem valores. {sender === undefined ? 'Verificando seu e-mail…' : sender ? <>Sai de <strong>{sender}</strong>.</> : null}
             </p>
 
             <label style={label} htmlFor={`to-${activityId}`}>Para (separe por vírgula)</label>
-            <input id={`to-${activityId}`} value={to} onChange={e => setTo(e.target.value)} style={input} placeholder="time@orbisengenharia.com.br" />
+            <input id={`to-${activityId}`} value={to} onChange={e => setTo(e.target.value)} style={input} placeholder="time@suaempresa.com.br" />
 
             <label style={label} htmlFor={`cc-${activityId}`}>Cópia</label>
             <input id={`cc-${activityId}`} value={cc} onChange={e => setCc(e.target.value)} style={input} />

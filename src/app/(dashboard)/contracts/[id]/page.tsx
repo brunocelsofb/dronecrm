@@ -1,3 +1,4 @@
+import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
@@ -318,6 +319,11 @@ export default async function ContractDetailPage({
       ? `${contract.inbound_email_code}@${orgEmailSettings.inbound_email_domain}`
       : null
 
+  // CNPJs de faturamento da empresa (Configurações → billing_cnpjs)
+  const { data: billingOrg } = await createAdminClient()
+    .from('organization_settings').select('billing_cnpjs').eq('tenant_id', await resolveTenantId({ contractId: contract.id })).maybeSingle()
+  const billingCnpjs = (Array.isArray(billingOrg?.billing_cnpjs) ? billingOrg.billing_cnpjs : []) as { value: string; label: string }[]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <Link href="/pipeline" style={{ fontSize: 12, color: '#8892a4', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -391,6 +397,7 @@ export default async function ContractDetailPage({
           canChangeStage={canChangeStage}
           accountOwnerOptions={(allProfiles ?? []).map((p) => ({ id: p.id, full_name: p.full_name ?? '' })).sort((a, b) => a.full_name.localeCompare(b.full_name))}
           currentOwnerId={contract.owner_id ?? null}
+          billingCnpjs={billingCnpjs}
           pipelineType={pipelineById.get(displayRun.pipeline_id)?.type}
           contractNature={(contract as any).nature ?? null}
           contractValue={Number(displayRun.value) || 0}

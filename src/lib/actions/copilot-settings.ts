@@ -170,6 +170,7 @@ export async function saveManagerSettings(input: {
   managerInstance: string
   managerEmail: string
   briefingEnabled: boolean
+  businessContext?: string
 }): Promise<{ ok?: true; error?: string }> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar essas configurações.' }
   const phone = input.managerWhatsapp.replace(/\D/g, '')
@@ -192,6 +193,7 @@ export async function saveManagerSettings(input: {
       manager_instance: input.managerInstance || null,
       manager_email: email || null,
       briefing_enabled: input.briefingEnabled,
+      business_context: input.businessContext?.trim().slice(0, 300) || null,
     },
   }).eq('tenant_id', tenantId)
   if (error) return { error: error.message }

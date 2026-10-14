@@ -77,7 +77,7 @@ export function CopilotInternalForm({
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label htmlFor="int-to" className={labelCls}>Para (padrão)</label>
-            <input id="int-to" value={to} onChange={e => { setTo(e.target.value); dirty() }} className={inputCls} placeholder="contratos@orbisengenharia.com.br, ..." />
+            <input id="int-to" value={to} onChange={e => { setTo(e.target.value); dirty() }} className={inputCls} placeholder="contratos@suaempresa.com.br, ..." />
           </div>
           <div>
             <label htmlFor="int-cc" className={labelCls}>Cópia (padrão)</label>
@@ -191,7 +191,7 @@ export function CopilotInternalForm({
 
         <div>
           <label htmlFor="tech-emails" className={labelCls}>E-mails do time técnico (destinatários do relatório mensal)</label>
-          <input id="tech-emails" value={tech} onChange={e => { setTech(e.target.value); dirty() }} className={inputCls} placeholder="engenharia@orbisengenharia.com.br, ..." />
+          <input id="tech-emails" value={tech} onChange={e => { setTech(e.target.value); dirty() }} className={inputCls} placeholder="tecnico@suaempresa.com.br, ..." />
           <p className="mt-1 text-[11px] text-gray-400">
             Todo mês, a partir do dia escolhido, o Copiloto monta o consolidado das fases de cada implantação e abre uma atividade
             para revisar e enviar (cópia: a mesma cópia padrão dos e-mails internos). Veja em{' '}
