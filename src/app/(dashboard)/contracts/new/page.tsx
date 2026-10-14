@@ -9,7 +9,6 @@ import { createClient } from '@/lib/supabase/client'
 import { CompanyContactSection } from '@/components/contracts/company-contact-section'
 import { ValidityPeriodInput } from '@/components/contracts/validity-period-input'
 import type { PipelineFieldConfig } from '@/lib/pipeline-field-config'
-import { resolveTenantId } from '@/lib/tenant/context'
 
 type Stage = { id: string; name: string }
 type Pipeline = { id: string; name: string; is_default: boolean; type: string }
@@ -76,7 +75,7 @@ export default function NewContractPage() {
           supabase.from('stages').select('id, name').eq('pipeline_id', resolvedPipelineId).order('order_index'),
           supabase.from('pipeline_field_configs').select('*').eq('pipeline_id', resolvedPipelineId).order('display_order'),
           supabase.from('tags').select('id, name, color').order('name'),
-          supabase.from('organization_settings').select('company_cnpj').eq('tenant_id', await resolveTenantId()).maybeSingle(),
+          supabase.from('organization_settings').select('company_cnpj').limit(1).maybeSingle(), // RLS: só a linha da empresa do usuário
         ])
         setStages(stagesData ?? [])
         setFieldConfigs((configsData ?? []) as PipelineFieldConfig[])
