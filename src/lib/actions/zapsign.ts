@@ -5,12 +5,13 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { createZapSignDocumentFromTemplate, getZapSignDocument } from '@/lib/zapsign/api'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
 async function getZapSignToken(): Promise<string | null> {
   const supabase = createAdminClient()
-  const { data } = await supabase.from('organization_settings').select('zapsign_api_token').eq('id', 'default').maybeSingle()
+  const { data } = await supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return data?.zapsign_api_token ?? null
 }
 
@@ -18,7 +19,7 @@ async function buildContractData(contractId: string): Promise<Record<string, str
   const supabase = createAdminClient()
   const { data: contract } = await supabase.from('contracts').select('*, companies(name, cnpj), contacts(name, email, phone)').eq('id', contractId).maybeSingle()
   if (!contract) return {}
-  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('id', 'default').maybeSingle()
+  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
   const { data: customFieldDefs } = await supabase.from('custom_fields').select('id, field_key')
   const { data: customFieldValues } = await supabase.from('contract_custom_field_values').select('custom_field_id, value').eq('contract_id', contractId)
   const valueByFieldId = new Map((customFieldValues ?? []).map((v) => [v.custom_field_id, v.value]))
@@ -145,7 +146,7 @@ export async function saveZapSignSettings(formData: FormData): Promise<ActionSta
   const token = (formData.get('zapsign_api_token') as string)?.trim()
   if (!token) return { error: 'Cole o token da ZapSign.' }
   const supabase = await createClient()
-  const { error } = await supabase.from('organization_settings').update({ zapsign_api_token: token }).eq('id', 'default')
+  const { error } = await supabase.from('organization_settings').update({ zapsign_api_token: token }).eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
   revalidatePath('/settings')
   return {}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 function toCanonicalPhone(rawPhone: string): string {
   let cleaned = rawPhone.replace(/\D/g, '')
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
         const { data: callOrgData } = await supabase
           .from('organization_settings')
           .select('tenant_id')
-          .eq('id', 'default')
+          .eq('tenant_id', await resolveTenantId({ instanceName }))
           .maybeSingle()
         const callTenantId = callOrgData?.tenant_id ?? null
         if (callTenantId) {
@@ -155,7 +156,7 @@ export async function POST(request: Request) {
       const { data: callOrgData } = await supabase
         .from('organization_settings')
         .select('tenant_id')
-        .eq('id', 'default')
+        .eq('tenant_id', await resolveTenantId({ instanceName }))
         .maybeSingle()
       const callTenantId = callOrgData?.tenant_id ?? null
 
@@ -328,7 +329,7 @@ export async function POST(request: Request) {
         .schema('contract_crm')
         .from('organization_settings')
         .select('tenant_id')
-        .eq('id', 'default')
+        .eq('tenant_id', await resolveTenantId({ instanceName }))
         .maybeSingle()
 
       if (orgErr) {
@@ -408,7 +409,7 @@ export async function POST(request: Request) {
     const { data: orgData } = await supabase
       .from('organization_settings')
       .select('tenant_id')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId({ instanceName }))
       .maybeSingle()
     const tenantId = orgData?.tenant_id ?? null
     if (!tenantId) return NextResponse.json({ ok: false, error: 'tenant_id missing' })
@@ -471,7 +472,7 @@ export async function POST(request: Request) {
       const { data: orgSettings } = await supabase
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
-        .eq('id', 'default')
+        .eq('tenant_id', await resolveTenantId({ instanceName }))
         .maybeSingle()
 
       // VERIFICAÇÃO: bot habilitado para esta instância específica?
@@ -515,7 +516,7 @@ export async function POST(request: Request) {
           const { data: orgSettingsNps } = await supabase
             .from('organization_settings')
             .select('evo_server_url, evo_api_key, evo_instance_name')
-            .eq('id', 'default')
+            .eq('tenant_id', await resolveTenantId({ instanceName }))
             .maybeSingle()
 
           const npsAgradecimento = `Obrigado pela sua avaliação! Sua nota ${scoreNum} foi registrada com sucesso. Tenha um ótimo dia!`

@@ -26,6 +26,7 @@ import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
 import { resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 import { getTenantNamesById } from './tenant-name'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 function getAdminClient() {
   return createClient(
@@ -179,7 +180,7 @@ async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>): Prom
   const { data } = await supabase
     .from('organization_settings')
     .select('company_name, copilot_settings')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
   const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown }
   return {

@@ -17,6 +17,7 @@ import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } 
 import { getContractTenantName } from '@/lib/agent/tenant-name'
 import { resolveInternalSettings, parseEmailList, invalidEmails } from '@/lib/agent/internal-settings'
 import { sendWhatsApp } from '@/lib/agent/briefing-core'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type SendableInstance = {
   name: string
@@ -74,7 +75,7 @@ export async function getSendableInstances(contractId: string): Promise<{
 
   const admin = createAdminClient()
   const [{ data: org }, { data: contract }] = await Promise.all([
-    admin.from('organization_settings').select('evo_instance_aliases, evo_instance_name, copilot_settings').eq('id', 'default').maybeSingle(),
+    admin.from('organization_settings').select('evo_instance_aliases, evo_instance_name, copilot_settings').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle(),
     admin.from('contracts').select('owner_id, current_assignee_id').eq('id', contractId).maybeSingle(),
   ])
 
@@ -160,7 +161,7 @@ export async function sendRenewalAlert(
 
   // Consultor dono do WhatsApp → remetente do e-mail e assinatura
   const { data: org } = await admin
-    .from('organization_settings').select('evo_instance_aliases, inbound_email_domain').eq('id', 'default').maybeSingle()
+    .from('organization_settings').select('evo_instance_aliases, inbound_email_domain').eq('tenant_id', await resolveTenantId({ contractId: activity.contract_id })).maybeSingle()
   const alias = ((org?.evo_instance_aliases ?? {}) as Record<string, AliasValue>)[instanceName]
   const ownerUserId = aliasUser(alias)
   if (!ownerUserId) {
@@ -216,7 +217,7 @@ export async function sendRenewalAlert(
     // E-mail no formato "automático": faixa colorida, mensagem, detalhes do contrato e contato
     const [{ data: contractInfo }, { data: orgInfo }, tenantName] = await Promise.all([
       admin.from('contracts').select('process_number, client_name, valid_until, monthly_value').eq('id', activity.contract_id).maybeSingle(),
-      admin.from('organization_settings').select('company_name, copilot_settings').eq('id', 'default').maybeSingle(),
+      admin.from('organization_settings').select('company_name, copilot_settings').eq('tenant_id', await resolveTenantId({ contractId: activity.contract_id })).maybeSingle(),
       getContractTenantName(admin, activity.contract_id),
     ])
     const commercialEmail = resolveCommercialEmail((orgInfo?.copilot_settings as { commercial_email?: unknown } | null)?.commercial_email)

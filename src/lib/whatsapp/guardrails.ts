@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const OPT_OUT_KEYWORDS = ['sair', 'parar', 'stop', 'cancelar', 'descadastrar', 'não quero mais']
 
@@ -22,13 +23,13 @@ export async function isWhatsAppOptedOut(phone: string): Promise<boolean> {
 // Checa opt-out E limite diário de uma vez — usar isso antes de
 // qualquer envio AUTOMÁTICO (boas-vindas, lembrete, automação por
 // gatilho). Envio manual, feito por uma pessoa, não passa por aqui.
-export async function canSendAutomatedWhatsApp(phone: string): Promise<{ ok: boolean; reason?: string }> {
+export async function canSendAutomatedWhatsApp(phone: string, tenantId?: string | null): Promise<{ ok: boolean; reason?: string }> {
   const supabase = createAdminClient()
 
   const optedOut = await isWhatsAppOptedOut(phone)
   if (optedOut) return { ok: false, reason: 'opted_out' }
 
-  const { data: settings } = await supabase.from('organization_settings').select('whatsapp_daily_auto_limit').eq('id', 'default').maybeSingle()
+  const { data: settings } = await supabase.from('organization_settings').select('whatsapp_daily_auto_limit').eq('tenant_id', tenantId ?? await resolveTenantId()).maybeSingle()
   const limit = settings?.whatsapp_daily_auto_limit ?? 3
 
   const cleanPhone = phone.replace(/\D/g, '')

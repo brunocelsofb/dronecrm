@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // Preço aproximado do Claude Sonnet 5 (por milhão de tokens) — usado só
 // pra estimar o gasto e comparar com o orçamento configurado. Se a
@@ -13,7 +14,7 @@ export async function checkBudgetAvailable(): Promise<{ ok: boolean; message?: s
   const { data: settings } = await supabase
     .from('organization_settings')
     .select('assistant_monthly_budget_usd')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const budget = settings?.assistant_monthly_budget_usd ?? 10

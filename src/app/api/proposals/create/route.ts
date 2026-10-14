@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
 
   // Prefixo da organização
   const { data: orgSettings } = await admin.from('organization_settings')
-    .select('proposal_number_prefix').maybeSingle()
+    .select('proposal_number_prefix').eq('tenant_id', await resolveTenantId({ contractId: contract_id })).maybeSingle()
   const pfx = orgSettings?.proposal_number_prefix ?? 'PROP'
   const year = new Date().getFullYear()
 

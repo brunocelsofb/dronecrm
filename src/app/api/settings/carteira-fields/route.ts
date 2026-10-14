@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET() {
   const admin = createAdminClient()
   const { data } = await admin
     .from('organization_settings')
     .select('carteira_active_fields')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
   return NextResponse.json({ activeFields: data?.carteira_active_fields ?? null })
 }
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
   const { error } = await admin
     .from('organization_settings')
     .update({ carteira_active_fields: activeFields })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) {
     console.error('[carteira-fields] save error:', error)

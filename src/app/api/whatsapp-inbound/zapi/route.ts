@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut, canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // Recebe eventos do Z-API (configurar no painel deles: Webhooks →
 // "Ao receber" → colar essa URL, e ATIVAR a opção "Notificar as
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
     if (!isFromMe && messageText && isOptOutMessage(messageText)) {
       await recordWhatsAppOptOut(effectivePhone)
       try {
-        const { data: zapiSettings } = await supabase.from('organization_settings').select('zapi_instance_id, zapi_token, zapi_client_token').eq('id', 'default').maybeSingle()
+        const { data: zapiSettings } = await supabase.from('organization_settings').select('zapi_instance_id, zapi_token, zapi_client_token').eq('tenant_id', await resolveTenantId()).maybeSingle()
         if (zapiSettings?.zapi_instance_id && zapiSettings.zapi_token && zapiSettings.zapi_client_token) {
           const { sendZApiTextMessage } = await import('@/lib/whatsapp/zapi')
           await sendZApiTextMessage({
@@ -164,7 +165,7 @@ export async function POST(request: Request) {
         if (!guard.ok) {
           console.log(`Envio automático bloqueado pra ${effectivePhone}: ${guard.reason}`)
         } else {
-        const { data: zapiSettings } = await supabase.from('organization_settings').select('zapi_instance_id, zapi_token, zapi_client_token, company_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message').eq('id', 'default').maybeSingle()
+        const { data: zapiSettings } = await supabase.from('organization_settings').select('zapi_instance_id, zapi_token, zapi_client_token, company_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message').eq('tenant_id', await resolveTenantId()).maybeSingle()
         if (zapiSettings?.zapi_instance_id && zapiSettings.zapi_token && zapiSettings.zapi_client_token) {
           const captureUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/captura?phone=${encodeURIComponent(effectivePhone)}`
           const { buildWelcomeMessage } = await import('@/lib/whatsapp/guardrails')

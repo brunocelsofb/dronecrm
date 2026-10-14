@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveTenantId } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { WhatsAppClientShell } from '@/components/whatsapp/whatsapp-client-shell'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function WhatsAppInboxPage({
   searchParams,
@@ -97,7 +98,7 @@ export default async function WhatsAppInboxPage({
   const { data: orgData } = await admin
     .from('organization_settings')
     .select('evo_instance_aliases')
-    .eq('id', 'default').maybeSingle()
+    .eq('tenant_id', await resolveTenantId()).maybeSingle()
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">

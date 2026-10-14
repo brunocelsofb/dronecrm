@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { redirect } from 'next/navigation'
 import { CarteiraConfigManager } from '@/components/settings/carteira-config-manager'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function CarteiraConfigPage() {
   const profile = await getCurrentProfile()
@@ -13,7 +14,7 @@ export default async function CarteiraConfigPage() {
   const { data: settings } = await supabase
     .from('organization_settings')
     .select('carteira_sections')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   return (

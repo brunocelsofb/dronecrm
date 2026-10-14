@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { WhatsAppSettingsForm } from '@/components/settings/whatsapp-settings-form'
 import { WhatsAppInstancesPanel } from '@/components/settings/whatsapp-instances-panel'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function WhatsAppConexoesPage() {
   const supabase = await createClient()
@@ -13,7 +14,7 @@ export default async function WhatsAppConexoesPage() {
 
   const admin = createAdminClient()
   const { data: settings } = await admin.from('organization_settings')
-    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases').eq('id', 'default').maybeSingle()
+    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases').eq('tenant_id', await resolveTenantId()).maybeSingle()
 
   // Consultores e o e-mail conectado de cada um (remetente dos avisos de renovação)
   const [{ data: profilesList }, { data: emailAccounts }] = await Promise.all([

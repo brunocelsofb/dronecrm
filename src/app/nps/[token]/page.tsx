@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NpsForm } from '@/components/nps/nps-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -26,7 +27,7 @@ export default async function NpsPublicPage({
   const { data: orgSettings } = await adminClient
     .from('organization_settings')
     .select('company_name, logo_storage_path, nps_bg_url')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId({ contractId: survey?.contract_id ?? null }))
     .maybeSingle()
   const organizationName = orgSettings?.company_name || 'nossa empresa'
   const rawLogoPath = orgSettings?.logo_storage_path

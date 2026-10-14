@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TabOrderEditorByPipeline } from '@/components/settings/tab-order-editor'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export const ALL_CONTRACT_TABS = [
   { id: 'visao-geral', label: 'Visão Geral' },
@@ -25,7 +26,7 @@ export default async function LayoutAbasPage() {
   try {
     const admin = createAdminClient()
     const [{ data: settings }, { data: pipelines }] = await Promise.all([
-      admin.from('organization_settings').select('pipeline_tab_config').eq('id', 'default').maybeSingle(),
+      admin.from('organization_settings').select('pipeline_tab_config').eq('tenant_id', await resolveTenantId()).maybeSingle(),
       admin.from('pipelines').select('id, name').order('name'),
     ])
     config = (settings as any)?.pipeline_tab_config ?? {}

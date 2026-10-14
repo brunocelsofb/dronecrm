@@ -12,6 +12,7 @@ import {
   renderRenewalTemplate,
 } from './renewal-templates'
 import { getContractTenantName } from './tenant-name'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 function brDate(iso: string | null | undefined): string | null {
   if (!iso) return null
@@ -67,7 +68,7 @@ export async function createRenewalConfirmation(contractId: string): Promise<{ o
 
   // 3. Textos (Configurações → Copiloto IA → Renovação concluída)
   const { data: org } = await admin
-    .from('organization_settings').select('company_name, copilot_settings').eq('id', 'default').maybeSingle()
+    .from('organization_settings').select('company_name, copilot_settings').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
   const copilot = (org?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_confirmation_subject?: unknown }
   const templates = resolveRenewalTemplates(copilot.renewal_templates)
   const tenantName = await getContractTenantName(admin, contractId)

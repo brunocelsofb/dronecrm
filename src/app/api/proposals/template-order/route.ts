@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -39,10 +40,10 @@ export async function POST(req: Request) {
   // Posição especial: miolo no início (start) ou fim (end)
   // Salva em organization_settings como JSON por service_type
   if (miolo_after_id === 'start' || miolo_after_id === 'end') {
-    const { data: org } = await admin.from('organization_settings').select('miolo_positions').maybeSingle()
+    const { data: org } = await admin.from('organization_settings').select('miolo_positions').eq('tenant_id', await resolveTenantId()).maybeSingle()
     const positions = (org?.miolo_positions as Record<string, string>) ?? {}
     positions[service_type ?? 'clinica'] = miolo_after_id
-    await admin.from('organization_settings').update({ miolo_positions: positions }).neq('id', '00000000-0000-0000-0000-000000000000')
+    await admin.from('organization_settings').update({ miolo_positions: positions }).eq('tenant_id', await resolveTenantId())
   }
 
   return NextResponse.json({ ok: true })

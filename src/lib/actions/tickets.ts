@@ -5,10 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PRIORITY_SLA_DAYS, type PriorityTier } from '@/lib/utils/gut-matrix'
 import { departmentLabel } from '@/lib/constants/departments'
+import { resolvePublicTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
-async function generateTicketNumber(): Promise<string> {
+async function generateTicketNumber(tenantId: string): Promise<string> {
   const supabase = createAdminClient()
   const year = new Date().getFullYear()
 
@@ -17,7 +18,7 @@ async function generateTicketNumber(): Promise<string> {
   // não tem brecha de dois tickets saírem com o mesmo número.
   const { data: seqValue } = await supabase.rpc('next_ticket_number_for_year', { p_year: year })
 
-  const { data: settings } = await supabase.from('organization_settings').select('ticket_number_prefix').eq('id', 'default').maybeSingle()
+  const { data: settings } = await supabase.from('organization_settings').select('ticket_number_prefix').eq('tenant_id', tenantId).maybeSingle()
   const prefix = settings?.ticket_number_prefix || 'TICKET'
 
   return `${prefix}-${year}-${String(seqValue).padStart(4, '0')}`
@@ -29,6 +30,11 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
   // Usa o adminClient para o insert funcionar sem autenticação
   // (formulário público acessado por terceiros sem login)
   const supabase = createAdminClient()
+
+  // Empresa: contrato informado > ?empresa=<slug> do formulário > usuário logado > padrão
+  const tenantIdFromContract = (formData.get('contract_id') as string) || null
+  const { tenantIdForContract } = await import('@/lib/tenant/context')
+  const tenantId = (await tenantIdForContract(tenantIdFromContract)) ?? await resolvePublicTenantId((formData.get('empresa') as string) || null)
 
   const subject = (formData.get('subject') as string)?.trim()
   const description = (formData.get('description') as string)?.trim()
@@ -80,7 +86,7 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
   let lastError: { code?: string; message: string } | null = null
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    const ticketNumber = await generateTicketNumber()
+    const ticketNumber = await generateTicketNumber(tenantId)
     const result = await supabase
       .from('tickets')
       .insert({
@@ -96,6 +102,7 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
         source,
         contract_id,
         sla_due_at: slaDueAt,
+        tenant_id: tenantId,
       })
       .select('id, public_token, ticket_number')
       .single()

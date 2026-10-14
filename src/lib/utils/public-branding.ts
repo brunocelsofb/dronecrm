@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type PublicBranding = {
   wallpaperUrl: string | null
@@ -8,12 +9,12 @@ export type PublicBranding = {
   companyName: string
 }
 
-export async function getPublicBranding(): Promise<PublicBranding> {
+export async function getPublicBranding(tenantId?: string | null): Promise<PublicBranding> {
   const admin = createAdminClient()
   const { data: s } = await admin
     .from('organization_settings')
     .select('support_bg_url, login_bg_url, logo_storage_path, logo_url, company_name, public_bg_color')
-    .eq('id', 'default')
+    .eq('tenant_id', tenantId ?? await resolveTenantId())
     .maybeSingle()
 
   // Logo: prioridade logo_url (URL direta) > logo_storage_path (bucket) > /drone.png (fallback)

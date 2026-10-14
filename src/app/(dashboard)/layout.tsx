@@ -12,6 +12,7 @@ import { FEATURE_KEYS, FEATURES, featureForPath } from '@/lib/config/plans'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { headers } from 'next/headers'
 import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function DashboardLayout({
   children,
@@ -36,7 +37,7 @@ export default async function DashboardLayout({
   const { data: orgSettings } = await supabase
     .from('organization_settings')
     .select('name, logo_storage_path')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const isAdmin = profile?.role === 'admin'

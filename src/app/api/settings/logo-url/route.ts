@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     const { error: dbError } = await admin
       .from('organization_settings')
       .update({ logo_storage_path: path, updated_at: new Date().toISOString() })
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
 
     if (dbError) {
       console.error('[logo-url] dbError:', dbError)

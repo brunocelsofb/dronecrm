@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PublicTicketReplyForm } from '@/components/tickets/public-ticket-reply-form'
 import { TicketSatisfactionForm } from '@/components/tickets/ticket-satisfaction-form'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -17,14 +18,12 @@ export default async function PublicTicketTrackingPage({ params }: { params: Pro
   const { token } = await params
   const supabase = createAdminClient()
 
-  const [{ data: ticket }, { data: orgSettings }] = await Promise.all([
-    supabase.from('tickets')
-      .select('id, ticket_number, subject, status, priority, created_at, satisfaction_responded_at, satisfaction_rating, satisfaction_comment')
-      .eq('public_token', token).maybeSingle(),
-    supabase.from('organization_settings')
-      .select('support_bg_url, logo_storage_path, company_name')
-      .eq('id', 'default').maybeSingle(),
-  ])
+  const { data: ticket } = await supabase.from('tickets')
+    .select('id, ticket_number, subject, status, priority, created_at, satisfaction_responded_at, satisfaction_rating, satisfaction_comment, tenant_id')
+    .eq('public_token', token).maybeSingle()
+  const { data: orgSettings } = await supabase.from('organization_settings')
+    .select('support_bg_url, logo_storage_path, company_name')
+    .eq('tenant_id', ticket?.tenant_id ?? await resolveTenantId()).maybeSingle()
 
   const rawBg   = orgSettings?.support_bg_url
   const rawLogo = orgSettings?.logo_storage_path

@@ -104,7 +104,7 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
   await admin
     .schema('contract_crm')
     .from('organization_settings')
-    .insert({ id: 'default', tenant_id: tenant.id })
+    .insert({ id: tenant.id, tenant_id: tenant.id })
 
   revalidatePath('/super-admin')
   redirect('/super-admin')

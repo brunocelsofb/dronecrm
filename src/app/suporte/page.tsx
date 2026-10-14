@@ -1,17 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SupportForm } from './support-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
+import { resolvePublicTenantId } from '@/lib/tenant/context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const fetchCache = 'force-no-store'
 
-export default async function PublicSupportPage() {
+export default async function PublicSupportPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
+  const { empresa } = await searchParams
+  const tenantId = await resolvePublicTenantId(empresa ?? null)
   const admin = createAdminClient()
   const { data: settings } = await admin
     .from('organization_settings')
     .select('support_bg_url, company_name, logo_storage_path, public_bg_color')
-    .eq('id', 'default')
+    .eq('tenant_id', tenantId)
     .maybeSingle()
 
   const rawLogo = settings?.logo_storage_path
@@ -55,7 +58,7 @@ export default async function PublicSupportPage() {
               </div>
             </div>
             <div className="p-6 pt-0">
-              <SupportForm />
+              <SupportForm empresa={empresa} />
             </div>
           </div>
           <p className="text-center text-xs text-white/40">

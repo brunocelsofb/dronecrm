@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 async function guardAdmin() {
   const s = await createClient()
@@ -24,7 +25,7 @@ function normalizeAliases(raw: any): Record<string, { label: string; closingMess
 export async function GET() {
   const admin = createAdminClient()
   const { data } = await admin.from('organization_settings')
-    .select('evo_instance_aliases').eq('id', 'default').maybeSingle()
+    .select('evo_instance_aliases').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return NextResponse.json({ aliases: normalizeAliases((data as any)?.evo_instance_aliases) })
 }
 
@@ -36,13 +37,13 @@ export async function POST(req: Request) {
   if (!instanceName) return NextResponse.json({ error: 'instanceName obrigatório' }, { status: 400 })
 
   const { data: current } = await admin.from('organization_settings')
-    .select('evo_instance_aliases').eq('id', 'default').maybeSingle()
+    .select('evo_instance_aliases').eq('tenant_id', await resolveTenantId()).maybeSingle()
   const existing = normalizeAliases((current as any)?.evo_instance_aliases)
   existing[instanceName] = {
     label: alias || existing[instanceName]?.label || instanceName,
     ...(closingMessage !== undefined ? { closingMessage: closingMessage || undefined } : {}),
   }
 
-  await admin.from('organization_settings').update({ evo_instance_aliases: existing }).eq('id', 'default')
+  await admin.from('organization_settings').update({ evo_instance_aliases: existing }).eq('tenant_id', await resolveTenantId())
   return NextResponse.json({ ok: true, aliases: existing })
 }

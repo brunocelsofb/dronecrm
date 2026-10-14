@@ -6,6 +6,7 @@ import { resolveRenewalTemplates, resolveRenewalEmailSubject, resolveRenewalConf
 import { resolveInternalSettings } from '@/lib/agent/internal-settings'
 import { CopilotInternalForm } from '@/components/settings/copilot-internal-form'
 import Link from 'next/link'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function CopilotSettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams
@@ -21,7 +22,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
   const { data: settings } = await admin
     .from('organization_settings')
     .select('company_name, copilot_settings, tenant_id')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
   // Razão social da conta (tenant) — é o que assina os e-mails
   const { data: tenant } = settings?.tenant_id

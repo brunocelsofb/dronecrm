@@ -9,6 +9,7 @@
 // ou a caixa "Instância privada" ao conectar uma nova pelo QR Code.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 type AliasValue = string | { label?: string; bot_enabled?: boolean; private?: boolean }
 
@@ -22,7 +23,7 @@ export async function getPrivateInstances(): Promise<Set<string>> {
     const { data, error } = await admin
       .from('organization_settings')
       .select('evo_instance_aliases')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
     if (error) throw error
 

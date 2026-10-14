@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { WhatsAppBotSettingsForm } from '@/components/settings/whatsapp-bot-settings-form'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function WhatsAppBotPage() {
   const supabase = await createClient()
@@ -16,7 +17,7 @@ export default async function WhatsAppBotPage() {
   const { data: settings } = await admin
     .from('organization_settings')
     .select('whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, company_name, triage_enabled, triage_menu_options')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const defaultMenuOptions = [

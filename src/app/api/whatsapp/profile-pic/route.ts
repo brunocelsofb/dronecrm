@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const { data: org } = await admin
     .from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   if (!org?.evo_server_url) return NextResponse.json({ url: null })

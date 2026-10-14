@@ -14,6 +14,7 @@ import { createAgentActivity } from './agent-activity'
 import { getContractTenantName } from './tenant-name'
 import { renderRenewalTemplate } from './renewal-templates'
 import { resolveInternalSettings, type InternalKey } from './internal-settings'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 function brDate(iso: string | null | undefined): string | null {
   if (!iso) return null
@@ -29,10 +30,10 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((new Date(`${toIso}T12:00:00Z`).getTime() - new Date(`${fromIso}T12:00:00Z`).getTime()) / 86_400_000)
 }
 
-async function loadSettings() {
+async function loadSettings(contractId?: string | null) {
   const admin = createAdminClient()
   const { data } = await admin
-    .from('organization_settings').select('company_name, copilot_settings, tenant_id').eq('id', 'default').maybeSingle()
+    .from('organization_settings').select('company_name, copilot_settings, tenant_id').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
   return { admin, org: data, settings: resolveInternalSettings(data?.copilot_settings) }
 }
 
@@ -46,7 +47,7 @@ async function profileLabel(admin: ReturnType<typeof createAdminClient>, id: str
 // ─── 1. E-mail interno de ganho / renovação ───────────────────────────────────
 
 export async function createInternalNotice(contractId: string, key: InternalKey): Promise<{ ok: boolean; detail?: string }> {
-  const { admin, org, settings } = await loadSettings()
+  const { admin, org, settings } = await loadSettings(contractId)
   const { data: c, error } = await admin
     .from('contracts')
     .select('id, process_number, client_name, valid_from, valid_until, owner_id, current_assignee_id')
@@ -96,7 +97,7 @@ export async function createInternalNotice(contractId: string, key: InternalKey)
 
 // No ganho (funil de vendas): consultor aciona o time técnico
 export async function createImplementationKickoff(contractId: string): Promise<{ ok: boolean; detail?: string }> {
-  const { admin, settings } = await loadSettings()
+  const { admin, settings } = await loadSettings(contractId)
   const { data: c } = await admin
     .from('contracts').select('client_name, process_number, owner_id, current_assignee_id').eq('id', contractId).maybeSingle()
   if (!c) return { ok: false, detail: 'contrato não encontrado' }
@@ -124,7 +125,7 @@ export async function createImplementationKickoff(contractId: string): Promise<{
 
 // Ao iniciar o cronograma: acompanhar a evolução + pedir o relatório final
 export async function onImplementationStarted(contractId: string, startDate: string): Promise<void> {
-  const { admin, settings } = await loadSettings()
+  const { admin, settings } = await loadSettings(contractId)
   const { data: c } = await admin
     .from('contracts').select('client_name, owner_id, current_assignee_id').eq('id', contractId).maybeSingle()
   if (!c) return

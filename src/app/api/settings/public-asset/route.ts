@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const ALLOWED_COLS = ['support_bg_url','nps_bg_url','survey_clinica_bg_url','survey_hospitalar_bg_url','lead_bg_url','public_bg_color','login_bg_url']
 
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Coluna não permitida' }, { status: 400 })
 
   const admin = createAdminClient()
-  const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('id', 'default')
+  const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('tenant_id', await resolveTenantId())
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   revalidatePath('/nps', 'layout')
@@ -41,7 +42,7 @@ export async function DELETE(req: Request) {
   const { data: settings } = await admin
     .from('organization_settings')
     .select(column)
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const currentUrl: string | null = settings?.[column as keyof typeof settings] as string | null
@@ -50,7 +51,7 @@ export async function DELETE(req: Request) {
   const { error } = await admin
     .from('organization_settings')
     .update({ [column]: null })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   // Apaga do Storage se for URL do Supabase (extrai o path do bucket public-assets)

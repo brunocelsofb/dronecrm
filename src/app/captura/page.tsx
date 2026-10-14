@@ -2,20 +2,22 @@ import { getPublicBranding } from '@/lib/utils/public-branding'
 import { LeadCaptureForm } from '@/components/leads/lead-capture-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePublicTenantId } from '@/lib/tenant/context'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PublicCapturePage({ searchParams }: { searchParams: Promise<{ phone?: string }> }) {
-  const { phone } = await searchParams
+export default async function PublicCapturePage({ searchParams }: { searchParams: Promise<{ phone?: string; empresa?: string }> }) {
+  const { phone, empresa } = await searchParams
+  const tenantId = await resolvePublicTenantId(empresa ?? null)
 
-  const { wallpaperUrl, bgColor, logoUrl, companyName } = await getPublicBranding()
+  const { wallpaperUrl, bgColor, logoUrl, companyName } = await getPublicBranding(tenantId)
 
   // lead_bg_url tem prioridade sobre support_bg_url
   const admin = createAdminClient()
   const { data: s } = await admin
     .from('organization_settings')
     .select('lead_bg_url')
-    .eq('id', 'default')
+    .eq('tenant_id', tenantId)
     .maybeSingle()
 
   const leadBg = (s as any)?.lead_bg_url
@@ -49,7 +51,7 @@ export default async function PublicCapturePage({ searchParams }: { searchParams
               </div>
             </div>
             <div className="p-6 pt-0">
-              <LeadCaptureForm defaultPhone={phone} />
+              <LeadCaptureForm defaultPhone={phone} empresa={empresa} />
             </div>
           </div>
           <p className="text-center text-xs text-white/40">

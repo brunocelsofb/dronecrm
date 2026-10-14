@@ -1,12 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function ZapSignTemplatesPage() {
   try {
     const supabase = await createClient()
     const [{ data: templates, error: templatesError }, { data: settings }] = await Promise.all([
       supabase.from('zapsign_templates').select('*').order('created_at', { ascending: false }),
-      supabase.from('organization_settings').select('zapsign_api_token').eq('id', 'default').maybeSingle(),
+      supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle(),
     ])
 
     if (templatesError) {

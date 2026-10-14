@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
   const { data: org } = await admin
     .from('organization_settings')
     .select('miolo_positions')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const mioloPositions = (org?.miolo_positions as Record<string, string>) ?? {}

@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateBriefing } from '@/lib/agent/briefing-core'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export const maxDuration = 60  // queries + chamada ao modelo + envio WhatsApp
 
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     const force = new URL(req.url).searchParams.get('force') === '1'
     const admin = createAdminClient()
     const { data: org } = await admin
-      .from('organization_settings').select('copilot_settings').eq('id', 'default').maybeSingle()
+      .from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantId()).maybeSingle()
     const copilot = (org?.copilot_settings ?? {}) as Record<string, unknown>
     const lastSentAt = typeof copilot.briefing_last_sent_at === 'string' ? copilot.briefing_last_sent_at : null
 
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
     if (result.ok && result.whatsapp.sent) {
       await admin.from('organization_settings')
         .update({ copilot_settings: { ...copilot, briefing_last_sent_at: new Date().toISOString() } })
-        .eq('id', 'default')
+        .eq('tenant_id', await resolveTenantId())
     }
     const status = result.ok ? 200 : 500
     return NextResponse.json(result, { status })

@@ -7,7 +7,7 @@ import { PRIORITY_LABELS, GRAVITY_CATEGORIES } from '@/lib/utils/gut-matrix'
 const inp = 'mt-1 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-[#1B556B] focus:ring-2 focus:ring-[#1B556B]/20 focus:outline-none transition-colors'
 const lbl = 'block text-sm font-semibold text-[#1B556B]'
 
-export function SupportForm() {
+export function SupportForm({ empresa }: { empresa?: string } = {}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ ticketId: string; publicToken: string } | null>(null)
@@ -40,6 +40,7 @@ export function SupportForm() {
 
   return (
     <form action={handleSubmit} className="space-y-4">
+      {empresa && <input type="hidden" name="empresa" value={empresa} />}
       <div>
         <label className={lbl}>Nome e sobrenome *</label>
         <input name="requester_name" required pattern=".*\S+\s+\S+.*" title="Informe nome e sobrenome" className={inp} />

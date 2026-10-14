@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { resolvePublicTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
@@ -32,7 +33,8 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
 
   const { data, error } = await supabase
     .from('leads')
-    .insert({ name, email, phone, company_name, cnpj, message, source, score })
+    .insert({ name, email, phone, company_name, cnpj, message, source, score,
+      tenant_id: await resolvePublicTenantId((formData.get('empresa') as string) || null) })
     .select('id')
     .single()
 

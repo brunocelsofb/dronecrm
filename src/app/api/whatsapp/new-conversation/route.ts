@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizePhoneForEvo } from '@/lib/whatsapp/evolution'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function POST(req: Request) {
   try {
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     const { data: org } = await admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key')
-      .eq('id', 'default').maybeSingle()
+      .eq('tenant_id', await resolveTenantId()).maybeSingle()
     if (!org?.evo_server_url) return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 })
 
     // Envia mensagem via Evolution

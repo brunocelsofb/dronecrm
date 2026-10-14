@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET(
   _req: Request,
@@ -71,7 +72,7 @@ export async function GET(
 
   try {
     const { data: contract } = await admin.from('contracts').select('client_name, process_number, company_id, contact_id').eq('id', legacyStatus.contract_id).maybeSingle()
-    const { data: org } = await admin.from('organization_settings').select('company_name, company_cnpj, logo_storage_path, proposal_brand_color, proposal_header_text').maybeSingle()
+    const { data: org } = await admin.from('organization_settings').select('company_name, company_cnpj, logo_storage_path, proposal_brand_color, proposal_header_text').eq('tenant_id', await resolveTenantId({ contractId: legacyStatus.contract_id })).maybeSingle()
 
     const { buildPriceProposalPage } = await import('@/lib/actions/proposal-pdf-from-price')
     const bytes = await buildPriceProposalPage({

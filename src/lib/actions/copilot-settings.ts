@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { RENEWAL_LEVELS, type RenewalLevelKey } from '@/lib/agent/renewal-templates'
 import { INTERNAL_LEVELS, invalidEmails, parseEmailList, type InternalKey } from '@/lib/agent/internal-settings'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const MAX_TEMPLATE_LENGTH = 3000
 
@@ -48,7 +49,7 @@ export async function saveRenewalTemplates(
   const { data, error: readErr } = await admin
     .from('organization_settings')
     .select('copilot_settings')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
   if (readErr) return { error: readErr.message }
 
@@ -65,7 +66,7 @@ export async function saveRenewalTemplates(
         ...(extraCc !== undefined ? { extra_cc_emails: parseEmailList(extraCc) } : {}),
       },
     })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
 
   revalidatePath('/settings/copiloto')
@@ -105,7 +106,7 @@ export async function saveInternalSettings(input: {
 
   const admin = createAdminClient()
   const { data, error: readErr } = await admin
-    .from('organization_settings').select('copilot_settings').eq('id', 'default').maybeSingle()
+    .from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantId()).maybeSingle()
   if (readErr) return { error: readErr.message }
   const current = (data?.copilot_settings ?? {}) as Record<string, unknown>
 
@@ -124,7 +125,7 @@ export async function saveInternalSettings(input: {
         impl_report_owner_id: input.implReportOwnerId || null,
       },
     })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
 
   revalidatePath('/settings/copiloto')

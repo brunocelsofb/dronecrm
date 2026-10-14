@@ -9,13 +9,12 @@ import type { EvoCredentials } from '@/lib/whatsapp/evolution'
 import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
 import { getActiveTenantId } from '@/lib/supabase/server'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
+import { resolveTenantId } from '@/lib/tenant/context'
 
-async function getTenantId(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
-  // Durante impersonation, o tenant ativo é lido do header injetado pelo middleware
-  const activeTenantId = await getActiveTenantId()
-  if (activeTenantId) return activeTenantId
-  const { data } = await admin.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
-  return (data as any)?.tenant_id ?? null
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function getTenantId(_admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
+  // Empresa do usuário (ou a acessada pelo Super Admin)
+  return resolveTenantId()
 }
 
 export type ActionState = {
@@ -29,10 +28,10 @@ export type ActionState = {
 
 async function getEvoCredentials(): Promise<EvoCredentials | null> {
   const supabase = createAdminClient()
-  const activeTenantId = await getActiveTenantId()
-  let query = supabase.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token').eq('id', 'default')
-  if (activeTenantId) query = (query as any).eq('tenant_id', activeTenantId)
-  const { data } = await (query as any).maybeSingle()
+  const { data } = await supabase.from('organization_settings')
+    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_token')
+    .eq('tenant_id', await resolveTenantId())
+    .maybeSingle()
   if (!data?.evo_server_url || !data?.evo_api_key || !data?.evo_instance_name) return null
   return { serverUrl: data.evo_server_url, apiKey: data.evo_api_key, instanceName: data.evo_instance_name, instanceToken: (data as any).evo_instance_token ?? null }
 }
@@ -62,7 +61,7 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
   const { error } = await supabase
     .from('organization_settings')
     .update({ evo_server_url: serverUrl, evo_api_key: apiKey, evo_instance_name: instanceName, updated_at: new Date().toISOString() })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
 
@@ -100,7 +99,7 @@ async function markInstancePrivate(instanceName: string): Promise<{ ok: boolean;
   const { data, error } = await admin
     .from('organization_settings')
     .select('evo_instance_aliases')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
   if (error) return { ok: false, error: error.message }
 
@@ -117,7 +116,7 @@ async function markInstancePrivate(instanceName: string): Promise<{ ok: boolean;
         [instanceName]: { ...current, label: current.label ?? instanceName, bot_enabled: false, private: true },
       },
     })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
   return upErr ? { ok: false, error: upErr.message } : { ok: true }
 }
 
@@ -151,7 +150,7 @@ export async function disconnectEvo(_formData?: any): Promise<ActionState> {
   await supabase
     .from('organization_settings')
     .update({ evo_server_url: null, evo_api_key: null, evo_instance_name: null })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
   revalidatePath('/settings')
   return {}
 }
@@ -338,7 +337,7 @@ export async function buildWhatsAppFromTemplate(templateId: string, contractId: 
   const { data: owner } = contract.owner_id
     ? await supabase.from('profiles').select('full_name').eq('id', contract.owner_id).maybeSingle()
     : { data: null }
-  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('id', 'default').maybeSingle()
+  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
 
   const { data: customFieldDefs } = await supabase.from('custom_fields').select('id, field_key')
   const { data: customFieldValues } = await supabase.from('contract_custom_field_values').select('custom_field_id, value').eq('contract_id', contractId)
@@ -482,7 +481,7 @@ export async function getConversationByPhone(phone: string): Promise<{
   const { data: orgData } = await supabase
     .from('organization_settings')
     .select('evo_instance_aliases, evo_instance_name, whatsapp_contact_names')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const aliases = (orgData as any)?.evo_instance_aliases ?? {}
@@ -772,7 +771,7 @@ export async function checkAndSendWhatsAppCaptureReminders(): Promise<{ checked:
   if (!creds) return { checked: pending.length, sent: 0 }
 
   const supabaseAdmin = supabase
-  const { data: settings } = await supabaseAdmin.from('organization_settings').select('company_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message').eq('id', 'default').maybeSingle()
+  const { data: settings } = await supabaseAdmin.from('organization_settings').select('company_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message').eq('tenant_id', await resolveTenantId()).maybeSingle()
 
   let sent = 0
   for (const p of pending) {
@@ -841,7 +840,7 @@ export async function assignWhatsAppConversation(phone: string, userId: string):
     const tenantId = await getTenantId(admin)
     const [{ data: profile }, { data: org }] = await Promise.all([
       admin.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
-      (() => { const q = admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, tenant_id').eq('id', 'default'); return tenantId ? (q as any).eq('tenant_id', tenantId).maybeSingle() : (q as any).maybeSingle() })(),
+      admin.from('organization_settings').select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, tenant_id').eq('tenant_id', tenantId ?? '').maybeSingle(),
     ])
     const nome = (profile as any)?.full_name ?? 'nossa equipe'
     const transferText = `*Transferência de atendimento:* Aguarde um momento, vou transferir você para o(a) *${nome}*... 🙏`
@@ -999,7 +998,7 @@ export async function updateWhatsAppBotSettings(formData: FormData): Promise<Act
       whatsapp_daily_auto_limit,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
   revalidatePath('/settings')
@@ -1009,7 +1008,7 @@ export async function updateWhatsAppBotSettings(formData: FormData): Promise<Act
 export async function toggleWhatsAppOnlineStatus(isOnline: boolean): Promise<ActionState> {
   if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem alterar isso.' }
   const supabase = await createClient()
-  const { error } = await supabase.from('organization_settings').update({ whatsapp_is_online: isOnline }).eq('id', 'default')
+  const { error } = await supabase.from('organization_settings').update({ whatsapp_is_online: isOnline }).eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
   revalidatePath('/settings')
   revalidatePath('/whatsapp')
@@ -1071,7 +1070,7 @@ export async function archiveWhatsAppConversation(phone: string, instanceName?: 
   if (creds) {
     const targetCreds = instanceName ? { ...creds, instanceName } : creds
     try {
-      const orgQ = admin.from('organization_settings').select('evo_instance_aliases').eq('id', 'default')
+      const orgQ = admin.from('organization_settings').select('evo_instance_aliases').eq('tenant_id', await resolveTenantId())
       const { data: org } = tenantId
         ? await (orgQ as any).eq('tenant_id', tenantId).maybeSingle()
         : await (orgQ as any).maybeSingle()
@@ -1144,7 +1143,7 @@ export async function saveUnlinkedContactName(phone: string, name: string): Prom
   const { data: org } = await admin
     .from('organization_settings')
     .select('whatsapp_contact_names')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   const existing = (org as any)?.whatsapp_contact_names ?? {}
@@ -1156,7 +1155,7 @@ export async function saveUnlinkedContactName(phone: string, name: string): Prom
 
   await admin.from('organization_settings')
     .update({ whatsapp_contact_names: existing })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   revalidatePath('/whatsapp')
   return {}
@@ -1180,7 +1179,7 @@ export async function deleteWhatsAppMessage(
       const { data: org } = await admin
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name')
-        .eq('id', 'default').maybeSingle()
+        .eq('tenant_id', await resolveTenantId()).maybeSingle()
 
       if (org?.evo_server_url) {
         const cleanPhone = phone.replace(/\D/g, '')
@@ -1228,7 +1227,7 @@ export async function toggleTriagemEnabled(enabled: boolean): Promise<ActionStat
   const { error } = await supabase
     .from('organization_settings')
     .update({ triage_enabled: enabled })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
   revalidatePath('/settings/whatsapp-bot')
@@ -1241,7 +1240,7 @@ export async function saveTriagemMenuOptions(options: any[]): Promise<ActionStat
   const { error } = await supabase
     .from('organization_settings')
     .update({ triage_menu_options: options })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
   revalidatePath('/settings/whatsapp-bot')
@@ -1298,7 +1297,7 @@ export async function finishConversationWithNPS(
     const { data: org } = await admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
 
     // Descobrir a instância usada na última mensagem

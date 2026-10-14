@@ -4,6 +4,7 @@
 // 2. a pré-visualização (gera na hora, não salva nada, disponível desde
 //    o rascunho — pra conferir antes de mandar pra aprovação)
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function buildMergedProposalBytes(proposalId: string): Promise<{ bytes?: Uint8Array; error?: string }> {
   const { PDFDocument } = await import('pdf-lib')
@@ -61,7 +62,7 @@ export async function buildMergedProposalBytes(proposalId: string): Promise<{ by
   const { data: orgSettings } = await supabase
     .from('organization_settings')
     .select('company_name, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   let logoBytes: Uint8Array | null = null

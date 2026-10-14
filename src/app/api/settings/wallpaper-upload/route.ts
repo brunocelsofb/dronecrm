@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const ALLOWED_COLS = ['login_bg_url','support_bg_url','nps_bg_url','survey_clinica_bg_url','survey_hospitalar_bg_url','lead_bg_url']
 const ALLOWED_PATHS = ['login-bg','support-bg','nps-bg','survey-clinica','survey-hospitalar','lead-bg']
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 400 })
 
   const { data: { publicUrl } } = admin.storage.from('public-assets').getPublicUrl(path)
-  const { error: dbErr } = await admin.from('organization_settings').update({ [column]: publicUrl }).eq('id', 'default')
+  const { error: dbErr } = await admin.from('organization_settings').update({ [column]: publicUrl }).eq('tenant_id', await resolveTenantId())
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 400 })
 
   revalidatePath('/suporte')

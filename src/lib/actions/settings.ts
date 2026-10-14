@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
@@ -15,7 +16,7 @@ export async function updateOrganizationLogo(filePath: string): Promise<ActionSt
   const { error } = await supabase
     .from('organization_settings')
     .update({ logo_storage_path: filePath, updated_at: new Date().toISOString() })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
 
@@ -56,7 +57,7 @@ export async function updateOrganizationSettings(
       support_bg_url,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
 
@@ -84,7 +85,7 @@ export async function updateInboundEmailSettings(formData: FormData): Promise<Ac
   const { error } = await supabase
     .from('organization_settings')
     .update({ inbound_email_domain, mailgun_webhook_signing_key, updated_at: new Date().toISOString() })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
   revalidatePath('/settings')
@@ -101,7 +102,7 @@ export async function updateNumberingPrefixes(formData: FormData): Promise<Actio
   const { error } = await supabase
     .from('organization_settings')
     .update({ ticket_number_prefix, proposal_number_prefix, updated_at: new Date().toISOString() })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
   revalidatePath('/settings')

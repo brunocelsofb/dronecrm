@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const WEBHOOK_URL =
   `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
@@ -62,7 +63,7 @@ export async function PATCH(request: Request) {
     const { data: current } = await supabase
       .from('organization_settings')
       .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
 
     if (!current) {
@@ -103,7 +104,7 @@ export async function PATCH(request: Request) {
     const { error } = await supabase
       .from('organization_settings')
       .update({ evo_instance_aliases: { ...aliases, [instance]: next } })
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
 
     if (error) {
       console.error('[settings/whatsapp-instance] update error:', error)
@@ -142,7 +143,7 @@ export async function DELETE(request: Request) {
     const { data: current } = await supabase
       .from('organization_settings')
       .select('evo_instance_aliases, evo_server_url, evo_api_key, evo_instance_name')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
     if (!current) {
       return NextResponse.json({ ok: false, error: 'organization_settings não encontrado' }, { status: 404 })
@@ -193,7 +194,7 @@ export async function DELETE(request: Request) {
     const { error } = await supabase
       .from('organization_settings')
       .update({ evo_instance_aliases: aliases })
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
 
     return NextResponse.json({ ok: true, instance, evolution })

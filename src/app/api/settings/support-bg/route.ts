@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   const { error } = await admin
     .from('organization_settings')
     .update({ support_bg_url: url || null })
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 

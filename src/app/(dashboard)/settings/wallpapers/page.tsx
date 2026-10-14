@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { WallpaperManager } from '@/components/settings/wallpaper-manager'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function WallpapersPage() {
   const supabase = await createClient()
@@ -15,7 +16,7 @@ export default async function WallpapersPage() {
   const { data: s } = await admin
     .from('organization_settings')
     .select('login_bg_url, support_bg_url, nps_bg_url, survey_clinica_bg_url, survey_hospitalar_bg_url, lead_bg_url, public_bg_color')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   return (

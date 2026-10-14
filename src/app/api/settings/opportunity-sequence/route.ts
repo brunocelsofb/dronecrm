@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET() {
   const admin = createAdminClient()
-  const { data } = await admin.from('opportunity_sequence').select('*').eq('id', 'default').maybeSingle()
+  const { data } = await admin.from('opportunity_sequence').select('*').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return NextResponse.json(data ?? { prefix: 'OPP', next_number: 1, year_reset: true })
 }
 

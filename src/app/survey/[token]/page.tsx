@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { CustomSurveyForm } from '@/components/surveys/custom-survey-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import type { Question } from '@/lib/actions/custom-surveys'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -16,7 +17,7 @@ export default async function CustomSurveyPublicPage({
 
   const { data: survey } = await adminClient
     .from('custom_surveys')
-    .select('id, status, template_id, expires_at')
+    .select('id, status, template_id, expires_at, tenant_id')
     .eq('token', token)
     .maybeSingle()
 
@@ -36,7 +37,7 @@ export default async function CustomSurveyPublicPage({
   const { data: orgSettings } = await adminClient
     .from('organization_settings')
     .select('company_name, logo_storage_path, survey_clinica_bg_url, survey_hospitalar_bg_url')
-    .eq('id', 'default')
+    .eq('tenant_id', survey?.tenant_id ?? await resolveTenantId())
     .maybeSingle()
 
   const rawLogo = orgSettings?.logo_storage_path

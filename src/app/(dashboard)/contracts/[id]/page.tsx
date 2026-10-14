@@ -40,6 +40,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ImplementationTab } from '@/components/implementation/implementation-tab'
 import { getContractSchedule, getImplementationTemplates } from '@/lib/actions/implementation'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function ContractDetailPage({
   params,
@@ -238,7 +239,7 @@ export default async function ContractDetailPage({
     const tabOrderData = await supabase
       .from('organization_settings')
       .select('pipeline_tab_config')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
       .maybeSingle()
 
     const allPipelineConfig = (tabOrderData?.data as any)?.pipeline_tab_config ?? {}
@@ -296,10 +297,10 @@ export default async function ContractDetailPage({
     supabase.from('email_templates').select('id, name').eq('context', 'contract').eq('channel', 'email').order('name'),
     supabase.from('contract_emails').select('id, from_email, to_email, cc_email, bcc_email, subject, body, sent_at, status, triggered_automatically, error_message, opened_at, direction').eq('contract_id', contract.id).order('sent_at', { ascending: false }),
     getConnectedEmailAccount().catch(() => null),
-    supabase.from('organization_settings').select('inbound_email_domain').eq('id', 'default').maybeSingle(),
+    supabase.from('organization_settings').select('inbound_email_domain').eq('tenant_id', await resolveTenantId()).maybeSingle(),
     supabase.from('custom_fields').select('id, name, field_key, field_type, select_options').order('name'),
     getContractCustomFieldValues(contract.id).catch(() => ({} as Record<string, string>)),
-    supabase.from('organization_settings').select('zapi_instance_id').eq('id', 'default').maybeSingle(),
+    supabase.from('organization_settings').select('zapi_instance_id').eq('tenant_id', await resolveTenantId()).maybeSingle(),
     supabase.from('email_templates').select('id, name').eq('context', 'contract').eq('channel', 'whatsapp').order('name'),
     supabase.from('contract_whatsapp_messages').select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, sent_by, profiles(full_name)').eq('contract_id', contract.id).order('created_at', { ascending: false }),
     getContractContacts(contract.id),
@@ -308,7 +309,7 @@ export default async function ContractDetailPage({
       : Promise.resolve({ data: [] as { id: string; name: string; role: string | null }[] }),
     supabase.from('zapsign_templates').select('id, name, type').order('name'),
     supabase.from('zapsign_documents').select('id, name, status, sent_at, signed_at, pdf_url, signed_pdf_url').eq('contract_id', contract.id).order('created_at', { ascending: false }),
-    supabase.from('organization_settings').select('zapsign_api_token').eq('id', 'default').maybeSingle(),
+    supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle(),
     supabase.from('proposal_status').select('status, proposal_value, actor_name, actor_email, updated_at, technical_snapshot, technical_comment, technical_restrictions, review_token, submitted_at, submitted_by_name, technical_approved_at, technical_approved_by_name, technical_approved_by_role, commercial_approved_at, commercial_approved_by_name, commercial_approved_by_role, client_status, client_approved_at, client_approved_by_name, client_review_token, texto_objetivos, texto_atividades, texto_estrutura_apoio').eq('contract_id', contract.id).maybeSingle(),
   ])
 
@@ -698,7 +699,7 @@ export default async function ContractDetailPage({
                 })()}
                 activeFields={await (async () => {
                   const { data: orgSettings, error: orgErr } = await supabase
-                    .from('organization_settings').select('carteira_active_fields').eq('id', 'default').maybeSingle()
+                    .from('organization_settings').select('carteira_active_fields').eq('tenant_id', await resolveTenantId()).maybeSingle()
                   console.log('[carteira] activeFields from DB:', orgSettings?.carteira_active_fields, 'error:', orgErr?.message)
                   return orgSettings?.carteira_active_fields ? (orgSettings.carteira_active_fields as string[]) : null
                 })()}

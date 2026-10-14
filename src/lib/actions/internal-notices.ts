@@ -12,6 +12,7 @@ import { getContractTenantName } from '@/lib/agent/tenant-name'
 import { buildInternalEmailHtml, invalidEmails, parseEmailList } from '@/lib/agent/internal-settings'
 import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const INTERNAL_KINDS = new Set(['internal_notice', 'internal_impl_report'])
 
@@ -68,11 +69,11 @@ export async function sendInternalEmail(
     activity.contract_id
       ? admin.from('contracts').select('client_name').eq('id', activity.contract_id).maybeSingle()
       : Promise.resolve({ data: null as { client_name: string } | null }),
-    admin.from('organization_settings').select('company_name').eq('id', 'default').maybeSingle(),
+    admin.from('organization_settings').select('company_name').eq('tenant_id', await resolveTenantId({ contractId: activity.contract_id })).maybeSingle(),
   ])
   const tenantName = activity.contract_id ? await getContractTenantName(admin, activity.contract_id) : null
   const { data: tenantRow } = !tenantName
-    ? await admin.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
+    ? await admin.from('organization_settings').select('tenant_id').eq('tenant_id', await resolveTenantId({ contractId: activity.contract_id })).maybeSingle()
     : { data: null }
   let companyName = tenantName ?? org?.company_name ?? 'Equipe Comercial'
   if (!tenantName && tenantRow?.tenant_id) {

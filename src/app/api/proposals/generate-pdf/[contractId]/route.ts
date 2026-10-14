@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET(
   req: Request,
@@ -47,6 +48,7 @@ export async function GET(
   // 4. Busca posição do miolo (start/end) caso nenhum template tenha is_miolo_after
   const { data: org } = await admin.from('organization_settings')
     .select('miolo_positions, client_name')
+    .eq('tenant_id', await resolveTenantId({ contractId }))
     .maybeSingle()
   const mioloPositions = (org?.miolo_positions as Record<string, string>) ?? {}
   const specialMiolo = mioloPositions[serviceType] ?? null

@@ -8,10 +8,12 @@ export function LeadCaptureForm({
   onSuccess,
   redirectAfter,
   defaultPhone,
+  empresa,
 }: {
   onSuccess?: () => void
   redirectAfter?: (leadId: string) => string
   defaultPhone?: string
+  empresa?: string   // slug da empresa (formulário público)
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -49,6 +51,7 @@ export function LeadCaptureForm({
 
   return (
     <form action={handleSubmit} className="space-y-3 rounded-xl border border-gray-200 bg-white p-6">
+      {empresa && <input type="hidden" name="empresa" value={empresa} />}
       <div>
         <label className="block text-sm font-medium text-gray-700">Nome</label>
         <input name="name" required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none" />

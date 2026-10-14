@@ -5,6 +5,7 @@ import { getActiveTenantId } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { revalidatePath } from 'next/cache'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 async function doArchive(
   phone: string,
@@ -96,7 +97,7 @@ async function doArchive(
     const orgQ = admin
       .from('organization_settings')
       .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases')
-      .eq('id', 'default')
+      .eq('tenant_id', await resolveTenantId())
     const { data: org } = tenantId
       ? await (orgQ as any).eq('tenant_id', tenantId).maybeSingle()
       : await (orgQ as any).maybeSingle()

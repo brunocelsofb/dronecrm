@@ -45,12 +45,17 @@ export async function createClient() {
 export async function getActiveTenantId(): Promise<string | null> {
   // Cookie: fonte primária — acessível em qualquer contexto server (Route Handlers incluídos)
   const cookieStore = await cookies()
-  const fromCookie = cookieStore.get('orbis_imp_tid')?.value ?? null
-  if (fromCookie) return fromCookie
-
-  // Header: fallback para Server Components e Server Actions (injetado pelo middleware)
   const headersList = await headers()
-  return headersList.get('x-orbis-imp-tenant-id') ?? null
+  const candidate = cookieStore.get('orbis_imp_tid')?.value ?? headersList.get('x-orbis-imp-tenant-id') ?? null
+  if (!candidate) return null
+
+  // Só vale para Super Admin: o cookie poderia ser forjado por qualquer usuário
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: profile } = await createAdminClient()
+    .from('profiles').select('is_super_admin').eq('id', user.id).maybeSingle()
+  return profile?.is_super_admin ? candidate : null
 }
 
 /**

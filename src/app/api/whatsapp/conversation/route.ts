@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export async function GET(req: Request) {
   try {
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
     const { data: orgData } = await admin
       .from('organization_settings')
       .select('evo_instance_aliases, evo_instance_name, whatsapp_contact_names')
-      .eq('id', 'default').maybeSingle()
+      .eq('tenant_id', await resolveTenantId()).maybeSingle()
 
     const contactNames = (orgData as any)?.whatsapp_contact_names ?? {}
     const manualName = contactNames[cleanPhone] ?? contactNames[last8] ?? contactNames[`55${cleanPhone}`] ?? null

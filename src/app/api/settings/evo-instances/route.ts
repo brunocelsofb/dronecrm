@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPrivateInstances, isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 async function getEvoCreds() {
   const admin = createAdminClient()
   const { data } = await admin.from('organization_settings')
-    .select('evo_server_url, evo_api_key').eq('id', 'default').maybeSingle()
+    .select('evo_server_url, evo_api_key').eq('tenant_id', await resolveTenantId()).maybeSingle()
   return data?.evo_server_url && data?.evo_api_key ? data : null
 }
 

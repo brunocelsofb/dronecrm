@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
@@ -86,7 +87,7 @@ async function generateControlCode(): Promise<string> {
 
   const { data: seqValue } = await supabase.rpc('next_proposal_number_for_year', { p_year: year })
 
-  const { data: settings } = await supabase.from('organization_settings').select('proposal_number_prefix').eq('id', 'default').maybeSingle()
+  const { data: settings } = await supabase.from('organization_settings').select('proposal_number_prefix').eq('tenant_id', await resolveTenantId()).maybeSingle()
   const prefix = settings?.proposal_number_prefix || 'PROP'
 
   return `${prefix}-${year}-${String(seqValue).padStart(4, '0')}`

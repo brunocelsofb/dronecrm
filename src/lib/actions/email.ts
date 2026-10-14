@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmailForUser, getEmailAccountInfo, wrapEmailHtml } from '@/lib/email/send'
 import { verifySmtpConnection } from '@/lib/email/smtp'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 export type ActionState = { error?: string }
 
@@ -186,7 +187,7 @@ export async function sendContractEmail(
   // pro endereço de rastreamento, sumindo da caixa pessoal de quem
   // enviou (Reply-To substitui, não soma, então precisa listar os dois).
   const { data: contractForReply } = await supabase.from('contracts').select('inbound_email_code').eq('id', contractId).maybeSingle()
-  const { data: orgSettings } = await supabase.from('organization_settings').select('inbound_email_domain').eq('id', 'default').maybeSingle()
+  const { data: orgSettings } = await supabase.from('organization_settings').select('inbound_email_domain').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
   const trackingAddress =
     orgSettings?.inbound_email_domain && contractForReply?.inbound_email_code
       ? `${contractForReply.inbound_email_code}@${orgSettings.inbound_email_domain}`
@@ -278,7 +279,7 @@ export async function buildEmailFromTemplate(
   const { data: owner } = contract.owner_id
     ? await supabase.from('profiles').select('full_name').eq('id', contract.owner_id).maybeSingle()
     : { data: null }
-  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('id', 'default').maybeSingle()
+  const { data: orgSettings } = await supabase.from('organization_settings').select('company_name, company_cnpj').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
 
   const { data: customFieldDefs } = await supabase.from('custom_fields').select('id, field_key, field_type')
   const { data: customFieldValues } = await supabase.from('contract_custom_field_values').select('custom_field_id, value').eq('contract_id', contractId)
@@ -336,7 +337,7 @@ export async function sendAutomatedTemplateEmail(contractId: string, templateId:
 
   const { data: ownerProfile } = await supabase.from('profiles').select('email_signature').eq('id', contract.owner_id).maybeSingle()
   const { data: contractCodeRow } = await supabase.from('contracts').select('inbound_email_code').eq('id', contractId).maybeSingle()
-  const { data: orgSettingsRow } = await supabase.from('organization_settings').select('inbound_email_domain').eq('id', 'default').maybeSingle()
+  const { data: orgSettingsRow } = await supabase.from('organization_settings').select('inbound_email_domain').eq('tenant_id', await resolveTenantId({ contractId })).maybeSingle()
   const trackingAddress =
     orgSettingsRow?.inbound_email_domain && contractCodeRow?.inbound_email_code
       ? `${contractCodeRow.inbound_email_code}@${orgSettingsRow.inbound_email_domain}`

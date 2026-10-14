@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // Mapeia o mimetype devolvido pela Evolution para extensão e Content-Type
 const MIME_MAP: Record<string, string> = {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
   const { data: orgSettings } = await supabase
     .from('organization_settings')
     .select('evo_server_url, evo_api_key, evo_instance_name')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   if (!orgSettings?.evo_server_url || !orgSettings?.evo_api_key) {

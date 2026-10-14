@@ -6,6 +6,7 @@ import { OrganizationSettingsForm } from '@/components/settings/organization-set
 import { NumberingSettingsForm } from '@/components/settings/numbering-settings-form'
 import { InboundEmailSettingsForm } from '@/components/settings/inbound-email-settings-form'
 import { DEFAULT_WELCOME_OFFLINE, DEFAULT_WELCOME_ONLINE, DEFAULT_REMINDER } from '@/lib/whatsapp/guardrails'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 const CONFIG_SECTIONS = [
   {
@@ -96,7 +97,7 @@ export default async function SettingsPage() {
   const { data: settings } = await supabase
     .from('organization_settings')
     .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, ticket_number_prefix, proposal_number_prefix, inbound_email_domain, mailgun_webhook_signing_key, zapi_instance_id, evo_server_url, evo_api_key, evo_instance_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, whatsapp_daily_auto_limit, zapsign_api_token')
-    .eq('id', 'default')
+    .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
   // Converte path relativo da logo para URL pública

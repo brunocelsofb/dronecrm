@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // Recebe e-mails de entrada roteados pelo Mailgun ("Routes") — extrai
 // o código único do destinatário (parte antes do @) e vincula ao
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     fields = Object.fromEntries(new URLSearchParams(text))
   }
 
-  const { data: settings } = await supabase.from('organization_settings').select('mailgun_webhook_signing_key').eq('id', 'default').maybeSingle()
+  const { data: settings } = await supabase.from('organization_settings').select('mailgun_webhook_signing_key').eq('tenant_id', await resolveTenantId()).maybeSingle()
   if (settings?.mailgun_webhook_signing_key && fields.timestamp && fields.token && fields.signature) {
     const valid = verifyMailgunSignature(fields.timestamp, fields.token, fields.signature, settings.mailgun_webhook_signing_key)
     if (!valid) {

@@ -15,6 +15,7 @@
 import { getValidAccessToken, sendGmailMessage } from '@/lib/email/gmail'
 import { sendSmtpMessage } from '@/lib/email/smtp'
 import { createClient } from '@supabase/supabase-js'
+import { resolveTenantId } from '@/lib/tenant/context'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -270,7 +271,7 @@ export async function createCrmActivity(opts: {
     tenantId = data?.tenant_id ?? null
   }
   if (!tenantId) {
-    const { data } = await supabase.from('organization_settings').select('tenant_id').eq('id', 'default').maybeSingle()
+    const { data } = await supabase.from('organization_settings').select('tenant_id').eq('tenant_id', await resolveTenantId()).maybeSingle()
     tenantId = data?.tenant_id ?? null
   }
   if (tenantId) row.tenant_id = tenantId
