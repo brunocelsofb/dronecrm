@@ -65,6 +65,8 @@ export async function saveMeasurement(input: MeasurementInput): Promise<Measurem
     measured_amount: round2(measured),
     glosa_amount: round2(glosa),
     glosa_reason: glosa > 0 ? input.glosaReason!.trim() : null,
+    discount_amount: 0,
+    discount_reason: null,
     amount: net,
     contract_value: contractValue,
     notes: input.notes?.trim() || null,
@@ -121,6 +123,76 @@ export async function approveMeasurement(recordId: string): Promise<{ ok: true }
   })
 
   revalidatePath(`/contracts/${rec.contract_id}`)
+  revalidatePath('/pipeline')
+  revalidatePath('/painel')
+  return { ok: true }
+}
+
+// ─── Contrato recorrente: desconto/ajuste do mês ─────────────────────────────
+// O recorrente fatura o valor do contrato todo mês; quando algo acontece
+// (desconto, abatimento), registra-se o desconto do mês com o motivo.
+// Faturado do mês = valor do contrato − desconto. Desconto 0 remove o ajuste.
+export async function saveRecurringDiscount(input: {
+  contractId: string
+  year: number
+  month: number
+  discount: number
+  reason?: string | null
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Usuário não autenticado.' }
+
+  const { contractId, year, month } = input
+  const discount = round2(Number(input.discount || 0))
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return { ok: false, error: 'Ano inválido.' }
+  if (!Number.isInteger(month) || month < 1 || month > 12) return { ok: false, error: 'Mês inválido.' }
+  if (!Number.isFinite(discount) || discount < 0) return { ok: false, error: 'Desconto inválido.' }
+  if (discount > 0 && !input.reason?.trim()) return { ok: false, error: 'Informe o motivo do desconto.' }
+
+  const admin = await createScopedAdmin()
+  const [{ data: contract }, { data: profile }] = await Promise.all([
+    admin.from('contracts').select('id, monthly_value, billing_type, owner_id').eq('id', contractId).maybeSingle(),
+    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+  ])
+  if (!contract) return { ok: false, error: 'Contrato não encontrado.' }
+  if (contract.billing_type === 'metered') return { ok: false, error: 'Contrato por medição: use o lançamento de medição (com glosa).' }
+  if (profile?.role !== 'admin' && contract.owner_id !== user.id) {
+    return { ok: false, error: 'Só o responsável pela conta ou um administrador registra desconto.' }
+  }
+  const contractValue = Number(contract.monthly_value) || 0
+  if (discount > contractValue) return { ok: false, error: 'O desconto não pode ser maior que o valor do contrato.' }
+
+  const now = new Date().toISOString()
+  const { error } = await admin.from('billing_records').upsert({
+    contract_id: contractId,
+    year,
+    month,
+    measured_amount: contractValue,
+    glosa_amount: 0,
+    glosa_reason: null,
+    discount_amount: discount,
+    discount_reason: discount > 0 ? input.reason!.trim() : null,
+    amount: round2(contractValue - discount),
+    contract_value: contractValue,
+    status: 'validado',
+    confirmed_by: user.id,
+    confirmed_at: now,
+  }, { onConflict: 'contract_id,year,month' })
+  if (error) return { ok: false, error: error.message }
+
+  const ref = `${MONTHS_LONG[month - 1]}/${year}`
+  await admin.from('activities').insert({
+    contract_id: contractId,
+    user_id: user.id,
+    type: 'system',
+    content: discount > 0
+      ? `💲 Desconto de ${brl(discount)} em ${ref} (motivo: ${input.reason!.trim()}). Faturado no mês: ${brl(contractValue - discount)} de ${brl(contractValue)}.`
+      : `💲 Desconto de ${ref} removido. Faturado no mês: ${brl(contractValue)}.`,
+    metadata: { kind: 'recurring_discount', year, month, discount },
+  })
+
+  revalidatePath(`/contracts/${contractId}`)
   revalidatePath('/pipeline')
   revalidatePath('/painel')
   return { ok: true }

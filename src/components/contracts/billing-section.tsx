@@ -10,7 +10,7 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { setBillingType } from '@/lib/actions/billing'
-import { saveMeasurement, approveMeasurement } from '@/lib/actions/measurements'
+import { saveMeasurement, approveMeasurement, saveRecurringDiscount } from '@/lib/actions/measurements'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { measurementLoss, brl, MONTHS_LONG } from '@/lib/revenue/measurement'
 import { RevenueTypeBadge } from '@/components/contracts/revenue-type-badge'
@@ -24,6 +24,8 @@ export type BillingRecord = {
   glosa_amount: number | null
   glosa_reason: string | null
   contract_value: number | null
+  discount_amount?: number | null
+  discount_reason?: string | null
   status: 'validado' | 'aguardando_aprovacao' | string
   file_storage_path: string | null
   file_name: string | null
@@ -161,13 +163,7 @@ export function BillingSection({
       </div>
 
       {type === 'fixed' ? (
-        <div className="rounded-lg border border-brand-100 bg-brand-100 p-4 text-sm text-brand-800">
-          <p className="font-medium">Receita recorrente automática: {brl(contractValue)} por mês</p>
-          <p className="mt-1 text-xs text-brand-700">
-            Entra sozinha na receita de cada mês enquanto o contrato estiver ativo no funil (só sai se for rescindido). Não precisa lançar nada.
-            Para mudar o valor, use &quot;Mudança de valor&quot; na Visão Geral.
-          </p>
-        </div>
+        <RecurringDiscountPanel contractId={contractId} contractValue={contractValue} records={records} defYear={defYear} defMonth={defMonth} />
       ) : (
         <div className="rounded-lg border border-orange-200 bg-white p-4">
           <p className="text-xs font-medium text-gray-700">
@@ -236,9 +232,9 @@ export function BillingSection({
         </div>
       )}
 
-      {records.length > 0 && (
+      {type === 'metered' && records.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-gray-500">{type === 'fixed' ? 'Lançamentos antigos (não contam: contrato recorrente)' : 'Medições lançadas'}</p>
+          <p className="text-xs font-medium text-gray-500">Medições lançadas</p>
           {records.map((r) => {
             const cv = Number(r.contract_value ?? contractValue) || 0
             const measuredV = Number(r.measured_amount ?? r.amount)
@@ -265,6 +261,113 @@ export function BillingSection({
                   )}
                   {type === 'metered' && <button onClick={() => handleEdit(r)} className="text-xs text-brand-700 hover:underline">Corrigir</button>}
                 </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Recorrente: faturado do mês = valor do contrato − desconto ──────────────
+function RecurringDiscountPanel({ contractId, contractValue, records, defYear, defMonth }: {
+  contractId: string
+  contractValue: number
+  records: BillingRecord[]
+  defYear: number
+  defMonth: number
+}) {
+  const router = useRouter()
+  const [year, setYear] = useState(defYear)
+  const [month, setMonth] = useState(defMonth)
+  const [discount, setDiscount] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+
+  const d = parseMoney(discount)
+  const billed = !Number.isNaN(d) ? Math.max(0, contractValue - d) : null
+  const withDiscount = records
+    .filter(r => Number(r.discount_amount ?? 0) > 0)
+    .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))
+
+  async function save(value: number, why: string, y = year, m = month) {
+    setError(null); setOkMsg(null)
+    if (Number.isNaN(value) || value < 0) { setError('Desconto inválido.'); return }
+    if (value > contractValue) { setError('O desconto não pode ser maior que o valor do contrato.'); return }
+    if (value > 0 && !why.trim()) { setError('Informe o motivo do desconto.'); return }
+    setBusy(true)
+    const r = await saveRecurringDiscount({ contractId, year: y, month: m, discount: value, reason: why })
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    setOkMsg(value > 0 ? 'Desconto registrado.' : 'Desconto removido.')
+    setDiscount(''); setReason('')
+    router.refresh()
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-brand-100 bg-brand-100 p-4 text-sm text-brand-800">
+        <p className="font-medium">Faturamento recorrente: {brl(contractValue)} por mês</p>
+        <p className="mt-1 text-xs text-brand-700">
+          Todo mês o faturado é o valor do contrato. Se houver desconto ou abatimento num mês, registre abaixo: o Painel gerencial
+          mostra o potencial do contrato x o que foi faturado, e de onde veio a diferença.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <p className="text-xs font-medium text-gray-700">Desconto no mês</p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <div>
+            <label className="block text-[10px] text-gray-500">Mês</label>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="mt-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+              {MONTHS_LONG.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-gray-500">Ano</label>
+            <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="mt-1 w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-[10px] text-gray-500">Desconto (R$)</label>
+            <input inputMode="decimal" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0,00" className="mt-1 w-32 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+          </div>
+          <div className="min-w-[200px] flex-1">
+            <label className="block text-[10px] text-gray-500">Motivo *</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: equipamento parado, acordo comercial" className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+          </div>
+        </div>
+        {billed !== null && d > 0 && (
+          <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+            Faturado em {MONTHS_LONG[month - 1]}: <strong>{brl(billed)}</strong> de {brl(contractValue)} — perdemos {brl(Math.min(d, contractValue))} no mês.
+          </p>
+        )}
+        <button onClick={() => save(d, reason)} disabled={busy || !discount} className="mt-3 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
+          {busy ? 'Salvando...' : 'Registrar desconto'}
+        </button>
+        {error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
+        {okMsg && <p role="status" className="mt-1 text-xs text-green-700">{okMsg}</p>}
+      </div>
+
+      {withDiscount.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-gray-500">Meses com desconto</p>
+          {withDiscount.map(r => {
+            const cv = Number(r.contract_value ?? contractValue) || 0
+            const disc = Number(r.discount_amount ?? 0)
+            return (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <span className="font-medium text-gray-900">{MONTHS_LONG[r.month - 1]}/{r.year}</span>
+                  <span className="ml-2 text-gray-700">faturado {brl(cv - disc)} de {brl(cv)}</span>
+                  <span className="ml-2 text-xs font-medium text-red-700">desconto {brl(disc)}</span>
+                  {r.discount_reason && <span className="ml-2 text-xs text-gray-500">— {r.discount_reason}</span>}
+                </div>
+                <button onClick={() => { if (window.confirm(`Remover o desconto de ${MONTHS_LONG[r.month - 1]}/${r.year}?`)) save(0, '', r.year, r.month) }} disabled={busy} className="text-xs text-brand-700 hover:underline">
+                  Remover
+                </button>
               </div>
             )
           })}

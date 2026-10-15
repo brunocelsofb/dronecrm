@@ -25,6 +25,7 @@ export type ContractRow = {
 export type BillingRow = {
   contract_id: string; year: number; month: number; amount: number
   measured_amount: number | null; glosa_amount: number | null; contract_value: number | null; status: string
+  discount_amount?: number | null; discount_reason?: string | null; glosa_reason?: string | null
 }
 export type RenewalRow = {
   contract_id: string; renewed_at: string; previous_value: number | null; new_value: number
@@ -163,25 +164,40 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   }
 
   // ── Receita de um mês ────────────────────────────────────────────────────
+  // Em contrato (potencial) x faturado:
+  //   recorrente: faturado = valor do contrato − desconto do mês
+  //   medição:    faturado = medido − glosa − desconto (só medição validada; pendente = 0)
+  // Diferença = descontos + glosas + medido abaixo do potencial + medições pendentes − medido acima
   function revenueOf(y: number, m: number) {
     const start = monthStartMs(y, m)
     const end = m === 12 ? monthStartMs(y + 1, 1) : monthStartMs(y, m + 1)
+    const BRLf = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r2(v))
+    const billingOfMonth = input.billing.filter(b => b.year === y && b.month === m)
 
-    const recurring: ContractLine[] = []
-    const meteredExpected: ContractLine[] = []   // potencial dos contratos por medição ativos
+    const recurring: ContractLine[] = []          // faturado recorrente
+    const recurringPotentialL: ContractLine[] = []
+    const meteredExpected: ContractLine[] = []    // potencial dos contratos por medição ativos
+    const discounts: ContractLine[] = []
+    const glosas: ContractLine[] = []
+    const below: ContractLine[] = []
+    const above: ContractLine[] = []
+
     for (const contractId of gestaoRunsByContract.keys()) {
       if (!activeInRange(contractId, start, end)) continue
       const c = contractById.get(contractId)
       const v = valueAt(contractId, end)
-      if (c?.billing_type === 'metered') meteredExpected.push(line(contractId, v))
-      else recurring.push(line(contractId, v))
+      if (c?.billing_type === 'metered') { meteredExpected.push(line(contractId, v)); continue }
+      recurringPotentialL.push(line(contractId, v))
+      const rec = billingOfMonth.find(b => b.contract_id === contractId)
+      const disc = Math.min(Math.max(Number(rec?.discount_amount) || 0, 0), v)
+      if (disc > 0) discounts.push(line(contractId, disc, rec?.discount_reason ? `desconto: ${rec.discount_reason}` : 'desconto'))
+      recurring.push(line(contractId, v - disc, disc > 0 ? `desconto de ${BRLf(disc)} sobre ${BRLf(v)}` : undefined))
     }
 
     const measured: ContractLine[] = []
     const measurePending: ContractLine[] = []
     let lostPotential = 0
     let glosaTotal = 0
-    const billingOfMonth = input.billing.filter(b => b.year === y && b.month === m)
     for (const exp of meteredExpected) {
       const rec = billingOfMonth.find(b => b.contract_id === exp.contractId)
       if (!rec || rec.status !== 'validado') {
@@ -190,10 +206,17 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       }
       const potential = Number(rec.contract_value ?? exp.value) || 0
       const net = Number(rec.amount) || 0
+      const g = Number(rec.glosa_amount) || 0
+      const dsc = Number(rec.discount_amount) || 0
+      const meas = rec.measured_amount !== null && rec.measured_amount !== undefined ? Number(rec.measured_amount) : net + g + dsc
       const lost = potential - net > 0 ? potential - net : 0
       lostPotential += lost
-      glosaTotal += Number(rec.glosa_amount) || 0
-      measured.push(line(exp.contractId, net, lost > 0 ? `perdemos ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(r2(lost))} do potencial (${pct(lost, potential)}%)` : '100% do potencial'))
+      glosaTotal += g
+      if (g > 0) glosas.push(line(exp.contractId, g, rec.glosa_reason ? `glosa: ${rec.glosa_reason}` : 'glosa'))
+      if (dsc > 0) discounts.push(line(exp.contractId, dsc, rec.discount_reason ? `desconto: ${rec.discount_reason}` : 'desconto'))
+      if (potential - meas > 0) below.push(line(exp.contractId, potential - meas, `medido ${BRLf(meas)} de ${BRLf(potential)}`))
+      if (meas - potential > 0) above.push(line(exp.contractId, meas - potential, `medido ${BRLf(meas)} acima de ${BRLf(potential)}`))
+      measured.push(line(exp.contractId, net, lost > 0 ? `perdemos ${BRLf(lost)} do potencial (${String(pct(lost, potential)).replace('.', ',')}%)` : '100% do potencial'))
     }
 
     const avulso: ContractLine[] = []
@@ -206,16 +229,30 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
 
     const sum = (l: ContractLine[]) => r2(l.reduce((s, x) => s + x.value, 0))
     const recurringTotal = sum(recurring)
+    const recurringPotential = sum(recurringPotentialL)
     const meteredTotal = sum(measured)
+    const meteredPotential = sum(meteredExpected)
     const avulsoTotal = sum(avulso)
+    const contractPotential = r2(recurringPotential + meteredPotential)
+    const contractBilled = r2(recurringTotal + meteredTotal)
     const goal = Number(input.goals.find(g => g.year === y && g.month === m)?.target_value) || 0
     const total = r2(recurringTotal + meteredTotal + avulsoTotal)
     return {
       year: y, month: m,
-      recurring, recurringTotal,
+      recurring, recurringTotal, recurringPotential,
       measured, meteredTotal, measurePending, lostPotential: r2(lostPotential), glosaTotal: r2(glosaTotal),
-      meteredPotential: sum(meteredExpected),
+      meteredPotential,
       avulso, avulsoTotal,
+      contractPotential, contractBilled,
+      contractGap: r2(contractPotential - contractBilled),
+      contractBilledPct: pct(contractBilled, contractPotential),
+      gapParts: {
+        discounts: { total: sum(discounts), lines: discounts },
+        glosas: { total: sum(glosas), lines: glosas },
+        below: { total: sum(below), lines: below },
+        pending: { total: sum(measurePending), lines: measurePending },
+        above: { total: sum(above), lines: above },
+      },
       total, goal, goalPct: pct(total, goal), gap: r2(goal - total),
     }
   }
@@ -237,6 +274,9 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       metered: r ? r.meteredTotal : null as number | null,
       avulso: r ? r.avulsoTotal : null as number | null,
       lostPotential: r ? r.lostPotential : null as number | null,
+      potential: r ? r.contractPotential : null as number | null,
+      billed: r ? r.contractBilled : null as number | null,
+      contractGap: r ? r.contractGap : null as number | null,
       pending: r ? r.measurePending.length : null as number | null,
       goal: goalOf(m),
       goalPct: r ? pct(r.total, goalOf(m)) : null,
@@ -247,7 +287,13 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   const current = (() => {
     if (scope === 'month') return revenueOf(year, month)
     const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null && selSet.has(r.month))
-    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential') => r2(done.reduce((s, r) => s + r[k], 0))
+    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential' | 'recurringPotential' | 'contractPotential' | 'contractBilled') => r2(done.reduce((s, r) => s + r[k], 0))
+    const tag = (r: { month: number }, l: ContractLine) => ({ ...l, note: `${MONTHS_SHORT_PT[r.month - 1]}${l.note ? ` · ${l.note}` : ''}` })
+    const part = (k: 'discounts' | 'glosas' | 'below' | 'pending' | 'above') => {
+      const lines = done.flatMap(r => r.gapParts[k].lines.map(l => tag(r, l)))
+      return { total: r2(lines.reduce((s, l) => s + l.value, 0)), lines }
+    }
+    const cPot = sumOf('contractPotential'), cBil = sumOf('contractBilled')
     const total = r2(done.reduce((s, r) => s + r.total, 0))
     const goal = r2(sel.reduce((s, m) => s + goalOf(m), 0))
     const goalToDate = r2(done.reduce((s, r) => s + r.goal, 0))
@@ -257,6 +303,9 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       measured: mergeLines(done.map(r => r.measured)), meteredTotal: sumOf('meteredTotal'),
       measurePending: done.flatMap(r => r.measurePending.map(p => ({ ...p, note: `${MONTHS_SHORT_PT[r.month - 1]}: ${p.note}` }))),
       lostPotential: sumOf('lostPotential'), glosaTotal: sumOf('glosaTotal'), meteredPotential: sumOf('meteredPotential'),
+      recurringPotential: sumOf('recurringPotential'),
+      contractPotential: cPot, contractBilled: cBil, contractGap: r2(cPot - cBil), contractBilledPct: pct(cBil, cPot),
+      gapParts: { discounts: part('discounts'), glosas: part('glosas'), below: part('below'), pending: part('pending'), above: part('above') },
       avulso: done.flatMap(r => r.avulso.map(a => ({ ...a, note: `${MONTHS_SHORT_PT[r.month - 1]} · ${a.note ?? ''}` }))), avulsoTotal: sumOf('avulsoTotal'),
       total, goal, goalPct: pct(total, goal), gap: r2(goal - total),
       goalToDate, goalToDatePct: pct(total, goalToDate),

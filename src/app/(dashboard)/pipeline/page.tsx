@@ -110,12 +110,10 @@ export default async function PipelinePage({
   // Contratos (Gestão de Contratos): selo Recorrente/Medição e, na medição,
   // o último mês lançado e quanto do potencial foi perdido.
   const isContractsPipeline = pipelineType === 'gestao_contratos'
-  const meteredIds = isContractsPipeline
-    ? (runs ?? []).map((r: any) => r.contract_id).filter((id: string) => contractById.get(id)?.billing_type === 'metered')
-    : []
+  const meteredIds = isContractsPipeline ? [...new Set((runs ?? []).map((r: any) => r.contract_id as string))] : []
   const [{ data: measureRows }, { data: orgRow }] = await Promise.all([
     meteredIds.length
-      ? supabase.from('billing_records').select('contract_id, year, month, amount, contract_value, status').in('contract_id', meteredIds)
+      ? supabase.from('billing_records').select('contract_id, year, month, amount, contract_value, status, discount_amount').in('contract_id', meteredIds)
       : Promise.resolve({ data: [] as any[] }),
     isContractsPipeline
       ? supabase.from('organization_settings').select('measurement_due_day').limit(1).maybeSingle()
@@ -133,7 +131,14 @@ export default async function PipelinePage({
     if (!isContractsPipeline) return undefined
     const c = contractById.get(contractId)
     const contractValue = Number(c?.monthly_value) || 0
-    if (c?.billing_type !== 'metered') return { type: 'fixed', contractValue }
+    if (c?.billing_type !== 'metered') {
+      // Recorrente: desconto do mês atual (ou do mês anterior), se houver
+      const t = todayBrasilia()
+      const cur = { y: t.getFullYear(), m: t.getMonth() + 1 }
+      const recs = (measureRows ?? []).filter((b: any) => b.contract_id === contractId && Number(b.discount_amount) > 0)
+      const hit = recs.find((b: any) => b.year === cur.y && b.month === cur.m) ?? recs.find((b: any) => b.year === ref.year && b.month === ref.month)
+      return { type: 'fixed', contractValue, discount: hit ? { year: hit.year, month: hit.month, value: Number(hit.discount_amount) } : null }
+    }
     const last = lastMeasureByContract.get(contractId)
     const refRec = refMeasureByContract.get(contractId)
     const lastInfo = last ? (() => {

@@ -5,14 +5,14 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ proposalId: string }> }
 ) {
   const userClient = await createClient()
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const { actor_name, reason } = await req.json()
-  const { id } = await params
+  const { proposalId: id } = await params
   const admin = (await createScopedAdmin())
 
   const { data: proposal } = await admin

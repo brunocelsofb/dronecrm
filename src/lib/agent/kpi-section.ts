@@ -17,6 +17,7 @@ export async function buildKpiSection(tenantId: string): Promise<string> {
   const rv = d.revenue, h = d.hunter, f = d.farmer
   const lines: string[] = []
   lines.push(`📊 *Indicadores de ${MONTHS_LONG[month - 1]}* (até hoje)`)
+  lines.push(`Em contrato: ${brl(rv.contractPotential)} · faturado: ${brl(rv.contractBilled)} (${pc(rv.contractBilledPct)})${rv.contractGap > 0 ? ` · diferença ${brl(rv.contractGap)} (descontos ${brl(rv.gapParts.discounts.total)}, glosas ${brl(rv.gapParts.glosas.total)}, medido abaixo ${brl(rv.gapParts.below.total)}, medições pendentes ${brl(rv.gapParts.pending.total)})` : ''}`)
   lines.push(`Receita: ${brl(rv.total)}${rv.goal > 0 ? ` — ${pc(rv.goalPct)} da meta (${brl(rv.goal)})` : ' — sem meta cadastrada'}`)
   lines.push(`  $ Recorrente ${brl(rv.recurringTotal)} · 📏 Medição ${brl(rv.meteredTotal)} · Avulso ${brl(rv.avulsoTotal)}`)
   lines.push('')

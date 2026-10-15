@@ -53,6 +53,7 @@ export type RunCard = {
     contractValue: number
     last?: { year: number; month: number; net: number; lost: number; lostPct: number | null; pending: boolean } | null
     refMissing?: { year: number; month: number; overdue: boolean } | null
+    discount?: { year: number; month: number; value: number } | null
   }
 }
 
@@ -148,6 +149,11 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
       {card.revenue && card.status === 'open' && (
         <div style={{ marginTop: 6 }}>
           <RevenueTypeBadge billingType={card.revenue.type} size="sm" />
+          {card.revenue.type === 'fixed' && card.revenue.discount && (
+            <p style={{ marginTop: 4, fontSize: 10, lineHeight: 1.35, color: '#8e4550' }}>
+              {MONTHS_SHORT[card.revenue.discount.month - 1]}/{String(card.revenue.discount.year).slice(2)}: desconto de {fmt(card.revenue.discount.value)} · faturado {fmt(Math.max(0, card.revenue.contractValue - card.revenue.discount.value))}
+            </p>
+          )}
           {card.revenue.type === 'metered' && card.revenue.last && (
             <p style={{ marginTop: 4, fontSize: 10, lineHeight: 1.35, color: card.revenue.last.lost > 0 ? '#8e4550' : '#1f8c7d' }}>
               {MONTHS_SHORT[card.revenue.last.month - 1]}/{String(card.revenue.last.year).slice(2)}: {fmt(card.revenue.last.net)}

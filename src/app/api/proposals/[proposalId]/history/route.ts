@@ -4,9 +4,9 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ proposalId: string }> }
 ) {
-  const { id } = await params
+  const { proposalId: id } = await params
   const { searchParams } = new URL(req.url)
   const contractId = searchParams.get('contract_id')
   if (!contractId) return NextResponse.json({ logs: [] })

@@ -38,7 +38,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     fetchAll<DashboardInput['contracts'][number]>((a, b) => db.from('contracts')
       .select('id, client_name, process_number, billing_type, monthly_value, valid_from').order('id').range(a, b)),
     fetchAll<DashboardInput['billing'][number]>((a, b) => db.from('billing_records')
-      .select('contract_id, year, month, amount, measured_amount, glosa_amount, contract_value, status').order('id').range(a, b)),
+      .select('contract_id, year, month, amount, measured_amount, glosa_amount, glosa_reason, discount_amount, discount_reason, contract_value, status').order('id').range(a, b)),
     fetchAll<DashboardInput['renewals'][number]>((a, b) => db.from('contract_renewals')
       .select('contract_id, renewed_at, previous_value, new_value').order('id').range(a, b)),
     fetchAll<DashboardInput['goals'][number]>((a, b) => db.from('monthly_goals').select('year, month, target_value').eq('year', year).order('month').range(a, b)),
@@ -64,7 +64,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     pipelines,
     runs: runs.map(r => ({ ...r, value: num(r.value) })),
     contracts: contracts.map(c => ({ ...c, monthly_value: num(c.monthly_value) })),
-    billing: billing.map(b => ({ ...b, amount: Number(b.amount) || 0, measured_amount: num(b.measured_amount), glosa_amount: num(b.glosa_amount), contract_value: num(b.contract_value) })),
+    billing: billing.map(b => ({ ...b, amount: Number(b.amount) || 0, measured_amount: num(b.measured_amount), glosa_amount: num(b.glosa_amount), discount_amount: num(b.discount_amount), contract_value: num(b.contract_value) })),
     renewals: renewals.map(r => ({ ...r, previous_value: num(r.previous_value), new_value: Number(r.new_value) })),
     goals: goals.map(g => ({ ...g, target_value: Number(g.target_value) || 0 })),
     tags,
