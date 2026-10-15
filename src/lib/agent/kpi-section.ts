@@ -1,12 +1,13 @@
 // Seção fixa do briefing com os indicadores do mês (mesmos números do Painel gerencial).
 // Montada direto dos dados — o modelo de IA não recalcula nada.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { loadDashboardInput } from '@/lib/revenue/dashboard-data'
 import { computeDashboard } from '@/lib/revenue/dashboard-compute'
 import { MONTHS_LONG } from '@/lib/revenue/measurement'
 
-const brl = (v: number | null) => (v === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v))
-const pc = (v: number | null) => (v === null ? '—' : `${v.toLocaleString('pt-BR')}%`)
+const brl = (v: number | null) => (v === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v))
+const pc = (v: number | null) => fmtPct(v)
 
 export async function buildKpiSection(tenantId: string): Promise<string> {
   const now = new Date(Date.now() - 3 * 60 * 60 * 1000)

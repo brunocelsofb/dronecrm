@@ -87,7 +87,7 @@ export async function confirmBilling(
     contract_id: contractId,
     user_id: user.id,
     type: 'system',
-    content: `Faturamento de ${month}/${year} confirmado: R$ ${amount.toLocaleString('pt-BR')}.${fileName ? ` Relatório anexado: ${fileName}.` : ''}`,
+    content: `Faturamento de ${month}/${year} confirmado: R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.${fileName ? ` Relatório anexado: ${fileName}.` : ''}`,
   })
 
   revalidatePath(`/contracts/${contractId}`)

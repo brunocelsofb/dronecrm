@@ -18,7 +18,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 }
 
 function fmt(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
 function parseMulti(val: string | null | undefined): string[] {
@@ -296,7 +296,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                       {(() => {
                         const pSum = proposalSumByContractCompany.get(run.contract_id)
                         const val = pSum !== undefined ? pSum : Number(run.value)
-                        return val > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val) : '—'
+                        return val > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) : '—'
                       })()}
                     </span>
                   </div>

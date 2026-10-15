@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidCpf } from '@/lib/utils/cpf'
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
           pipeline_run_id: openRun.id,
           type: 'system',
           content: pct !== null
-            ? `Valor do contrato atualizado para ${fmtBRL(newVal)} via proposta ${newProposal.control_code} (${pct >= 0 ? '+' : ''}${pct}% sobre ${fmtBRL(oldValue)}).`
+            ? `Valor do contrato atualizado para ${fmtBRL(newVal)} via proposta ${newProposal.control_code} (${fmtPct(pct, { signed: true })} sobre ${fmtBRL(oldValue)}).`
             : `Valor do contrato atualizado para ${fmtBRL(newVal)} via proposta ${newProposal.control_code}.`,
         })
       }

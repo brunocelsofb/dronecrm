@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState } from 'react'
 import Link from 'next/link'
 import type { RunCard } from './kanban-board'
@@ -9,7 +10,7 @@ type Pipeline = { id: string; name: string; type: string }
 type LostReason = { id: string; name: string }
 
 function fmt(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 function daysSince(d: string | null): number {
   if (!d) return 0
@@ -59,7 +60,7 @@ export function PipelineDashboard({
   const lost = filtered.filter(c => c.status === 'lost')
   const won  = filtered.filter(c => c.status === 'won')
   const total = open.length + lost.length + won.length
-  const convRate = total > 0 ? Math.round((won.length / total) * 100) : 0
+  const convRate = total > 0 ? (won.length / total) * 100 : 0
   const totalPipeline = open.reduce((s, c) => s + c.value, 0)
 
   // Ciclo médio (dias desde abertura) — usa stageEnteredAt como proxy
@@ -136,7 +137,7 @@ export function PipelineDashboard({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[
           { label: 'Valor em pipeline', value: fmt(totalPipeline), sub: `${open.length} oportunidades abertas`, accent: ORBIS.blue },
-          { label: 'Taxa de conversão', value: `${convRate}%`, sub: `${won.length} ganhas · ${lost.length} perdidas`, accent: convRate >= 20 ? ORBIS.green : ORBIS.amber },
+          { label: 'Taxa de conversão', value: fmtPct(convRate), sub: `${won.length} ganhas · ${lost.length} perdidas`, accent: convRate >= 20 ? ORBIS.green : ORBIS.amber },
           { label: 'Estagnadas +10d', value: String(stagnated.length), sub: 'sem atividade recente', accent: stagnated.length > 0 ? ORBIS.amber : ORBIS.green },
           { label: 'Ciclo médio', value: `${avgCycle}d`, sub: 'desde entrada na etapa', accent: ORBIS.navy },
         ].map(k => (
@@ -162,13 +163,13 @@ export function PipelineDashboard({
             const pct = s.n > 0 ? Math.round((s.n / maxN) * 100) : 0
             const nextN = byStage[i + 1]?.n ?? 0
             const passRate = s.n > 0 && i < byStage.length - 1
-              ? Math.round((nextN / s.n) * 100) : null
+              ? (nextN / s.n) * 100 : null
             return (
               <div key={s.name} style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 11, color: '#52514e', minWidth: 110 }}>{s.name}</span>
                   {passRate !== null && (
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e8e7f4', color: ORBIS.blue }}>{passRate}% avançam</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e8e7f4', color: ORBIS.blue }}>{fmtPct(passRate)} avançam</span>
                   )}
                   <span style={{ marginLeft: 'auto', fontSize: 11, color: ORBIS.muted }}>
                     {s.n} · {fmt(s.val)}

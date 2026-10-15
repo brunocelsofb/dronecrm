@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 
@@ -15,12 +16,11 @@ declare global { interface Window { Chart: any } }
 const CHART_COLORS = ['#E98C5F', '#32AF9D', '#83D0F5', '#524E9C']
 
 function fmt(v: number) {
-  if (v >= 1000) return 'R$ ' + Math.round(v / 1000) + 'k'
-  return 'R$ ' + Math.round(v).toLocaleString('pt-BR')
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
 function fmtFull(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
 export function PremiumDashboard({ kpi, funnel, series, leadSources, team, period = 'month' }: {
@@ -85,7 +85,8 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
     return () => { areaChart.current?.destroy(); donutChart.current?.destroy() }
   }, [series, leadSources])
 
-  const metaPct = kpi.meta > 0 ? Math.min(100, Math.round((kpi.receita / kpi.meta) * 100)) : 0
+  const metaPctReal = kpi.meta > 0 ? (kpi.receita / kpi.meta) * 100 : 0
+  const metaPct = Math.min(100, metaPctReal)
   const maxFunnelValue = funnel[0]?.value ?? 1
 
   const AVATAR_BG = ['bg-indigo-50', 'bg-teal-50', 'bg-red-50']
@@ -138,7 +139,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
             />
           </div>
           <div className="flex justify-between text-xs text-white/50 mt-1.5">
-            <span>{metaPct}% da meta</span>
+            <span>{fmtPct(metaPctReal)} da meta</span>
             <span>{fmt(kpi.meta)}</span>
           </div>
         </div>
@@ -162,7 +163,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
         {/* Churn */}
         <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
           <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">Churn no período</p>
-          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.churnPct !== null ? `${kpi.churnPct}%` : '—'}</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{fmtPct(kpi.churnPct)}</p>
           {kpi.churnPct !== null && kpi.churnPct > 3 && (
             <span className="inline-flex items-center gap-1 text-xs mt-2 px-2.5 py-1 rounded-xl bg-[#FFE596] text-amber-800 font-medium">
               ⚠ atenção
@@ -252,7 +253,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
                   <div key={l.label} className="flex items-center gap-2 text-xs">
                     <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: CHART_COLORS[i] ?? CHART_COLORS[3] }} />
                     <span className="text-gray-700">{l.label}</span>
-                    <span className="text-gray-400 ml-auto pl-3 font-medium">{l.pct}%</span>
+                    <span className="text-gray-400 ml-auto pl-3 font-medium">{fmtPct(l.pct)}</span>
                   </div>
                 ))}
               </div>

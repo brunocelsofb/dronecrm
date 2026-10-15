@@ -18,6 +18,7 @@
 // LIMITAÇÃO CONHECIDA: automações encadeadas podem formar loop —
 // há um limite de profundidade (_depth) como proteção mínima.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -715,7 +716,7 @@ export async function closeRun(
         user_id: user.id,
         type: 'system',
         content: prev > 0
-          ? `📈 Renovação: valor mensal de ${fmtBRL(prev)} para ${fmtBRL(newValue)} (${pct !== null && pct >= 0 ? '+' : ''}${pct}%).`
+          ? `📈 Renovação: valor mensal de ${fmtBRL(prev)} para ${fmtBRL(newValue)} (${fmtPct(pct, { signed: true })}).`
           : `📈 Renovação: valor mensal ${fmtBRL(newValue)}.`,
         metadata: { kind: 'renewal_value', previous_value: prev, new_value: newValue, pct },
       })
@@ -833,7 +834,7 @@ export async function updateRunValue(contractId: string, newValue: number): Prom
     : null
 
   const content = pctChange !== null
-    ? `${valorLabel} atualizado para ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(newValue)} (reajuste de ${pctChange >= 0 ? '+' : ''}${pctChange}% sobre ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oldValue)}).`
+    ? `${valorLabel} atualizado para ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(newValue)} (reajuste de ${fmtPct(pctChange, { signed: true })} sobre ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(oldValue)}).`
     : `${valorLabel} atualizado para ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(newValue)}.`
 
   await supabase.from('activities').insert({

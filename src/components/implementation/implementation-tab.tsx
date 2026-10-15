@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useEffect } from 'react'
 import { completeImplementationTask, assignImplementationTask, addTaskComment, updateImplementationOwner } from '@/lib/actions/implementation'
 import { StartImplementationModal } from './start-implementation-modal'
@@ -323,7 +324,7 @@ export function ImplementationTab({
 
   const totalTasks = schedule.implementation_tasks.length
   const doneTasks = schedule.implementation_tasks.filter(t => t.is_completed).length
-  const progress = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0
+  const progress = totalTasks ? (doneTasks / totalTasks) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -344,7 +345,7 @@ export function ImplementationTab({
               <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                 <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${progress}%` }} />
               </div>
-              <p className="text-[10px] text-gray-400 text-center mt-0.5">{progress}% concluído</p>
+              <p className="text-[10px] text-gray-400 text-center mt-0.5">{fmtPct(progress)} concluído</p>
             </div>
             <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
               schedule.status === 'concluido' ? 'bg-green-100 text-green-700' :

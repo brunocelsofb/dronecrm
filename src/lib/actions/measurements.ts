@@ -6,6 +6,7 @@
 //   - sem relatório → aguardando aprovação do admin (só então entra na receita)
 // Recorrente não usa isto: entra automático pelo valor do contrato.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -78,7 +79,7 @@ export async function saveMeasurement(input: MeasurementInput): Promise<Measurem
   if (error) return { ok: false, error: error.message }
 
   const ref = `${MONTHS_LONG[month - 1]}/${year}`
-  const lossText = lost > 0 ? ` Perdemos ${brl(lost)}${lostPct !== null ? ` (${lostPct}%)` : ''} do potencial de ${brl(contractValue)}.` : ''
+  const lossText = lost > 0 ? ` Perdemos ${brl(lost)}${lostPct !== null ? ` (${fmtPct(lostPct)})` : ''} do potencial de ${brl(contractValue)}.` : ''
   await admin.from('activities').insert({
     contract_id: contractId,
     user_id: user.id,

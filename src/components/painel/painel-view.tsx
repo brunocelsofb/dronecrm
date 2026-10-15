@@ -1,5 +1,6 @@
 // Corpo do Painel gerencial (recebe os números prontos).
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import Link from 'next/link'
 import type { DashboardResult, DashboardInput } from '@/lib/revenue/dashboard-compute'
 import { MONTHS_LONG, MONTHS_SHORT } from '@/lib/revenue/measurement'
@@ -161,7 +162,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
             hint={f.renewed.length ? <>
               {brl(f.renewPrev)} → {brl(f.renewNew)}{' '}
               <span className={f.renewDelta > 0 ? 'font-medium text-emerald-700' : f.renewDelta < 0 ? 'font-medium text-red-700' : ''}>
-                ({f.renewDelta >= 0 ? '+' : ''}{brl(f.renewDelta)}{f.renewDeltaPct !== null ? ` · ${f.renewDeltaPct >= 0 ? '+' : ''}${f.renewDeltaPct}%` : ''})
+                ({f.renewDelta >= 0 ? '+' : ''}{brl(f.renewDelta)}{f.renewDeltaPct !== null ? ` · ${fmtPct(f.renewDeltaPct, { signed: true })}` : ''})
               </span>
               <span className="block">▲ {f.renewUp} aumentaram · ▼ {f.renewDown} reduziram · = {f.renewFlat} mantiveram</span>
             </> : `Nenhuma renovação ${noPeriodo}`}

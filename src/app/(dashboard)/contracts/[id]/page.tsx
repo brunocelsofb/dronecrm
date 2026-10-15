@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 import { headers } from 'next/headers'
@@ -526,7 +527,7 @@ export default async function ContractDetailPage({
                                 </span>
                                 {pctChange !== null && (
                                   <span className={pctChange >= 0 ? 'text-positive-700' : 'text-negative-700'}>
-                                    ({pctChange >= 0 ? '+' : ''}{pctChange}%)
+                                    ({fmtPct(pctChange, { signed: true })})
                                   </span>
                                 )}
                               </div>

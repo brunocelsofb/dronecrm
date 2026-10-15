@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -33,14 +34,14 @@ function classifyScore(score: number): 'promoter' | 'passive' | 'detractor' {
 }
 
 function ScoreBar({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0
+  const pct = total > 0 ? (count / total) * 100 : 0
   return (
     <div className="flex items-center gap-3">
       <span className="text-xs text-gray-500 w-24 shrink-0">{label}</span>
       <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
         <div className="h-2.5 rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
-      <span className="text-xs font-medium text-gray-700 w-16 text-right">{count} ({pct}%)</span>
+      <span className="text-xs font-medium text-gray-700 w-16 text-right">{count} ({fmtPct(pct)})</span>
     </div>
   )
 }
@@ -147,7 +148,7 @@ export function WhatsAppNpsTab() {
           { label: 'Total de avaliações', value: summary.total, sub: 'conversas encerradas com NPS', color: '#1B556B' },
           { label: 'Média das notas', value: summary.average || '—', sub: 'escala de 1 a 5', color: '#32AF9D' },
           { label: 'NPS Score', value: `${summary.npsScore}`, sub: summary.npsScore >= 50 ? '✓ Excelente' : summary.npsScore >= 0 ? '😐 Neutro' : '⚠️ Crítico', color: npsColor },
-          { label: 'Promotores', value: summary.promoters, sub: `${summary.total > 0 ? Math.round((summary.promoters / summary.total) * 100) : 0}% do total`, color: '#1f8c7d' },
+          { label: 'Promotores', value: summary.promoters, sub: `${fmtPct(summary.total > 0 ? (summary.promoters / summary.total) * 100 : 0)} do total`, color: '#1f8c7d' },
         ].map(k => (
           <div key={k.label} className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{k.label}</p>
@@ -174,7 +175,7 @@ export function WhatsAppNpsTab() {
           <div className="grid grid-cols-5 gap-2">
             {[5, 4, 3, 2, 1].map(score => {
               const count = summary.byScore[score] ?? 0
-              const pct = summary.total > 0 ? Math.round((count / summary.total) * 100) : 0
+              const pct = summary.total > 0 ? (count / summary.total) * 100 : 0
               const cat = classifyScore(score)
               const catColor = cat === 'promoter' ? '#1f8c7d' : cat === 'passive' ? '#c2683d' : '#8e4550'
               const catBg = cat === 'promoter' ? '#e3f5f1' : cat === 'passive' ? '#fbeee5' : '#f6e9ea'
@@ -185,7 +186,7 @@ export function WhatsAppNpsTab() {
                     <StarDisplay score={score} />
                   </div>
                   <p className="text-sm font-semibold text-gray-700">{count}</p>
-                  <p className="text-[10px] text-gray-400">{pct}%</p>
+                  <p className="text-[10px] text-gray-400">{fmtPct(pct)}</p>
                 </div>
               )
             })}

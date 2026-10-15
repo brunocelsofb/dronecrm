@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -231,7 +232,7 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
   )
   const pending = (allDispatched ?? []).filter((s: any) => s.status === 'pending' && (!s.expires_at || new Date(s.expires_at) >= now))
   const expired = (allDispatched ?? []).filter((s: any) => s.status === 'pending' && s.expires_at && new Date(s.expires_at) < now)
-  const responseRate = totalSent > 0 ? Math.round((answeredInPeriod.length / totalSent) * 100) : 0
+  const responseRate = totalSent > 0 ? (answeredInPeriod.length / totalSent) * 100 : 0
 
   const { data: responses } = templateId
     ? await admin.from('custom_surveys').select('id, respondent_name, respondent_email, respondent_phone, contract_id, responses, answered_at, expires_at').eq('template_id', templateId).eq('status', 'answered').gte('answered_at', `${from}T00:00:00`).lte('answered_at', `${to}T23:59:59`).order('answered_at', { ascending: false })
@@ -278,7 +279,7 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
             {[
               { label: 'Enviadas', value: totalSent, sub: 'total de disparos', color: '#1B556B' },
               { label: 'Respondidas', value: answeredInPeriod.length, sub: `${answeredInTime.length} dentro do prazo`, color: '#32AF9D' },
-              { label: 'Taxa de resposta', value: `${responseRate}%`, sub: 'respondidas / enviadas', color: responseRate >= 70 ? '#1f8c7d' : responseRate >= 40 ? '#c2683d' : '#8e4550' },
+              { label: 'Taxa de resposta', value: fmtPct(responseRate), sub: 'respondidas / enviadas', color: responseRate >= 70 ? '#1f8c7d' : responseRate >= 40 ? '#c2683d' : '#8e4550' },
               { label: 'Pendentes / Expiradas', value: `${pending.length} / ${expired.length}`, sub: 'aguardando · vencidas', color: '#8892a4' },
             ].map(k => (
               <div key={k.label} className="rounded-xl border border-gray-200 bg-white p-4">

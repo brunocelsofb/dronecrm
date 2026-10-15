@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { fmtPct } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { GoalEditForm } from '@/components/dashboard/goal-edit-form'
@@ -72,7 +73,7 @@ export async function GoalVsBillingSection({
 
   const currentTarget = goalByKey.get(`${year}-${month}`) ?? 0
   const currentBilled = billingByKey.get(`${year}-${month}`) ?? 0
-  const pct = currentTarget > 0 ? Math.round((currentBilled / currentTarget) * 100) : null
+  const pct = currentTarget > 0 ? (currentBilled / currentTarget) * 100 : null
 
   const prevDate = new Date(year, month - 2, 1)
   const nextDate = new Date(year, month, 1)
@@ -123,7 +124,7 @@ export async function GoalVsBillingSection({
         <div>
           <p className="text-xs text-gray-500">Atingimento</p>
           <p className={`text-2xl font-semibold ${pct === null ? 'text-gray-300' : pct >= 100 ? 'text-positive-700' : pct >= 70 ? 'text-yellow-700' : 'text-negative-700'}`}>
-            {pct === null ? '—' : `${pct}%`}
+            {fmtPct(pct)}
           </p>
         </div>
       </div>

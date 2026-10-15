@@ -29,7 +29,7 @@ function Section({ title, emoji, data, onSave }: {
   const inp: React.CSSProperties = { padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none', width: '100%' }
   const lbl: React.CSSProperties = { fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'block', marginBottom: 4 }
 
-  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>

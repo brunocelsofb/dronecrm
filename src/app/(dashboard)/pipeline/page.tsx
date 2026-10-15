@@ -218,7 +218,7 @@ export default async function PipelinePage({
 
   const openCards = cards.filter(c => c.status === 'open')
   const totalOpen = openCards.reduce((s, c) => s + c.value, 0)
-  const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  const fmtCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 
   return (
     <div className="flex flex-col gap-5">

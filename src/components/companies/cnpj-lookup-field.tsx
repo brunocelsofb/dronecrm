@@ -45,7 +45,7 @@ export function CnpjLookupField({
           <p style={{ color: '#1f8c7d', fontWeight: 500, marginBottom: 4 }}>✅ Dados encontrados na Receita Federal</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, color: '#52514e' }}>
             {found.municipio && <span>📍 {found.municipio}/{found.uf}</span>}
-            {found.capitalSocial && <span>💰 Capital: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(found.capitalSocial)}</span>}
+            {found.capitalSocial && <span>💰 Capital: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(found.capitalSocial)}</span>}
             {found.cnaeDescricao && <span style={{ gridColumn: '1/-1' }}>🏭 {found.cnaeDescricao}</span>}
           </div>
           <p style={{ marginTop: 4, color: '#8892a4', fontSize: 10 }}>Fonte: BrasilAPI (dados públicos) — confira antes de salvar.</p>

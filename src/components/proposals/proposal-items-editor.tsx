@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState } from 'react'
 
 type Item = {
@@ -168,7 +169,7 @@ export function ProposalItemsEditor({ proposalId, contractId, initialItems, init
               </div>
             ) : (
               <p className="font-medium text-gray-900">
-                {conditions.discount_type === 'percentage' ? `${conditions.discount_value}%` :
+                {conditions.discount_type === 'percentage' ? fmtPct(Number(conditions.discount_value)) :
                  conditions.discount_type === 'fixed' ? fmt(conditions.discount_value, conditions.currency) : 'Sem desconto'}
               </p>
             )}

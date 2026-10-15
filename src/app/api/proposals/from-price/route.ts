@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -245,7 +246,7 @@ export async function POST(req: Request) {
   await supabase.from('activities').insert({
     contract_id,
     type: 'price',
-    content: `Proposta precificada no ORBIS Price: R$ ${Number(proposal_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mes${margem_pct ? ` · Margem: ${Number(margem_pct).toFixed(1)}%` : ''}. Itens preenchidos automaticamente.`,
+    content: `Proposta precificada no ORBIS Price: R$ ${Number(proposal_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mes${margem_pct ? ` · Margem: ${fmtPct(Number(margem_pct))}` : ''}. Itens preenchidos automaticamente.`,
   })
 
   return NextResponse.json({ ok: true }, { headers: CORS })

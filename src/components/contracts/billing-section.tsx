@@ -5,6 +5,7 @@
 //   - Medição: lançar o relatório do mês (medido − glosa = líquido) e ver quanto
 //     do potencial do contrato foi perdido. Sem relatório, só vale com aprovação do admin.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -207,7 +208,7 @@ export function BillingSection({
             <div className={`mt-3 rounded-md p-3 text-sm ${preview.lost > 0 ? 'bg-red-50 text-red-900' : 'bg-green-50 text-green-900'}`}>
               <p>Líquido do mês: <strong>{brl(preview.net)}</strong> (medido {brl(measuredN)}{glosaN > 0 ? ` − glosa ${brl(glosaN)}` : ''})</p>
               {preview.lost > 0 ? (
-                <p className="mt-0.5 font-medium">Perdemos {brl(preview.lost)}{preview.lostPct !== null ? ` (${preview.lostPct}%)` : ''} do potencial do contrato ({brl(contractValue)}).</p>
+                <p className="mt-0.5 font-medium">Perdemos {brl(preview.lost)}{preview.lostPct !== null ? ` (${fmtPct(preview.lostPct)})` : ''} do potencial do contrato ({brl(contractValue)}).</p>
               ) : preview.above > 0 ? (
                 <p className="mt-0.5 font-medium">Medição {brl(preview.above)} acima do potencial do contrato.</p>
               ) : (
@@ -250,7 +251,7 @@ export function BillingSection({
                   <span className="font-medium text-gray-900">{MONTHS_LONG[r.month - 1]}/{r.year}</span>
                   <span className="ml-2 text-gray-700">{brl(Number(r.amount))}</span>
                   {glosaV > 0 && <span className="ml-2 text-xs text-gray-500">glosa {brl(glosaV)}{r.glosa_reason ? ` — ${r.glosa_reason}` : ''}</span>}
-                  {type === 'metered' && l.lost > 0 && <span className="ml-2 text-xs font-medium text-red-700">perdemos {brl(l.lost)}{l.lostPct !== null ? ` (${l.lostPct}%)` : ''}</span>}
+                  {type === 'metered' && l.lost > 0 && <span className="ml-2 text-xs font-medium text-red-700">perdemos {brl(l.lost)}{l.lostPct !== null ? ` (${fmtPct(l.lostPct)})` : ''}</span>}
                   {r.file_name && <span className="ml-2 text-xs text-brand-700">📎 {r.file_name}</span>}
                 </div>
                 <div className="flex items-center gap-2">

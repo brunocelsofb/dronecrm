@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import Link from 'next/link'
 import { createClientForTenant } from '@/lib/supabase/server'
 import { PeriodSelector } from '@/components/dashboard/period-selector'
@@ -52,7 +53,7 @@ export default async function TicketsDashboardPage({
 
   const resolvedWithSla = resolved.filter((t) => t.sla_due_at && t.resolved_at)
   const withinSla = resolvedWithSla.filter((t) => new Date(t.resolved_at!) <= new Date(t.sla_due_at!))
-  const slaComplianceRate = resolvedWithSla.length > 0 ? Math.round((withinSla.length / resolvedWithSla.length) * 100) : null
+  const slaComplianceRate = resolvedWithSla.length > 0 ? (withinSla.length / resolvedWithSla.length) * 100 : null
 
   const satisfactionRatings = (tickets ?? []).filter((t) => t.satisfaction_responded_at).map((t) => t.satisfaction_rating as number)
   const avgSatisfaction = satisfactionRatings.length > 0 ? satisfactionRatings.reduce((a, b) => a + b, 0) / satisfactionRatings.length : null
@@ -127,10 +128,10 @@ export default async function TicketsDashboardPage({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {[
           { label: 'Total de tickets', value: String(total), sub: 'no período' },
-          { label: 'Resolvidos', value: String(resolved.length), sub: total > 0 ? `${Math.round((resolved.length / total) * 100)}% do total` : '—' },
-          { label: 'Tempo médio resolução', value: avgResolutionDays !== null ? `${avgResolutionDays.toFixed(1)}d` : '—', sub: 'dias até resolução' },
-          { label: 'SLA dentro do prazo', value: slaComplianceRate !== null ? `${slaComplianceRate}%` : '—', sub: `${resolvedWithSla.length} avaliados`, alert: slaAlert },
-          { label: 'Satisfação média', value: avgSatisfaction !== null ? `${avgSatisfaction.toFixed(1)}/5` : '—', sub: `${satisfactionRatings.length} avaliações` },
+          { label: 'Resolvidos', value: String(resolved.length), sub: total > 0 ? `${fmtPct((resolved.length / total) * 100)} do total` : '—' },
+          { label: 'Tempo médio resolução', value: avgResolutionDays !== null ? `${fmtNum1(avgResolutionDays)} d` : '—', sub: 'dias até resolução' },
+          { label: 'SLA dentro do prazo', value: fmtPct(slaComplianceRate), sub: `${resolvedWithSla.length} avaliados`, alert: slaAlert },
+          { label: 'Satisfação média', value: avgSatisfaction !== null ? `${fmtNum1(avgSatisfaction)}/5` : '—', sub: `${satisfactionRatings.length} avaliações` },
         ].map(k => (
           <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${(k as any).alert ? '#dcadb3' : '#e8edf5'}` }}>
             <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>

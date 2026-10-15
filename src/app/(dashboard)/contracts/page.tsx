@@ -3,7 +3,7 @@ import { createClientForTenant } from '@/lib/supabase/server'
 import { ContractsTable } from '@/components/contracts/contracts-table'
 
 function fmt(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
 export default async function ContractsPage({

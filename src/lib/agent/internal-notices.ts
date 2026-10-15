@@ -9,6 +9,7 @@
 // 3. Relatório mensal consolidado das implantações → atividade para revisar e
 //    enviar ao time técnico (sem contrato; tela Copiloto → Relatórios).
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createAgentActivity } from './agent-activity'
 import { getContractTenantName } from './tenant-name'
@@ -225,7 +226,7 @@ export async function buildImplementationReportText(tenantId: string): Promise<{
     if (ts.length === 0) continue
     const total = ts.length
     const doneCount = ts.filter(t => t.is_completed).length
-    const pct = Math.round((doneCount / total) * 100)
+    const pct = (doneCount / total) * 100
     const week = s.start_date ? Math.max(1, Math.floor(daysBetween(s.start_date.slice(0, 10), today) / 7) + 1) : null
     const lastWeek = Math.max(...ts.map(t => t.end_week ?? 0), settings.implWeeks)
     const late = week ? ts.filter(t => !t.is_completed && (t.end_week ?? 0) < week) : []
@@ -235,7 +236,7 @@ export async function buildImplementationReportText(tenantId: string): Promise<{
 
     const lines = [
       `*${c.client_name}*${c.process_number ? ` (${c.process_number})` : ''}${s.template_id && tplById.get(s.template_id) ? ` — ${tplById.get(s.template_id)}` : ''}`,
-      `Início: ${brDate(s.start_date) ?? '—'} · ${week ? `semana ${week} de ${lastWeek}` : 'sem data de início'} · ${doneCount}/${total} fases concluídas (${pct}%)`,
+      `Início: ${brDate(s.start_date) ?? '—'} · ${week ? `semana ${week} de ${lastWeek}` : 'sem data de início'} · ${doneCount}/${total} fases concluídas (${fmtPct(pct)})`,
     ]
     if (finished) lines.push('✅ Todas as fases concluídas — aguardando relatório final.')
     else {

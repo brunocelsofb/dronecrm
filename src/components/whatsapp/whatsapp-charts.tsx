@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useEffect, useRef } from 'react'
 
 declare global { interface Window { Chart: any } }
@@ -20,7 +21,7 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
   const barChart = useRef<any>(null)
   const lineChart = useRef<any>(null)
 
-  const conversionRate = totalEntradas > 0 ? Math.round((totalLeads / totalEntradas) * 100) : 0
+  const conversionRate = totalEntradas > 0 ? (totalLeads / totalEntradas) * 100 : 0
 
   useEffect(() => {
     const load = () => {
@@ -88,7 +89,7 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {[
           { label: 'Entradas totais', value: totalEntradas, sub: 'conversas iniciadas', color: '#1a1f36' },
-          { label: 'Viraram leads', value: totalLeads, sub: `${conversionRate}% de conversão`, color: '#524e9c' },
+          { label: 'Viraram leads', value: totalLeads, sub: `${fmtPct(conversionRate)} de conversão`, color: '#524e9c' },
           { label: 'Convertidos', value: totalConvertidos, sub: 'viraram oportunidade', color: '#1f8c7d' },
           { label: 'Vinculados', value: totalVinculados, sub: 'em conta existente', color: '#5f38c9' },
           { label: 'Opt-out', value: totalOptOut, sub: 'pediram pra sair', color: totalOptOut > 0 ? '#8e4550' : '#8892a4' },

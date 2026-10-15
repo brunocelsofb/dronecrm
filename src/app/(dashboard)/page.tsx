@@ -120,7 +120,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const totalLeads = Object.values(sourceCount).reduce((a, b) => a + b, 0)
   const SOURCE_LABELS: Record<string, string> = { manual: 'Manual', whatsapp: 'WhatsApp', site: 'Site', indicacao: 'Indicação', google_ads: 'Google Ads', redes_sociais: 'Redes Sociais' }
   const leadSources = totalLeads > 0
-    ? Object.entries(sourceCount).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ label: SOURCE_LABELS[k] ?? k, pct: Math.round((v / totalLeads) * 100) }))
+    ? Object.entries(sourceCount).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => ({ label: SOURCE_LABELS[k] ?? k, pct: (v / totalLeads) * 100 }))
     : []
 
   // Ranking da equipe — combina atividades + receita do período

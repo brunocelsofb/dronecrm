@@ -7,6 +7,7 @@
 // esse código — a API do pdf-lib usada aqui é a que eu conheço, mas
 // confirme o resultado visual e me avise o que precisar de ajuste.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 type ProposalRow = {
@@ -577,7 +578,7 @@ export async function buildStandardProposalPage({
   // ---- Desconto, condição de pagamento e parcelas ----
   newPageIfNeeded(60)
   if (proposal.discount_type) {
-    const discountLabel = proposal.discount_type === 'percentage' ? `${proposal.discount_value}%` : fmtCurrency(proposal.discount_value, proposal.currency)
+    const discountLabel = proposal.discount_type === 'percentage' ? fmtPct(Number(proposal.discount_value)) : fmtCurrency(proposal.discount_value, proposal.currency)
     text(`Desconto: ${discountLabel}`, margin, y, { size: 9 })
     y -= 14
   }

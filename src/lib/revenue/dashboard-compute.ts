@@ -1,3 +1,4 @@
+import { fmtPct, fmtNum1 } from '@/lib/format'
 // ─── Painel gerencial: cálculos (funções puras, sem banco) ───────────────────
 // Regras combinadas com o gestor:
 //   Receita do mês = Recorrente + Medição + Avulso
@@ -363,8 +364,8 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     const nv = Number(r.new_value)
     const p = prev && prev > 0 ? Math.round(((nv - prev) / prev) * 1000) / 10 : null
     const note = prev === null ? 'sem valor anterior registrado'
-      : nv > prev ? `aumentou de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prev)} (+${p}%)`
-      : nv < prev ? `reduziu de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prev)} (${p}%)`
+      : nv > prev ? `aumentou de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prev)} (${fmtPct(p, { signed: true })})`
+      : nv < prev ? `reduziu de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prev)} (${fmtPct(p)})`
       : 'mesmo valor'
     return { ...line(r.contract_id, nv, note), previous: prev, direction: prev === null ? 'na' : nv > prev ? 'up' : nv < prev ? 'down' : 'flat' }
   })

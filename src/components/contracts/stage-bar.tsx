@@ -1,5 +1,6 @@
 'use client'
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useTransition } from 'react'
 import { moveContractStage, reopenRun, closeRun, transferRunToPipeline } from '@/lib/actions/pipeline'
 import { addMonthsToDateString } from '@/lib/utils/date'
@@ -296,7 +297,7 @@ export function StageBar({
                   Valor atual: <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prevValue)}</strong>
                   {renewalPct !== null && (
                     <span style={{ marginLeft: 8, fontWeight: 600, color: renewalPct > 0 ? '#1f8c7d' : renewalPct < 0 ? '#8e4550' : '#52514e' }}>
-                      {renewalPct > 0 ? `▲ aumento de ${renewalPct}%` : renewalPct < 0 ? `▼ redução de ${Math.abs(renewalPct)}%` : 'sem alteração de valor'}
+                      {renewalPct > 0 ? `▲ aumento de ${fmtPct(renewalPct)}` : renewalPct < 0 ? `▼ redução de ${fmtPct(Math.abs(renewalPct))}` : 'sem alteração de valor'}
                     </span>
                   )}
                 </p>

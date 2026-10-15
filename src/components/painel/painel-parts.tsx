@@ -1,14 +1,15 @@
 // Peças do Painel gerencial (Server Components, sem JS no navegador).
 // Todo número abre a lista de contratos/oportunidades que o compõem.
 
+import { fmtPct, fmtNum1 } from '@/lib/format'
 import Link from 'next/link'
 import type { ContractLine } from '@/lib/revenue/dashboard-compute'
 
 export const brl = (v: number | null | undefined) =>
-  v === null || v === undefined ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+  v === null || v === undefined ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 export const brl2 = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
-export const pctTxt = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR')}%`)
+export const pctTxt = (v: number | null | undefined) => fmtPct(v)
 
 // Cores fixas por tipo de receita (mesmas no gráfico, na barra e nas legendas)
 // Paleta primária da marca: azul petróleo, coral e verde-água (separação validada para daltonismo)
@@ -144,7 +145,7 @@ export function RevenueHero({
               <div className="flex items-center gap-1.5">
                 <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: REV_COLORS[p.key] }} />
                 <span className="whitespace-nowrap text-xs text-gray-600">{p.label}</span>
-                <span className="text-[11px] tabular-nums text-gray-400">{sum > 0 ? `${Math.round((p.value / sum) * 100)}%` : '—'}</span>
+                <span className="text-[11px] tabular-nums text-gray-400">{sum > 0 ? fmtPct((p.value / sum) * 100) : '—'}</span>
               </div>
               <p className="ml-auto text-base font-semibold tabular-nums sm:ml-0 sm:mt-0.5">{brl(p.value)}</p>
             </div>
