@@ -4,6 +4,7 @@
 // layout do Next não é refeito ao trocar de tela pelo menu — antes a ajuda e o
 // bloqueio ficavam presos na primeira tela aberta.
 
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { FEATURES, featureForPath } from '@/lib/config/plans'
 import { getPageHelp } from '@/lib/help/page-help'
@@ -14,6 +15,10 @@ export function PageFrame({ enabledFeatures, children }: { enabledFeatures: stri
   const pathFeature = featureForPath(pathname)
   const blocked = !!pathFeature && !enabledFeatures.includes(pathFeature)
   const help = getPageHelp(pathname)
+  const [blockedFrom, setBlockedFrom] = useState<string | null>(null)
+  useEffect(() => {
+    setBlockedFrom(new URLSearchParams(window.location.search).get('bloqueado'))
+  }, [pathname])
 
   if (blocked) {
     return (
@@ -28,6 +33,11 @@ export function PageFrame({ enabledFeatures, children }: { enabledFeatures: stri
 
   return (
     <>
+      {blockedFrom && pathname === '/settings' && (
+        <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          A aba “{FEATURES.find(f => f.key === blockedFrom)?.label ?? blockedFrom}” não está liberada no seu plano.
+        </p>
+      )}
       {help && (
         <div key={pathname} className="-mt-2 mb-2 flex items-center justify-end gap-1.5 text-[11px] text-gray-400">
           <span>Como funciona esta tela</span>

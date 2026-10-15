@@ -78,7 +78,10 @@ export default async function DashboardLayout({
   // Aba fora do plano, aberta direto pelo endereço: nem carrega o conteúdo
   const requestPath = (await headers()).get('x-pathname') ?? ''
   const requestFeature = featureForPath(requestPath)
-  const serverBlocked = !!requestFeature && !enabledFeatures.includes(requestFeature)
+  if (requestFeature && !enabledFeatures.includes(requestFeature)) {
+    // Configurações é sempre liberada: evita voltar para outra aba bloqueada
+    redirect(`/settings?bloqueado=${encodeURIComponent(requestFeature)}`)
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -137,8 +140,8 @@ export default async function DashboardLayout({
         </div>
       </aside>
       <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
-        {/* Bloqueio no servidor (abrir pelo endereço) + no navegador (trocar de tela pelo menu) */}
-        <PageFrame enabledFeatures={enabledFeatures}>{serverBlocked ? null : children}</PageFrame>
+        {/* Bloqueio no navegador (trocar de tela pelo menu); pelo endereço, o redirect acima */}
+        <PageFrame enabledFeatures={enabledFeatures}>{children}</PageFrame>
       </main>
       <RealtimeWatcher />
       {profile?.role === 'admin' && <AssistantPanel />}
