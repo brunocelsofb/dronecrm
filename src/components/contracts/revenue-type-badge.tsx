@@ -8,7 +8,7 @@ export function RevenueTypeBadge({ billingType, size = 'md' }: { billingType: st
       title={metered ? 'Receita por medição: conta o valor medido e validado de cada mês' : 'Receita recorrente: entra automática todo mês pelo valor do contrato'}
       className={`inline-flex items-center gap-1 rounded-full font-medium ${cls} ${metered ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}
     >
-      {metered ? '📏 Medição' : '↻ Recorrente'}
+      {metered ? '📏 Medição' : '$ Recorrente'}
     </span>
   )
 }

@@ -55,6 +55,7 @@ export type DashboardInput = {
 export type ContractLine = { contractId: string; client: string; number: string; value: number; note?: string }
 
 const BR_OFFSET_MS = 3 * 60 * 60 * 1000
+const MONTHS_SHORT_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 const DEFAULT_SLA = 7
 
 export const r2 = (v: number) => Math.round(v * 100) / 100
@@ -76,7 +77,23 @@ const dateMs = (d: string | null | undefined): number | null => {
   return Date.UTC(y, m - 1, day) + BR_OFFSET_MS
 }
 
-export function computeDashboard(input: DashboardInput, year: number, month: number) {
+export type DashboardScope = 'month' | 'year'
+
+// Soma linhas do mesmo contrato (consolidado do ano)
+function mergeLines(lists: ContractLine[][]): ContractLine[] {
+  const map = new Map<string, ContractLine & { months: number }>()
+  for (const list of lists) for (const l of list) {
+    const cur = map.get(l.contractId)
+    if (cur) { cur.value = r2(cur.value + l.value); cur.months++ }
+    else map.set(l.contractId, { ...l, months: 1, note: undefined })
+  }
+  return [...map.values()]
+    .map(({ months, ...l }) => ({ ...l, note: `${months} ${months === 1 ? 'mês' : 'meses'}` }))
+    .sort((a, b) => b.value - a.value)
+}
+
+// scope 'month': o mês escolhido. scope 'year': o ano inteiro (até hoje), somando todos os meses.
+export function computeDashboard(input: DashboardInput, year: number, month: number, scope: DashboardScope = 'month') {
   const typeOf = new Map(input.pipelines.map(p => [p.id, p.type]))
   const contractById = new Map(input.contracts.map(c => [c.id, c]))
   const tagById = new Map(input.tags.map(t => [t.id, t]))
@@ -200,24 +217,50 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     }
   }
 
-  const current = revenueOf(year, month)
   const months = Array.from({ length: 12 }, (_, i) => i + 1)
-  const yearSeries = months.map(m => {
-    const future = monthStartMs(year, m) > input.now.getTime()
-    if (future) {
-      const goal = Number(input.goals.find(g => g.year === year && g.month === m)?.target_value) || 0
-      return { month: m, total: null as number | null, goal }
+  const monthRevenues = months.map(m => (monthStartMs(year, m) > input.now.getTime() ? null : revenueOf(year, m)))
+  const goalOf = (m: number) => Number(input.goals.find(g => g.year === year && g.month === m)?.target_value) || 0
+  const yearSeries = months.map((m, i) => {
+    const r = monthRevenues[i]
+    return {
+      month: m,
+      total: r ? r.total : null as number | null,
+      recurring: r ? r.recurringTotal : null as number | null,
+      metered: r ? r.meteredTotal : null as number | null,
+      avulso: r ? r.avulsoTotal : null as number | null,
+      lostPotential: r ? r.lostPotential : null as number | null,
+      pending: r ? r.measurePending.length : null as number | null,
+      goal: goalOf(m),
+      goalPct: r ? pct(r.total, goalOf(m)) : null,
     }
-    const r = revenueOf(year, m)
-    return { month: m, total: r.total, goal: r.goal }
   })
+
+  // Receita do período: o mês, ou o ano somando os meses já passados
+  const current = (() => {
+    if (scope === 'month') return revenueOf(year, month)
+    const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null)
+    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential') => r2(done.reduce((s, r) => s + r[k], 0))
+    const total = r2(done.reduce((s, r) => s + r.total, 0))
+    const goal = r2(months.reduce((s, m) => s + goalOf(m), 0))
+    const goalToDate = r2(done.reduce((s, r) => s + r.goal, 0))
+    return {
+      year, month: 12,
+      recurring: mergeLines(done.map(r => r.recurring)), recurringTotal: sumOf('recurringTotal'),
+      measured: mergeLines(done.map(r => r.measured)), meteredTotal: sumOf('meteredTotal'),
+      measurePending: done.flatMap(r => r.measurePending.map(p => ({ ...p, note: `${MONTHS_SHORT_PT[r.month - 1]}: ${p.note}` }))),
+      lostPotential: sumOf('lostPotential'), glosaTotal: sumOf('glosaTotal'), meteredPotential: sumOf('meteredPotential'),
+      avulso: done.flatMap(r => r.avulso.map(a => ({ ...a, note: `${MONTHS_SHORT_PT[r.month - 1]} · ${a.note ?? ''}` }))), avulsoTotal: sumOf('avulsoTotal'),
+      total, goal, goalPct: pct(total, goal), gap: r2(goal - total),
+      goalToDate, goalToDatePct: pct(total, goalToDate),
+    }
+  })()
   const ytdMonths = yearSeries.filter(s => s.month <= month)
   const ytdRevenue = r2(ytdMonths.reduce((s, x) => s + (x.total ?? 0), 0))
   const ytdGoal = r2(ytdMonths.reduce((s, x) => s + x.goal, 0))
   const annualGoal = r2(yearSeries.reduce((s, x) => s + x.goal, 0))
 
-  const start = monthStartMs(year, month)
-  const end = month === 12 ? monthStartMs(year + 1, 1) : monthStartMs(year, month + 1)
+  const start = scope === 'year' ? monthStartMs(year, 1) : monthStartMs(year, month)
+  const end = scope === 'year' ? monthStartMs(year + 1, 1) : (month === 12 ? monthStartMs(year + 1, 1) : monthStartMs(year, month + 1))
   const inMonth = (iso: string | null) => { const t = ts(iso); return t !== null && t >= start && t < end }
 
   // ── Hunter (novos negócios) ──────────────────────────────────────────────
@@ -340,7 +383,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     overdueTickets: overdueTickets.length,
   }
 
-  return { year, month, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer }
+  return { year, month, scope, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer }
 }
 
 export type DashboardResult = ReturnType<typeof computeDashboard>

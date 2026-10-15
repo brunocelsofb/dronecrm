@@ -34,5 +34,16 @@ export async function PATCH(
   const { error } = await supabase.from('contracts').update(update).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
+  // Valor mensal alterado na carteira: a passagem aberta no funil acompanha (um número só)
+  if ('monthly_value' in update && update.monthly_value !== null && Number.isFinite(Number(update.monthly_value))) {
+    const { data: openRun } = await supabase.from('pipeline_runs').select('id, pipeline_id').eq('contract_id', id).eq('status', 'open').maybeSingle()
+    if (openRun) {
+      const { data: pipe } = await supabase.from('pipelines').select('type').eq('id', openRun.pipeline_id).maybeSingle()
+      if (pipe?.type === 'gestao_contratos') {
+        await supabase.from('pipeline_runs').update({ value: Number(update.monthly_value) }).eq('id', openRun.id)
+      }
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }

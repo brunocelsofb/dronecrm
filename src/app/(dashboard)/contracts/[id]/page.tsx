@@ -17,7 +17,7 @@ import { ContractTagSelect } from '@/components/tags/contract-tag-select'
 import { DepartmentSection } from '@/components/contracts/department-section'
 import { AccountOwnerBadge } from '@/components/contracts/account-owner-badge'
 import { BillingSection } from '@/components/contracts/billing-section'
-import { RevenueTypeBadge } from '@/components/contracts/revenue-type-badge'
+import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
 import { ProposalsSection } from '@/components/proposals/proposals-section'
@@ -201,7 +201,11 @@ export default async function ContractDetailPage({
   const proposalSum = (proposals ?? [])
     .filter(p => !['cliente_recusado', 'declinada'].includes(p.workflow_status ?? ''))
     .reduce((s, p) => s + Number(p.proposal_value ?? 0), 0)
-  const estimatedValue = proposalSum > 0 ? proposalSum : Number(displayRun?.value ?? 0)
+  // Na carteira (Gestão de Contratos) o valor vigente é o do cadastro do contrato
+  // (mesmo número usado no Painel gerencial); em vendas, o estimado pelas propostas.
+  const estimatedValue = isCurrentlyInContractsPipeline
+    ? (Number((contract as any).monthly_value) || Number(displayRun?.value ?? 0))
+    : (proposalSum > 0 ? proposalSum : Number(displayRun?.value ?? 0))
 
   // Stages de todos os funis de vendas (para botão de transferência)
   const salesPipelineIds = (pipelines ?? []).filter(p => p.type === 'vendas').map(p => p.id)
@@ -339,7 +343,7 @@ export default async function ContractDetailPage({
               <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{contract.client_name}</h1>
               <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#f1f3f8', color: '#52514e' }}>{contract.title}</span>
               <ValidityBadge validUntil={contract.valid_until} />
-              {isCurrentlyInContractsPipeline && <RevenueTypeBadge billingType={contract.billing_type} />}
+              {isCurrentlyInContractsPipeline && <RevenueTypeToggle contractId={contract.id} billingType={contract.billing_type} canEdit={canChangeStage} />}
               <ContractTagSelect
                 key={currentTagIds.join(',')||'none'}
                 tags={allTags ?? []}

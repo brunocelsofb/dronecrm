@@ -17,7 +17,7 @@ export async function buildKpiSection(tenantId: string): Promise<string> {
   const lines: string[] = []
   lines.push(`📊 *Indicadores de ${MONTHS_LONG[month - 1]}* (até hoje)`)
   lines.push(`Receita: ${brl(rv.total)}${rv.goal > 0 ? ` — ${pc(rv.goalPct)} da meta (${brl(rv.goal)})` : ' — sem meta cadastrada'}`)
-  lines.push(`  ↻ Recorrente ${brl(rv.recurringTotal)} · 📏 Medição ${brl(rv.meteredTotal)} · Avulso ${brl(rv.avulsoTotal)}`)
+  lines.push(`  $ Recorrente ${brl(rv.recurringTotal)} · 📏 Medição ${brl(rv.meteredTotal)} · Avulso ${brl(rv.avulsoTotal)}`)
   lines.push('')
   lines.push(`🎯 *Hunter*: conversão ${pc(h.conversion)} (${h.won.length}/${h.closed}) · novo recorrente ${brl(h.newMrr)} · ticket médio ${brl(h.ticket)} · avulso ${brl(h.avulso.value)}`)
   if (h.stale.length) lines.push(`  ${h.stale.length} oportunidade(s) parada(s) além do prazo da etapa`)
