@@ -116,7 +116,7 @@ export default async function SettingsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Configurações</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Central de configuração da plataforma ORBIS CRM.</p>
+        <p className="mt-0.5 text-sm text-gray-500">Central de configuração da sua empresa.</p>
       </div>
 
       {/* Atalhos pra telas de configuração específicas */}

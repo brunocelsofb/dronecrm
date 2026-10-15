@@ -104,11 +104,15 @@ export default async function DashboardLayout({
 
       <aside className={`flex w-56 shrink-0 flex-col bg-brand-800 p-4${impersonation.active ? ' mt-9' : ''}`}>
         <div className="mb-6 flex justify-center py-4">
-          <img
-            src={sidebarLogoUrl}
-            alt={orgName}
-            className="h-8 w-auto object-contain brightness-0 invert"
-          />
+          {sidebarLogoUrl === '/drone.png' ? (
+            // Logo padrão da plataforma: desenhada para ficar branca no fundo escuro
+            <img src={sidebarLogoUrl} alt={orgName} className="h-8 w-auto object-contain brightness-0 invert" />
+          ) : (
+            // Logo da empresa: cores originais, num cartão claro (funciona com PNG, JPG, fundo branco ou transparente)
+            <div className="flex h-14 w-full items-center justify-center rounded-lg bg-white px-3 py-2">
+              <img src={sidebarLogoUrl} alt={orgName} className="max-h-10 w-auto max-w-full object-contain" />
+            </div>
+          )}
         </div>
         <div className="flex-1">
           <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} features={enabledFeatures} />

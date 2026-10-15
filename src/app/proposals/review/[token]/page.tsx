@@ -61,7 +61,7 @@ export default async function ProposalReviewPage({
             <span style={{ color: '#fff', fontSize: 14 }}>O</span>
           </div>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>ORBIS CRM — Revisão Técnica</p>
+            <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Revisão Técnica</p>
             <p style={{ fontSize: 11, color: '#8892a4', margin: 0 }}>{contract?.client_name} · {contract?.process_number}</p>
           </div>
         </div>

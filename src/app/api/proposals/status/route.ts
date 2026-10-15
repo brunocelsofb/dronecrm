@@ -201,7 +201,7 @@ export async function POST(req: Request) {
                 <a href="${contractUrl}" style="display:inline-block;background:#1b556b;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">
                   Acessar e Aprovar no CRM →
                 </a>
-                <p style="color:#b0b8c8;font-size:12px;margin-top:24px">ORBIS CRM · Notificação automática</p>
+                <p style="color:#b0b8c8;font-size:12px;margin-top:24px">CRM · Notificação automática</p>
               </div>
             </div>
           `
