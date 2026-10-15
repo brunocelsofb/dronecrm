@@ -11,7 +11,7 @@ const initialState: ActionState = {}
 const STATUS_OPTIONS = [
   { value: 'lead', label: 'Lead', desc: 'Contato inicial — ainda não qualificado. Pode ser de uma campanha ou prospecção fria.' },
   { value: 'prospect', label: 'Prospect', desc: 'Lead qualificado — há interesse real e fit com o produto.' },
-  { value: 'cliente_ativo', label: 'Cliente Ativo', desc: 'Tem contrato ativo com a ORBIS.' },
+  { value: 'cliente_ativo', label: 'Cliente Ativo', desc: 'Tem contrato ativo com a sua empresa.' },
   { value: 'cliente_inativo', label: 'Cliente Inativo', desc: 'Já foi cliente, não tem contrato ativo no momento.' },
   { value: 'nao_qualificado', label: 'Não qualificado', desc: 'Avaliado e não tem fit com o produto ou serviço.' },
 ]
