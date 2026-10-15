@@ -11,7 +11,7 @@ import { seedTenantDefaults } from './seed'
 const RESET_TABLES = [
   'activities', 'notifications', 'contract_whatsapp_messages', 'whatsapp_conversation_status',
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
-  'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_records', 'implementation_schedules',
+  'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_records', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
   'proposals', 'tickets', 'automation_rules', 'lead_routing_rules', 'leads', 'pipeline_runs', 'contracts',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals',
@@ -21,7 +21,7 @@ const RESET_TABLES = [
 const EXPORT_TABLES = [
   'companies', 'contacts', 'contracts', 'pipelines', 'stages', 'pipeline_runs', 'activities', 'leads',
   'proposals', 'tickets', 'contract_whatsapp_messages', 'nps_surveys', 'custom_surveys', 'billing_records',
-  'implementation_schedules', 'tags', 'lost_reasons', 'custom_fields', 'email_templates', 'automation_rules',
+  'contract_renewals', 'contract_measurements', 'implementation_schedules', 'tags', 'lost_reasons', 'custom_fields', 'email_templates', 'automation_rules',
 ] as const
 
 // Nunca exportar segredos

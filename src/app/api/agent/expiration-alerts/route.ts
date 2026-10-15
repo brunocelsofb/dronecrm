@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { runExpirationAlerts } from '@/lib/agent/expiration-alerts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
+import { runMeasurementAlerts } from '@/lib/agent/measurement-alerts'
 
 export const maxDuration = 60  // segundos — Vercel Pro permite até 300s
 
@@ -48,8 +49,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         } catch (e) {
           implReport = { status: 'error', detail: e instanceof Error ? e.message : String(e) }
         }
+        let measurement: unknown
+        try {
+          measurement = await runMeasurementAlerts(tenantId)
+        } catch (e) {
+          measurement = { error: e instanceof Error ? e.message : String(e) }
+        }
         byTenant.push({
           tenantId,
+          measurement,
           total:    report.total,
           by_level: report.by_level,
           results:  report.results,

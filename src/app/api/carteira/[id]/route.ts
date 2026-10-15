@@ -26,6 +26,9 @@ export async function PATCH(
   for (const key of ALLOWED_FIELDS) {
     if (key in body) update[key] = body[key]
   }
+  // Tipo do contrato define o selo de receita (Recorrente x Medição)
+  if (update.contract_type === 'medicao') update.billing_type = 'metered'
+  else if (update.contract_type === 'fixo') update.billing_type = 'fixed'
   update.updated_at = new Date().toISOString()
 
   const { error } = await supabase.from('contracts').update(update).eq('id', id)

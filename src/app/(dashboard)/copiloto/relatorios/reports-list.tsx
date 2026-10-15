@@ -48,7 +48,7 @@ export function ReportsList({ rows, isAdmin }: { rows: Row[]; isAdmin: boolean }
 
       {rows.length === 0 ? (
         <p className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
-          Nenhum relatório ainda. O Copiloto prepara um por mês, no dia configurado em Configurações → Copiloto IA → Interno.
+          Nenhum relatório ainda. O Farmer prepara um por mês, no dia configurado em Configurações → Agentes IA → Interno.
         </p>
       ) : (
         rows.map(r => {

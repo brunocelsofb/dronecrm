@@ -5,6 +5,7 @@ import { PipelineSelect } from '@/components/pipeline/pipeline-select'
 import { PipelineDashboard } from '@/components/pipeline/pipeline-dashboard'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { checkAndTriggerRenewals } from '@/lib/actions/pipeline'
+import { pendingReference, todayBrasilia } from '@/lib/revenue/measurement'
 
 const DEFAULT_SLA_DAYS = 7 // usado quando a etapa não tem SLA configurado
 
@@ -86,7 +87,7 @@ export default async function PipelinePage({
 
   const [{ data: contractsData }, { data: latestActivityRows }, { data: contractTagRows }, { data: allStagesData }, { data: allPipelineStages }, { data: proposalAgg }] = await Promise.all([
     allContractIds.length
-      ? supabase.from('contracts').select('id, process_number, title, client_name, company_id').in('id', allContractIds)
+      ? supabase.from('contracts').select('id, process_number, title, client_name, company_id, billing_type, monthly_value').in('id', allContractIds)
       : Promise.resolve({ data: [] as any[] }),
     allContractIds.length
       ? supabase.from('activities').select('contract_id, created_at').in('contract_id', allContractIds).order('created_at', { ascending: false })
@@ -105,6 +106,49 @@ export default async function PipelinePage({
   ])
 
   const contractById = new Map((contractsData ?? []).map((c: any) => [c.id, c]))
+
+  // Contratos (Gestão de Contratos): selo Recorrente/Medição e, na medição,
+  // o último mês lançado e quanto do potencial foi perdido.
+  const isContractsPipeline = pipelineType === 'gestao_contratos'
+  const meteredIds = isContractsPipeline
+    ? (runs ?? []).map((r: any) => r.contract_id).filter((id: string) => contractById.get(id)?.billing_type === 'metered')
+    : []
+  const [{ data: measureRows }, { data: orgRow }] = await Promise.all([
+    meteredIds.length
+      ? supabase.from('billing_records').select('contract_id, year, month, amount, contract_value, status').in('contract_id', meteredIds)
+      : Promise.resolve({ data: [] as any[] }),
+    isContractsPipeline
+      ? supabase.from('organization_settings').select('measurement_due_day').limit(1).maybeSingle()
+      : Promise.resolve({ data: null as any }),
+  ])
+  const ref = pendingReference(todayBrasilia(), Number(orgRow?.measurement_due_day ?? 5))
+  const lastMeasureByContract = new Map<string, any>()
+  const refMeasureByContract = new Map<string, any>()
+  for (const m of measureRows ?? []) {
+    const prev = lastMeasureByContract.get(m.contract_id)
+    if (!prev || m.year * 12 + m.month > prev.year * 12 + prev.month) lastMeasureByContract.set(m.contract_id, m)
+    if (m.year === ref.year && m.month === ref.month) refMeasureByContract.set(m.contract_id, m)
+  }
+  function revenueInfo(contractId: string): RunCard['revenue'] {
+    if (!isContractsPipeline) return undefined
+    const c = contractById.get(contractId)
+    const contractValue = Number(c?.monthly_value) || 0
+    if (c?.billing_type !== 'metered') return { type: 'fixed', contractValue }
+    const last = lastMeasureByContract.get(contractId)
+    const refRec = refMeasureByContract.get(contractId)
+    const lastInfo = last ? (() => {
+      const cv = Number(last.contract_value ?? contractValue) || 0
+      const net = Number(last.amount) || 0
+      const lost = cv - net > 0 ? Math.round((cv - net) * 100) / 100 : 0
+      return { year: last.year, month: last.month, net, lost, lostPct: cv > 0 ? Math.round((lost / cv) * 1000) / 10 : null, pending: last.status === 'aguardando_aprovacao' }
+    })() : null
+    return {
+      type: 'metered',
+      contractValue,
+      last: lastInfo,
+      refMissing: !refRec || refRec.status !== 'validado' ? { year: ref.year, month: ref.month, overdue: ref.overdue } : null,
+    }
+  }
   const stageById = new Map((stages ?? []).map((s) => [s.id, s]))
   const allStagesById = new Map((allStagesData ?? []).map((s: any) => [s.id, s]))
   const lostReasonById = new Map((lostReasons ?? []).map((r: any) => [r.id, r.name]))
@@ -155,6 +199,7 @@ export default async function PipelinePage({
       freshness: computeFreshness(r.contract_id, r.stage_entered_at, r.stage_id),
       tag: tagByContract.get(r.contract_id) ?? null,
       lostReasonName: r.lost_reason_id ? lostReasonById.get(r.lost_reason_id) ?? null : null,
+      revenue: revenueInfo(r.contract_id),
     }
   }
 

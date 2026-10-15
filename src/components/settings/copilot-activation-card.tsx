@@ -33,10 +33,10 @@ export function CopilotActivationCard({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-6">
       <div>
-        <h2 className="text-sm font-semibold text-[#1B556B]">Ativação do Copiloto IA</h2>
+        <h2 className="text-sm font-semibold text-[#1B556B]">Ativação dos agentes IA (Farmer e Hunter)</h2>
         <p className="mt-1 text-xs text-gray-500">
-          O Copiloto usa a inteligência artificial da Anthropic (Claude) com a <strong>chave da sua empresa</strong>: o consumo é
-          cobrado direto na sua conta da Anthropic. Crie a chave em console.anthropic.com → API Keys. Sem chave, o Copiloto fica
+          Os agentes usam a inteligência artificial da Anthropic (Claude) com a <strong>chave da sua empresa</strong>: o consumo é
+          cobrado direto na sua conta da Anthropic. Crie a chave em console.anthropic.com → API Keys. Sem chave, os agentes ficam
           desligado e o resto do CRM funciona normalmente.
         </p>
       </div>
@@ -44,7 +44,7 @@ export function CopilotActivationCard({
       <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm">
         {keyStatus.source === 'tenant' && <span className="text-green-700">✓ Chave da empresa cadastrada (…{keyStatus.last4})</span>}
         {keyStatus.source === 'platform' && <span className="text-amber-700">⚠ Usando a chave da plataforma (temporário). Cadastre a chave da sua empresa.</span>}
-        {!keyStatus.source && <span className="text-gray-600">Copiloto desligado — nenhuma chave cadastrada.</span>}
+        {!keyStatus.source && <span className="text-gray-600">Agentes desligados — nenhuma chave cadastrada.</span>}
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -64,7 +64,7 @@ export function CopilotActivationCard({
           disabled={keyPending || !key.trim()}
           onClick={() => startKey(async () => {
             const r = await saveAnthropicKey(key)
-            setKeyMsg(r.error ?? '✓ Chave salva. O Copiloto está ativo.')
+            setKeyMsg(r.error ?? '✓ Chave salva. Os agentes estão ativos.')
             if (!r.error) setKey('')
           })}
           className="rounded-lg bg-[#1B556B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#164659] disabled:opacity-50"
@@ -75,7 +75,7 @@ export function CopilotActivationCard({
           <button
             disabled={keyPending}
             onClick={() => {
-              if (!confirm('Remover a chave? O Copiloto será desligado.')) return
+              if (!confirm('Remover a chave? Os agentes serão desligados.')) return
               startKey(async () => { const r = await removeAnthropicKey(); setKeyMsg(r.error ?? 'Chave removida.') })
             }}
             className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"

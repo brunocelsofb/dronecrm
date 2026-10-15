@@ -84,7 +84,7 @@ export async function createInternalNotice(contractId: string, key: InternalKey)
     activityType: 'email',
     title: `Comunicar ${label} ao time interno — ${c.client_name}`,
     content:
-      `[Copiloto IA] E-mail interno pronto para revisão (cliente, número e período — sem valores). ` +
+      `[Farmer] E-mail interno pronto para revisão (cliente, número e período — sem valores). ` +
       `Confira destinatários e cópia e clique em "Revisar e enviar".`,
     metadata: {
       kind:          'internal_notice',
@@ -118,7 +118,7 @@ export async function createImplementationKickoff(contractId: string): Promise<{
     activityType: 'task',
     title: `Acionar time técnico para a implantação — ${c.client_name}`,
     content:
-      `[Copiloto IA] Contrato ${c.process_number ?? ''} fechado. Avise o time técnico para:\n` +
+      `[Farmer] Contrato ${c.process_number ?? ''} fechado. Avise o time técnico para:\n` +
       `• iniciar a implantação no CRM (aba Implantação → Iniciar Implantação);\n` +
       `• enviar as informações para o acompanhamento do contrato;\n` +
       `• montar a tabela de aplicabilidade.\n\n` +
@@ -157,7 +157,7 @@ export async function onImplementationStarted(contractId: string, startDate: str
     activityType: 'task',
     title: `Acompanhar evolução da implantação — ${c.client_name}`,
     content:
-      `[Copiloto IA] Implantação iniciada em ${brDate(start)}. Acompanhe na aba Implantação as fases ` +
+      `[Farmer] Implantação iniciada em ${brDate(start)}. Acompanhe na aba Implantação as fases ` +
       `atualizadas pelo time técnico e alinhe com o cliente o andamento. Previsão de conclusão: ${brDate(finalIso)} ` +
       `(${settings.implWeeks} semanas).`,
     metadata: { kind: 'impl_follow', start_date: start },
@@ -172,7 +172,7 @@ export async function onImplementationStarted(contractId: string, startDate: str
     activityType: 'task',
     title: `Solicitar relatório final da implantação — ${c.client_name}`,
     content:
-      `[Copiloto IA] A implantação iniciada em ${brDate(start)} completa ${settings.implWeeks} semanas em ` +
+      `[Farmer] A implantação iniciada em ${brDate(start)} completa ${settings.implWeeks} semanas em ` +
       `${brDate(finalIso)}. Solicite ao time técnico o relatório final da implantação e registre no contrato.`,
     metadata: { kind: 'impl_final_report', start_date: start, expected_end: finalIso },
   })
@@ -300,13 +300,14 @@ export async function createMonthlyImplementationReport(tenantId: string, force 
     assigned_to:   ownerId,
     type:          'task',
     activity_type: 'email',
-    title:         `Enviar relatório mensal de implantação — ${mes}`,
-    content:       `[Copiloto IA] Consolidado de ${count} implantação(ões) pronto para revisar e enviar ao time técnico.`,
+    title:         `Farmer · Enviar relatório mensal de implantação — ${mes}`,
+    content:       `[Farmer] Consolidado de ${count} implantação(ões) pronto para revisar e enviar ao time técnico.`,
     status:        'planned',
     completed:     false,
     activity_date: today,
     metadata: {
       source:        'copiloto_ia',
+      agent:         'farmer',
       auto_created:  true,
       dedupe_key:    dedupeKey + (force && existing?.length ? `:${Date.now()}` : ''),
       kind:          'internal_impl_report',

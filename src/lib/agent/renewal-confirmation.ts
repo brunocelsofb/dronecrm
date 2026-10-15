@@ -95,7 +95,7 @@ export async function createRenewalConfirmation(contractId: string): Promise<{ o
         contractId, dedupeKey, dueInDays: 1, assignedTo: ownerId, activityType: 'task',
         title: `Confirmação de renovação sem ${missing.join(' e ')} — ${c.client_name}`,
         content:
-          `[Copiloto IA] Contrato ${c.process_number ?? ''} renovado — novo período ${periodo}.\n\n` +
+          `[Farmer] Contrato ${c.process_number ?? ''} renovado — novo período ${periodo}.\n\n` +
           `A confirmação ao cliente vai por WhatsApp e e-mail juntos, mas o contato está sem ${missing.join(' e ')}. ` +
           `Cadastre no contato e avise o cliente.`,
         metadata: { kind: 'renewal_confirmation', valid_from: c.valid_from, valid_until: c.valid_until, missing },
@@ -104,7 +104,7 @@ export async function createRenewalConfirmation(contractId: string): Promise<{ o
         contractId, dedupeKey, dueInDays: 1, assignedTo: ownerId, activityType: 'whatsapp',
         title: `Enviar confirmação de renovação — ${c.client_name}`,
         content:
-          `[Copiloto IA] Contrato ${c.process_number ?? ''} renovado — novo período ${periodo}.\n\n` +
+          `[Farmer] Contrato ${c.process_number ?? ''} renovado — novo período ${periodo}.\n\n` +
           `Confirmação ao cliente (WhatsApp + e-mail) pronta para revisão — para ${contact?.name ?? 'o contato'} ` +
           `(${phone} · ${email}). Clique em "Revisar e enviar".`,
         metadata: {

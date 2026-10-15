@@ -28,6 +28,8 @@ import { deleteContract } from '@/lib/actions/contracts'
 import { createClient } from '@/lib/supabase/client'
 import { ValidityBadge } from '@/components/contracts/validity-badge'
 import { Trash2 } from 'lucide-react'
+import { RevenueTypeBadge } from '@/components/contracts/revenue-type-badge'
+import { MONTHS_SHORT } from '@/lib/revenue/measurement'
 
 export type RunCard = {
   runId: string
@@ -45,6 +47,13 @@ export type RunCard = {
   freshness: 'fresh' | 'warning' | 'stale'
   tag: { id: string; name: string; color: string } | null
   lostReasonName?: string | null
+  // Só no funil de Gestão de Contratos
+  revenue?: {
+    type: 'fixed' | 'metered'
+    contractValue: number
+    last?: { year: number; month: number; net: number; lost: number; lostPct: number | null; pending: boolean } | null
+    refMissing?: { year: number; month: number; overdue: boolean } | null
+  }
 }
 
 type Stage = {
@@ -135,6 +144,24 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
       )}
 
       <p style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 10, color: '#b0b8c8' }}>{card.processNumber}</p>
+
+      {card.revenue && card.status === 'open' && (
+        <div style={{ marginTop: 6 }}>
+          <RevenueTypeBadge billingType={card.revenue.type} size="sm" />
+          {card.revenue.type === 'metered' && card.revenue.last && (
+            <p style={{ marginTop: 4, fontSize: 10, lineHeight: 1.35, color: card.revenue.last.lost > 0 ? '#b91c1c' : '#1a7c3e' }}>
+              {MONTHS_SHORT[card.revenue.last.month - 1]}/{String(card.revenue.last.year).slice(2)}: {fmt(card.revenue.last.net)}
+              {card.revenue.last.lost > 0 ? ` · perdemos ${fmt(card.revenue.last.lost)}${card.revenue.last.lostPct !== null ? ` (${card.revenue.last.lostPct}%)` : ''}` : ' · 100% do potencial'}
+              {card.revenue.last.pending ? ' · aguardando aprovação' : ''}
+            </p>
+          )}
+          {card.revenue.type === 'metered' && card.revenue.refMissing && (
+            <p style={{ marginTop: 3, fontSize: 10, fontWeight: 500, color: card.revenue.refMissing.overdue ? '#b91c1c' : '#92400e' }}>
+              {card.revenue.refMissing.overdue ? '⚠ ' : ''}Medição de {MONTHS_SHORT[card.revenue.refMissing.month - 1]} {card.revenue.refMissing.overdue ? 'atrasada' : 'pendente'}
+            </p>
+          )}
+        </div>
+      )}
 
       {showValidity && card.validUntil && (
         <div style={{ marginTop: 6 }}>

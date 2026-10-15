@@ -131,7 +131,7 @@ function PageHeader({ onRefresh, loading }: { onRefresh: () => void; loading: bo
         <BrainCircuit size={20} className="text-[#1B556B]" strokeWidth={1.75} />
       </div>
       <div className="flex-1">
-        <h1 className="text-xl font-bold text-[#1B556B] leading-tight">Copiloto Estratégico</h1>
+        <h1 className="text-xl font-bold text-[#1B556B] leading-tight">Agentes IA — Farmer e Hunter</h1>
         <p className="text-xs text-gray-400">Análise inteligente do CRM</p>
       </div>
       <button

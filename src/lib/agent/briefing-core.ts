@@ -438,6 +438,7 @@ async function createAgentTask(
     dueInDays,
     activityType: 'task',
     metadata: { kind },
+    agent: 'hunter',
   })
   if (r.status === 'error') console.error(`[agent] erro ao criar tarefa ${kind} (${contractId}):`, r.error)
   if (r.status === 'skipped') console.log(`[agent] tarefa ${kind} para ${contractId} não criada: ${r.reason}`)
@@ -520,7 +521,7 @@ export function buildPrompt(data: {
     v != null ? `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '(valor não informado)'
 
   return `
-Você é o Copiloto Estratégico da empresa, actuando como um CONSULTOR COMERCIAL SÉNIOR.
+Você fala pelos agentes Hunter (novos negócios) e Farmer (carteira) da empresa, actuando como um CONSULTOR COMERCIAL SÉNIOR.
 Data de hoje: ${data.today}
 
 Você tem acesso completo ao CRM e deve:
@@ -642,7 +643,7 @@ async function createAutomaticTasks(
       supabase,
       d.contract_id,
       'dormant',
-      `[Copiloto IA] Oportunidade parada há ${d.days_idle} dias na etapa "${d.stage_name ?? 'desconhecida'}". ` +
+      `[Hunter] Oportunidade parada há ${d.days_idle} dias na etapa "${d.stage_name ?? 'desconhecida'}". ` +
       `Retomar contato com ${d.client_name} e registar próximo passo até amanhã.`,
       1
     )
@@ -658,7 +659,7 @@ async function createAutomaticTasks(
         supabase,
         // proposals não têm contract_id directo — busca via control_code
         p.id, 'proposal', // usará proposal_id como fallback; não é ideal mas evita join extra
-        `[Copiloto IA] Proposta ${p.control_code} para ${p.client_name} aguarda aprovação ` +
+        `[Hunter] Proposta ${p.control_code} para ${p.client_name} aguarda aprovação ` +
         `(${p.status_label}) há ${p.days_waiting} dias. ` +
         `Cobrar ${p.pending_approver ?? 'o responsável'} para dar andamento.`,
         1
@@ -671,7 +672,7 @@ async function createAutomaticTasks(
 }
 
 // ─── Envio WhatsApp ───────────────────────────────────────────────────────────
-// Canal do gestor de cada empresa (Configurações → Copiloto IA → Gestor):
+// Canal do gestor de cada empresa (Configurações → Agentes IA → Gestor):
 // número que recebe briefing/avisos e o WhatsApp da empresa que envia.
 // A empresa padrão (Orbis) cai nas variáveis do Vercel enquanto não preencher.
 export async function getManagerChannel(tenantId: string): Promise<{
@@ -712,8 +713,8 @@ export async function sendWhatsApp(text: string, tenantId?: string | null): Prom
     const missing = [
       !baseUrl  && 'EVOLUTION_API_URL',
       !apiKey   && 'EVOLUTION_API_KEY',
-      !instance && (tenantId ? 'WhatsApp que envia (Configurações → Copiloto IA → Gestor)' : 'EVOLUTION_INSTANCE_NAME'),
-      !number   && (tenantId ? 'número do gestor (Configurações → Copiloto IA → Gestor)' : 'WHATSAPP_NUMBER'),
+      !instance && (tenantId ? 'WhatsApp que envia (Configurações → Agentes IA → Gestor)' : 'EVOLUTION_INSTANCE_NAME'),
+      !number   && (tenantId ? 'número do gestor (Configurações → Agentes IA → Gestor)' : 'WHATSAPP_NUMBER'),
     ].filter(Boolean).join(', ')
     console.error(`[whatsapp] configuração incompleta — variáveis em falta: ${missing}`)
     return { sent: false, error: `Variáveis de ambiente em falta: ${missing}` }
@@ -838,6 +839,15 @@ export async function generateBriefing(opts: {
     `${stale.length} leads, ${proposals.length} propostas paradas, ${actionPlans.length} planos acção`
   )
 
+  // ── Indicadores do mês (mesmos do Painel gerencial) ─────────────────────────
+  let kpiSection = ''
+  try {
+    const { buildKpiSection } = await import('./kpi-section')
+    kpiSection = await buildKpiSection(opts.tenantId)
+  } catch (err) {
+    console.error('[agent] erro nos indicadores do mês:', serializeError(err))
+  }
+
   // ── Chamada ao LLM ──────────────────────────────────────────────────────────
   console.log('[agent] chamando Anthropic API — modelo: claude-haiku-4-5')
   let briefing: string
@@ -849,13 +859,15 @@ export async function generateBriefing(opts: {
     const response = await client.messages.create({
       model:      'claude-haiku-4-5',
       max_tokens: 1200,
-      system: `Você é o Copiloto Estratégico de ${businessContext}.
+      system: `Você fala pelos dois agentes de IA de ${businessContext}: o Hunter (novos negócios: leads, oportunidades, propostas, avulso) e o Farmer (carteira: contratos, renovações, medições, satisfação). Identifique cada item com [Hunter] ou [Farmer].
 Especialista em vendas B2B consultivas.
 Gera briefings executivos precisos, nominais e acionáveis em português do Brasil.
 Tom: consultor sénior directo, como se estivesse numa reunião de vendas.
 NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
       messages: [
-        { role: 'user', content: buildPrompt({ dormant, renewal, stale, proposals, actionPlans, today }) }
+        { role: 'user', content: buildPrompt({ dormant, renewal, stale, proposals, actionPlans, today }) + (kpiSection
+          ? `\n\nINDICADORES DO MÊS (números exatos do CRM — NÃO recalcule nem repita a lista; eles serão anexados ao final do briefing):\n${kpiSection}\n\nAo final do briefing, escreva no máximo 2 linhas de análise: uma do Hunter (conversão/ticket) e uma do Farmer (renovações que aumentaram ou reduziram valor, churn). Se não houver dados no mês, diga isso em uma linha.`
+          : '') }
       ],
     })
 
@@ -880,6 +892,8 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
   console.log(
     `[agent] tokens — input: ${usage.promptTokens} | output: ${usage.completionTokens}`
   )
+
+  if (kpiSection && briefing.trim()) briefing = `${briefing.trim()}\n\n${kpiSection}`
 
   // ── Seção fixa: avisos de renovação enviados / aguardando ───────────────────
   try {

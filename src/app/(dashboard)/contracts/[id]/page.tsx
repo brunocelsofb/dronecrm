@@ -17,6 +17,7 @@ import { ContractTagSelect } from '@/components/tags/contract-tag-select'
 import { DepartmentSection } from '@/components/contracts/department-section'
 import { AccountOwnerBadge } from '@/components/contracts/account-owner-badge'
 import { BillingSection } from '@/components/contracts/billing-section'
+import { RevenueTypeBadge } from '@/components/contracts/revenue-type-badge'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
 import { ProposalsSection } from '@/components/proposals/proposals-section'
@@ -99,7 +100,7 @@ export default async function ContractDetailPage({
     supabase.from('action_plan_items').select('id, description, responsible_department, status, created_at, resolved_at').eq('contract_id', id).order('created_at', { ascending: false }),
     supabase.from('dimensioning_reviews').select('id, file_storage_path, file_name, sent_at, status, reviewed_at, review_notes').eq('contract_id', id).order('sent_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, department'),
-    supabase.from('billing_records').select('id, year, month, amount, file_storage_path, file_name, notes, confirmed_at').eq('contract_id', id).order('year', { ascending: false }).order('month', { ascending: false }),
+    supabase.from('billing_records').select('id, year, month, amount, measured_amount, glosa_amount, glosa_reason, contract_value, status, file_storage_path, file_name, notes, confirmed_at, approved_at').eq('contract_id', id).order('year', { ascending: false }).order('month', { ascending: false }),
     supabase.from('proposals').select('id, control_code, version, status, workflow_status, proposal_value, proposal_validity_days, created_at, updated_at, technical_snapshot, review_token, submitted_at, submitted_by_name, technical_approved_at, technical_approved_by_name, technical_approved_by_role, technical_comment, technical_restrictions, commercial_approved_at, commercial_approved_by_name, commercial_approved_by_role, client_status, client_approved_at, client_approved_by_name, client_review_token, texto_objetivos, texto_atividades, texto_estrutura_apoio').eq('contract_id', id).is('deleted_at', null).order('created_at', { ascending: false }),
     supabase.from('proposal_catalog_items').select('id, name, category, type, characteristics, unit_value').order('name'),
     supabase.from('transfer_requests').select('*').eq('contract_id', id).in('status', ['pending', 'in_progress']).order('created_at', { ascending: false }).limit(1),
@@ -338,6 +339,7 @@ export default async function ContractDetailPage({
               <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{contract.client_name}</h1>
               <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#f1f3f8', color: '#52514e' }}>{contract.title}</span>
               <ValidityBadge validUntil={contract.valid_until} />
+              {isCurrentlyInContractsPipeline && <RevenueTypeBadge billingType={contract.billing_type} />}
               <ContractTagSelect
                 key={currentTagIds.join(',')||'none'}
                 tags={allTags ?? []}
@@ -402,6 +404,8 @@ export default async function ContractDetailPage({
           pipelineType={pipelineById.get(displayRun.pipeline_id)?.type}
           contractNature={(contract as any).nature ?? null}
           contractValue={Number(displayRun.value) || 0}
+          currentMonthlyValue={Number((contract as any).monthly_value) || Number(displayRun.value) || 0}
+          currentValidUntil={contract.valid_until ?? null}
           otherPipelines={pipelineById.get(displayRun.pipeline_id)?.type === 'vendas'
             ? (pipelines ?? [])
                 .filter(p => p.type === 'vendas' && p.id !== displayRun.pipeline_id)
@@ -596,7 +600,7 @@ export default async function ContractDetailPage({
           ...(isCurrentlyInContractsPipeline ? [{
             id: 'faturamento',
             label: 'Faturamento',
-            content: <BillingSection contractId={contract.id} billingType={contract.billing_type} records={billingRecords ?? []} />,
+            content: <BillingSection contractId={contract.id} billingType={contract.billing_type} contractValue={Number((contract as any).monthly_value) || 0} records={(billingRecords ?? []) as any} isAdmin={currentProfile?.role === 'admin'} />,
           }] : []),
           ...(!isCurrentlyInSalesPipeline ? [{
             id: 'pesquisas',

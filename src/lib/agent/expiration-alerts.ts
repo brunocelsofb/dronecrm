@@ -232,7 +232,7 @@ async function processContract(
   const dedupeKey = `renewal:${c.valid_until}:${level}`
   const dueInDays = level === 0 ? 0 : level === 15 ? 1 : level === 30 ? 3 : level === 60 ? 5 : 7
   const when      = levelLabel(level, c.days_until_expiry)
-  const header    = `[Copiloto IA] Contrato ${c.process_number ?? ''} — ${c.client_name} — ${when} (${formatDateBR(c.valid_until)}). Valor: ${formatBRL(c.monthly_value)}.`
+  const header    = `[Farmer] Contrato ${c.process_number ?? ''} — ${c.client_name} — ${when} (${formatDateBR(c.valid_until)}). Valor: ${formatBRL(c.monthly_value)}.`
 
   // 90 dias: só tarefa interna de preparação
   if (level === 90) {

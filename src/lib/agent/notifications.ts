@@ -276,6 +276,7 @@ export async function createCrmActivity(opts: {
     completed: false,
     metadata: {
       source:       'copiloto_ia',
+      agent:        opts.leadId && !opts.contractId ? 'hunter' : 'farmer',
       auto_created: true,
       ...(opts.metadata ?? {}),
     },

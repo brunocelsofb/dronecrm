@@ -20,7 +20,7 @@ export function ResetCrmCard({ tenantName, tenantId, compact = false }: { tenant
       <p className="text-sm text-gray-700">
         Apaga <strong>todos</strong> os dados de <strong>{tenantName}</strong>: contratos, oportunidades, leads, empresas, contatos,
         atividades, mensagens, propostas, chamados, pesquisas, funis e etapas, WhatsApps conectados (inclusive no servidor),
-        Copiloto IA (chave e textos) e configurações. Ficam só os <strong>usuários</strong> e a <strong>licença</strong>.
+        agentes IA (chave e textos) e configurações. Ficam só os <strong>usuários</strong> e a <strong>licença</strong>.
         O CRM volta como novo, com o funil básico. <strong>Não tem como desfazer.</strong>
       </p>
 

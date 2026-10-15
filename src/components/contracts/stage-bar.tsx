@@ -3,6 +3,9 @@
 import { useState, useTransition } from 'react'
 import { moveContractStage, reopenRun, closeRun, transferRunToPipeline } from '@/lib/actions/pipeline'
 import { addMonthsToDateString } from '@/lib/utils/date'
+import { createClient } from '@/lib/supabase/client'
+import { registerContractFile } from '@/lib/actions/files'
+import { sanitizeStorageFileName } from '@/lib/utils/storage'
 
 type Stage = {
   id: string; name: string; order_index: number
@@ -22,6 +25,7 @@ export function StageBar({
   wonLabel, lostLabel, canChangeStage, pipelineType,
   contractNature, contractValue, otherPipelines, lostReasons,
   accountOwnerOptions, currentOwnerId, billingCnpjs = [],
+  currentMonthlyValue, currentValidUntil,
 }: {
   contractId: string; stages: Stage[]; currentStageId: string
   timings: StageTiming[]; status: string; wonLabel: string; lostLabel: string
@@ -33,6 +37,8 @@ export function StageBar({
   accountOwnerOptions?: { id: string; full_name: string }[]   // consultores para assumir a conta no ganho
   currentOwnerId?: string | null
   billingCnpjs?: { value: string; label: string }[]   // CNPJs de faturamento da empresa (Configurações)
+  currentMonthlyValue?: number          // valor mensal do contrato hoje (antes da renovação)
+  currentValidUntil?: string | null     // vigência atual (antes da renovação)
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +54,8 @@ export function StageBar({
   const [contractType, setContractType] = useState('')
   const [monthlyValue, setMonthlyValue] = useState(contractValue ? String(contractValue) : '')
   const [accountOwnerId, setAccountOwnerId] = useState('')
+  const [renewalValue, setRenewalValue] = useState('')
+  const [reportFile, setReportFile] = useState<File | null>(null)
 
   const currentIndex = stages.findIndex((s) => s.id === currentStageId)
   const currentStage = stages[currentIndex]
@@ -55,11 +63,26 @@ export function StageBar({
   const canMarkLost = currentStage?.is_lost === true
   const isGestaoContratos = pipelineType === 'gestao_contratos'
   const isVendas = pipelineType === 'vendas'
+  const isAvulso = pipelineType === 'servico_avulso'
 
   const inp: React.CSSProperties = { width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }
   const lbl: React.CSSProperties = { display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4 }
-  const modalValid = !!validFrom && !!validUntil && (isGestaoContratos || !!contractType)
-    && (!isVendas || !!accountOwnerId)
+  const renewalValueN = (() => {
+    const t = renewalValue.trim()
+    if (!t) return NaN
+    const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)
+    return Number.isFinite(n) ? n : NaN
+  })()
+  // Avulso: só o relatório final (sem vigência nem tipo de contrato)
+  const modalValid = isAvulso
+    ? !!reportFile
+    : !!validFrom && !!validUntil && (isGestaoContratos || !!contractType)
+      && (!isVendas || !!accountOwnerId)
+      && (!isGestaoContratos || renewalValueN > 0)
+  const prevValue = Number(currentMonthlyValue) || 0
+  const renewalPct = isGestaoContratos && prevValue > 0 && renewalValueN > 0
+    ? Math.round(((renewalValueN - prevValue) / prevValue) * 1000) / 10
+    : null
 
   const selectedTransferPipeline = (otherPipelines ?? []).find(p => p.id === transferPipelineId)
 
@@ -113,7 +136,8 @@ export function StageBar({
           if (extraData.validUntil)   patch.valid_until   = extraData.validUntil
           if (extraData.cnpjBilling)  patch.cnpj_billing  = extraData.cnpjBilling
           if (extraData.contractType) patch.contract_type = extraData.contractType
-          if (extraData.monthlyValue) patch.monthly_value = Number(extraData.monthlyValue)
+          // Na renovação o novo valor vai pelo closeRun (para guardar o antes x depois)
+          if (extraData.monthlyValue && !isGestaoContratos) patch.monthly_value = Number(extraData.monthlyValue)
           const res = await fetch(`/api/carteira/${contractId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -126,7 +150,23 @@ export function StageBar({
           }
         } catch { setError('Erro de conexão.'); return }
       }
-      const result = await closeRun(contractId, outcome, extraData?.lostReason, extraData?.accountOwnerId || null)
+      // Avulso: envia o relatório final antes de faturar
+      let avulsoReport: { storagePath: string; fileName: string } | null = null
+      if (outcome === 'won' && isAvulso) {
+        if (!reportFile) { setError('Anexe o relatório final do serviço.'); return }
+        const supabase = createClient()
+        const storagePath = `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(reportFile.name)}`
+        const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, reportFile)
+        if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
+        const reg = await registerContractFile(contractId, reportFile.name, storagePath, reportFile.size, reportFile.type)
+        if ('error' in reg) { setError(reg.error ?? 'Falha ao registrar o relatório.'); return }
+        avulsoReport = { storagePath, fileName: reportFile.name }
+      }
+      const result = await closeRun(contractId, outcome, extraData?.lostReason, extraData?.accountOwnerId || null, {
+        renewalNewValue: outcome === 'won' && isGestaoContratos ? renewalValueN : null,
+        renewalPreviousValidUntil: currentValidUntil ?? null,
+        avulsoReport,
+      })
       if (result.error) setError(result.error)
       else setShowWonModal(false)
     })
@@ -175,9 +215,10 @@ export function StageBar({
               {isGestaoContratos ? 'Confirmar Renovação' : `Confirmar ${wonLabel}`}
             </h2>
             <p style={{ fontSize: 12, color: '#8892a4', marginBottom: 20 }}>
-              {isGestaoContratos ? 'Preencha a nova vigência antes de confirmar.' : 'Preencha os dados obrigatórios para transferir ao funil de contratos.'}
+              {isGestaoContratos ? 'Preencha a nova vigência e o novo valor antes de confirmar.' : isAvulso ? 'Anexe o relatório final para faturar o serviço.' : 'Preencha os dados obrigatórios para transferir ao funil de contratos.'}
             </p>
 
+            {!isAvulso && (<>
             <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Vigência</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
               <div><label style={lbl}>Início <span style={{ color: '#b91c1c' }}>*</span></label>
@@ -194,6 +235,7 @@ export function StageBar({
                 </button>
               ))}
             </div>
+            </>)}
 
             {isVendas && (
               <>
@@ -245,10 +287,38 @@ export function StageBar({
               </>
             )}
 
+            {isGestaoContratos && (
+              <div style={{ marginBottom: 16, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>
+                <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Valor do novo período</p>
+                <label style={lbl}>Novo valor mensal (R$) <span style={{ color: '#b91c1c' }}>*</span></label>
+                <input inputMode="decimal" value={renewalValue} onChange={e => setRenewalValue(e.target.value)} placeholder={prevValue > 0 ? String(prevValue).replace('.', ',') : '0,00'} style={inp} />
+                <p style={{ fontSize: 11, color: '#52514e', marginTop: 6 }}>
+                  Valor atual: <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prevValue)}</strong>
+                  {renewalPct !== null && (
+                    <span style={{ marginLeft: 8, fontWeight: 600, color: renewalPct > 0 ? '#1a7c3e' : renewalPct < 0 ? '#b91c1c' : '#52514e' }}>
+                      {renewalPct > 0 ? `▲ aumento de ${renewalPct}%` : renewalPct < 0 ? `▼ redução de ${Math.abs(renewalPct)}%` : 'sem alteração de valor'}
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {isAvulso && (
+              <div style={{ marginBottom: 16, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>
+                <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Relatório final</p>
+                <label style={lbl}>Relatório do serviço <span style={{ color: '#b91c1c' }}>*</span></label>
+                <input type="file" onChange={e => setReportFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
+                <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>O faturamento do avulso só entra na receita com o relatório anexado. Ele também fica em Arquivos.</p>
+              </div>
+            )}
+
             {!modalValid && <p style={{ fontSize: 11, color: '#92400e', marginBottom: 12 }}>
-              ⚠ {!validFrom || !validUntil ? 'Preencha início e fim da vigência.'
+              ⚠ {isAvulso ? 'Anexe o relatório final do serviço.'
+                : !validFrom || !validUntil ? 'Preencha início e fim da vigência.'
                 : !isGestaoContratos && !contractType ? 'Selecione o tipo de contrato.'
-                : 'Indique o consultor responsável pela conta.'}
+                : isVendas && !accountOwnerId ? 'Indique o consultor responsável pela conta.'
+                : isGestaoContratos ? 'Informe o novo valor mensal do contrato.'
+                : 'Anexe o relatório final do serviço.'}
             </p>}
             {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8 }}>{error}</p>}
 

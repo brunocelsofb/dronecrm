@@ -7,6 +7,7 @@ import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, L
 
 const ALL_NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
+  { href: '/painel', label: 'Painel gerencial', icon: BarChart3, feature: 'painel' },
   { href: '/pipeline', label: 'Funil', icon: KanbanSquare, feature: 'pipeline' },
   { href: '/leads', label: 'Leads', icon: Target, feature: 'leads' },
   { href: '/contracts', label: 'Oportunidades', icon: FileText, feature: 'contracts' },
@@ -17,7 +18,7 @@ const ALL_NAV_ITEMS = [
   { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, feature: 'whatsapp' },
   { href: '/whatsapp/relatorios', label: 'Relatórios WPP', icon: BarChart3, feature: 'whatsapp-relatorios' },
   { href: '/surveys-dashboard', label: 'Pesquisas & NPS', icon: ClipboardList, feature: 'surveys' },
-  { href: '/briefing', label: 'Copiloto IA', icon: BrainCircuit, feature: 'copiloto' },
+  { href: '/briefing', label: 'Agentes IA', icon: BrainCircuit, feature: 'copiloto' },
 ]
 
 export function SidebarNav({

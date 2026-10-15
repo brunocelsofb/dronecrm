@@ -338,6 +338,13 @@ export async function closeRun(
   outcome: 'won' | 'lost',
   lostReason?: string,
   accountOwnerId?: string | null,
+  extra?: {
+    // Renovação (Gestão de Contratos): novo valor mensal do período renovado
+    renewalNewValue?: number | null
+    renewalPreviousValidUntil?: string | null
+    // Serviço avulso: relatório final (já enviado ao Storage e registrado em Arquivos)
+    avulsoReport?: { storagePath: string; fileName: string } | null
+  },
 ): Promise<MoveResult> {
   const supabase = await createClient()
   const {
@@ -417,6 +424,29 @@ export async function closeRun(
         }
       }
     }
+  }
+
+  // Valor anterior do contrato (antes da renovação), para medir aumento/redução
+  let renewalPreviousValue: number | null = null
+  if (outcome === 'won' && pipelineForGateType === 'gestao_contratos') {
+    const nv = Number(extra?.renewalNewValue)
+    if (extra?.renewalNewValue === undefined || extra?.renewalNewValue === null || !Number.isFinite(nv) || nv <= 0) {
+      return { error: 'Informe o novo valor mensal do contrato renovado.' }
+    }
+    const { data: cv } = await supabase.from('contracts').select('monthly_value').eq('id', contractId).maybeSingle()
+    renewalPreviousValue = cv?.monthly_value !== null && cv?.monthly_value !== undefined ? Number(cv.monthly_value) : (Number(run.value) || null)
+  }
+
+  // Avulso: só fatura com o relatório final anexado
+  if (outcome === 'won' && pipelineForGateType === 'servico_avulso') {
+    const rep = extra?.avulsoReport
+    if (!rep?.storagePath) return { error: 'Anexe o relatório final do serviço para marcar o faturamento.' }
+    const { data: f } = await supabase.from('contract_files').select('id')
+      .eq('contract_id', contractId).eq('storage_path', rep.storagePath).maybeSingle()
+    if (!f) return { error: 'O relatório anexado não foi encontrado nos arquivos do contrato. Envie de novo.' }
+    await supabase.from('pipeline_runs')
+      .update({ report_storage_path: rep.storagePath, report_file_name: rep.fileName })
+      .eq('id', run.id)
   }
 
   if (outcome === 'lost') {
@@ -658,6 +688,42 @@ export async function closeRun(
   // Renovação concluída (funil de Gestão de Contratos): o Copiloto prepara a
   // confirmação do novo período para o consultor revisar e enviar ao cliente.
   // Falhas aqui não bloqueiam o fechamento.
+  // Renovação: grava o antes x depois e aplica o novo valor ao contrato e à nova passagem
+  if (outcome === 'won' && pipelineForGateType === 'gestao_contratos') {
+    try {
+      const newValue = Math.round(Number(extra?.renewalNewValue) * 100) / 100
+      const { data: cNow } = await supabase.from('contracts').select('valid_until').eq('id', contractId).maybeSingle()
+      const { data: openRun } = await supabase.from('pipeline_runs').select('id')
+        .eq('contract_id', contractId).eq('status', 'open').maybeSingle()
+      const { error: renErr } = await supabase.from('contract_renewals').insert({
+        contract_id: contractId,
+        run_id: run.id,
+        previous_value: renewalPreviousValue,
+        new_value: newValue,
+        previous_valid_until: extra?.renewalPreviousValidUntil || null,
+        new_valid_until: cNow?.valid_until ?? null,
+        renewed_by: user.id,
+      })
+      if (renErr) console.error('[closeRun] renovação não registrada:', renErr.message)
+      await supabase.from('contracts').update({ monthly_value: newValue }).eq('id', contractId)
+      if (openRun?.id) await supabase.from('pipeline_runs').update({ value: newValue }).eq('id', openRun.id)
+      const fmtBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+      const prev = renewalPreviousValue ?? 0
+      const pct = prev > 0 ? Math.round(((newValue - prev) / prev) * 1000) / 10 : null
+      await supabase.from('activities').insert({
+        contract_id: contractId,
+        user_id: user.id,
+        type: 'system',
+        content: prev > 0
+          ? `📈 Renovação: valor mensal de ${fmtBRL(prev)} para ${fmtBRL(newValue)} (${pct !== null && pct >= 0 ? '+' : ''}${pct}%).`
+          : `📈 Renovação: valor mensal ${fmtBRL(newValue)}.`,
+        metadata: { kind: 'renewal_value', previous_value: prev, new_value: newValue, pct },
+      })
+    } catch (renewalValueError) {
+      console.error('[closeRun] erro ao registrar valor da renovação:', renewalValueError)
+    }
+  }
+
   if (outcome === 'won' && pipelineForGateType === 'gestao_contratos') {
     try {
       const { createRenewalConfirmation } = await import('@/lib/agent/renewal-confirmation')

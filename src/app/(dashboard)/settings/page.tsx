@@ -15,6 +15,7 @@ const CONFIG_SECTIONS = [
     title: 'Empresa',
     items: [
       { href: '/settings', label: 'Configurações Gerais', description: 'Nome da empresa, CNPJ, logo e dados institucionais' },
+      { href: '/settings/metas', label: '🎯 Metas de receita', description: 'Meta total mês a mês (a anual é a soma) e prazo da medição' },
     ],
   },
   {
@@ -31,9 +32,9 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
-    title: 'Copiloto IA',
+    title: 'Agentes IA (Farmer e Hunter)',
     items: [
-      { href: '/settings/copiloto', label: '🧠 Avisos de renovação', description: 'Textos que o Copiloto prepara para o cliente nos marcos de vencimento (60, 30, 15 dias e vencido)' },
+      { href: '/settings/copiloto', label: '🧠 Avisos de renovação', description: 'Textos que o Farmer prepara para o cliente nos marcos de vencimento (60, 30, 15 dias e vencido)' },
     ],
   },
   {

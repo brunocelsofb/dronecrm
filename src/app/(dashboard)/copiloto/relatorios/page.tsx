@@ -28,7 +28,7 @@ export default async function CopilotReportsPage() {
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Relatórios de implantação</h1>
         <p className="mt-0.5 text-sm text-gray-500">
-          Consolidado mensal das fases de implantação, preparado pelo Copiloto IA para revisar e enviar ao time técnico.
+          Consolidado mensal das fases de implantação, preparado pelo Farmer para revisar e enviar ao time técnico.
         </p>
       </div>
       <ReportsList rows={(rows ?? []) as never[]} isAdmin={me?.role === 'admin'} />

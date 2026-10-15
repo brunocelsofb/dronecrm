@@ -97,7 +97,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 3. Cria lead_activity no CRM (usa service role para bypassar RLS)
   const activityContent =
-    `[Copiloto IA] Novo lead recebido via formulário.\n` +
+    `[Hunter] Novo lead recebido via formulário.\n` +
     `Nome: ${lead.name}\n` +
     (lead.email        ? `E-mail: ${lead.email}\n`           : '') +
     (lead.phone        ? `Telefone: ${lead.phone}\n`         : '') +

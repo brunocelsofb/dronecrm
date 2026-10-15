@@ -26,9 +26,11 @@ export async function setMonthlyGoal(
     return { error: 'Preencha ano, mês e valor da meta corretamente.' }
   }
 
+  const { resolveTenantId } = await import('@/lib/tenant/context')
+  const tenantId = await resolveTenantId()
   const { error } = await supabase
     .from('monthly_goals')
-    .upsert({ year, month, target_value: targetValue, updated_by: user.id, updated_at: new Date().toISOString() }, { onConflict: 'year,month' })
+    .upsert({ tenant_id: tenantId, year, month, target_value: targetValue, updated_by: user.id, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id,year,month' })
 
   if (error) return { error: error.message }
 
@@ -38,7 +40,8 @@ export async function setMonthlyGoal(
 
 export async function setBillingType(contractId: string, billingType: 'fixed' | 'metered') {
   const supabase = await createClient()
-  await supabase.from('contracts').update({ billing_type: billingType }).eq('id', contractId)
+  await supabase.from('contracts').update({ billing_type: billingType, contract_type: billingType === 'metered' ? 'medicao' : 'fixo' }).eq('id', contractId)
+  revalidatePath('/pipeline')
   revalidatePath(`/contracts/${contractId}`)
 }
 

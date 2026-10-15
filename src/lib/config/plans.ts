@@ -17,6 +17,7 @@ export type FeatureDef = { key: string; label: string; paths: string[] }
 // Ordem = ordem do menu. paths = prefixos de URL bloqueados quando a aba não é liberada.
 export const FEATURES: FeatureDef[] = [
   { key: 'dashboard',           label: 'Dashboard',            paths: ['/'] },
+  { key: 'painel',              label: 'Painel gerencial',     paths: ['/painel'] },
   { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines'] },
   { key: 'leads',               label: 'Leads',                paths: ['/leads'] },
   { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts'] },
@@ -27,7 +28,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'whatsapp',            label: 'WhatsApp',             paths: ['/whatsapp'] },
   { key: 'whatsapp-relatorios', label: 'Relatórios WPP',       paths: ['/whatsapp/relatorios'] },
   { key: 'surveys',             label: 'Pesquisas & NPS',      paths: ['/surveys-dashboard', '/surveys', '/nps-dashboard'] },
-  { key: 'copiloto',            label: 'Copiloto IA',          paths: ['/briefing', '/copiloto'] },
+  { key: 'copiloto',            label: 'Agentes IA',          paths: ['/briefing', '/copiloto'] },
 ]
 
 export const FEATURE_KEYS = FEATURES.map(f => f.key)
@@ -35,7 +36,7 @@ export const FEATURE_KEYS = FEATURES.map(f => f.key)
 // Usado só se a tabela plan_features não responder
 export const DEFAULT_PLAN_FEATURES: Record<PlanId, string[]> = {
   starter: ['dashboard', 'pipeline', 'leads', 'tickets', 'copiloto'],
-  professional: ['dashboard', 'pipeline', 'leads', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
+  professional: ['dashboard', 'painel', 'pipeline', 'leads', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
   enterprise: FEATURE_KEYS,
 }
 

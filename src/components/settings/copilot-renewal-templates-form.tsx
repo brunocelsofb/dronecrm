@@ -77,7 +77,7 @@ export function CopilotRenewalTemplatesForm({
       <div>
         <h2 className="text-sm font-semibold text-[#1B556B]">Avisos de renovação ao cliente</h2>
         <p className="mt-1 text-xs text-gray-500">
-          O Copiloto prepara estas mensagens nos marcos de vencimento e abre uma atividade para o responsável
+          O Farmer prepara estas mensagens nos marcos de vencimento e abre uma atividade para o responsável
           do contrato. O aviso vai por WhatsApp e e-mail juntos (mesmo texto), saindo do WhatsApp e do e-mail
           do consultor dono do WhatsApp, com o e-mail comercial em cópia. A assinatura do e-mail usa a razão social da conta. Nada é enviado sem o consultor revisar e clicar em enviar.
         </p>

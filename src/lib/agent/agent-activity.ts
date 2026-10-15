@@ -17,6 +17,16 @@ export type AgentActivityInput = {
   dueInDays?: number                // activity_date = hoje + N
   assignedTo?: string | null        // profile id do responsável
   metadata?: Record<string, unknown>
+  agent?: AgentName                 // quem abriu; sem isso, deduz pelo funil atual
+}
+
+// Farmer = carteira (contratos, renovação, medição, implantação, satisfação)
+// Hunter = novos negócios (leads, oportunidades, propostas, avulso)
+export type AgentName = 'farmer' | 'hunter'
+export const AGENT_LABEL: Record<AgentName, string> = { farmer: 'Farmer', hunter: 'Hunter' }
+
+export function agentForPipelineType(type: string | null | undefined): AgentName {
+  return type === 'vendas' || type === 'servico_avulso' ? 'hunter' : 'farmer'
 }
 
 export type AgentActivityResult =
@@ -59,7 +69,21 @@ export async function createAgentActivity(
   if (oErr) return { status: 'error', error: oErr.message }
   if (open && open.length > 0) return { status: 'skipped', reason: 'já existe atividade aberta' }
 
-  // 3. cria no formato da tela
+  // 3. agente responsável: informado ou pelo funil em que o contrato está agora
+  let agent: AgentName | undefined = input.agent
+  if (!agent) {
+    const { data: openRun } = await supabase
+      .from('pipeline_runs').select('pipeline_id').eq('contract_id', input.contractId).eq('status', 'open').limit(1).maybeSingle()
+    let ptype: string | null = null
+    if (openRun?.pipeline_id) {
+      const { data: p } = await supabase.from('pipelines').select('type').eq('id', openRun.pipeline_id).maybeSingle()
+      ptype = (p?.type as string | undefined) ?? null
+    }
+    agent = agentForPipelineType(ptype)
+  }
+  const prefix = `${AGENT_LABEL[agent]} · `
+
+  // 4. cria no formato da tela
   const agentUserId = process.env.AGENT_USER_ID ?? null
   const row = {
       contract_id:   input.contractId,
@@ -68,13 +92,14 @@ export async function createAgentActivity(
       assigned_to:   input.assignedTo ?? agentUserId,
       type:          'task',
       activity_type: input.activityType ?? 'task',
-      title:         input.title,
+      title:         input.title.startsWith(prefix) ? input.title : prefix + input.title,
       content:       input.content,
       status:        'planned',
       completed:     false,
       activity_date: dateInDays(input.dueInDays ?? 2),
       metadata: {
         source:       'copiloto_ia',
+        agent,
         auto_created: true,
         dedupe_key:   input.dedupeKey,
         ...(input.metadata ?? {}),

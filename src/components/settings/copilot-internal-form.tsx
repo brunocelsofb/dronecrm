@@ -68,7 +68,7 @@ export function CopilotInternalForm({
         <div>
           <h2 className="text-sm font-semibold text-[#1B556B]">E-mails internos — fechamento e renovação</h2>
           <p className="mt-1 text-xs text-gray-500">
-            Quando o consultor marca <strong>Ganho</strong> (vendas) ou <strong>Renovado</strong> (gestão de contratos), o Copiloto
+            Quando o consultor marca <strong>Ganho</strong> (vendas) ou <strong>Renovado</strong> (gestão de contratos), o Farmer
             abre uma atividade de e-mail com o texto pronto. O consultor revisa destinatários e cópia e envia do próprio e-mail.
             Esses e-mails <strong>não levam valores</strong> — só cliente, número e período.
           </p>
@@ -165,7 +165,7 @@ export function CopilotInternalForm({
         <div>
           <h2 className="text-sm font-semibold text-[#1B556B]">Implantação</h2>
           <p className="mt-1 text-xs text-gray-500">
-            No <strong>Ganho</strong>, o Copiloto abre para o consultor a tarefa de acionar o time técnico (iniciar a implantação no
+            No <strong>Ganho</strong>, o Farmer abre para o consultor a tarefa de acionar o time técnico (iniciar a implantação no
             CRM, enviar as informações de acompanhamento e montar a tabela de aplicabilidade). Quando o cronograma é iniciado, abre
             o <strong>acompanhamento da evolução</strong> (30 dias) e o <strong>pedido do relatório final</strong> no fim do prazo abaixo.
           </p>
@@ -193,7 +193,7 @@ export function CopilotInternalForm({
           <label htmlFor="tech-emails" className={labelCls}>E-mails do time técnico (destinatários do relatório mensal)</label>
           <input id="tech-emails" value={tech} onChange={e => { setTech(e.target.value); dirty() }} className={inputCls} placeholder="tecnico@suaempresa.com.br, ..." />
           <p className="mt-1 text-[11px] text-gray-400">
-            Todo mês, a partir do dia escolhido, o Copiloto monta o consolidado das fases de cada implantação e abre uma atividade
+            Todo mês, a partir do dia escolhido, o Farmer monta o consolidado das fases de cada implantação e abre uma atividade
             para revisar e enviar (cópia: a mesma cópia padrão dos e-mails internos). Veja em{' '}
             <Link href="/copiloto/relatorios" className="text-[#1B556B] underline">Relatórios de implantação</Link>.
           </p>

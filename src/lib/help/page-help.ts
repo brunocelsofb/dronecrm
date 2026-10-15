@@ -7,6 +7,8 @@ export type PageHelp = { title: string; text: string; tips?: string[] }
 const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/$/, help: { title: 'Dashboard', text: 'Visão geral do comercial: valores em funil, metas, atividades da equipe e indicadores do período.', tips: ['Use o filtro de período no topo para comparar meses.'] } },
 
+  { test: /^\/painel/, help: { title: 'Painel gerencial', text: 'Receita do mês x meta e os indicadores do Hunter (novos negócios) e do Farmer (carteira). Clique em um número para ver os contratos que o compõem.', tips: ['Receita = recorrente (automática) + medição validada + avulso faturado.', 'Churn é só rescisão; vencer sem renovar não conta.', 'Metas em Configurações → Metas de receita.'] } },
+
   { test: /^\/pipeline/, help: { title: 'Funil', text: 'Quadro com as oportunidades em cada etapa. Arraste o cartão para mudar de etapa.', tips: ['Ganho e Perdido só aparecem nas etapas habilitadas em Funis e Etapas.', 'No ganho de vendas, o sistema pede o consultor responsável pela conta.'] } },
 
   { test: /^\/leads\/new/, help: { title: 'Novo lead', text: 'Cadastre um contato que ainda não é oportunidade. Depois ele pode ser convertido.' } },
@@ -16,7 +18,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/contracts\/new/, help: { title: 'Nova oportunidade', text: 'Cria uma oportunidade (ou contrato) já ligada a uma empresa e a um funil.', tips: ['Cadastro direto em Gestão de Contratos exige o consultor responsável.'] } },
   { test: /^\/contracts\/[^/]+\/proposals/, help: { title: 'Proposta', text: 'Monte, revise e acompanhe a aprovação da proposta desta oportunidade.' } },
   { test: /^\/contracts\/[^/]+\/edit/, help: { title: 'Editar oportunidade', text: 'Altere os dados principais: cliente, vigência, valores e responsáveis.' } },
-  { test: /^\/contracts\/[^/]+/, help: { title: 'Oportunidade / contrato', text: 'Tudo do cliente num lugar: etapa no funil, atividades, contatos, e-mails, WhatsApp, propostas, implantação e assinatura.', tips: ['Atividades do Copiloto IA aparecem em Atividades, com "Revisar e enviar".', 'Os avisos ao cliente só saem depois que o consultor revisa.'] } },
+  { test: /^\/contracts\/[^/]+/, help: { title: 'Oportunidade / contrato', text: 'Tudo do cliente num lugar: etapa no funil, atividades, contatos, e-mails, WhatsApp, propostas, implantação e assinatura.', tips: ['Atividades do Farmer (carteira) e do Hunter (novos negócios) aparecem em Atividades, com "Revisar e enviar".', 'Os avisos ao cliente só saem depois que o consultor revisa.'] } },
   { test: /^\/contracts/, help: { title: 'Oportunidades', text: 'Lista de todas as oportunidades e contratos, com filtros por funil, etapa e responsável.' } },
 
   { test: /^\/propostas|^\/proposals/, help: { title: 'Propostas', text: 'Propostas comerciais e o fluxo de aprovação técnica, comercial e do cliente.' } },
@@ -38,10 +40,11 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/surveys-dashboard|^\/nps-dashboard/, help: { title: 'Pesquisas & NPS', text: 'Resultados de satisfação (NPS) e das pesquisas enviadas aos clientes.' } },
   { test: /^\/surveys/, help: { title: 'Pesquisas', text: 'Crie e edite os modelos de pesquisa enviados aos clientes.' } },
 
-  { test: /^\/copiloto\/relatorios/, help: { title: 'Relatórios de implantação', text: 'Consolidado mensal das fases de implantação, preparado pelo Copiloto IA para revisar e enviar ao time técnico.' } },
-  { test: /^\/briefing/, help: { title: 'Copiloto IA', text: 'Resumo do dia feito pela IA: oportunidades paradas, renovações, leads e propostas que pedem atenção.', tips: ['Precisa da chave da Anthropic da empresa (Configurações → Copiloto IA).', 'O mesmo resumo chega por WhatsApp ao gestor, de segunda a sexta às 07h.'] } },
+  { test: /^\/copiloto\/relatorios/, help: { title: 'Relatórios de implantação', text: 'Consolidado mensal das fases de implantação, preparado pelo Farmer para revisar e enviar ao time técnico.' } },
+  { test: /^\/briefing/, help: { title: 'Agentes IA', text: 'Resumo do dia dos dois agentes: Hunter (leads, oportunidades e propostas paradas, avulso) e Farmer (renovações, medições, churn e implantação).', tips: ['Precisa da chave da Anthropic da empresa (Configurações → Agentes IA).', 'O mesmo resumo chega por WhatsApp ao gestor, de segunda a sexta às 07h.'] } },
 
-  { test: /^\/settings\/copiloto/, help: { title: 'Configurações do Copiloto IA', text: 'Ativação (chave da Anthropic), gestor que recebe os resumos e os textos dos avisos ao cliente e dos e-mails internos.', tips: ['Externo: avisos de renovação ao cliente.', 'Interno: e-mails ao time, implantação e relatório mensal.'] } },
+  { test: /^\/settings\/metas/, help: { title: 'Metas de receita', text: 'Meta total da empresa cadastrada mês a mês; a meta anual é a soma dos meses.', tips: ['O Painel gerencial compara a meta do mês com a receita realizada (recorrente + medição + avulso).', 'Prazo da medição: até esse dia do mês seguinte o relatório precisa estar validado, senão o Farmer avisa.'] } },
+  { test: /^\/settings\/copiloto/, help: { title: 'Configurações dos agentes IA', text: 'Ativação (chave da Anthropic), gestor que recebe os resumos e os textos dos avisos ao cliente e dos e-mails internos.', tips: ['Externo: avisos de renovação ao cliente.', 'Interno: e-mails ao time, implantação e relatório mensal.'] } },
   { test: /^\/settings\/whatsapp-conexoes/, help: { title: 'Conexões de WhatsApp', text: 'Conecte os números da empresa lendo o QR Code e defina o consultor de cada número.', tips: ['A quantidade de números depende do plano.', 'Instância privada só envia (ex.: briefing) e não mostra conversas no CRM.'] } },
   { test: /^\/settings\/whatsapp-bot/, help: { title: 'Bot e automações', text: 'Mensagens automáticas de boas-vindas e o status online/offline do atendimento.' } },
   { test: /^\/settings\/implementation-templates/, help: { title: 'Modelos de implantação', text: 'Cronogramas padrão (fases e semanas) usados ao iniciar a implantação de um contrato.' } },
@@ -56,7 +59,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/settings\/forms/, help: { title: 'Formulários', text: 'Formulários públicos de captura e pesquisa.' } },
   { test: /^\/settings\/wallpapers/, help: { title: 'Fundos de tela', text: 'Imagens de fundo das páginas públicas (login, suporte, pesquisas).' } },
   { test: /^\/settings\/price-users/, help: { title: 'Usuários do Price', text: 'Quem acessa a precificação integrada.' } },
-  { test: /^\/settings/, help: { title: 'Configurações', text: 'Tudo o que é da sua empresa: dados, logo, WhatsApp, Copiloto IA, funis, campos e automações.', tips: ['Só administradores da conta alteram.', 'Resetar CRM fica no fim da página (zona de risco).'] } },
+  { test: /^\/settings/, help: { title: 'Configurações', text: 'Tudo o que é da sua empresa: dados, logo, WhatsApp, agentes IA, funis, campos e automações.', tips: ['Só administradores da conta alteram.', 'Resetar CRM fica no fim da página (zona de risco).'] } },
 
   { test: /^\/pipelines/, help: { title: 'Funis e etapas', text: 'Crie os funis e as etapas do seu processo. Defina onde é possível marcar ganho e perda e para onde o contrato vai no ganho.' } },
   { test: /^\/custom-fields/, help: { title: 'Campos personalizados', text: 'Campos extras para guardar informações específicas do seu negócio.' } },
@@ -77,6 +80,7 @@ export function getPageHelp(pathname: string): PageHelp | null {
 // Descrição curta para o menu lateral (por aba)
 export const NAV_HELP: Record<string, string> = {
   '/': 'Visão geral e indicadores',
+  '/painel': 'Receita x meta, Hunter e Farmer',
   '/pipeline': 'Oportunidades por etapa',
   '/leads': 'Contatos ainda não qualificados',
   '/contracts': 'Todas as oportunidades e contratos',
@@ -87,7 +91,7 @@ export const NAV_HELP: Record<string, string> = {
   '/whatsapp': 'Conversas dos números da empresa',
   '/whatsapp/relatorios': 'Indicadores do WhatsApp',
   '/surveys-dashboard': 'Satisfação e NPS',
-  '/briefing': 'Resumo do dia feito pela IA',
+  '/briefing': 'Farmer (carteira) e Hunter (novos negócios)',
   '/settings': 'Dados, integrações e regras da empresa',
   '/super-admin': 'Licenças, planos e abas',
 }

@@ -51,7 +51,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
   return (
     <div className="max-w-4xl space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Copiloto IA</h1>
+        <h1 className="text-lg font-semibold text-gray-900">Agentes IA (Farmer e Hunter)</h1>
         <p className="mt-0.5 text-sm text-gray-500">
           Textos e regras do assistente que acompanha renovações, briefing e alertas.
         </p>
