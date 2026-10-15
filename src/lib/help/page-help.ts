@@ -35,7 +35,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/tickets/, help: { title: 'Atendimento', text: 'Chamados de suporte dos clientes, com prioridade, prazo e histórico de respostas.', tips: ['O cliente acompanha pelo link público do chamado.'] } },
 
   { test: /^\/whatsapp\/relatorios/, help: { title: 'Relatórios de WhatsApp', text: 'Volume de conversas, tempo de resposta e atendimentos por número e por pessoa.' } },
-  { test: /^\/whatsapp/, help: { title: 'WhatsApp', text: 'Conversas dos números conectados da empresa. Vincule uma conversa a uma oportunidade para ela entrar no histórico.', tips: ['Números são conectados em Configurações → Conexões.', 'Números marcados como privados não aparecem aqui.'] } },
+  { test: /^\/whatsapp/, help: { title: 'WhatsApp', text: 'Conversas dos números conectados da empresa. Vincule uma conversa a uma oportunidade para ela entrar no histórico.', tips: ['Pesquise no topo da lista por nome, telefone, protocolo ou texto da mensagem; com 3 letras ou mais, a busca também varre todo o histórico.', 'Números são conectados em Configurações → Conexões.', 'Números marcados como privados não aparecem aqui.'] } },
 
   { test: /^\/surveys-dashboard|^\/nps-dashboard/, help: { title: 'Pesquisas & NPS', text: 'Resultados de satisfação (NPS) e das pesquisas enviadas aos clientes.' } },
   { test: /^\/surveys/, help: { title: 'Pesquisas', text: 'Crie e edite os modelos de pesquisa enviados aos clientes.' } },

@@ -1,6 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { searchWhatsAppConversations, type WhatsAppSearchHit } from '@/lib/actions/whatsapp-search'
+
+// Sem acento e minúsculo, para comparar textos
+const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const last8 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-8)
 
 export interface WhatsAppSidebarProps {
   open?: any[]
@@ -24,6 +29,25 @@ export function WhatsAppSidebar({
 }: WhatsAppSidebarProps) {
   const [tab, setTab] = useState<'open' | 'archived'>('open')
   const [filterDept, setFilterDept] = useState<string>('all')
+  const [query, setQuery] = useState('')
+  const [hits, setHits] = useState<WhatsAppSearchHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const reqId = useRef(0)
+
+  // Busca em todo o histórico (a lista ao lado traz só as conversas recentes)
+  useEffect(() => {
+    const term = query.trim()
+    if (term.length < 3) { setHits([]); setSearching(false); return }
+    const id = ++reqId.current
+    setSearching(true)
+    const t = setTimeout(async () => {
+      const r = await searchWhatsAppConversations(term)
+      if (id !== reqId.current) return
+      setHits(r.ok ? r.hits : [])
+      setSearching(false)
+    }, 350)
+    return () => clearTimeout(t)
+  }, [query])
 
   const list = tab === 'open' ? open : archived
 
@@ -38,11 +62,29 @@ export function WhatsAppSidebar({
     return Array.from(depts).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }, [open, archived])
 
+  const q = norm(query.trim())
+  const qDigits = query.replace(/\D/g, '')
+  const matches = (item: any) => {
+    if (!q) return true
+    const latest = item.latest ?? item
+    const fields = [item.contact_name, item.name, latest.unlinked_sender_name, item.last_message, item.lastMessage, latest.message,
+      item.department ?? item.triage_department, item.protocol_number ?? item.protocolNumber]
+    if (fields.some(f => norm(f).includes(q))) return true
+    return qDigits.length >= 3 && String(item.phone ?? '').replace(/\D/g, '').includes(qDigits)
+  }
   const filteredList = list.filter((item) => {
+    if (!matches(item)) return false
     if (filterDept === 'all') return true
     const dept = item.department ?? item.triage_department
     return dept?.toLowerCase() === filterDept.toLowerCase()
   })
+  const openCount = q ? open.filter(matches).length : open.length
+  const archivedCount = q ? archived.filter(matches).length : archived.length
+
+  // Resultados do histórico que não estão na lista carregada
+  const loadedKeys = new Set([...open, ...archived].map((i: any) => `${i.instance ?? i.instance_name ?? i.latest?.instance_name ?? ''}-${last8(i.phone)}`))
+  const extraHits = hits.filter(h => !loadedKeys.has(`${h.instance}-${last8(h.phone)}`))
+  const MATCH_LABEL: Record<WhatsAppSearchHit['matchedBy'], string> = { nome: 'nome', cliente: 'cliente', telefone: 'telefone', mensagem: 'mensagem' }
 
   function handleSelect(phone: string, instance?: string) {
     if (onSelectConv) {
@@ -55,6 +97,25 @@ export function WhatsAppSidebar({
   return (
     // w-full em vez de w-80 — a largura é imposta pela coluna do Grid no client-shell
     <div className="flex h-full w-full flex-col bg-white">
+      {/* Pesquisar conversas */}
+      <div className="border-b border-gray-200 p-2.5">
+        <div className="relative">
+          <span aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">🔍</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Pesquisar nome, telefone, protocolo ou mensagem"
+            aria-label="Pesquisar conversas"
+            className="w-full rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-7 text-xs focus:border-brand-700 focus:outline-none"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Limpar pesquisa"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 text-xs text-gray-400 hover:text-gray-700">✕</button>
+          )}
+        </div>
+      </div>
+
       {/* Abas Em Aberto / Arquivados */}
       <div className="flex border-b border-gray-200">
         <button
@@ -65,7 +126,7 @@ export function WhatsAppSidebar({
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          Em aberto ({open.length})
+          Em aberto ({openCount})
         </button>
         <button
           onClick={() => setTab('archived')}
@@ -75,7 +136,7 @@ export function WhatsAppSidebar({
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          Arquivados ({archived.length})
+          Arquivados ({archivedCount})
         </button>
       </div>
 
@@ -100,7 +161,7 @@ export function WhatsAppSidebar({
       <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
         {filteredList.length === 0 && (
           <p className="p-4 text-center text-xs text-gray-400">
-            {tab === 'archived' ? 'Nenhuma conversa arquivada.' : 'Nenhuma conversa em aberto.'}
+            {q ? 'Nenhuma conversa desta aba com esse termo.' : tab === 'archived' ? 'Nenhuma conversa arquivada.' : 'Nenhuma conversa em aberto.'}
           </p>
         )}
         {filteredList.map((item) => {
@@ -180,6 +241,39 @@ export function WhatsAppSidebar({
             </button>
           )
         })}
+
+        {query.trim().length >= 3 && (
+          <div className="bg-gray-50/60">
+            <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              Em todo o histórico {searching ? '· buscando…' : `(${extraHits.length})`}
+            </p>
+            {!searching && extraHits.length === 0 && (
+              <p className="px-3 pb-3 text-[11px] text-gray-400">Nada além do que já aparece acima.</p>
+            )}
+            {extraHits.map(h => (
+              <button
+                key={`${h.instance}-${h.phone}`}
+                onClick={() => handleSelect(h.phone, h.instance)}
+                className="w-full border-t border-gray-100 p-3 text-left transition-colors hover:bg-white"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs font-semibold text-gray-900">
+                    {h.archived && <span className="mr-1 text-gray-400">🔒</span>}
+                    {h.name || h.phone}
+                  </p>
+                  <span className="shrink-0 text-[10px] text-gray-400">{new Date(h.createdAt).toLocaleDateString('pt-BR')}</span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-gray-500">{h.snippet || 'Sem texto'}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-700">achado por {MATCH_LABEL[h.matchedBy]}</span>
+                  {h.department && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">{h.department.toUpperCase()}</span>}
+                  {h.protocol_number && <span className="font-mono text-[10px] text-gray-400">#{h.protocol_number}</span>}
+                  {h.archived && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">Arquivado</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
