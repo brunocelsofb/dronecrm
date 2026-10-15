@@ -7,7 +7,7 @@ export type PageHelp = { title: string; text: string; tips?: string[] }
 const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/$/, help: { title: 'Dashboard', text: 'Visão geral do comercial: valores em funil, metas, atividades da equipe e indicadores do período.', tips: ['Use o filtro de período no topo para comparar meses.'] } },
 
-  { test: /^\/painel/, help: { title: 'Painel gerencial', text: 'Receita do mês x meta e os indicadores do Hunter (novos negócios) e do Farmer (carteira). Clique em um número para ver os contratos que o compõem.', tips: ['Abas: Mês (um mês) e Ano consolidado (todos os meses somados, com a tabela mês a mês).', 'Receita = recorrente (automática) + medição validada + avulso faturado.', 'Churn é só rescisão; vencer sem renovar não conta.', 'Metas em Configurações → Metas de receita.'] } },
+  { test: /^\/painel/, help: { title: 'Painel gerencial', text: 'Receita do mês x meta e os indicadores do Hunter (novos negócios) e do Farmer (carteira). Clique em um número para ver os contratos que o compõem.', tips: ['Abas: Mês e Consolidado. No Consolidado, marque os meses que quiser (soltos, trimestre, semestre ou ano) e tudo é recalculado só sobre eles.', 'Receita = recorrente (automática) + medição validada + avulso faturado.', 'Churn é só rescisão; vencer sem renovar não conta.', 'Metas em Configurações → Metas de receita.'] } },
 
   { test: /^\/pipeline/, help: { title: 'Funil', text: 'Quadro com as oportunidades em cada etapa. Arraste o cartão para mudar de etapa.', tips: ['Ganho e Perdido só aparecem nas etapas habilitadas em Funis e Etapas.', 'No ganho de vendas, o sistema pede o consultor responsável pela conta.'] } },
 

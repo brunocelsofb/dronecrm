@@ -92,8 +92,10 @@ function mergeLines(lists: ContractLine[][]): ContractLine[] {
     .sort((a, b) => b.value - a.value)
 }
 
-// scope 'month': o mês escolhido. scope 'year': o ano inteiro (até hoje), somando todos os meses.
-export function computeDashboard(input: DashboardInput, year: number, month: number, scope: DashboardScope = 'month') {
+// scope 'month': o mês escolhido.
+// scope 'year': consolidado dos meses escolhidos do ano (padrão: todos os meses já iniciados),
+//               podendo ser meses soltos (ex.: Jan, Mar e Jul) — tudo é calculado só sobre eles.
+export function computeDashboard(input: DashboardInput, year: number, month: number, scope: DashboardScope = 'month', selectedMonths?: number[]) {
   const typeOf = new Map(input.pipelines.map(p => [p.id, p.type]))
   const contractById = new Map(input.contracts.map(c => [c.id, c]))
   const tagById = new Map(input.tags.map(t => [t.id, t]))
@@ -218,6 +220,11 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   }
 
   const months = Array.from({ length: 12 }, (_, i) => i + 1)
+  const sel = (() => {
+    const clean = [...new Set((selectedMonths ?? []).filter(m => Number.isInteger(m) && m >= 1 && m <= 12))].sort((a, b) => a - b)
+    return clean.length ? clean : months   // padrão: o ano todo (meses futuros somam só a meta)
+  })()
+  const selSet = new Set(sel)
   const monthRevenues = months.map(m => (monthStartMs(year, m) > input.now.getTime() ? null : revenueOf(year, m)))
   const goalOf = (m: number) => Number(input.goals.find(g => g.year === year && g.month === m)?.target_value) || 0
   const yearSeries = months.map((m, i) => {
@@ -238,10 +245,10 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   // Receita do período: o mês, ou o ano somando os meses já passados
   const current = (() => {
     if (scope === 'month') return revenueOf(year, month)
-    const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null)
+    const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null && selSet.has(r.month))
     const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential') => r2(done.reduce((s, r) => s + r[k], 0))
     const total = r2(done.reduce((s, r) => s + r.total, 0))
-    const goal = r2(months.reduce((s, m) => s + goalOf(m), 0))
+    const goal = r2(sel.reduce((s, m) => s + goalOf(m), 0))
     const goalToDate = r2(done.reduce((s, r) => s + r.goal, 0))
     return {
       year, month: 12,
@@ -259,9 +266,18 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   const ytdGoal = r2(ytdMonths.reduce((s, x) => s + x.goal, 0))
   const annualGoal = r2(yearSeries.reduce((s, x) => s + x.goal, 0))
 
-  const start = scope === 'year' ? monthStartMs(year, 1) : monthStartMs(year, month)
-  const end = scope === 'year' ? monthStartMs(year + 1, 1) : (month === 12 ? monthStartMs(year + 1, 1) : monthStartMs(year, month + 1))
-  const inMonth = (iso: string | null) => { const t = ts(iso); return t !== null && t >= start && t < end }
+  const firstM = scope === 'year' ? sel[0] : month
+  const lastM = scope === 'year' ? sel[sel.length - 1] : month
+  const start = monthStartMs(year, firstM)
+  const end = lastM === 12 ? monthStartMs(year + 1, 1) : monthStartMs(year, lastM + 1)
+  // Evento dentro do período: no mês escolhido, ou num dos meses marcados do consolidado
+  const inMonth = (iso: string | null) => {
+    const t = ts(iso)
+    if (t === null || t < start || t >= end) return false
+    if (scope === 'month') return true
+    const br = new Date(t - BR_OFFSET_MS)
+    return br.getUTCFullYear() === year && selSet.has(br.getUTCMonth() + 1)
+  }
 
   // ── Hunter (novos negócios) ──────────────────────────────────────────────
   const tagOfRun = (r: RunRow) => r.tag_id ?? input.contractTag[r.contract_id] ?? null
@@ -383,7 +399,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     overdueTickets: overdueTickets.length,
   }
 
-  return { year, month, scope, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer }
+  return { year, month, scope, selectedMonths: sel, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer }
 }
 
 export type DashboardResult = ReturnType<typeof computeDashboard>

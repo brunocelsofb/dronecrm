@@ -10,11 +10,25 @@ export const brl2 = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 export const pctTxt = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR')}%`)
 
-export function Section({ title, subtitle, badge, children }: { title: string; subtitle?: string; badge?: string; children: React.ReactNode }) {
+// Cores fixas por tipo de receita (mesmas no gráfico, na barra e nas legendas)
+// Paleta categórica validada para daltonismo (3 primeiras posições)
+export const REV_COLORS = { recurring: '#2a78d6', metered: '#eb6834', avulso: '#1baf7a' } as const
+
+const AGENT_STYLE = {
+  hunter: { bg: 'bg-amber-50', ring: 'ring-amber-200', chip: 'bg-amber-500', text: 'text-amber-900', icon: '🎯' },
+  farmer: { bg: 'bg-emerald-50', ring: 'ring-emerald-200', chip: 'bg-emerald-600', text: 'text-emerald-900', icon: '🌱' },
+} as const
+
+export function Section({ title, subtitle, agent, children }: { title: string; subtitle?: string; agent?: 'hunter' | 'farmer'; children: React.ReactNode }) {
+  const st = agent ? AGENT_STYLE[agent] : null
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline gap-2">
-        {badge && <span className="rounded-full bg-[#1B556B] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">{badge}</span>}
+      <div className="flex flex-wrap items-center gap-2.5">
+        {st && (
+          <span className={`inline-flex items-center gap-1 rounded-full ${st.chip} px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white`}>
+            <span aria-hidden="true">{st.icon}</span>{agent === 'hunter' ? 'Hunter' : 'Farmer'}
+          </span>
+        )}
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
         {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
       </div>
@@ -26,7 +40,7 @@ export function Section({ title, subtitle, badge, children }: { title: string; s
 export function DrillList({ lines, empty = 'Nenhum item.' }: { lines: (ContractLine & { previous?: number | null })[]; empty?: string }) {
   if (lines.length === 0) return <p className="px-1 py-2 text-xs text-gray-400">{empty}</p>
   return (
-    <ul className="mt-2 max-h-64 divide-y divide-gray-100 overflow-auto rounded-md border border-gray-100 bg-white">
+    <ul className="mt-2 max-h-64 divide-y divide-gray-100 overflow-auto rounded-lg border border-gray-100 bg-white">
       {lines.map((l, i) => (
         <li key={`${l.contractId}-${i}`} className="flex items-start justify-between gap-3 px-2.5 py-1.5 text-xs">
           <Link href={`/contracts/${l.contractId}`} className="min-w-0 text-gray-800 hover:text-[#1B556B] hover:underline">
@@ -42,7 +56,7 @@ export function DrillList({ lines, empty = 'Nenhum item.' }: { lines: (ContractL
 }
 
 export function Kpi({
-  label, value, hint, tone = 'neutral', lines, linesLabel = 'Ver composição', empty,
+  label, value, hint, tone = 'neutral', lines, linesLabel = 'Ver composição', empty, accent,
 }: {
   label: string
   value: string
@@ -51,15 +65,21 @@ export function Kpi({
   lines?: (ContractLine & { previous?: number | null })[]
   linesLabel?: string
   empty?: string
+  accent?: string            // cor da faixa lateral (identidade do tipo de receita)
 }) {
-  const toneCls = tone === 'good' ? 'text-green-700' : tone === 'bad' ? 'text-red-700' : tone === 'warn' ? 'text-amber-700' : 'text-gray-900'
+  const toneCls = tone === 'good' ? 'text-emerald-700' : tone === 'bad' ? 'text-red-700' : tone === 'warn' ? 'text-amber-700' : 'text-gray-900'
+  const dot = tone === 'good' ? 'bg-emerald-500' : tone === 'bad' ? 'bg-red-500' : tone === 'warn' ? 'bg-amber-500' : null
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${toneCls}`}>{value}</p>
-      {hint && <div className="mt-0.5 text-xs text-gray-500">{hint}</div>}
+    <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      {accent && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />}
+      <div className="flex items-center gap-1.5">
+        {dot && <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      </div>
+      <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${toneCls}`}>{value}</p>
+      {hint && <div className="mt-1 text-xs leading-relaxed text-gray-500">{hint}</div>}
       {lines && (
-        <details className="mt-2 group">
+        <details className="group mt-2">
           <summary className="cursor-pointer list-none text-xs font-medium text-[#1B556B] hover:underline">
             {linesLabel} ({lines.length}) <span className="inline-block transition-transform group-open:rotate-90">›</span>
           </summary>
@@ -70,36 +90,125 @@ export function Kpi({
   )
 }
 
-// Barras da receita por mês com a meta marcada (uma escala só)
-export function RevenueGoalChart({ series, monthLabels }: { series: { month: number; total: number | null; goal: number }[]; monthLabels: string[] }) {
+// Destaque da receita: total, meta, progresso e composição por tipo
+export function RevenueHero({
+  label, total, goal, goalPct, gap, extra, parts, noGoal,
+}: {
+  label: string
+  total: number
+  goal: number
+  goalPct: number | null
+  gap: number
+  extra?: React.ReactNode
+  parts: { key: keyof typeof REV_COLORS; label: string; value: number }[]
+  noGoal: React.ReactNode
+}) {
+  const sum = parts.reduce((s, p) => s + p.value, 0)
+  const pctW = Math.min(100, goalPct ?? 0)
+  const status = goal <= 0 ? null : (goalPct ?? 0) >= 100 ? { t: 'Meta atingida', c: 'bg-emerald-400/20 text-emerald-100' } : (goalPct ?? 0) >= 80 ? { t: 'Perto da meta', c: 'bg-amber-300/20 text-amber-100' } : { t: 'Abaixo da meta', c: 'bg-red-300/20 text-red-100' }
+  return (
+    <div className="flex h-full flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#1B556B] to-[#123B4A] p-5 text-white shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-white/70">{label}</p>
+          <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight">{brl(total)}</p>
+          {goal > 0 ? (
+            <p className="mt-1 text-sm text-white/80">
+              <span className="font-semibold text-white">{pctTxt(goalPct)}</span> da meta de {brl(goal)}
+              {' · '}{gap > 0 ? `faltam ${brl(gap)}` : `superada em ${brl(-gap)}`}
+            </p>
+          ) : <div className="mt-1 text-sm text-amber-200">{noGoal}</div>}
+          {extra && <div className="mt-0.5 text-xs text-white/70">{extra}</div>}
+        </div>
+        {status && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.c}`}>{status.t}</span>}
+      </div>
+
+      {goal > 0 && (
+        <div className="mt-4">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/15" role="progressbar" aria-valuenow={Math.round(pctW)} aria-valuemin={0} aria-valuemax={100} aria-label="Atingimento da meta">
+            <div className="h-full rounded-full bg-white" style={{ width: `${pctW}%` }} />
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 rounded-xl bg-white/10 p-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">Composição</p>
+        <div className="mt-2 flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-white/10">
+          {sum > 0 && parts.filter(p => p.value > 0).map(p => (
+            <div key={p.key} title={`${p.label}: ${brl(p.value)}`} style={{ width: `${(p.value / sum) * 100}%`, background: REV_COLORS[p.key] }} />
+          ))}
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {parts.map(p => (
+            <div key={p.key} className="flex items-start gap-2 sm:block">
+              <div className="flex items-center gap-1.5">
+                <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: REV_COLORS[p.key] }} />
+                <span className="whitespace-nowrap text-xs text-white/80">{p.label}</span>
+                <span className="text-[11px] tabular-nums text-white/60">{sum > 0 ? `${Math.round((p.value / sum) * 100)}%` : '—'}</span>
+              </div>
+              <p className="ml-auto text-base font-semibold tabular-nums sm:ml-0 sm:mt-0.5">{brl(p.value)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Barras empilhadas da receita por mês (recorrente/medição/avulso) com a meta marcada.
+// Meses fora do período escolhido ficam apagados.
+export function RevenueGoalChart({
+  series, monthLabels, highlight,
+}: {
+  series: { month: number; total: number | null; recurring?: number | null; metered?: number | null; avulso?: number | null; goal: number }[]
+  monthLabels: string[]
+  highlight?: number[]
+}) {
   const max = Math.max(1, ...series.map(s => Math.max(s.total ?? 0, s.goal)))
-  const W = 720, H = 200, padL = 8, padB = 22, padT = 10
+  const W = 720, H = 220, padL = 8, padB = 24, padT = 12
   const bw = (W - padL * 2) / 12
   const y = (v: number) => padT + (H - padT - padB) * (1 - v / max)
+  const hl = highlight ? new Set(highlight) : null
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-2 flex items-center gap-4 text-xs text-gray-600">
-        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#1B556B]" />Receita realizada</span>
-        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[#E08A2E]" />Meta do mês</span>
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+        <span className="font-semibold text-gray-800">Receita x meta por mês</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.recurring }} />$ Recorrente</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.metered }} />📏 Medição</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.avulso }} />Avulso</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-gray-800" />Meta</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Receita realizada e meta por mês">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Receita por tipo e meta, mês a mês">
         <line x1={padL} x2={W - padL} y1={y(0)} y2={y(0)} stroke="#e5e7eb" strokeWidth={1} />
         {series.map((s, i) => {
           const x = padL + i * bw
-          const barW = Math.min(28, bw * 0.55)
+          const barW = Math.min(30, bw * 0.56)
           const bx = x + (bw - barW) / 2
-          const total = s.total ?? 0
-          const top = y(total)
-          const r = Math.min(4, (y(0) - top) / 2)
+          const dim = hl ? !hl.has(s.month) : false
+          const segs = [
+            { v: s.recurring ?? 0, c: REV_COLORS.recurring },
+            { v: s.metered ?? 0, c: REV_COLORS.metered },
+            { v: s.avulso ?? 0, c: REV_COLORS.avulso },
+          ].filter(g => g.v > 0)
+          // Sem quebra por tipo: barra única no total
+          if (segs.length === 0 && (s.total ?? 0) > 0) segs.push({ v: s.total ?? 0, c: REV_COLORS.recurring })
+          let acc = 0
           return (
-            <g key={s.month}>
-              <title>{`${monthLabels[i]}: receita ${brl(s.total)} · meta ${brl(s.goal)}`}</title>
+            <g key={s.month} opacity={dim ? 0.25 : 1}>
+              <title>{`${monthLabels[i]}: receita ${brl(s.total)} (recorrente ${brl(s.recurring ?? null)}, medição ${brl(s.metered ?? null)}, avulso ${brl(s.avulso ?? null)}) · meta ${brl(s.goal)}`}</title>
               <rect x={x} y={padT} width={bw} height={H - padT - padB} fill="transparent" />
-              {s.total !== null && total > 0 && (
-                <path d={`M${bx},${y(0)} V${top + r} Q${bx},${top} ${bx + r},${top} H${bx + barW - r} Q${bx + barW},${top} ${bx + barW},${top + r} V${y(0)} Z`} fill="#1B556B" />
-              )}
-              {s.goal > 0 && <line x1={bx - 4} x2={bx + barW + 4} y1={y(s.goal)} y2={y(s.goal)} stroke="#E08A2E" strokeWidth={2} strokeLinecap="round" />}
-              <text x={x + bw / 2} y={H - 6} textAnchor="middle" fontSize={10} fill="#6b7280">{monthLabels[i]}</text>
+              {segs.map((g, k) => {
+                const y0 = y(acc), y1 = y(acc + g.v)
+                acc += g.v
+                const isTop = k === segs.length - 1
+                const h = Math.max(0, y0 - y1 - (isTop ? 0 : 2))
+                if (h <= 0) return null
+                if (!isTop) return <rect key={k} x={bx} y={y1 + 2} width={barW} height={h} fill={g.c} />
+                const r = Math.min(4, h / 2)
+                return <path key={k} d={`M${bx},${y0} V${y1 + r} Q${bx},${y1} ${bx + r},${y1} H${bx + barW - r} Q${bx + barW},${y1} ${bx + barW},${y1 + r} V${y0} Z`} fill={g.c} />
+              })}
+              {s.goal > 0 && <line x1={bx - 5} x2={bx + barW + 5} y1={y(s.goal)} y2={y(s.goal)} stroke="#1f2937" strokeWidth={2} strokeLinecap="round" />}
+              <text x={x + bw / 2} y={H - 7} textAnchor="middle" fontSize={11} fill={dim ? '#9ca3af' : '#4b5563'} fontWeight={dim ? 400 : 600}>{monthLabels[i]}</text>
             </g>
           )
         })}
