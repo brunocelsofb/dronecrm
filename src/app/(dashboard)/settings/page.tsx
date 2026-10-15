@@ -7,6 +7,8 @@ import { NumberingSettingsForm } from '@/components/settings/numbering-settings-
 import { InboundEmailSettingsForm } from '@/components/settings/inbound-email-settings-form'
 import { DEFAULT_WELCOME_OFFLINE, DEFAULT_WELCOME_ONLINE, DEFAULT_REMINDER } from '@/lib/whatsapp/guardrails'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ResetCrmCard } from '@/components/settings/reset-crm-card'
 
 const CONFIG_SECTIONS = [
   {
@@ -112,6 +114,11 @@ export default async function SettingsPage() {
     }
   }
 
+  // Nome da empresa (licença) — usado na confirmação do "Resetar CRM"
+  const { data: resetTenant } = await createAdminClient()
+    .from('tenants').select('name').eq('id', await resolveTenantId()).maybeSingle()
+  const resetTenantName = (resetTenant?.name as string | undefined) ?? ''
+
   return (
     <div className="space-y-8">
       <div>
@@ -180,6 +187,8 @@ export default async function SettingsPage() {
           <button type="submit" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Salvar</button>
         </form>
       </div>
+
+      <ResetCrmCard tenantName={resetTenantName} />
 
       <p className="text-xs text-gray-400">
         Conectar seu Gmail e configurar sua assinatura de e-mail fica em{' '}

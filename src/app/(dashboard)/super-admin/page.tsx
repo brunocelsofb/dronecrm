@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive } from '@/lib/actions/super-admin'
 import { startImpersonation } from '@/lib/actions/impersonate'
 import { EditTenantRow } from './edit-tenant-row'
+import { ResetCrmCard } from '@/components/settings/reset-crm-card'
 import { PlanFeaturesMatrix, TenantFeaturesEditor } from './plan-features'
 import { getPlanFeatureMatrix } from '@/lib/config/tenant-features'
 import { getEffectivePlan } from '@/lib/config/plans'
@@ -153,6 +154,11 @@ export default async function SuperAdminPage() {
                         </button>
                       </form>
                     </div>
+                  </td>
+                </tr>
+                <tr key={`reset-row-${t.id}`}>
+                  <td colSpan={6} className="p-0">
+                    <ResetCrmCard tenantName={t.name} tenantId={t.id} compact />
                   </td>
                 </tr>
                 <tr key={`abas-row-${t.id}`}>
