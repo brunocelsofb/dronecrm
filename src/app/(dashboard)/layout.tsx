@@ -13,6 +13,8 @@ import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { headers } from 'next/headers'
 import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { getPageHelp } from '@/lib/help/page-help'
+import { HelpTip } from '@/components/ui/help-tip'
 
 export default async function DashboardLayout({
   children,
@@ -66,6 +68,7 @@ export default async function DashboardLayout({
   const pathname = (await headers()).get('x-pathname') ?? ''
   const pathFeature = featureForPath(pathname)
   const blocked = !!pathFeature && !enabledFeatures.includes(pathFeature)
+  const pageHelp = getPageHelp(pathname)
 
   // Logo dinamica
   const rawLogo = (orgSettings as any)?.logo_storage_path
@@ -135,6 +138,12 @@ export default async function DashboardLayout({
         </div>
       </aside>
       <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
+        {pageHelp && !blocked && (
+          <div className="-mt-2 mb-2 flex items-center justify-end gap-1.5 text-[11px] text-gray-400">
+            <span>Como funciona esta tela</span>
+            <HelpTip title={pageHelp.title} text={pageHelp.text} tips={pageHelp.tips} />
+          </div>
+        )}
         {blocked ? (
           <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center">
             <p className="text-base font-semibold text-gray-900">

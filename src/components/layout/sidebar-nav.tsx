@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { NAV_HELP } from '@/lib/help/page-help'
 import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck, ClipboardList, BrainCircuit } from 'lucide-react'
 
 const ALL_NAV_ITEMS = [
@@ -45,7 +46,8 @@ export function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+            aria-description={NAV_HELP[item.href]}
+            className={`group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
               active
                 ? 'bg-white/10 text-white'
                 : 'text-brand-100/70 hover:bg-white/5 hover:text-white'
@@ -53,6 +55,15 @@ export function SidebarNav({
           >
             <Icon size={16} strokeWidth={1.75} />
             {item.label}
+            {NAV_HELP[item.href] && (
+              // Dica ao passar o mouse (à direita do menu)
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5 text-xs text-white shadow-lg group-hover:block"
+              >
+                {NAV_HELP[item.href]}
+              </span>
+            )}
           </Link>
         )
       })}

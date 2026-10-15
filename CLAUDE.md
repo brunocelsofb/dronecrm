@@ -25,3 +25,7 @@ O que é de uma empresa vai em `organization_settings` (linha da empresa, por `t
 ## Super Admin
 Login da plataforma (conta 2B). Vê a própria conta; outra empresa só por "Acessar" (`profiles.impersonating_tenant_id`).
 Nunca aparece nem pode ser alterado pelas telas de uma empresa.
+
+## Ajuda nas telas
+Toda tela nova precisa de explicação em `src/lib/help/page-help.ts` (`RULES` para a página e `NAV_HELP` se for aba do menu).
+Aparece no "ⓘ Como funciona esta tela" (topo) e ao passar o mouse no menu. Texto curto e neutro (vale para qualquer empresa).
