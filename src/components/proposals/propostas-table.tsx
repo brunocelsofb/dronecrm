@@ -25,13 +25,13 @@ type ProposalRow = {
 }
 
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
-  em_aprovacao_tecnica:   { label: 'Análise Téc.',     color: '#92400e', bg: '#fff8e6' },
-  aprovado_tecnico:       { label: 'OK Técnico',       color: '#3b5bdb', bg: '#eef3ff' },
-  reprovado_tecnico:      { label: 'Reprovado',        color: '#b91c1c', bg: '#fdecea' },
-  em_aprovacao_comercial: { label: 'Aprov. Comercial', color: '#92400e', bg: '#fff8e6' },
-  aprovado_comercial:     { label: 'Ag. Cliente',      color: '#1a7c3e', bg: '#eaf5ee' },
+  em_aprovacao_tecnica:   { label: 'Análise Téc.',     color: '#c2683d', bg: '#fbeee5' },
+  aprovado_tecnico:       { label: 'OK Técnico',       color: '#524e9c', bg: '#e8e7f4' },
+  reprovado_tecnico:      { label: 'Reprovado',        color: '#8e4550', bg: '#f6e9ea' },
+  em_aprovacao_comercial: { label: 'Aprov. Comercial', color: '#c2683d', bg: '#fbeee5' },
+  aprovado_comercial:     { label: 'Ag. Cliente',      color: '#1f8c7d', bg: '#e3f5f1' },
   cliente_aprovado:       { label: '✅ Aprovada',      color: '#166534', bg: '#dcfce7' },
-  cliente_recusado:       { label: '❌ Recusada',      color: '#b91c1c', bg: '#fdecea' },
+  cliente_recusado:       { label: '❌ Recusada',      color: '#8e4550', bg: '#f6e9ea' },
   rascunho:               { label: 'Rascunho',         color: '#52514e', bg: '#f1f3f8' },
 }
 
@@ -66,7 +66,7 @@ function Item({ icon, label, onClick, danger }: { icon: string; label: string; o
     <button onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px',
         fontSize: 12, fontWeight: 500, textAlign: 'left', border: 'none', cursor: 'pointer',
-        background: hov ? (danger ? '#fef2f2' : '#f8f9fb') : 'transparent', color: danger ? '#b91c1c' : '#1a1f36' }}>
+        background: hov ? (danger ? '#fef2f2' : '#f8f9fb') : 'transparent', color: danger ? '#8e4550' : '#1a1f36' }}>
       <span>{icon}</span>{label}
     </button>
   )
@@ -233,7 +233,7 @@ export function PropostasTable({ proposals, currentUserRole }: { proposals: Prop
                   </td>
                   <td style={td}>
                     <Link href={`/contracts/${p.contract_id}`}
-                      style={{ color: '#3b5bdb', textDecoration: 'none', fontWeight: 500, fontSize: 12 }}>
+                      style={{ color: '#524e9c', textDecoration: 'none', fontWeight: 500, fontSize: 12 }}>
                       {p.contract_title}
                     </Link>
                   </td>
@@ -246,16 +246,16 @@ export function PropostasTable({ proposals, currentUserRole }: { proposals: Prop
                   <td style={{ ...td, color: '#52514e' }}>{p.responsible}</td>
                   <td style={td}>
                     {vDate ? (
-                      <span style={{ color: expired ? '#b91c1c' : '#52514e', fontWeight: expired ? 700 : 400, fontSize: 11 }}>
+                      <span style={{ color: expired ? '#8e4550' : '#52514e', fontWeight: expired ? 700 : 400, fontSize: 11 }}>
                         {fmtDate(vDate.toISOString())}
-                        {expired && <div style={{ fontSize: 9, color: '#b91c1c', fontWeight: 700 }}>VENCIDA</div>}
+                        {expired && <div style={{ fontSize: 9, color: '#8e4550', fontWeight: 700 }}>VENCIDA</div>}
                       </span>
                     ) : '—'}
                   </td>
-                  <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.mrr > 0 ? '#1a7c3e' : '#b0b8c8' }}>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.mrr > 0 ? '#1f8c7d' : '#b0b8c8' }}>
                     {fmt(p.mrr)}
                   </td>
-                  <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.pontual > 0 ? '#3b5bdb' : '#b0b8c8' }}>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.pontual > 0 ? '#524e9c' : '#b0b8c8' }}>
                     {fmt(p.pontual)}
                   </td>
                   <td style={{ ...td, textAlign: 'right' }}>

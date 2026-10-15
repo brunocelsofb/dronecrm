@@ -57,7 +57,7 @@ export function LostReasonsManager({ initialReasons }: { initialReasons: Reason[
           {busy ? '...' : '+ Adicionar'}
         </button>
       </div>
-      {error && <p style={{ fontSize: 11, color: '#b91c1c' }}>{error}</p>}
+      {error && <p style={{ fontSize: 11, color: '#8e4550' }}>{error}</p>}
 
       {/* Lista */}
       <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
@@ -76,12 +76,12 @@ export function LostReasonsManager({ initialReasons }: { initialReasons: Reason[
                 <td style={{ padding: '12px 16px' }}>
                   <button onClick={() => handleToggle(r.id, r.active)}
                     style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500, border: '0.5px solid', cursor: 'pointer',
-                      background: r.active ? '#eaf5ee' : '#f1f3f8', color: r.active ? '#1a7c3e' : '#8892a4', borderColor: r.active ? '#bbddc8' : '#d1d8e8' }}>
+                      background: r.active ? '#e3f5f1' : '#f1f3f8', color: r.active ? '#1f8c7d' : '#8892a4', borderColor: r.active ? '#bbddc8' : '#d1d8e8' }}>
                     {r.active ? 'Ativo' : 'Inativo'}
                   </button>
                 </td>
                 <td style={{ padding: '12px 16px' }}>
-                  <button onClick={() => handleDelete(r.id)} style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Excluir</button>
+                  <button onClick={() => handleDelete(r.id)} style={{ fontSize: 11, color: '#8e4550', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Excluir</button>
                 </td>
               </tr>
             ))}

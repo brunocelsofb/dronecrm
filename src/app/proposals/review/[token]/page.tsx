@@ -68,7 +68,7 @@ export default async function ProposalReviewPage({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: '#8892a4' }}>Logado como</span>
           <span style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36' }}>{profile?.full_name}</span>
-          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, background: canApprove ? '#eaf5ee' : '#f1f3f8', color: canApprove ? '#1a7c3e' : '#52514e' }}>
+          <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10, background: canApprove ? '#e3f5f1' : '#f1f3f8', color: canApprove ? '#1f8c7d' : '#52514e' }}>
             {profile?.role === 'aprovador_tecnico' ? 'Aprovador Técnico' : profile?.role === 'admin' ? 'Admin' : 'Membro'}
           </span>
         </div>
@@ -78,13 +78,13 @@ export default async function ProposalReviewPage({
 
         {/* Aviso se já revisado */}
         {isAlreadyReviewed && (
-          <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 10, background: '#fff8e6', border: '0.5px solid #fde68a', fontSize: 13, color: '#92400e' }}>
+          <div style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 10, background: '#fbeee5', border: '0.5px solid #ffe596', fontSize: 13, color: '#c2683d' }}>
             ⚠ Esta proposta já foi revisada — status: <strong>{proposal.status}</strong>. Esta página está em modo somente leitura.
           </div>
         )}
 
         {/* Aviso modo somente leitura */}
-        <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 10, background: '#eef3ff', border: '0.5px solid #c5d3f8', fontSize: 12, color: '#3b5bdb', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 10, background: '#e8e7f4', border: '0.5px solid #c5d3f8', fontSize: 12, color: '#524e9c', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>🔒</span>
           <span>Modo somente leitura — nenhuma alteração pode ser feita na proposta por este link.</span>
         </div>
@@ -120,9 +120,9 @@ export default async function ProposalReviewPage({
             <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 12 }}>Parecer Técnico Registrado</p>
             <p style={{ fontSize: 13, color: '#52514e', lineHeight: 1.6 }}>{proposal.technical_comment}</p>
             {proposal.technical_restrictions && (
-              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#fff8e6', border: '0.5px solid #fde68a' }}>
-                <p style={{ fontSize: 11, color: '#92400e', fontWeight: 500, margin: '0 0 4px' }}>Restrições apontadas:</p>
-                <p style={{ fontSize: 12, color: '#92400e', margin: 0 }}>{proposal.technical_restrictions}</p>
+              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596' }}>
+                <p style={{ fontSize: 11, color: '#c2683d', fontWeight: 500, margin: '0 0 4px' }}>Restrições apontadas:</p>
+                <p style={{ fontSize: 12, color: '#c2683d', margin: 0 }}>{proposal.technical_restrictions}</p>
               </div>
             )}
           </div>

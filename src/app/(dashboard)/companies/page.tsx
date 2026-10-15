@@ -127,7 +127,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   </td>
                   <td className="py-3 px-4 text-xs text-gray-400 font-mono">{c.cnpj || '—'}</td>
                   <td className="py-3 px-4 text-right">
-                    <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium" style={{ background: cnt > 0 ? '#eef3ff' : '#f1f3f8', color: cnt > 0 ? '#3b5bdb' : '#8892a4' }}>
+                    <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium" style={{ background: cnt > 0 ? '#e8e7f4' : '#f1f3f8', color: cnt > 0 ? '#524e9c' : '#8892a4' }}>
                       {cnt} contrato{cnt !== 1 ? 's' : ''}
                     </span>
                   </td>

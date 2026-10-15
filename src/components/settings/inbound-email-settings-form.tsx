@@ -42,8 +42,8 @@ export function InboundEmailSettingsForm({
         </div>
         <span style={{
           padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-          background: isConfigured ? '#eaf5ee' : isSandbox ? '#fff8e6' : '#fdecea',
-          color: isConfigured ? '#1a7c3e' : isSandbox ? '#92400e' : '#b91c1c'
+          background: isConfigured ? '#e3f5f1' : isSandbox ? '#fbeee5' : '#f6e9ea',
+          color: isConfigured ? '#1f8c7d' : isSandbox ? '#c2683d' : '#8e4550'
         }}>
           {isConfigured ? '✅ Configurado' : isSandbox ? '⚠ Sandbox (só envia)' : '❌ Não configurado'}
         </span>
@@ -51,14 +51,14 @@ export function InboundEmailSettingsForm({
 
       {/* Alerta de sandbox */}
       {isSandbox && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: '#fff8e6', border: '0.5px solid #fde68a', fontSize: 12, color: '#92400e' }}>
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596', fontSize: 12, color: '#c2683d' }}>
           <strong>Por que as respostas não chegam ao CRM:</strong> o domínio atual é um sandbox do Mailgun (<code style={{ fontSize: 11 }}>{currentDomain}</code>). O sandbox <strong>não suporta recebimento</strong> — só envio. Para receber respostas dos clientes é obrigatório usar um domínio próprio verificado.
         </div>
       )}
 
       {/* Passo a passo */}
       <button onClick={() => setShowSteps(s => !s)}
-        style={{ fontSize: 12, color: '#4f86f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}>
+        style={{ fontSize: 12, color: '#1b556b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}>
         {showSteps ? '▲ Ocultar' : '▼ Ver'} como configurar passo a passo
       </button>
 
@@ -80,7 +80,7 @@ export function InboundEmailSettingsForm({
                 <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{step.title}</p>
                 <p style={{ fontSize: 11, color: '#52514e', marginTop: 2 }}>{step.desc}</p>
                 {step.extra && (
-                  <code style={{ display: 'block', marginTop: 4, padding: '4px 8px', borderRadius: 6, background: '#f1f3f8', fontSize: 11, color: '#3b5bdb', wordBreak: 'break-all' }}>
+                  <code style={{ display: 'block', marginTop: 4, padding: '4px 8px', borderRadius: 6, background: '#f1f3f8', fontSize: 11, color: '#524e9c', wordBreak: 'break-all' }}>
                     {step.extra}
                   </code>
                 )}
@@ -110,14 +110,14 @@ export function InboundEmailSettingsForm({
           </p>
         </div>
 
-        {error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{error}</p>}
+        {error && <p style={{ fontSize: 12, color: '#8e4550' }}>{error}</p>}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button type="submit" disabled={busy}
             style={{ padding: '8px 20px', fontSize: 13, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
             {busy ? 'Salvando...' : 'Salvar configuração'}
           </button>
-          {saved && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✅ Salvo</span>}
+          {saved && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✅ Salvo</span>}
         </div>
       </form>
     </div>

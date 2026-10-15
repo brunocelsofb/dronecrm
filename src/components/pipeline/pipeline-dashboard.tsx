@@ -19,17 +19,17 @@ function daysSince(d: string | null): number {
 // Paleta ORBIS
 const ORBIS = {
   navy:    '#1a1f36',
-  blue:    '#3b5bdb',
-  green:   '#1a7c3e',
-  amber:   '#92400e',
-  red:     '#b91c1c',
+  blue:    '#524e9c',
+  green:   '#1f8c7d',
+  amber:   '#c2683d',
+  red:     '#8e4550',
   muted:   '#8892a4',
   surface: '#f1f3f8',
   white:   '#ffffff',
   border:  '#e8edf5',
 }
 
-const BAR_COLORS = ['#3b5bdb', '#1a7c3e', '#7c3aed', '#0891b2', '#b45309']
+const BAR_COLORS = ['#524e9c', '#1f8c7d', '#7c3aed', '#0891b2', '#b45309']
 
 export function PipelineDashboard({
   stages, cards, allSalesCards, allStages, salesPipelines, lostReasons, selectedPipeline,
@@ -168,7 +168,7 @@ export function PipelineDashboard({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 11, color: '#52514e', minWidth: 110 }}>{s.name}</span>
                   {passRate !== null && (
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef3ff', color: ORBIS.blue }}>{passRate}% avançam</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e8e7f4', color: ORBIS.blue }}>{passRate}% avançam</span>
                   )}
                   <span style={{ marginLeft: 'auto', fontSize: 11, color: ORBIS.muted }}>
                     {s.n} · {fmt(s.val)}
@@ -212,7 +212,7 @@ export function PipelineDashboard({
         <div style={card()}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <p style={{ fontSize: 13, fontWeight: 500, color: ORBIS.navy, margin: 0 }}>⚠ Estagnadas</p>
-            <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 20, background: '#fff8e6', color: ORBIS.amber }}>sem atividade +10 dias</span>
+            <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 20, background: '#fbeee5', color: ORBIS.amber }}>sem atividade +10 dias</span>
           </div>
           {stagnated.length === 0 && <p style={{ fontSize: 12, color: ORBIS.muted }}>Nenhuma estagnada. Ótimo!</p>}
           {stagnated.map(c => (
@@ -227,7 +227,7 @@ export function PipelineDashboard({
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <p style={{ fontSize: 12, color: ORBIS.navy, margin: 0 }}>{fmt(c.value)}</p>
-                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: '#fff8e6', color: ORBIS.amber }}>{c.dias}d</span>
+                <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: '#fbeee5', color: ORBIS.amber }}>{c.dias}d</span>
               </div>
             </div>
           ))}
@@ -236,7 +236,7 @@ export function PipelineDashboard({
         <div style={card()}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <p style={{ fontSize: 13, fontWeight: 500, color: ORBIS.navy, margin: 0 }}>🔥 Negócios quentes</p>
-            <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 20, background: '#eaf5ee', color: ORBIS.green }}>alto valor · etapa final</span>
+            <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 20, background: '#e3f5f1', color: ORBIS.green }}>alto valor · etapa final</span>
           </div>
           {hot.length === 0 && <p style={{ fontSize: 12, color: ORBIS.muted }}>Nenhum nas etapas finais ainda.</p>}
           {hot.map(c => (

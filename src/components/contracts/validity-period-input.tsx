@@ -32,21 +32,21 @@ export function ValidityPeriodInput({
   return (
     <div>
       {required && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#fff8e6', border: '0.5px solid #fde68a' }}>
-          <span style={{ fontSize: 12, color: '#92400e' }}>⚠ Preencha a vigência — obrigatório para contratos ativos.</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596' }}>
+          <span style={{ fontSize: 12, color: '#c2683d' }}>⚠ Preencha a vigência — obrigatório para contratos ativos.</span>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>
-            Vigência — início {required && <span style={{ color: '#b91c1c' }}>*</span>}
+            Vigência — início {required && <span style={{ color: '#8e4550' }}>*</span>}
           </label>
           <input name="valid_from" type="date" value={from} required={required}
             onChange={e => setFrom(e.target.value)} style={inputStyle} />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>
-            Vigência — fim {required && <span style={{ color: '#b91c1c' }}>*</span>}
+            Vigência — fim {required && <span style={{ color: '#8e4550' }}>*</span>}
           </label>
           <input name="valid_until" type="date" value={until} required={required}
             onChange={e => setUntil(e.target.value)} style={inputStyle} />

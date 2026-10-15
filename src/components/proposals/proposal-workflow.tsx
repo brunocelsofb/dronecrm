@@ -36,13 +36,13 @@ type ProposalData = {
 
 const STATUS_CONFIG_MAP: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   rascunho:               { label: 'Rascunho',                bg: '#f1f3f8', color: '#52514e', dot: '#b0b8c8' },
-  em_aprovacao_tecnica:   { label: 'Em Análise Técnica',      bg: '#fff8e6', color: '#92400e', dot: '#f59e0b' },
-  aprovado_tecnico:       { label: 'Aprovado Tecnicamente',   bg: '#eef3ff', color: '#3b5bdb', dot: '#3b5bdb' },
-  reprovado_tecnico:      { label: 'Reprovado — Em Revisão',  bg: '#fdecea', color: '#b91c1c', dot: '#b91c1c' },
-  em_aprovacao_comercial: { label: 'Em Aprovação Comercial',  bg: '#fff8e6', color: '#92400e', dot: '#f59e0b' },
-  aprovado_comercial:     { label: 'Ag. Cliente',             bg: '#eaf5ee', color: '#1a7c3e', dot: '#22c55e' },
+  em_aprovacao_tecnica:   { label: 'Em Análise Técnica',      bg: '#fbeee5', color: '#c2683d', dot: '#f59e0b' },
+  aprovado_tecnico:       { label: 'Aprovado Tecnicamente',   bg: '#e8e7f4', color: '#524e9c', dot: '#524e9c' },
+  reprovado_tecnico:      { label: 'Reprovado — Em Revisão',  bg: '#f6e9ea', color: '#8e4550', dot: '#8e4550' },
+  em_aprovacao_comercial: { label: 'Em Aprovação Comercial',  bg: '#fbeee5', color: '#c2683d', dot: '#f59e0b' },
+  aprovado_comercial:     { label: 'Ag. Cliente',             bg: '#e3f5f1', color: '#1f8c7d', dot: '#22c55e' },
   cliente_aprovado:       { label: '✅ Cliente Aprovou',      bg: '#dcfce7', color: '#166534', dot: '#16a34a' },
-  cliente_recusado:       { label: '❌ Cliente Recusou',      bg: '#fef2f2', color: '#b91c1c', dot: '#ef4444' },
+  cliente_recusado:       { label: '❌ Cliente Recusou',      bg: '#fef2f2', color: '#8e4550', dot: '#ef4444' },
   declinada:              { label: '🚫 Declinada',            bg: '#f3f4f6', color: '#6b7280', dot: '#9ca3af' },
 }
 const STATUS_CONFIG_DEFAULT = { label: 'Desconhecido', bg: '#f1f3f8', color: '#52514e', dot: '#b0b8c8' }
@@ -103,11 +103,11 @@ function StatusBadge({ status }: { status: ProposalStatus }) {
 
 // ── Subcomponente: Auditoria ────────────────────────────────────────────────
 const AUDIT_COLOR: Record<string, { bg: string; border: string; iconBg: string }> = {
-  '📤': { bg: '#eef3ff', border: '#c7d7ff', iconBg: '#3b5bdb' },
-  '🔧': { bg: '#eaf5ee', border: '#bbddc8', iconBg: '#1a7c3e' },
-  '✅': { bg: '#eaf5ee', border: '#bbddc8', iconBg: '#1a7c3e' },
-  '🤝': { bg: '#eaf5ee', border: '#bbddc8', iconBg: '#1a7c3e' },
-  '❌': { bg: '#fdecea', border: '#fca5a5', iconBg: '#b91c1c' },
+  '📤': { bg: '#e8e7f4', border: '#c7d7ff', iconBg: '#524e9c' },
+  '🔧': { bg: '#e3f5f1', border: '#bbddc8', iconBg: '#1f8c7d' },
+  '✅': { bg: '#e3f5f1', border: '#bbddc8', iconBg: '#1f8c7d' },
+  '🤝': { bg: '#e3f5f1', border: '#bbddc8', iconBg: '#1f8c7d' },
+  '❌': { bg: '#f6e9ea', border: '#dcadb3', iconBg: '#8e4550' },
   '🔄': { bg: '#f3e8ff', border: '#d8b4fe', iconBg: '#7c3aed' },
 }
 
@@ -245,7 +245,7 @@ function AuditRow({ icon, label, by, role, at, comment, restriction, isLast }: {
           </p>
         )}
         {restriction && (
-          <p style={{ fontSize: 11, color: '#92400e', margin: '6px 0 0', padding: '6px 10px', background: '#fff8e6', borderRadius: 6, borderLeft: '3px solid #f59e0b' }}>
+          <p style={{ fontSize: 11, color: '#c2683d', margin: '6px 0 0', padding: '6px 10px', background: '#fbeee5', borderRadius: 6, borderLeft: '3px solid #f59e0b' }}>
             ⚠ {restriction}
           </p>
         )}
@@ -298,7 +298,7 @@ function ConfirmModal({ title, subtitle, requireComment = false, onConfirm, onCa
             }}
           />
           {requireComment && comment.trim().length < 5 && comment.length > 0 && (
-            <p style={{ fontSize: 11, color: '#b91c1c', margin: '4px 0 0' }}>Mínimo de 5 caracteres</p>
+            <p style={{ fontSize: 11, color: '#8e4550', margin: '4px 0 0' }}>Mínimo de 5 caracteres</p>
           )}
         </div>
 
@@ -339,11 +339,11 @@ function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* KPIs principais */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {s.revenueMonthly > 0 && kpi('Valor Mensal', new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.revenueMonthly), '#1a7c3e')}
+        {s.revenueMonthly > 0 && kpi('Valor Mensal', new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.revenueMonthly), '#1f8c7d')}
         {s.hospitalBeds > 0 && kpi('Leitos', s.hospitalBeds)}
         {s.equipamentos?.total > 0 && kpi('Equipamentos', s.equipamentos.total)}
         {s.totalFTE > 0 && kpi('Profissionais', s.totalFTE)}
-        {dim?.fteDemandado > 0 && kpi('FTE Demandado', dim.fteDemandado, '#3b5bdb')}
+        {dim?.fteDemandado > 0 && kpi('FTE Demandado', dim.fteDemandado, '#524e9c')}
         {s.contractDuration > 0 && kpi('Duração', `${s.contractDuration} meses`)}
       </div>
 
@@ -353,7 +353,7 @@ function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
           <p style={{ fontSize: 10, fontWeight: 700, color: '#b0b8c8', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 8px' }}>Escopo de Serviços</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {escopo.map((e: string, i: number) => (
-              <span key={i} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#eaf5ee', color: '#1a7c3e', border: '0.5px solid #bbddc8' }}>✓ {e}</span>
+              <span key={i} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#e3f5f1', color: '#1f8c7d', border: '0.5px solid #bbddc8' }}>✓ {e}</span>
             ))}
           </div>
         </div>
@@ -369,7 +369,7 @@ function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
                 <span style={{ fontSize: 12, color: '#1a1f36', fontWeight: 500 }}>{p.role}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <span style={{ fontSize: 11, color: '#8892a4' }}>{p.quantity}x</span>
-                  <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: p.contractType === 'CLT' ? '#eef3ff' : '#f1f3f8', color: p.contractType === 'CLT' ? '#3b5bdb' : '#52514e' }}>{p.contractType}</span>
+                  <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: p.contractType === 'CLT' ? '#e8e7f4' : '#f1f3f8', color: p.contractType === 'CLT' ? '#524e9c' : '#52514e' }}>{p.contractType}</span>
                 </div>
               </div>
             ))}
@@ -528,7 +528,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
           }}
           onCancel={() => setModal(null)}
           confirmLabel="✅ Confirmar Aprovação Técnica"
-          confirmColor="#1a7c3e"
+          confirmColor="#1f8c7d"
           role={currentUserRole}
           name={currentUserName}
         />
@@ -544,7 +544,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
           }}
           onCancel={() => setModal(null)}
           confirmLabel="❌ Confirmar Reprovação"
-          confirmColor="#b91c1c"
+          confirmColor="#8e4550"
           role={currentUserRole}
           name={currentUserName}
         />
@@ -574,7 +574,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
           }}
           onCancel={() => setModal(null)}
           confirmLabel="✅ Aprovar Comercialmente"
-          confirmColor="#1a7c3e"
+          confirmColor="#1f8c7d"
           role={currentUserRole}
           name={currentUserName}
         />
@@ -587,7 +587,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
           onConfirm={async (comment) => { setModal(null); await doAction('reprovado_tecnico', comment) }}
           onCancel={() => setModal(null)}
           confirmLabel="❌ Reprovar"
-          confirmColor="#b91c1c"
+          confirmColor="#8e4550"
           role={currentUserRole}
           name={currentUserName}
         />
@@ -649,20 +649,20 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
                     <div style={{
                       width: 32, height: 32, borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
-                      background: isActive ? '#1b556b' : isDone ? (isFailure ? '#b91c1c' : '#1a7c3e') : '#f1f3f8',
+                      background: isActive ? '#1b556b' : isDone ? (isFailure ? '#8e4550' : '#1f8c7d') : '#f1f3f8',
                       color: isActive ? '#fff' : isDone ? '#fff' : '#b0b8c8',
-                      border: isActive ? '2px solid #32af9d' : isDone ? `2px solid ${isFailure ? '#b91c1c' : '#1a7c3e'}` : '2px solid transparent',
+                      border: isActive ? '2px solid #32af9d' : isDone ? `2px solid ${isFailure ? '#8e4550' : '#1f8c7d'}` : '2px solid transparent',
                       boxShadow: isActive ? '0 0 0 4px rgba(50,175,157,0.15)' : 'none',
                       transition: 'all 0.2s'
                     }}>
                       {isDone ? (isFailure ? '✕' : '✓') : step.short}
                     </div>
-                    <p style={{ fontSize: 9, color: isActive ? '#1b556b' : isDone ? (isFailure ? '#b91c1c' : '#1a7c3e') : '#b0b8c8', fontWeight: isDone || isActive ? 700 : 400, margin: 0, textAlign: 'center', lineHeight: 1.3, maxWidth: 60 }}>
+                    <p style={{ fontSize: 9, color: isActive ? '#1b556b' : isDone ? (isFailure ? '#8e4550' : '#1f8c7d') : '#b0b8c8', fontWeight: isDone || isActive ? 700 : 400, margin: 0, textAlign: 'center', lineHeight: 1.3, maxWidth: 60 }}>
                       {step.label}
                     </p>
                   </div>
                   {i < STEPS.length - 1 && (
-                    <div style={{ flex: 1, height: 2, background: isDone ? (isFailure ? '#fca5a5' : '#1a7c3e') : '#f1f3f8', margin: '0 4px', marginBottom: 22, borderRadius: 1 }} />
+                    <div style={{ flex: 1, height: 2, background: isDone ? (isFailure ? '#dcadb3' : '#1f8c7d') : '#f1f3f8', margin: '0 4px', marginBottom: 22, borderRadius: 1 }} />
                   )}
                 </div>
               )
@@ -706,8 +706,8 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
               </button>
             )}
             {data.status === 'rascunho' && !data.proposal_value && (
-              <div style={{ padding: '10px 14px', borderRadius: 8, background: '#fff8e6', border: '0.5px solid #fde68a' }}>
-                <p style={{ fontSize: 12, color: '#92400e', margin: 0 }}>⚠ Abra o Price pelo botão acima, dimensione e envie o valor ao CRM antes de iniciar o fluxo de aprovação.</p>
+              <div style={{ padding: '10px 14px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596' }}>
+                <p style={{ fontSize: 12, color: '#c2683d', margin: 0 }}>⚠ Abra o Price pelo botão acima, dimensione e envie o valor ao CRM antes de iniciar o fluxo de aprovação.</p>
               </div>
             )}
 
@@ -715,11 +715,11 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
             {data.status === 'em_aprovacao_tecnica' && isTech && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setModal({ action: 'approve_tech' })} disabled={isPending}
-                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1a7c3e', color: '#fff', cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1f8c7d', color: '#fff', cursor: 'pointer' }}>
                   ✅ Aprovar Tecnicamente
                 </button>
                 <button onClick={() => setModal({ action: 'reject_tech' })} disabled={isPending}
-                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer' }}>
                   ❌ Reprovar
                 </button>
               </div>
@@ -750,11 +750,11 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
             {data.status === 'em_aprovacao_comercial' && isComm && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={() => setModal({ action: 'approve_comm' })} disabled={isPending}
-                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1a7c3e', color: '#fff', cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1f8c7d', color: '#fff', cursor: 'pointer' }}>
                   ✅ Aprovar Comercialmente
                 </button>
                 <button onClick={() => setModal({ action: 'reject_comm' })} disabled={isPending}
-                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '11px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer' }}>
                   ❌ Reprovar
                 </button>
               </div>
@@ -765,7 +765,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
               </div>
             )}
 
-            {error && <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>{error}</p>}
+            {error && <p style={{ fontSize: 12, color: '#8e4550', margin: 0 }}>{error}</p>}
           </div>
         </div>
       )}
@@ -774,8 +774,8 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
       {data.status === 'aprovado_comercial' && card(
         <div>
           {sectionLabel('Próxima Etapa')}
-          <div style={{ padding: '14px 16px', borderRadius: 10, background: '#eaf5ee', border: '0.5px solid #bbddc8', marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#1a7c3e', margin: '0 0 3px' }}>✅ Aprovação interna concluída</p>
+          <div style={{ padding: '14px 16px', borderRadius: 10, background: '#e3f5f1', border: '0.5px solid #bbddc8', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#1f8c7d', margin: '0 0 3px' }}>✅ Aprovação interna concluída</p>
             <p style={{ fontSize: 12, color: '#52514e', margin: 0 }}>Monte a proposta comercial e gere o link para o cliente assinar.</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

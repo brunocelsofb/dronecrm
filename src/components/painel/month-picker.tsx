@@ -56,7 +56,7 @@ export function MonthPicker({ year, selected, currentMonth }: { year: number; se
               aria-pressed={on}
               title={on ? `Tirar ${label} do período` : `Incluir ${label} no período`}
               className={`rounded-lg px-1 py-2 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B556B]/40 ${
-                on ? 'bg-[#1B556B] text-white shadow-sm hover:bg-[#164657]' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                on ? 'bg-[#1B556B] text-white shadow-sm hover:bg-brand-800' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
               } ${future && !on ? 'text-gray-300' : ''}`}
             >
               {label}

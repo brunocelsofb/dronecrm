@@ -300,7 +300,7 @@ function escapeHtml(t: string): string {
 
 const PENDING_LABEL: Record<AlertResult['pending'], { text: string; color: string }> = {
   enviar:       { text: 'Aviso ao cliente aguardando revisão e envio', color: '#c2410c' },
-  sem_contato:  { text: 'Falta WhatsApp e/ou e-mail do contato — cadastrar e falar com o cliente', color: '#b91c1c' },
+  sem_contato:  { text: 'Falta WhatsApp e/ou e-mail do contato — cadastrar e falar com o cliente', color: '#8e4550' },
   preparar:     { text: 'Preparar a renovação (90 dias)', color: '#1d4ed8' },
 }
 

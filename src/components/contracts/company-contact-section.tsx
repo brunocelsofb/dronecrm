@@ -114,7 +114,7 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
       {!preselectedCompanyId && (
         <div>
           <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>
-            CNPJ <span style={{ color: '#b91c1c' }}>*</span>
+            CNPJ <span style={{ color: '#8e4550' }}>*</span>
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={cnpj} onChange={e => { setCnpj(e.target.value); setChecked(false) }}
@@ -126,7 +126,7 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
               {checking ? 'Verificando...' : 'Verificar'}
             </button>
           </div>
-          {error && <p style={{ marginTop: 4, fontSize: 11, color: '#b91c1c' }}>{error}</p>}
+          {error && <p style={{ marginTop: 4, fontSize: 11, color: '#8e4550' }}>{error}</p>}
         </div>
       )}
 
@@ -136,8 +136,8 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
           {foundCompany.cnpj && <input type="hidden" name="company_cnpj" value={foundCompany.cnpj.replace(/\D/g, '')} />}
 
           {/* Empresa pré-selecionada: só mostra o nome fixo, não o aviso de "verificada" */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#eaf5ee', border: '0.5px solid #bbddc8' }}>
-            <span style={{ fontSize: 12, color: '#1a7c3e' }}>✓</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: '#e3f5f1', border: '0.5px solid #bbddc8' }}>
+            <span style={{ fontSize: 12, color: '#1f8c7d' }}>✓</span>
             <div>
               <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{foundCompany.name}</p>
               {foundCompany.trade_name && <p style={{ fontSize: 11, color: '#52514e', marginTop: 1 }}>{foundCompany.trade_name}</p>}
@@ -169,7 +169,7 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
                   ))}
               </select>
               <button type="button" onClick={() => setWantsNewContact(true)}
-                style={{ fontSize: 11, color: '#4f86f7', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' as const, padding: 0 }}>
+                style={{ fontSize: 11, color: '#1b556b', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' as const, padding: 0 }}>
                 + Cadastrar novo contato para esta empresa
               </button>
             </div>

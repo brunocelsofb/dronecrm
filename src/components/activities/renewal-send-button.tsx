@@ -111,7 +111,7 @@ export function RenewalSendButton({
             {loading ? (
               <p style={{ fontSize: 12, color: '#6b7280' }}>Carregando…</p>
             ) : instances.length === 0 ? (
-              <p style={{ fontSize: 12, color: '#b91c1c' }}>Nenhum WhatsApp disponível. Conecte uma instância em Configurações → Conexões.</p>
+              <p style={{ fontSize: 12, color: '#8e4550' }}>Nenhum WhatsApp disponível. Conecte uma instância em Configurações → Conexões.</p>
             ) : (
               <>
                 <select value={instance} onChange={e => setInstance(e.target.value)} style={input}>
@@ -157,7 +157,7 @@ export function RenewalSendButton({
             )}
 
             {(blocker || error) && (
-              <p style={{ fontSize: 12, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', marginTop: 12 }}>
+              <p style={{ fontSize: 12, color: '#8e4550', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', marginTop: 12 }}>
                 {error ?? blocker}
               </p>
             )}

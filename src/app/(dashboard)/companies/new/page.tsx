@@ -77,7 +77,7 @@ export default function NewCompanyPage() {
         {/* Razão Social e Nome Fantasia */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <label style={labelStyle}>Razão Social <span style={{ color: '#b91c1c' }}>*</span></label>
+            <label style={labelStyle}>Razão Social <span style={{ color: '#8e4550' }}>*</span></label>
             <input name="name" required value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
           </div>
           <div>
@@ -88,7 +88,7 @@ export default function NewCompanyPage() {
 
         {/* Status */}
         <div>
-          <label style={labelStyle}>Status da Empresa <span style={{ color: '#b91c1c' }}>*</span></label>
+          <label style={labelStyle}>Status da Empresa <span style={{ color: '#8e4550' }}>*</span></label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
             {STATUS_OPTIONS.map(s => (
               <label key={s.value} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
@@ -162,7 +162,7 @@ export default function NewCompanyPage() {
           <textarea name="notes" rows={3} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
         </div>
 
-        {state.error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{state.error}</p>}
+        {state.error && <p style={{ fontSize: 12, color: '#8e4550' }}>{state.error}</p>}
 
         <button type="submit" disabled={pending}
           style={{ padding: '10px', fontSize: 13, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: pending ? 'not-allowed' : 'pointer', opacity: pending ? 0.6 : 1 }}>

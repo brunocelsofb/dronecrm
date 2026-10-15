@@ -6,16 +6,16 @@ import { DeleteLeadButton } from '@/components/leads/delete-lead-button'
 const STATUS_LABELS: Record<string, string> = { novo: 'Novo', em_qualificacao: 'Em Qualificação', qualificado: 'Qualificado', descartado: 'Descartado', convertido: 'Convertido' }
 const STATUS_ORDER = ['novo', 'em_qualificacao', 'qualificado', 'convertido', 'descartado']
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  novo:            { bg: '#eef3ff', color: '#3b5bdb' },
-  em_qualificacao: { bg: '#fff8e6', color: '#92400e' },
-  qualificado:     { bg: '#eaf5ee', color: '#1a7c3e' },
+  novo:            { bg: '#e8e7f4', color: '#524e9c' },
+  em_qualificacao: { bg: '#fbeee5', color: '#c2683d' },
+  qualificado:     { bg: '#e3f5f1', color: '#1f8c7d' },
   convertido:      { bg: '#f0eeff', color: '#5f38c9' },
   descartado:      { bg: '#f1f3f8', color: '#8892a4' },
 }
 const SOURCE_LABELS: Record<string, string> = { indicacao: 'Indicação', evento: 'Evento', formulario_site: 'Site', ligacao: 'Ligação', anuncio: 'Anúncio', manual: 'Manual', whatsapp: 'WhatsApp', outro: 'Outro' }
 
 function scoreBar(score: number) {
-  const colorClass = score >= 60 ? '#1a7c3e' : score >= 30 ? '#f59e0b' : '#d1d8e8'
+  const colorClass = score >= 60 ? '#1f8c7d' : score >= 30 ? '#f59e0b' : '#d1d8e8'
   return (
     <div className="flex items-center gap-1.5 justify-end">
       <div className="w-12 h-1 rounded-sm bg-gray-100 overflow-hidden">

@@ -32,7 +32,7 @@ export function NewOpportunityButton({
   return (
     <>
       <button onClick={() => setOpen(true)}
-        style={{ fontSize: 11, color: '#4f86f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+        style={{ fontSize: 11, color: '#1b556b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
         + Nova oportunidade
       </button>
 

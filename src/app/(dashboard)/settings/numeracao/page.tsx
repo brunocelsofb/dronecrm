@@ -65,7 +65,7 @@ export default function NumeracaoPage() {
               style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
               {busy ? 'Salvando...' : 'Salvar'}
             </button>
-            {saved && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✅ Salvo</span>}
+            {saved && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✅ Salvo</span>}
           </div>
         </div>
       )}

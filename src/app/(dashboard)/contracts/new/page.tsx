@@ -122,7 +122,7 @@ export default function NewContractPage() {
       <form action={formAction} className="flex flex-col space-y-5 bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         {show('title') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Título {req('title') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Título {req('title') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <input name="title" required={req('title')} className={inputCls} />
           </div>
         )}
@@ -134,7 +134,7 @@ export default function NewContractPage() {
         {/* Tag */}
         {show('tag') && tags.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Tag / Etiqueta {req('tag') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Tag / Etiqueta {req('tag') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <select name="tag_id" required={req('tag')} className={inputCls}>
               <option value="">Sem tag</option>
               {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -146,7 +146,7 @@ export default function NewContractPage() {
 
         {show('segment') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Segmento {req('segment') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Segmento {req('segment') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <select name="segment" required={req('segment')} className={inputCls}>
               <option value="">Selecione...</option>
               <option value="hospitalar_geral">Grupo Hospitalar (Geral e especializado)</option>
@@ -159,7 +159,7 @@ export default function NewContractPage() {
         {/* Valor */}
         {show('value') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Valor estimado (R$) {req('value') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Valor estimado (R$) {req('value') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <input name="value" type="number" step="0.01" min="0" defaultValue={0} required={req('value')} className={inputCls} />
           </div>
         )}
@@ -167,7 +167,7 @@ export default function NewContractPage() {
         {/* Tipo de receita MRR vs Spot */}
         {show('revenue_type') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Tipo de Receita {req('revenue_type') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Tipo de Receita {req('revenue_type') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <select name="revenue_type" required={req('revenue_type')} className={inputCls}>
               <option value="">Selecione...</option>
               <option value="mrr">MRR — Recorrente mensal</option>
@@ -180,7 +180,7 @@ export default function NewContractPage() {
             (no fluxo normal ele é definido ao dar ganho em Mercado Privado/Público) */}
         {pipelineType === 'gestao_contratos' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Consultor responsável pela conta <span style={{ color: '#b91c1c' }}>*</span></label>
+            <label className="block text-sm font-medium text-gray-700">Consultor responsável pela conta <span style={{ color: '#8e4550' }}>*</span></label>
             <select name="account_owner_id" required className={inputCls} defaultValue="">
               <option value="">Selecione quem cuida da conta (retenção)...</option>
               {accountOwners.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
@@ -190,17 +190,17 @@ export default function NewContractPage() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Etapa inicial <span style={{ color: '#b91c1c' }}>*</span></label>
+          <label className="block text-sm font-medium text-gray-700">Etapa inicial <span style={{ color: '#8e4550' }}>*</span></label>
           <select name="stage_id" required className={inputCls}>
             <option value="">Selecione...</option>
             {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          {pipelineId && stages.length === 0 && <p style={{ marginTop: 4, fontSize: 11, color: '#92400e' }}>Nenhuma etapa cadastrada neste funil.</p>}
+          {pipelineId && stages.length === 0 && <p style={{ marginTop: 4, fontSize: 11, color: '#c2683d' }}>Nenhuma etapa cadastrada neste funil.</p>}
         </div>
 
         {show('source') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Origem da negociação {req('source') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Origem da negociação {req('source') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <select name="source" required={req('source')} className={inputCls}>
               <option value="">Selecione...</option>
               {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -210,14 +210,14 @@ export default function NewContractPage() {
 
         {show('expected_close_date') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Previsão de fechamento {req('expected_close_date') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Previsão de fechamento {req('expected_close_date') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <input name="expected_close_date" type="date" required={req('expected_close_date')} className={inputCls} />
           </div>
         )}
 
         {show('description') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Descrição {req('description') && <span style={{ color: '#b91c1c' }}>*</span>}</label>
+            <label className="block text-sm font-medium text-gray-700">Descrição {req('description') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <textarea name="description" rows={3} required={req('description')} className={inputCls} />
           </div>
         )}

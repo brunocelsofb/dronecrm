@@ -105,7 +105,7 @@ export function InternalEmailButton({
             <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>Use *texto* para negrito.</p>
 
             {(blocker || error) && (
-              <p role="alert" style={{ fontSize: 12, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', marginTop: 12 }}>
+              <p role="alert" style={{ fontSize: 12, color: '#8e4550', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', marginTop: 12 }}>
                 {error ?? blocker}
               </p>
             )}

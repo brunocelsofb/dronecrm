@@ -6,8 +6,8 @@ import { savePipelineFieldConfigs, deletePipelineField, addPipelineField } from 
 import type { PipelineFieldConfig, FieldVisibility } from '@/lib/pipeline-field-config'
 
 const VISIBILITY_OPTIONS: { value: FieldVisibility; label: string; color: string; bg: string }[] = [
-  { value: 'required', label: 'Obrigatório', color: '#b91c1c', bg: '#fdecea' },
-  { value: 'optional', label: 'Opcional',    color: '#3b5bdb', bg: '#eef3ff' },
+  { value: 'required', label: 'Obrigatório', color: '#8e4550', bg: '#f6e9ea' },
+  { value: 'optional', label: 'Opcional',    color: '#524e9c', bg: '#e8e7f4' },
   { value: 'hidden',   label: 'Oculto',      color: '#8892a4', bg: '#f1f3f8' },
 ]
 
@@ -132,7 +132,7 @@ export function PipelineFieldConfigForm({
                       ))}
                       {!locked && (
                         <button onClick={() => handleDelete(c.field_key)}
-                          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer', marginLeft: 4 }}>
+                          style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer', marginLeft: 4 }}>
                           Remover
                         </button>
                       )}
@@ -172,7 +172,7 @@ export function PipelineFieldConfigForm({
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {availableCustom.map(cf => (
                 <button key={cf.id} onClick={() => handleAddCustom(cf)}
-                  style={{ padding: '3px 10px', fontSize: 11, borderRadius: 20, border: '0.5px solid #3b5bdb', background: '#eef3ff', color: '#3b5bdb', cursor: 'pointer' }}>
+                  style={{ padding: '3px 10px', fontSize: 11, borderRadius: 20, border: '0.5px solid #524e9c', background: '#e8e7f4', color: '#524e9c', cursor: 'pointer' }}>
                   + {cf.name}
                 </button>
               ))}
@@ -181,14 +181,14 @@ export function PipelineFieldConfigForm({
         )}
       </div>
 
-      {error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: '#8e4550' }}>{error}</p>}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={handleSave} disabled={busy}
           style={{ padding: '8px 20px', fontSize: 13, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
           {busy ? 'Salvando...' : 'Salvar configuração'}
         </button>
-        {saved && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✅ Salvo</span>}
+        {saved && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✅ Salvo</span>}
       </div>
     </div>
   )

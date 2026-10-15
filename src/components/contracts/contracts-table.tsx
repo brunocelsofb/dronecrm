@@ -8,10 +8,10 @@ function fmt(v: number) {
 }
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  open:   { bg: '#eef3ff', color: '#3b5bdb' },
-  won:    { bg: '#eaf5ee', color: '#1a7c3e' },
-  lost:   { bg: '#fdecea', color: '#b91c1c' },
-  paused: { bg: '#fff8e6', color: '#92400e' },
+  open:   { bg: '#e8e7f4', color: '#524e9c' },
+  won:    { bg: '#e3f5f1', color: '#1f8c7d' },
+  lost:   { bg: '#f6e9ea', color: '#8e4550' },
+  paused: { bg: '#fbeee5', color: '#c2683d' },
 }
 const STATUS_LABEL: Record<string, string> = {
   open: 'Em andamento', won: 'Ganho', lost: 'Perdido', paused: 'Pausado',
@@ -49,7 +49,7 @@ export function ContractsTable({ contracts, q }: { contracts: Contract[]; q?: st
               onMouseEnter={e => (e.currentTarget.style.background = '#fafbfd')}
               onMouseLeave={e => (e.currentTarget.style.background = '')}>
               <td style={{ padding: '12px 16px', fontSize: 11, fontFamily: 'monospace', color: '#8892a4' }}>
-                <Link href={`/contracts/${c.id}`} style={{ color: '#4f86f7', textDecoration: 'none' }}>{c.process_number}</Link>
+                <Link href={`/contracts/${c.id}`} style={{ color: '#1b556b', textDecoration: 'none' }}>{c.process_number}</Link>
               </td>
               <td style={{ padding: '12px 16px' }}>
                 <Link href={`/contracts/${c.id}`} style={{ textDecoration: 'none' }}>

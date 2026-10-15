@@ -57,8 +57,8 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
           data: {
             labels: historyData.map(h => h.day),
             datasets: [
-              { label: 'Entradas', data: historyData.map(h => h.entradas), borderColor: '#4f86f7', backgroundColor: 'rgba(79,134,247,0.08)', borderWidth: 2, pointRadius: 3, fill: true, tension: 0.4 },
-              { label: 'Leads', data: historyData.map(h => h.leads), borderColor: '#1a7c3e', backgroundColor: 'rgba(26,124,62,0.06)', borderWidth: 2, pointRadius: 3, fill: true, tension: 0.4 },
+              { label: 'Entradas', data: historyData.map(h => h.entradas), borderColor: '#1b556b', backgroundColor: 'rgba(27,85,107,0.08)', borderWidth: 2, pointRadius: 3, fill: true, tension: 0.4 },
+              { label: 'Leads', data: historyData.map(h => h.leads), borderColor: '#1f8c7d', backgroundColor: 'rgba(26,124,62,0.06)', borderWidth: 2, pointRadius: 3, fill: true, tension: 0.4 },
             ]
           },
           options: {
@@ -88,10 +88,10 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {[
           { label: 'Entradas totais', value: totalEntradas, sub: 'conversas iniciadas', color: '#1a1f36' },
-          { label: 'Viraram leads', value: totalLeads, sub: `${conversionRate}% de conversão`, color: '#3b5bdb' },
-          { label: 'Convertidos', value: totalConvertidos, sub: 'viraram oportunidade', color: '#1a7c3e' },
+          { label: 'Viraram leads', value: totalLeads, sub: `${conversionRate}% de conversão`, color: '#524e9c' },
+          { label: 'Convertidos', value: totalConvertidos, sub: 'viraram oportunidade', color: '#1f8c7d' },
           { label: 'Vinculados', value: totalVinculados, sub: 'em conta existente', color: '#5f38c9' },
-          { label: 'Opt-out', value: totalOptOut, sub: 'pediram pra sair', color: totalOptOut > 0 ? '#b91c1c' : '#8892a4' },
+          { label: 'Opt-out', value: totalOptOut, sub: 'pediram pra sair', color: totalOptOut > 0 ? '#8e4550' : '#8892a4' },
         ].map(k => (
           <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: '0.5px solid #e8edf5' }}>
             <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
@@ -126,7 +126,7 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
                 <canvas ref={lineRef} role="img" aria-label="Evolução diária de entradas e leads no WhatsApp" />
               </div>
               <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
-                {[{ color: '#4f86f7', label: 'Entradas' }, { color: '#1a7c3e', label: 'Leads' }].map(l => (
+                {[{ color: '#1b556b', label: 'Entradas' }, { color: '#1f8c7d', label: 'Leads' }].map(l => (
                   <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#8892a4' }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: l.color }} />
                     {l.label}

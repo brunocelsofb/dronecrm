@@ -10,10 +10,10 @@ import { RemoveContactButton } from '@/components/companies/remove-contact-butto
 import { TimelineFeed } from '@/components/contracts/timeline-feed'
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  lead:           { bg: '#eef3ff', color: '#3b5bdb', label: 'Lead' },
+  lead:           { bg: '#e8e7f4', color: '#524e9c', label: 'Lead' },
   prospect:       { bg: '#f0eeff', color: '#5f38c9', label: 'Prospect' },
-  cliente_ativo:  { bg: '#eaf5ee', color: '#1a7c3e', label: 'Cliente Ativo' },
-  cliente_inativo:{ bg: '#fff8e6', color: '#92400e', label: 'Cliente Inativo' },
+  cliente_ativo:  { bg: '#e3f5f1', color: '#1f8c7d', label: 'Cliente Ativo' },
+  cliente_inativo:{ bg: '#fbeee5', color: '#c2683d', label: 'Cliente Inativo' },
   nao_qualificado:{ bg: '#f1f3f8', color: '#8892a4', label: 'Não qualificado' },
 }
 
@@ -232,14 +232,14 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
             <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: '0.5px solid #f1f3f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Leads ({(companyLeads ?? []).length})</p>
-                <Link href="/leads" style={{ fontSize: 11, color: '#4f86f7', textDecoration: 'none' }}>Ver todos os leads →</Link>
+                <Link href="/leads" style={{ fontSize: 11, color: '#1b556b', textDecoration: 'none' }}>Ver todos os leads →</Link>
               </div>
               <div>
                 {(companyLeads ?? []).map(l => {
                   const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-                    novo: { bg: '#eef3ff', color: '#3b5bdb' },
-                    em_qualificacao: { bg: '#fff8e6', color: '#92400e' },
-                    qualificado: { bg: '#eaf5ee', color: '#1a7c3e' },
+                    novo: { bg: '#e8e7f4', color: '#524e9c' },
+                    em_qualificacao: { bg: '#fbeee5', color: '#c2683d' },
+                    qualificado: { bg: '#e3f5f1', color: '#1f8c7d' },
                     convertido: { bg: '#f0eeff', color: '#5f38c9' },
                     descartado: { bg: '#f1f3f8', color: '#8892a4' },
                   }
@@ -274,9 +274,9 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                 const contract = (contracts ?? []).find(c => c.id === run.contract_id)
                 const pipeline = Array.isArray(run.pipelines) ? run.pipelines[0] : run.pipelines
                 const STATUS: Record<string, { label: string; bg: string; color: string }> = {
-                  open:  { label: 'Em andamento', bg: '#eef3ff', color: '#3b5bdb' },
-                  won:   { label: 'Ganho',        bg: '#eaf5ee', color: '#1a7c3e' },
-                  lost:  { label: 'Perdido',      bg: '#fdecea', color: '#b91c1c' },
+                  open:  { label: 'Em andamento', bg: '#e8e7f4', color: '#524e9c' },
+                  won:   { label: 'Ganho',        bg: '#e3f5f1', color: '#1f8c7d' },
+                  lost:  { label: 'Perdido',      bg: '#f6e9ea', color: '#8e4550' },
                   moved: { label: 'Movido',       bg: '#f1f3f8', color: '#8892a4' },
                 }
                 const s = STATUS[run.status] ?? STATUS.moved
@@ -320,12 +320,12 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                 <div key={c.id} style={{ padding: '10px 12px', borderRadius: 8, background: '#f8f9fb', border: '0.5px solid #f1f3f8' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', margin: 0 }}>
-                      {c.name} {c.is_primary && <span style={{ fontSize: 9, background: '#eef3ff', color: '#3b5bdb', padding: '1px 5px', borderRadius: 20 }}>Principal</span>}
+                      {c.name} {c.is_primary && <span style={{ fontSize: 9, background: '#e8e7f4', color: '#524e9c', padding: '1px 5px', borderRadius: 20 }}>Principal</span>}
                     </p>
                     <RemoveContactButton contactId={c.id} companyId={company.id} />
                   </div>
                   {c.role && <p style={{ fontSize: 11, color: '#8892a4', marginTop: 2 }}>{c.role}</p>}
-                  {c.email && <p style={{ fontSize: 11, color: '#4f86f7', marginTop: 2 }}>{c.email}</p>}
+                  {c.email && <p style={{ fontSize: 11, color: '#1b556b', marginTop: 2 }}>{c.email}</p>}
                   {c.phone && <p style={{ fontSize: 11, color: '#8892a4', marginTop: 1 }}>{c.phone}</p>}
                 </div>
               ))}

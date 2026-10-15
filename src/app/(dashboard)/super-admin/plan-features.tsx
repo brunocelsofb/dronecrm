@@ -59,7 +59,7 @@ export function PlanFeaturesMatrix({ initial }: { initial: Record<PlanId, string
                       aria-label={`${f.label} no plano ${p.label}`}
                       checked={matrix[p.id].includes(f.key)}
                       onChange={() => toggle(p.id, f.key)}
-                      className="h-4 w-4 accent-[#1e6b8f]"
+                      className="h-4 w-4 accent-[#1b556b]"
                     />
                   </td>
                 ))}
@@ -72,7 +72,7 @@ export function PlanFeaturesMatrix({ initial }: { initial: Record<PlanId, string
         <button
           onClick={save}
           disabled={pending || dirty.size === 0}
-          className="rounded-lg bg-[#1e6b8f] px-5 py-2 text-sm font-medium text-white hover:bg-[#154459] disabled:opacity-50"
+          className="rounded-lg bg-[#1b556b] px-5 py-2 text-sm font-medium text-white hover:bg-[#154459] disabled:opacity-50"
         >
           {pending ? 'Salvando…' : 'Salvar planos'}
         </button>
@@ -143,7 +143,7 @@ export function TenantFeaturesEditor({
         <button
           onClick={save}
           disabled={pending}
-          className="rounded bg-[#1e6b8f] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#154459] disabled:opacity-50"
+          className="rounded bg-[#1b556b] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#154459] disabled:opacity-50"
         >
           {pending ? 'Salvando…' : 'Salvar abas do cliente'}
         </button>

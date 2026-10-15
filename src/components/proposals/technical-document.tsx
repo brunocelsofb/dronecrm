@@ -86,15 +86,15 @@ export function TechnicalDocument({ snapshot, showFinancials, isHospitalar = fal
               <p style={muted}>Total de equipamentos</p>
               <p style={{ fontSize: 20, fontWeight: 600, color: '#1a1f36', margin: '2px 0 0' }}>{dim.totalEquipamentos}</p>
             </div>
-            <div style={{ background: '#eef3ff', borderRadius: 8, padding: '10px 12px' }}>
-              <p style={{ ...muted, color: '#3b5bdb' }}>FTE demandado</p>
-              <p style={{ fontSize: 20, fontWeight: 600, color: '#3b5bdb', margin: '2px 0 0' }}>
+            <div style={{ background: '#e8e7f4', borderRadius: 8, padding: '10px 12px' }}>
+              <p style={{ ...muted, color: '#524e9c' }}>FTE demandado</p>
+              <p style={{ fontSize: 20, fontWeight: 600, color: '#524e9c', margin: '2px 0 0' }}>
                 {dim.fteDemandado > 0 ? dim.fteDemandado : '—'}
               </p>
             </div>
-            <div style={{ background: '#eaf5ee', borderRadius: 8, padding: '10px 12px' }}>
-              <p style={{ ...muted, color: '#1a7c3e' }}>FTE alocado</p>
-              <p style={{ fontSize: 20, fontWeight: 600, color: '#1a7c3e', margin: '2px 0 0' }}>{snapshot.totalFTE}</p>
+            <div style={{ background: '#e3f5f1', borderRadius: 8, padding: '10px 12px' }}>
+              <p style={{ ...muted, color: '#1f8c7d' }}>FTE alocado</p>
+              <p style={{ fontSize: 20, fontWeight: 600, color: '#1f8c7d', margin: '2px 0 0' }}>{snapshot.totalFTE}</p>
             </div>
           </div>
           {dim.horasMensaisDemandadas > 0 && (
@@ -143,9 +143,9 @@ export function TechnicalDocument({ snapshot, showFinancials, isHospitalar = fal
             <p style={{ fontSize: 20, fontWeight: 600, color: '#1a1f36', margin: '2px 0 0' }}>{snapshot.totalFTE}</p>
           </div>
           {snapshot.cltCount > 0 && (
-            <div style={{ flex: 1, background: '#eef3ff', borderRadius: 8, padding: '8px 12px' }}>
-              <p style={{ ...muted, color: '#3b5bdb' }}>CLT</p>
-              <p style={{ fontSize: 20, fontWeight: 600, color: '#3b5bdb', margin: '2px 0 0' }}>{snapshot.cltCount}</p>
+            <div style={{ flex: 1, background: '#e8e7f4', borderRadius: 8, padding: '8px 12px' }}>
+              <p style={{ ...muted, color: '#524e9c' }}>CLT</p>
+              <p style={{ fontSize: 20, fontWeight: 600, color: '#524e9c', margin: '2px 0 0' }}>{snapshot.cltCount}</p>
             </div>
           )}
           {snapshot.pjCount > 0 && (
@@ -171,8 +171,8 @@ export function TechnicalDocument({ snapshot, showFinancials, isHospitalar = fal
                 <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 500, color: '#1a1f36' }}>{p.quantity}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                   <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10,
-                    background: p.contractType === 'CLT' ? '#eef3ff' : '#f1f3f8',
-                    color: p.contractType === 'CLT' ? '#3b5bdb' : '#52514e' }}>
+                    background: p.contractType === 'CLT' ? '#e8e7f4' : '#f1f3f8',
+                    color: p.contractType === 'CLT' ? '#524e9c' : '#52514e' }}>
                     {p.contractType}
                   </span>
                 </td>
@@ -191,9 +191,9 @@ export function TechnicalDocument({ snapshot, showFinancials, isHospitalar = fal
           <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: '0 0 12px' }}>🔧 Escopo de Serviços</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {escopo.map((s: string, i: number) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, background: '#eaf5ee', border: '0.5px solid #bbddc8' }}>
-                <span style={{ color: '#1a7c3e', fontSize: 13 }}>✓</span>
-                <span style={{ fontSize: 12, color: '#1a7c3e', fontWeight: 500 }}>{s}</span>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, background: '#e3f5f1', border: '0.5px solid #bbddc8' }}>
+                <span style={{ color: '#1f8c7d', fontSize: 13 }}>✓</span>
+                <span style={{ fontSize: 12, color: '#1f8c7d', fontWeight: 500 }}>{s}</span>
               </div>
             ))}
           </div>

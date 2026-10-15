@@ -95,7 +95,7 @@ export function CreateActivityModal({ onClose, onCreated, contractId, companyId,
               <label style={lbl}>Status</label>
               <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '0.5px solid #d1d8e8', marginTop: 4 }}>
                 {(['planned', 'done'] as const).map(s => (
-                  <button key={s} onClick={() => setStatus(s)} style={{ padding: '7px 12px', fontSize: 11, border: 'none', cursor: 'pointer', fontWeight: status === s ? 500 : 400, background: status === s ? (s === 'done' ? '#1a7c3e' : '#3b5bdb') : '#fff', color: status === s ? '#fff' : '#8892a4' }}>
+                  <button key={s} onClick={() => setStatus(s)} style={{ padding: '7px 12px', fontSize: 11, border: 'none', cursor: 'pointer', fontWeight: status === s ? 500 : 400, background: status === s ? (s === 'done' ? '#1f8c7d' : '#524e9c') : '#fff', color: status === s ? '#fff' : '#8892a4' }}>
                     {s === 'planned' ? 'Planejada' : 'Concluída'}
                   </button>
                 ))}
@@ -150,7 +150,7 @@ export function CreateActivityModal({ onClose, onCreated, contractId, companyId,
             </div>
           )}
 
-          {error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{error}</p>}
+          {error && <p style={{ fontSize: 12, color: '#8e4550' }}>{error}</p>}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
             <button onClick={onClose} style={{ padding: '8px 16px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', cursor: 'pointer' }}>Cancelar</button>

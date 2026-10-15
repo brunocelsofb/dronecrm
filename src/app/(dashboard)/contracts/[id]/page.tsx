@@ -357,14 +357,14 @@ export default async function ContractDetailPage({
                 users={(allProfiles ?? []).map((p) => ({ id: p.id, full_name: p.full_name }))}
               />
               {contract.auto_renewal && (
-                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#eef3ff', color: '#3b5bdb' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, background: '#e8e7f4', color: '#524e9c' }}>
                   🔄 Renovação automática
                 </span>
               )}
             </div>
             <p style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 12, color: '#b0b8c8' }}>{contract.process_number}</p>
             {linkedCompany && (
-              <Link href={`/companies/${linkedCompany.id}`} style={{ marginTop: 4, display: 'inline-block', fontSize: 12, color: '#4f86f7', textDecoration: 'none' }}>
+              <Link href={`/companies/${linkedCompany.id}`} style={{ marginTop: 4, display: 'inline-block', fontSize: 12, color: '#1b556b', textDecoration: 'none' }}>
                 {linkedCompany.name} →
               </Link>
             )}

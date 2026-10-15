@@ -196,7 +196,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
   const g2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }
   const sec: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#1a1f36', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px', paddingTop: 8 }
   const ABC_STYLE: Record<string, { bg: string; color: string }> = {
-    A: { bg: '#fdecea', color: '#b91c1c' }, B: { bg: '#fff8e6', color: '#92400e' }, C: { bg: '#f1f3f8', color: '#52514e' },
+    A: { bg: '#f6e9ea', color: '#8e4550' }, B: { bg: '#fbeee5', color: '#c2683d' }, C: { bg: '#f1f3f8', color: '#52514e' },
   }
 
   // Itens de contrato condicionais por natureza
@@ -274,7 +274,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
             if (e.target.value) setFidNota(calcFidelidadeByDate(e.target.value))
           }} />
           {data.valid_from && (
-            <p style={{ fontSize: 10, color: '#3b5bdb', marginTop: 3 }}>
+            <p style={{ fontSize: 10, color: '#524e9c', marginTop: 3 }}>
               ↳ Fidelidade calculada: nota {calcFidelidadeByDate(data.valid_from)} — {
                 (() => { const y = (Date.now() - new Date(data.valid_from).getTime()) / (365.25*24*3600*1000); return y >= 2 ? '2+ anos' : y >= 1 ? '1–2 anos' : 'menos de 1 ano' })()
               }
@@ -298,7 +298,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
             onChange={e => set('valid_until', e.target.value || null)}
           />
           {data.valid_from && data.validity_months && (
-            <p style={{ fontSize: 10, color: '#1a7c3e', marginTop: 3 }}>✓ Calculado: início + {data.validity_months} meses</p>
+            <p style={{ fontSize: 10, color: '#1f8c7d', marginTop: 3 }}>✓ Calculado: início + {data.validity_months} meses</p>
           )}
         </div>
       </div>
@@ -420,13 +420,13 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
       <textarea style={{ ...inp, minHeight: 64, resize: 'vertical', marginBottom: 16, fontFamily: 'inherit' }}
         value={data.internal_notes ?? ''} onChange={e => set('internal_notes', e.target.value)} placeholder="Notas internas..." />
 
-      {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8 }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: '#8e4550', marginBottom: 8 }}>{error}</p>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button onClick={handleSave} disabled={busy}
           style={{ padding: '8px 20px', fontSize: 13, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
           {busy ? 'Salvando...' : 'Salvar dados da carteira'}
         </button>
-        {saved && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✅ Salvo</span>}
+        {saved && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✅ Salvo</span>}
       </div>
     </div>
   )

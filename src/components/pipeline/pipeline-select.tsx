@@ -3,9 +3,9 @@
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 
 const TYPE_BADGE: Record<string, { bg: string; color: string }> = {
-  vendas:          { bg: '#eaf5ee', color: '#1a7c3e' },
-  gestao_contratos:{ bg: '#eef3ff', color: '#3b5bdb' },
-  servico_avulso:  { bg: '#fff8e6', color: '#92400e' },
+  vendas:          { bg: '#e3f5f1', color: '#1f8c7d' },
+  gestao_contratos:{ bg: '#e8e7f4', color: '#524e9c' },
+  servico_avulso:  { bg: '#fbeee5', color: '#c2683d' },
 }
 
 export function PipelineSelect({

@@ -52,13 +52,13 @@ function fmtDate(d: string) {
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
   rascunho:               { label: 'Rascunho',             color: '#52514e', bg: '#f1f3f8' },
-  em_aprovacao_tecnica:   { label: 'Análise Técnica',      color: '#92400e', bg: '#fff8e6' },
-  aprovado_tecnico:       { label: 'OK Técnico',           color: '#3b5bdb', bg: '#eef3ff' },
-  reprovado_tecnico:      { label: 'Reprovado',            color: '#b91c1c', bg: '#fdecea' },
-  em_aprovacao_comercial: { label: 'Aprov. Comercial',     color: '#92400e', bg: '#fff8e6' },
-  aprovado_comercial:     { label: 'Aguardando Cliente',   color: '#1a7c3e', bg: '#eaf5ee' },
+  em_aprovacao_tecnica:   { label: 'Análise Técnica',      color: '#c2683d', bg: '#fbeee5' },
+  aprovado_tecnico:       { label: 'OK Técnico',           color: '#524e9c', bg: '#e8e7f4' },
+  reprovado_tecnico:      { label: 'Reprovado',            color: '#8e4550', bg: '#f6e9ea' },
+  em_aprovacao_comercial: { label: 'Aprov. Comercial',     color: '#c2683d', bg: '#fbeee5' },
+  aprovado_comercial:     { label: 'Aguardando Cliente',   color: '#1f8c7d', bg: '#e3f5f1' },
   cliente_aprovado:       { label: '✅ Cliente Aprovou',   color: '#166534', bg: '#dcfce7' },
-  cliente_recusado:       { label: '❌ Cliente Recusou',   color: '#b91c1c', bg: '#fdecea' },
+  cliente_recusado:       { label: '❌ Cliente Recusou',   color: '#8e4550', bg: '#f6e9ea' },
   declinada:              { label: '🚫 Declinada',         color: '#6b7280', bg: '#f3f4f6' },
 }
 
@@ -175,7 +175,7 @@ function MenuItem({ icon, label, onClick, danger }: { icon: string; label: strin
         padding: '9px 14px', fontSize: 12, fontWeight: 500, textAlign: 'left',
         background: hover ? (danger ? '#fef2f2' : '#f8f9fb') : 'transparent',
         border: 'none', cursor: 'pointer',
-        color: danger ? '#b91c1c' : '#1a1f36',
+        color: danger ? '#8e4550' : '#1a1f36',
       }}>
       <span style={{ fontSize: 13 }}>{icon}</span> {label}
     </button>
@@ -300,8 +300,8 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
         {isReadOnly && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
-            borderRadius: 8, background: '#fffbeb', border: '0.5px solid #fde68a',
-            marginBottom: 16, fontSize: 12, color: '#92400e', fontWeight: 500,
+            borderRadius: 8, background: '#fffbeb', border: '0.5px solid #ffe596',
+            marginBottom: 16, fontSize: 12, color: '#c2683d', fontWeight: 500,
           }}>
             🔒 Esta proposta está <strong style={{ marginLeft: 4 }}>
               {wStatus === 'cliente_aprovado' ? 'assinada pelo cliente' : 'encerrada'}
@@ -414,7 +414,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
                 <span style={{ fontSize: 12, color: '#52514e', display: 'flex', alignItems: 'center' }}>
                   {p.updated_at ? fmtDate(p.updated_at) : fmtDate(p.created_at)}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#1a7c3e', display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#1f8c7d', display: 'flex', alignItems: 'center' }}>
                   {p.proposal_value ? fmt(p.proposal_value) : '—'}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -459,7 +459,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
               <button onClick={() => setDeclineModal(null)} style={{ padding: '8px 16px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', cursor: 'pointer' }}>
                 Cancelar
               </button>
-              <button onClick={confirmDecline} disabled={!!decliningId} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', background: '#b91c1c', color: '#fff', cursor: 'pointer', opacity: decliningId ? 0.6 : 1 }}>
+              <button onClick={confirmDecline} disabled={!!decliningId} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', background: '#8e4550', color: '#fff', cursor: 'pointer', opacity: decliningId ? 0.6 : 1 }}>
                 {decliningId ? 'Declinando...' : 'Confirmar declínio'}
               </button>
             </div>

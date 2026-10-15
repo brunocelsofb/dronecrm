@@ -7,7 +7,7 @@ import { updateTag, deleteTag } from '@/lib/actions/tags'
 type Tag = { id: string; name: string; color: string; context?: string | null }
 
 const PRESET_COLORS = [
-  '#3b5bdb','#1a7c3e','#b91c1c','#92400e','#6B7280',
+  '#524e9c','#1f8c7d','#8e4550','#c2683d','#6B7280',
   '#7c3aed','#0891b2','#be185d','#0f766e','#b45309',
 ]
 
@@ -63,7 +63,7 @@ export function TagsManager({ initialTags }: { initialTags: Tag[] }) {
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'hidden' }}>
-      {error && <p style={{ fontSize: 12, color: '#b91c1c', padding: '8px 16px' }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: '#8e4550', padding: '8px 16px' }}>{error}</p>}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
@@ -133,11 +133,11 @@ export function TagsManager({ initialTags }: { initialTags: Tag[] }) {
                   <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: 12 }}>
                       <button onClick={() => startEdit(tag)}
-                        style={{ fontSize: 12, color: '#3b5bdb', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        style={{ fontSize: 12, color: '#524e9c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         Editar
                       </button>
                       <button onClick={() => handleDelete(tag.id, tag.name)} disabled={busy}
-                        style={{ fontSize: 12, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        style={{ fontSize: 12, color: '#8e4550', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         Excluir
                       </button>
                     </div>

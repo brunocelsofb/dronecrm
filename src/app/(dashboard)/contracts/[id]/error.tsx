@@ -16,8 +16,8 @@ export default function ContractError({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, gap: 16, padding: 24 }}>
-      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #fca5a5', padding: 24, maxWidth: 500, width: '100%' }}>
-        <p style={{ fontSize: 15, fontWeight: 500, color: '#b91c1c', marginBottom: 8 }}>Erro ao carregar a página</p>
+      <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #dcadb3', padding: 24, maxWidth: 500, width: '100%' }}>
+        <p style={{ fontSize: 15, fontWeight: 500, color: '#8e4550', marginBottom: 8 }}>Erro ao carregar a página</p>
         <p style={{ fontSize: 12, color: '#52514e', marginBottom: 4 }}>
           {error.message || 'Ocorreu um erro inesperado.'}
         </p>

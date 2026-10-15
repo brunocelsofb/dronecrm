@@ -73,8 +73,8 @@ function fmt(value: number) {
 
 const FRESHNESS_STYLES = {
   fresh:   { border: '0.5px solid #e8edf5', background: '#fff', borderLeft: '0.5px solid #e8edf5' },
-  warning: { border: '0.5px solid #fde68a', background: '#fffdf5', borderLeft: '3px solid #f59e0b' },
-  stale:   { border: '0.5px solid #fca5a5', background: '#fff5f5', borderLeft: '3px solid #ef4444' },
+  warning: { border: '0.5px solid #ffe596', background: '#fffdf5', borderLeft: '3px solid #f59e0b' },
+  stale:   { border: '0.5px solid #dcadb3', background: '#fff5f5', borderLeft: '3px solid #ef4444' },
 } as const
 
 function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
@@ -133,8 +133,8 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
         >
           {card.clientName}
         </button>
-        {card.status === 'won' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{wonLabel}</span>}
-        {card.status === 'lost' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#fdecea', color: '#b91c1c', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{lostLabel}</span>}
+        {card.status === 'won' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{wonLabel}</span>}
+        {card.status === 'lost' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#f6e9ea', color: '#8e4550', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{lostLabel}</span>}
       </div>
 
       {card.tag && (
@@ -149,14 +149,14 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
         <div style={{ marginTop: 6 }}>
           <RevenueTypeBadge billingType={card.revenue.type} size="sm" />
           {card.revenue.type === 'metered' && card.revenue.last && (
-            <p style={{ marginTop: 4, fontSize: 10, lineHeight: 1.35, color: card.revenue.last.lost > 0 ? '#b91c1c' : '#1a7c3e' }}>
+            <p style={{ marginTop: 4, fontSize: 10, lineHeight: 1.35, color: card.revenue.last.lost > 0 ? '#8e4550' : '#1f8c7d' }}>
               {MONTHS_SHORT[card.revenue.last.month - 1]}/{String(card.revenue.last.year).slice(2)}: {fmt(card.revenue.last.net)}
               {card.revenue.last.lost > 0 ? ` · perdemos ${fmt(card.revenue.last.lost)}${card.revenue.last.lostPct !== null ? ` (${card.revenue.last.lostPct}%)` : ''}` : ' · 100% do potencial'}
               {card.revenue.last.pending ? ' · aguardando aprovação' : ''}
             </p>
           )}
           {card.revenue.type === 'metered' && card.revenue.refMissing && (
-            <p style={{ marginTop: 3, fontSize: 10, fontWeight: 500, color: card.revenue.refMissing.overdue ? '#b91c1c' : '#92400e' }}>
+            <p style={{ marginTop: 3, fontSize: 10, fontWeight: 500, color: card.revenue.refMissing.overdue ? '#8e4550' : '#c2683d' }}>
               {card.revenue.refMissing.overdue ? '⚠ ' : ''}Medição de {MONTHS_SHORT[card.revenue.refMissing.month - 1]} {card.revenue.refMissing.overdue ? 'atrasada' : 'pendente'}
             </p>
           )}
@@ -180,7 +180,7 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
               ↔ Funil
             </button>
           )}
-          <span style={{ borderRadius: 20, padding: '2px 7px', fontSize: 10, fontWeight: 500, background: overdue ? '#fdecea' : '#f1f3f8', color: overdue ? '#b91c1c' : '#8892a4' }}>
+          <span style={{ borderRadius: 20, padding: '2px 7px', fontSize: 10, fontWeight: 500, background: overdue ? '#f6e9ea' : '#f1f3f8', color: overdue ? '#8e4550' : '#8892a4' }}>
             {days === 0 ? '< 1 dia' : `${days}d`}
           </span>
         </div>
@@ -204,7 +204,7 @@ function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer }:
         flexShrink: 0,
         borderRadius: 12,
         padding: '12px 10px',
-        background: isOver ? '#eef3ff' : '#f1f3f8',
+        background: isOver ? '#e8e7f4' : '#f1f3f8',
         border: isOver ? '0.5px solid #b0c4f8' : '0.5px solid #e8edf5',
         transition: 'background 0.15s, border 0.15s',
       }}
@@ -233,8 +233,8 @@ function TrashDropzone() {
       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
       borderRadius: 12, border: `2px dashed ${isOver ? '#ef4444' : '#d1d8e8'}`,
       padding: '20px 16px', fontSize: 12, fontWeight: 500,
-      background: isOver ? '#fdecea' : 'rgba(255,255,255,0.8)',
-      color: isOver ? '#b91c1c' : '#8892a4',
+      background: isOver ? '#f6e9ea' : 'rgba(255,255,255,0.8)',
+      color: isOver ? '#8e4550' : '#8892a4',
       transition: 'all 0.15s', cursor: 'copy',
       minWidth: 160,
     }}>
@@ -400,11 +400,11 @@ export function KanbanBoard({
           <p style={{ fontSize: 12, color: '#8892a4', marginBottom: 12 }}>{transferCard.clientName || transferCard.title}</p>
           {isGestao
             ? (
-              <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8, background: '#fdecea', border: '1.5px solid #fca5a5', fontSize: 12, color: '#b91c1c' }}>
+              <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 8, background: '#f6e9ea', border: '1.5px solid #dcadb3', fontSize: 12, color: '#8e4550' }}>
                 🚨 <strong>Atenção redobrada:</strong> este contrato está em gestão ativa — já passou pelo funil de vendas e foi ganho. Transferi-lo irá movê-lo para outro funil e criará uma nova passagem. O histórico é preservado, mas o contrato sairá da gestão atual. <strong>Você confirma?</strong>
               </div>
             ) : (
-              <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: '#fff8e6', border: '0.5px solid #fde68a', fontSize: 12, color: '#92400e' }}>
+              <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596', fontSize: 12, color: '#c2683d' }}>
                 ⚠ <strong>Atenção:</strong> a oportunidade será movida para o funil de destino. O histórico é preservado. <strong>Você autoriza?</strong>
               </div>
             )
@@ -444,7 +444,7 @@ export function KanbanBoard({
     )}
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{error}</p>}
+        {error && <p style={{ fontSize: 12, color: '#8e4550' }}>{error}</p>}
         <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8892a4', cursor: 'pointer' }}>
           <input
             type="checkbox"

@@ -74,20 +74,20 @@ export function ClientApprovalForm({ token, contractId, currentStatus }: {
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 11, color: '#8892a4', marginBottom: 4 }}>
-            CPF <span style={{ color: '#b91c1c' }}>*</span>
+            CPF <span style={{ color: '#8e4550' }}>*</span>
           </label>
           <input
             value={cpf}
             onChange={e => setCpf(formatCPF(e.target.value))}
-            style={{ ...inp, borderColor: cpfDigitado ? (cpfValido ? '#22c55e' : '#b91c1c') : '#d1d8e8' }}
+            style={{ ...inp, borderColor: cpfDigitado ? (cpfValido ? '#22c55e' : '#8e4550') : '#d1d8e8' }}
             placeholder="000.000.000-00"
             maxLength={14}
           />
           {cpfDigitado && !cpfValido && (
-            <p style={{ fontSize: 11, color: '#b91c1c', margin: '4px 0 0' }}>CPF inválido. Verifique o número.</p>
+            <p style={{ fontSize: 11, color: '#8e4550', margin: '4px 0 0' }}>CPF inválido. Verifique o número.</p>
           )}
           {cpfDigitado && cpfValido && (
-            <p style={{ fontSize: 11, color: '#1a7c3e', margin: '4px 0 0' }}>✓ CPF válido</p>
+            <p style={{ fontSize: 11, color: '#1f8c7d', margin: '4px 0 0' }}>✓ CPF válido</p>
           )}
         </div>
         <div>
@@ -97,7 +97,7 @@ export function ClientApprovalForm({ token, contractId, currentStatus }: {
         </div>
       </div>
 
-      {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 12 }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: '#8e4550', marginBottom: 12 }}>{error}</p>}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => handleSubmit('aprovado')} disabled={loading || !cpfValido || !name.trim()}
@@ -105,7 +105,7 @@ export function ClientApprovalForm({ token, contractId, currentStatus }: {
           🤝 Aceitar proposta
         </button>
         <button onClick={() => handleSubmit('recusado')} disabled={loading || !cpfValido || !name.trim()}
-          style={{ flex: 1, padding: '14px', fontSize: 14, fontWeight: 600, borderRadius: 10, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
+          style={{ flex: 1, padding: '14px', fontSize: 14, fontWeight: 600, borderRadius: 10, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer', opacity: loading ? 0.6 : 1 }}>
           ❌ Declinar
         </button>
       </div>

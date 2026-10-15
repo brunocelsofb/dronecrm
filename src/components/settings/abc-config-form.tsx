@@ -57,12 +57,12 @@ function Section({ title, emoji, data, onSave }: {
           <div>
             <label style={lbl}>Curva A — mínimo</label>
             <input type="number" step="0.01" value={d.curve_a_min} onChange={e => setD(prev => ({ ...prev, curve_a_min: Number(e.target.value) }))} style={inp} />
-            <p style={{ fontSize: 10, color: '#b91c1c', marginTop: 3 }}>≥ {d.curve_a_min} = A</p>
+            <p style={{ fontSize: 10, color: '#8e4550', marginTop: 3 }}>≥ {d.curve_a_min} = A</p>
           </div>
           <div>
             <label style={lbl}>Curva B — mínimo</label>
             <input type="number" step="0.01" value={d.curve_b_min} onChange={e => setD(prev => ({ ...prev, curve_b_min: Number(e.target.value) }))} style={inp} />
-            <p style={{ fontSize: 10, color: '#92400e', marginTop: 3 }}>≥ {d.curve_b_min} e &lt; {d.curve_a_min} = B</p>
+            <p style={{ fontSize: 10, color: '#c2683d', marginTop: 3 }}>≥ {d.curve_b_min} e &lt; {d.curve_a_min} = B</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
             <p style={{ fontSize: 10, color: '#8892a4' }}>&lt; {d.curve_b_min} = C</p>
@@ -75,7 +75,7 @@ function Section({ title, emoji, data, onSave }: {
           style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
           {busy ? 'Salvando...' : 'Salvar'}
         </button>
-        {saved && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✅ Salvo</span>}
+        {saved && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✅ Salvo</span>}
       </div>
     </div>
   )

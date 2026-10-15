@@ -20,10 +20,10 @@ export function CompanyRowActions({ companyId, companyName, isAdmin }: { company
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      <Link href={`/companies/${companyId}`} style={{ fontSize: 11, color: '#4f86f7', textDecoration: 'none' }}>Ver</Link>
+      <Link href={`/companies/${companyId}`} style={{ fontSize: 11, color: '#1b556b', textDecoration: 'none' }}>Ver</Link>
       {isAdmin && (
         <button onClick={handleDelete} disabled={deleting}
-          style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: deleting ? 0.5 : 1 }}>
+          style={{ fontSize: 11, color: '#8e4550', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: deleting ? 0.5 : 1 }}>
           {deleting ? '...' : 'Excluir'}
         </button>
       )}

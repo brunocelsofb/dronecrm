@@ -9,8 +9,8 @@ import { useRouter } from 'next/navigation'
 import { setBillingType } from '@/lib/actions/billing'
 
 const OPTIONS = [
-  { value: 'fixed', label: '$ Recorrente', hint: 'Entra automática todo mês pelo valor do contrato', bg: '#dbeafe', color: '#1e40af' },
-  { value: 'metered', label: '📏 Medição', hint: 'Conta só a medição validada de cada mês (com relatório ou aprovação do admin)', bg: '#ffedd5', color: '#9a3412' },
+  { value: 'fixed', label: '$ Recorrente', hint: 'Entra automática todo mês pelo valor do contrato', bg: '#e4eef1', color: '#1b556b' },
+  { value: 'metered', label: '📏 Medição', hint: 'Conta só a medição validada de cada mês (com relatório ou aprovação do admin)', bg: '#fbeee5', color: '#c2683d' },
 ] as const
 
 export function RevenueTypeToggle({ contractId, billingType, canEdit }: { contractId: string; billingType: string | null; canEdit: boolean }) {

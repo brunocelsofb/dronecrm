@@ -4,12 +4,12 @@ import { CarteiraSelectFilters } from '@/components/carteira/carteira-select-fil
 
 const TYPE_LABEL: Record<string, string> = { fixo: 'Fixo', medicao: 'Por Medição' }
 const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
-  fixo:    { bg: '#eaf5ee', color: '#1a7c3e' },
-  medicao: { bg: '#eef3ff', color: '#3b5bdb' },
+  fixo:    { bg: '#e3f5f1', color: '#1f8c7d' },
+  medicao: { bg: '#e8e7f4', color: '#524e9c' },
 }
 const ABC_STYLE: Record<string, { bg: string; color: string }> = {
-  A: { bg: '#fdecea', color: '#b91c1c' },
-  B: { bg: '#fff8e6', color: '#92400e' },
+  A: { bg: '#f6e9ea', color: '#8e4550' },
+  B: { bg: '#fbeee5', color: '#c2683d' },
   C: { bg: '#f1f3f8', color: '#8892a4' },
 }
 
@@ -24,11 +24,11 @@ function diasAVencer(validUntil: string | null): number | null {
 
 function alertaStyle(dias: number | null): { bg: string; color: string; label: string } {
   if (dias === null) return { bg: '#f1f3f8', color: '#8892a4', label: 'Sem vigência' }
-  if (dias < 0)    return { bg: '#fdecea', color: '#b91c1c', label: `Vencido há ${Math.abs(dias)}d` }
-  if (dias <= 30)  return { bg: '#fdecea', color: '#b91c1c', label: `${dias}d ⚠` }
-  if (dias <= 60)  return { bg: '#fff8e6', color: '#92400e', label: `${dias}d` }
-  if (dias <= 90)  return { bg: '#fff8e6', color: '#92400e', label: `${dias}d` }
-  return { bg: '#eaf5ee', color: '#1a7c3e', label: `${dias}d` }
+  if (dias < 0)    return { bg: '#f6e9ea', color: '#8e4550', label: `Vencido há ${Math.abs(dias)}d` }
+  if (dias <= 30)  return { bg: '#f6e9ea', color: '#8e4550', label: `${dias}d ⚠` }
+  if (dias <= 60)  return { bg: '#fbeee5', color: '#c2683d', label: `${dias}d` }
+  if (dias <= 90)  return { bg: '#fbeee5', color: '#c2683d', label: `${dias}d` }
+  return { bg: '#e3f5f1', color: '#1f8c7d', label: `${dias}d` }
 }
 
 export default async function CarteiraPage({
@@ -313,8 +313,8 @@ export default async function CarteiraPage({
                       {c.naturezaLabel ? (
                         <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium"
                           style={{
-                            background: c.naturezaLabel.includes('Hospit') ? '#eef3ff' : '#eaf5ee',
-                            color: c.naturezaLabel.includes('Hospit') ? '#3b5bdb' : '#1a7c3e',
+                            background: c.naturezaLabel.includes('Hospit') ? '#e8e7f4' : '#e3f5f1',
+                            color: c.naturezaLabel.includes('Hospit') ? '#524e9c' : '#1f8c7d',
                           }}>
                           {c.naturezaLabel}
                         </span>

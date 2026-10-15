@@ -11,12 +11,12 @@ export const brl2 = (v: number | null | undefined) =>
 export const pctTxt = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR')}%`)
 
 // Cores fixas por tipo de receita (mesmas no gráfico, na barra e nas legendas)
-// Paleta categórica validada para daltonismo (3 primeiras posições)
-export const REV_COLORS = { recurring: '#2a78d6', metered: '#eb6834', avulso: '#1baf7a' } as const
+// Paleta primária da marca: azul petróleo, coral e verde-água (separação validada para daltonismo)
+export const REV_COLORS = { recurring: '#1b556b', metered: '#e98c5f', avulso: '#32af9d' } as const
 
 const AGENT_STYLE = {
-  hunter: { bg: 'bg-amber-50', ring: 'ring-amber-200', chip: 'bg-amber-500', text: 'text-amber-900', icon: '🎯' },
-  farmer: { bg: 'bg-emerald-50', ring: 'ring-emerald-200', chip: 'bg-emerald-600', text: 'text-emerald-900', icon: '🌱' },
+  hunter: { bg: 'bg-warn-100', ring: 'ring-warn-600', chip: 'bg-warn-600', text: 'text-amber-900', icon: '🎯' },
+  farmer: { bg: 'bg-positive-100', ring: 'ring-positive-600', chip: 'bg-positive-600', text: 'text-emerald-900', icon: '🌱' },
 } as const
 
 export function Section({ title, subtitle, agent, children }: { title: string; subtitle?: string; agent?: 'hunter' | 'farmer'; children: React.ReactNode }) {
@@ -105,9 +105,9 @@ export function RevenueHero({
 }) {
   const sum = parts.reduce((s, p) => s + p.value, 0)
   const pctW = Math.min(100, goalPct ?? 0)
-  const status = goal <= 0 ? null : (goalPct ?? 0) >= 100 ? { t: 'Meta atingida', c: 'bg-emerald-400/20 text-emerald-100' } : (goalPct ?? 0) >= 80 ? { t: 'Perto da meta', c: 'bg-amber-300/20 text-amber-100' } : { t: 'Abaixo da meta', c: 'bg-red-300/20 text-red-100' }
+  const status = goal <= 0 ? null : (goalPct ?? 0) >= 100 ? { t: 'Meta atingida', c: 'bg-positive-600 text-white' } : (goalPct ?? 0) >= 80 ? { t: 'Perto da meta', c: 'bg-warn-600 text-white' } : { t: 'Abaixo da meta', c: 'bg-negative-600 text-white' }
   return (
-    <div className="flex h-full flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-[#1B556B] to-[#123B4A] p-5 text-white shadow-sm">
+    <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#1B556B] to-[#0e2933] p-5 text-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wider text-white/70">{label}</p>
@@ -117,7 +117,7 @@ export function RevenueHero({
               <span className="font-semibold text-white">{pctTxt(goalPct)}</span> da meta de {brl(goal)}
               {' · '}{gap > 0 ? `faltam ${brl(gap)}` : `superada em ${brl(-gap)}`}
             </p>
-          ) : <div className="mt-1 text-sm text-amber-200">{noGoal}</div>}
+          ) : <div className="mt-1 text-sm text-[#FFE596]">{noGoal}</div>}
           {extra && <div className="mt-0.5 text-xs text-white/70">{extra}</div>}
         </div>
         {status && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.c}`}>{status.t}</span>}
@@ -131,9 +131,9 @@ export function RevenueHero({
         </div>
       )}
 
-      <div className="mt-5 rounded-xl bg-white/10 p-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">Composição</p>
-        <div className="mt-2 flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-white/10">
+      <div className="mt-5 rounded-xl bg-white p-3 text-gray-900">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Composição</p>
+        <div className="mt-2 flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-gray-100">
           {sum > 0 && parts.filter(p => p.value > 0).map(p => (
             <div key={p.key} title={`${p.label}: ${brl(p.value)}`} style={{ width: `${(p.value / sum) * 100}%`, background: REV_COLORS[p.key] }} />
           ))}
@@ -143,8 +143,8 @@ export function RevenueHero({
             <div key={p.key} className="flex items-start gap-2 sm:block">
               <div className="flex items-center gap-1.5">
                 <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: REV_COLORS[p.key] }} />
-                <span className="whitespace-nowrap text-xs text-white/80">{p.label}</span>
-                <span className="text-[11px] tabular-nums text-white/60">{sum > 0 ? `${Math.round((p.value / sum) * 100)}%` : '—'}</span>
+                <span className="whitespace-nowrap text-xs text-gray-600">{p.label}</span>
+                <span className="text-[11px] tabular-nums text-gray-400">{sum > 0 ? `${Math.round((p.value / sum) * 100)}%` : '—'}</span>
               </div>
               <p className="ml-auto text-base font-semibold tabular-nums sm:ml-0 sm:mt-0.5">{brl(p.value)}</p>
             </div>
@@ -176,7 +176,7 @@ export function RevenueGoalChart({
         <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.recurring }} />$ Recorrente</span>
         <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.metered }} />📏 Medição</span>
         <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: REV_COLORS.avulso }} />Avulso</span>
-        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-gray-800" />Meta</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[#132c33]" />Meta</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Receita por tipo e meta, mês a mês">
         <line x1={padL} x2={W - padL} y1={y(0)} y2={y(0)} stroke="#e5e7eb" strokeWidth={1} />
@@ -207,7 +207,7 @@ export function RevenueGoalChart({
                 const r = Math.min(4, h / 2)
                 return <path key={k} d={`M${bx},${y0} V${y1 + r} Q${bx},${y1} ${bx + r},${y1} H${bx + barW - r} Q${bx + barW},${y1} ${bx + barW},${y1 + r} V${y0} Z`} fill={g.c} />
               })}
-              {s.goal > 0 && <line x1={bx - 5} x2={bx + barW + 5} y1={y(s.goal)} y2={y(s.goal)} stroke="#1f2937" strokeWidth={2} strokeLinecap="round" />}
+              {s.goal > 0 && <line x1={bx - 5} x2={bx + barW + 5} y1={y(s.goal)} y2={y(s.goal)} stroke="#132c33" strokeWidth={2} strokeLinecap="round" />}
               <text x={x + bw / 2} y={H - 7} textAnchor="middle" fontSize={11} fill={dim ? '#9ca3af' : '#4b5563'} fontWeight={dim ? 400 : 600}>{monthLabels[i]}</text>
             </g>
           )

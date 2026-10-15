@@ -75,8 +75,8 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
 
       {/* ── Receita x meta ─────────────────────────────────────────── */}
       <Section title={isYear ? 'Receita do período' : `Receita de ${MONTHS_LONG[month - 1]}`} subtitle="Recorrente + medição validada + avulso faturado">
-        <div className="grid gap-3 lg:grid-cols-5">
-          <div className="lg:col-span-3">
+        <div className="grid gap-3">
+          <div>
             <RevenueHero
               label={isYear ? `Receita · ${allYear ? 'ano todo' : `${sel.length} ${sel.length === 1 ? 'mês' : 'meses'}`}` : 'Receita do mês'}
               total={rv.total}
@@ -92,7 +92,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
               noGoal={<>Sem meta {isYear ? 'nos meses escolhidos' : 'para este mês'}. {isAdmin ? <Link href={`/settings/metas?ano=${year}`} className="underline">Cadastrar metas</Link> : 'Peça ao administrador.'}</>}
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:col-span-2 lg:grid-cols-1">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Kpi accent={REV_COLORS.recurring} label="$ Recorrente" value={brl(rv.recurringTotal)} hint={isYear ? `${rv.recurring.length} contrato(s) no período` : `${rv.recurring.length} contrato(s) ativos`} lines={rv.recurring} />
             <Kpi
               accent={REV_COLORS.metered}

@@ -221,9 +221,9 @@ export function StageBar({
             {!isAvulso && (<>
             <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Vigência</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
-              <div><label style={lbl}>Início <span style={{ color: '#b91c1c' }}>*</span></label>
+              <div><label style={lbl}>Início <span style={{ color: '#8e4550' }}>*</span></label>
                 <input type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} style={inp} /></div>
-              <div><label style={lbl}>Fim <span style={{ color: '#b91c1c' }}>*</span></label>
+              <div><label style={lbl}>Fim <span style={{ color: '#8e4550' }}>*</span></label>
                 <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 16 }}>
@@ -242,7 +242,7 @@ export function StageBar({
                 <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>Dados do contrato</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                   <div>
-                    <label style={lbl}>CNPJ de Faturamento <span style={{ color: '#b91c1c' }}>*</span></label>
+                    <label style={lbl}>CNPJ de Faturamento <span style={{ color: '#8e4550' }}>*</span></label>
                     {billingCnpjs.length > 0 ? (
                       <select value={cnpjBilling} onChange={e => setCnpjBilling(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
                         {billingCnpjs.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -253,7 +253,7 @@ export function StageBar({
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label style={lbl}>Tipo de contrato <span style={{ color: '#b91c1c' }}>*</span></label>
+                      <label style={lbl}>Tipo de contrato <span style={{ color: '#8e4550' }}>*</span></label>
                       <select value={contractType} onChange={e => setContractType(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
                         <option value="">Selecione...</option>
                         {CONTRACT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -265,7 +265,7 @@ export function StageBar({
                     </div>
                   </div>
                   <div>
-                    <label style={lbl}>Consultor responsável pela conta <span style={{ color: '#b91c1c' }}>*</span></label>
+                    <label style={lbl}>Consultor responsável pela conta <span style={{ color: '#8e4550' }}>*</span></label>
                     <select value={accountOwnerId} onChange={e => setAccountOwnerId(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
                       <option value="">Selecione quem assume a conta (retenção)...</option>
                       {(accountOwnerOptions ?? []).map(p => (
@@ -279,7 +279,7 @@ export function StageBar({
                     </p>
                   </div>
                   {contractNature && (
-                    <div style={{ padding: '8px 12px', borderRadius: 8, background: '#eef3ff', fontSize: 11, color: '#3b5bdb' }}>
+                    <div style={{ padding: '8px 12px', borderRadius: 8, background: '#e8e7f4', fontSize: 11, color: '#524e9c' }}>
                       📋 Natureza: <strong>{contractNature === 'eng_clinica' ? 'Engenharia Clínica' : 'Engenharia Hospitalar'}</strong> — pré-preenchida pela tag
                     </div>
                   )}
@@ -290,12 +290,12 @@ export function StageBar({
             {isGestaoContratos && (
               <div style={{ marginBottom: 16, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>
                 <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Valor do novo período</p>
-                <label style={lbl}>Novo valor mensal (R$) <span style={{ color: '#b91c1c' }}>*</span></label>
+                <label style={lbl}>Novo valor mensal (R$) <span style={{ color: '#8e4550' }}>*</span></label>
                 <input inputMode="decimal" value={renewalValue} onChange={e => setRenewalValue(e.target.value)} placeholder={prevValue > 0 ? String(prevValue).replace('.', ',') : '0,00'} style={inp} />
                 <p style={{ fontSize: 11, color: '#52514e', marginTop: 6 }}>
                   Valor atual: <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prevValue)}</strong>
                   {renewalPct !== null && (
-                    <span style={{ marginLeft: 8, fontWeight: 600, color: renewalPct > 0 ? '#1a7c3e' : renewalPct < 0 ? '#b91c1c' : '#52514e' }}>
+                    <span style={{ marginLeft: 8, fontWeight: 600, color: renewalPct > 0 ? '#1f8c7d' : renewalPct < 0 ? '#8e4550' : '#52514e' }}>
                       {renewalPct > 0 ? `▲ aumento de ${renewalPct}%` : renewalPct < 0 ? `▼ redução de ${Math.abs(renewalPct)}%` : 'sem alteração de valor'}
                     </span>
                   )}
@@ -306,13 +306,13 @@ export function StageBar({
             {isAvulso && (
               <div style={{ marginBottom: 16, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>
                 <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Relatório final</p>
-                <label style={lbl}>Relatório do serviço <span style={{ color: '#b91c1c' }}>*</span></label>
+                <label style={lbl}>Relatório do serviço <span style={{ color: '#8e4550' }}>*</span></label>
                 <input type="file" onChange={e => setReportFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
                 <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>O faturamento do avulso só entra na receita com o relatório anexado. Ele também fica em Arquivos.</p>
               </div>
             )}
 
-            {!modalValid && <p style={{ fontSize: 11, color: '#92400e', marginBottom: 12 }}>
+            {!modalValid && <p style={{ fontSize: 11, color: '#c2683d', marginBottom: 12 }}>
               ⚠ {isAvulso ? 'Anexe o relatório final do serviço.'
                 : !validFrom || !validUntil ? 'Preencha início e fim da vigência.'
                 : !isGestaoContratos && !contractType ? 'Selecione o tipo de contrato.'
@@ -320,7 +320,7 @@ export function StageBar({
                 : isGestaoContratos ? 'Informe o novo valor mensal do contrato.'
                 : 'Anexe o relatório final do serviço.'}
             </p>}
-            {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8 }}>{error}</p>}
+            {error && <p style={{ fontSize: 12, color: '#8e4550', marginBottom: 8 }}>{error}</p>}
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowWonModal(false)}
@@ -329,7 +329,7 @@ export function StageBar({
               </button>
               <button disabled={isPending || !modalValid}
                 onClick={() => handleClose('won', { validFrom, validUntil, cnpjBilling, contractType, monthlyValue, accountOwnerId })}
-                style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: !modalValid ? '#d1d8e8' : '#1a7c3e', color: '#fff', cursor: !modalValid ? 'not-allowed' : 'pointer' }}>
+                style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: !modalValid ? '#d1d8e8' : '#1f8c7d', color: '#fff', cursor: !modalValid ? 'not-allowed' : 'pointer' }}>
                 {isPending ? 'Salvando...' : `Confirmar ${wonLabel}`}
               </button>
             </div>
@@ -344,7 +344,7 @@ export function StageBar({
             <p style={{ fontSize: 15, fontWeight: 700, color: '#1a1f36', margin: '0 0 4px' }}>Marcar como {lostLabel}</p>
             <p style={{ fontSize: 12, color: '#8892a4', margin: '0 0 16px' }}>Selecione o motivo oficial para registrar esta perda.</p>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#52514e', display: 'block', marginBottom: 6 }}>
-              Motivo de perda <span style={{ color: '#b91c1c' }}>*</span>
+              Motivo de perda <span style={{ color: '#8e4550' }}>*</span>
             </label>
             {(lostReasons ?? []).length === 0 ? (
               <p style={{ fontSize: 12, color: '#b0b8c8', marginBottom: 16 }}>
@@ -373,7 +373,7 @@ export function StageBar({
                   handleClose('lost', { lostReason: selectedLostReason } as any)
                   setSelectedLostReason('')
                 }}
-                style={{ padding: '8px 20px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: !selectedLostReason ? 'not-allowed' : 'pointer', background: !selectedLostReason ? '#d1d8e8' : '#b91c1c', color: '#fff' }}>
+                style={{ padding: '8px 20px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: !selectedLostReason ? 'not-allowed' : 'pointer', background: !selectedLostReason ? '#d1d8e8' : '#8e4550', color: '#fff' }}>
                 {isPending ? 'Salvando...' : `Confirmar ${lostLabel}`}
               </button>
             </div>
@@ -430,7 +430,7 @@ export function StageBar({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={lbl}>Funil de destino <span style={{ color: '#b91c1c' }}>*</span></label>
+                <label style={lbl}>Funil de destino <span style={{ color: '#8e4550' }}>*</span></label>
                 <select value={transferPipelineId} onChange={e => handleTransferPipelineChange(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
                   <option value="">Selecione...</option>
                   {(otherPipelines ?? []).map(p => (
@@ -440,7 +440,7 @@ export function StageBar({
               </div>
               {selectedTransferPipeline && (
                 <div>
-                  <label style={lbl}>Etapa inicial <span style={{ color: '#b91c1c' }}>*</span></label>
+                  <label style={lbl}>Etapa inicial <span style={{ color: '#8e4550' }}>*</span></label>
                   <select value={transferStageId} onChange={e => setTransferStageId(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
                     {selectedTransferPipeline.stages.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
@@ -450,7 +450,7 @@ export function StageBar({
               )}
             </div>
 
-            {error && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 12 }}>{error}</p>}
+            {error && <p style={{ fontSize: 12, color: '#8e4550', marginTop: 12 }}>{error}</p>}
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
               <button onClick={() => setShowTransferModal(false)}

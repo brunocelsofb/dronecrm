@@ -17,16 +17,16 @@ type Event = {
 
 const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; label: string }> = {
   note:                 { icon: '💬', color: '#f97316', bg: '#fff7ed',  label: 'Nota' },
-  email:                { icon: '✉️', color: '#3b5bdb', bg: '#eef3ff',  label: 'E-mail' },
-  stage_change:         { icon: '🔄', color: '#1a7c3e', bg: '#eaf5ee',  label: 'Mudança de etapa' },
-  pipeline_change:      { icon: '↗️', color: '#1a7c3e', bg: '#eaf5ee',  label: 'Mudança de funil' },
-  file:                 { icon: '📎', color: '#3b5bdb', bg: '#eef3ff',  label: 'Arquivo' },
+  email:                { icon: '✉️', color: '#524e9c', bg: '#e8e7f4',  label: 'E-mail' },
+  stage_change:         { icon: '🔄', color: '#1f8c7d', bg: '#e3f5f1',  label: 'Mudança de etapa' },
+  pipeline_change:      { icon: '↗️', color: '#1f8c7d', bg: '#e3f5f1',  label: 'Mudança de funil' },
+  file:                 { icon: '📎', color: '#524e9c', bg: '#e8e7f4',  label: 'Arquivo' },
   automation_triggered: { icon: '⚡', color: '#7c3aed', bg: '#f3e8ff',  label: 'Automação' },
   system:               { icon: '🔧', color: '#8892a4', bg: '#f1f3f8',  label: 'Sistema' },
   transfer:             { icon: '↔️', color: '#8892a4', bg: '#f1f3f8',  label: 'Transferência' },
-  proposal:             { icon: '📋', color: '#3b5bdb', bg: '#eef3ff',  label: 'Proposta' },
+  proposal:             { icon: '📋', color: '#524e9c', bg: '#e8e7f4',  label: 'Proposta' },
   client_decision:      { icon: '🤝', color: '#166534', bg: '#dcfce7',  label: 'Proposta Aceita' },
-  client_rejection:     { icon: '✕',  color: '#b91c1c', bg: '#fef2f2',  label: 'Proposta Encerrada' },
+  client_rejection:     { icon: '✕',  color: '#8e4550', bg: '#fef2f2',  label: 'Proposta Encerrada' },
   whatsapp_sent:        { icon: '📲', color: '#166534', bg: '#dcfce7',  label: 'WhatsApp enviado' },
 }
 
@@ -120,13 +120,13 @@ export function TimelineFeed({
           rows={3}
           style={{
             width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 8,
-            border: `0.5px solid ${saveError ? '#fca5a5' : '#d1d8e8'}`,
+            border: `0.5px solid ${saveError ? '#dcadb3' : '#d1d8e8'}`,
             outline: 'none', resize: 'vertical', fontFamily: 'inherit',
             color: '#1a1f36', boxSizing: 'border-box',
           }}
         />
         {saveError && (
-          <p style={{ fontSize: 11, color: '#b91c1c', margin: '4px 0 0' }}>{saveError}</p>
+          <p style={{ fontSize: 11, color: '#8e4550', margin: '4px 0 0' }}>{saveError}</p>
         )}
         <button
           onClick={handleAddNote}
@@ -182,7 +182,7 @@ export function TimelineFeed({
                 <div style={{
                   flex: 1, background: isPinned ? '#fffbeb' : '#fff',
                   borderRadius: 10,
-                  border: isPinned ? '1px solid #fde68a' : '0.5px solid #e8edf5',
+                  border: isPinned ? '1px solid #ffe596' : '0.5px solid #e8edf5',
                   padding: '10px 14px',
                   boxShadow: isPinned
                     ? '0 1px 4px rgba(245,158,11,0.1)'
@@ -249,7 +249,7 @@ export function TimelineFeed({
                             title="Excluir nota"
                             style={{
                               fontSize: 12, background: 'none', border: 'none',
-                              cursor: 'pointer', color: '#fca5a5', padding: 2,
+                              cursor: 'pointer', color: '#dcadb3', padding: 2,
                               opacity: deletingId === e.id ? 0.4 : 0.6,
                             }}
                           >

@@ -70,7 +70,7 @@ export function ProposalTextsEditor({ contractId, proposalId, initialData }: {
           onClick={handleSave}
           disabled={saving}
           style={{ padding: '8px 18px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none',
-            background: saved ? '#1a7c3e' : '#1B556B', color: '#fff', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+            background: saved ? '#1f8c7d' : '#1B556B', color: '#fff', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Salvando...' : saved ? '✅ Salvo' : 'Salvar textos'}
         </button>
       </div>

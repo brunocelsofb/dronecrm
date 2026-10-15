@@ -19,7 +19,7 @@ export function NpsCharts({ nps, promoters, passives, detractors, total, history
   const donutChart = useRef<any>(null)
   const lineChart = useRef<any>(null)
 
-  const npsColor = nps === null ? '#d1d8e8' : nps >= 50 ? '#1a7c3e' : nps >= 0 ? '#f59e0b' : '#ef4444'
+  const npsColor = nps === null ? '#d1d8e8' : nps >= 50 ? '#1f8c7d' : nps >= 0 ? '#f59e0b' : '#ef4444'
   const npsLabel = nps === null ? 'Sem dados' : nps >= 75 ? 'Excelente' : nps >= 50 ? 'Ótimo' : nps >= 0 ? 'Bom' : 'Crítico'
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function NpsCharts({ nps, promoters, passives, detractors, total, history
           type: 'doughnut',
           data: {
             labels: ['Promotores', 'Neutros', 'Detratores'],
-            datasets: [{ data: [promoters, passives, detractors], backgroundColor: ['#1a7c3e', '#f59e0b', '#ef4444'], borderWidth: 0, hoverOffset: 4 }]
+            datasets: [{ data: [promoters, passives, detractors], backgroundColor: ['#1f8c7d', '#f59e0b', '#ef4444'], borderWidth: 0, hoverOffset: 4 }]
           },
           options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c: any) => `${c.label}: ${c.parsed}` } } } }
         })
@@ -46,7 +46,7 @@ export function NpsCharts({ nps, promoters, passives, detractors, total, history
           data: {
             labels: history.map(h => h.month),
             datasets: [
-              { label: 'NPS', data: history.map(h => h.nps), borderColor: '#4f86f7', backgroundColor: 'rgba(79,134,247,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#4f86f7', fill: true, tension: 0.4, spanGaps: true },
+              { label: 'NPS', data: history.map(h => h.nps), borderColor: '#1b556b', backgroundColor: 'rgba(27,85,107,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#1b556b', fill: true, tension: 0.4, spanGaps: true },
               { label: 'Respostas', data: history.map(h => h.total), borderColor: '#e8edf5', borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0, fill: false, tension: 0, yAxisID: 'y2' },
             ]
           },
@@ -97,9 +97,9 @@ export function NpsCharts({ nps, promoters, passives, detractors, total, history
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {[
-                { label: 'Promotores', value: promoters, color: '#1a7c3e', bg: '#eaf5ee' },
-                { label: 'Neutros', value: passives, color: '#92400e', bg: '#fff8e6' },
-                { label: 'Detratores', value: detractors, color: '#b91c1c', bg: '#fdecea' },
+                { label: 'Promotores', value: promoters, color: '#1f8c7d', bg: '#e3f5f1' },
+                { label: 'Neutros', value: passives, color: '#c2683d', bg: '#fbeee5' },
+                { label: 'Detratores', value: detractors, color: '#8e4550', bg: '#f6e9ea' },
               ].map(item => (
                 <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color, flexShrink: 0 }} />

@@ -6,22 +6,22 @@ import { PRIORITY_LABELS } from '@/lib/utils/gut-matrix'
 const STATUS_LABELS: Record<string, string> = { aberto: 'Aberto', em_andamento: 'Em andamento', aguardando_cliente: 'Ag. cliente', resolvido: 'Resolvido', fechado: 'Fechado' }
 const STATUS_ORDER = ['aberto', 'em_andamento', 'aguardando_cliente', 'resolvido', 'fechado']
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  aberto:             { bg: '#eef3ff', color: '#3b5bdb' },
-  em_andamento:       { bg: '#fff8e6', color: '#92400e' },
+  aberto:             { bg: '#e8e7f4', color: '#524e9c' },
+  em_andamento:       { bg: '#fbeee5', color: '#c2683d' },
   aguardando_cliente: { bg: '#f0eeff', color: '#5f38c9' },
-  resolvido:          { bg: '#eaf5ee', color: '#1a7c3e' },
+  resolvido:          { bg: '#e3f5f1', color: '#1f8c7d' },
   fechado:            { bg: '#f1f3f8', color: '#8892a4' },
 }
 const PRIORITY_STYLE: Record<string, { bg: string; color: string }> = {
   nao_critica:  { bg: '#f1f3f8', color: '#8892a4' },
-  pouco_critica:{ bg: '#eef3ff', color: '#3b5bdb' },
-  critica:      { bg: '#fff8e6', color: '#92400e' },
-  muito_critica:{ bg: '#fdecea', color: '#b91c1c' },
+  pouco_critica:{ bg: '#e8e7f4', color: '#524e9c' },
+  critica:      { bg: '#fbeee5', color: '#c2683d' },
+  muito_critica:{ bg: '#f6e9ea', color: '#8e4550' },
 }
 const SLA_STYLE: Record<string, { bg: string; color: string }> = {
-  ok:       { bg: '#eaf5ee', color: '#1a7c3e' },
-  atencao:  { bg: '#fff8e6', color: '#92400e' },
-  vencido:  { bg: '#fdecea', color: '#b91c1c' },
+  ok:       { bg: '#e3f5f1', color: '#1f8c7d' },
+  atencao:  { bg: '#fbeee5', color: '#c2683d' },
+  vencido:  { bg: '#f6e9ea', color: '#8e4550' },
   sem_prazo:{ bg: '#f1f3f8', color: '#8892a4' },
 }
 

@@ -37,10 +37,10 @@ export default async function WhatsAppRelatoriosPage() {
   }
 
   const funnelData = [
-    { label: 'Entradas', value: totalEntradas ?? 0, color: '#4f86f7' },
+    { label: 'Entradas', value: totalEntradas ?? 0, color: '#1b556b' },
     { label: 'Leads gerados', value: totalLeadsWpp ?? 0, color: '#6366f1' },
     { label: 'Vinculados a conta', value: totalVinculados ?? 0, color: '#7c3aed' },
-    { label: 'Convertidos', value: totalConvertidos ?? 0, color: '#1a7c3e' },
+    { label: 'Convertidos', value: totalConvertidos ?? 0, color: '#1f8c7d' },
   ]
 
   return (

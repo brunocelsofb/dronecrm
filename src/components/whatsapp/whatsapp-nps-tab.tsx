@@ -137,7 +137,7 @@ export function WhatsAppNpsTab() {
     )
   }
 
-  const npsColor = summary.npsScore >= 50 ? '#1a7c3e' : summary.npsScore >= 0 ? '#92400e' : '#b91c1c'
+  const npsColor = summary.npsScore >= 50 ? '#1f8c7d' : summary.npsScore >= 0 ? '#c2683d' : '#8e4550'
 
   return (
     <div className="space-y-5">
@@ -147,7 +147,7 @@ export function WhatsAppNpsTab() {
           { label: 'Total de avaliações', value: summary.total, sub: 'conversas encerradas com NPS', color: '#1B556B' },
           { label: 'Média das notas', value: summary.average || '—', sub: 'escala de 1 a 5', color: '#32AF9D' },
           { label: 'NPS Score', value: `${summary.npsScore}`, sub: summary.npsScore >= 50 ? '✓ Excelente' : summary.npsScore >= 0 ? '😐 Neutro' : '⚠️ Crítico', color: npsColor },
-          { label: 'Promotores', value: summary.promoters, sub: `${summary.total > 0 ? Math.round((summary.promoters / summary.total) * 100) : 0}% do total`, color: '#1a7c3e' },
+          { label: 'Promotores', value: summary.promoters, sub: `${summary.total > 0 ? Math.round((summary.promoters / summary.total) * 100) : 0}% do total`, color: '#1f8c7d' },
         ].map(k => (
           <div key={k.label} className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">{k.label}</p>
@@ -161,9 +161,9 @@ export function WhatsAppNpsTab() {
       {summary.total > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
           <p className="text-sm font-medium text-gray-800 mb-2">Distribuição por categoria</p>
-          <ScoreBar label="Promotores (4-5)" count={summary.promoters} total={summary.total} color="#1a7c3e" />
-          <ScoreBar label="Neutros (3)" count={summary.passives} total={summary.total} color="#92400e" />
-          <ScoreBar label="Detratores (1-2)" count={summary.detractors} total={summary.total} color="#b91c1c" />
+          <ScoreBar label="Promotores (4-5)" count={summary.promoters} total={summary.total} color="#1f8c7d" />
+          <ScoreBar label="Neutros (3)" count={summary.passives} total={summary.total} color="#c2683d" />
+          <ScoreBar label="Detratores (1-2)" count={summary.detractors} total={summary.total} color="#8e4550" />
         </div>
       )}
 
@@ -176,8 +176,8 @@ export function WhatsAppNpsTab() {
               const count = summary.byScore[score] ?? 0
               const pct = summary.total > 0 ? Math.round((count / summary.total) * 100) : 0
               const cat = classifyScore(score)
-              const catColor = cat === 'promoter' ? '#1a7c3e' : cat === 'passive' ? '#92400e' : '#b91c1c'
-              const catBg = cat === 'promoter' ? '#eaf5ee' : cat === 'passive' ? '#fff8e6' : '#fdecea'
+              const catColor = cat === 'promoter' ? '#1f8c7d' : cat === 'passive' ? '#c2683d' : '#8e4550'
+              const catBg = cat === 'promoter' ? '#e3f5f1' : cat === 'passive' ? '#fbeee5' : '#f6e9ea'
               return (
                 <div key={score} className="rounded-lg border border-gray-100 p-3 text-center" style={{ background: catBg }}>
                   <p className="text-lg font-bold" style={{ color: catColor }}>{score}</p>
@@ -246,8 +246,8 @@ export function WhatsAppNpsTab() {
                 const entryKey = `${entry.phone}__${entry.instance_name}`
                 const cat = classifyScore(entry.nps_score)
                 const catLabel = cat === 'promoter' ? 'Promotor' : cat === 'passive' ? 'Neutro' : 'Detrator'
-                const catColor = cat === 'promoter' ? '#1a7c3e' : cat === 'passive' ? '#92400e' : '#b91c1c'
-                const catBg = cat === 'promoter' ? '#eaf5ee' : cat === 'passive' ? '#fff8e6' : '#fdecea'
+                const catColor = cat === 'promoter' ? '#1f8c7d' : cat === 'passive' ? '#c2683d' : '#8e4550'
+                const catBg = cat === 'promoter' ? '#e3f5f1' : cat === 'passive' ? '#fbeee5' : '#f6e9ea'
                 const date = entry.archived_at
                   ? new Date(entry.archived_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                   : '—'

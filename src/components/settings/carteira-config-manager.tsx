@@ -111,13 +111,13 @@ export function CarteiraConfigManager() {
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
                       <button onClick={() => toggleField(field.key)}
                         style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, border: '0.5px solid', cursor: 'pointer',
-                          background: field.active ? '#eaf5ee' : '#f1f3f8',
-                          color: field.active ? '#1a7c3e' : '#8892a4',
+                          background: field.active ? '#e3f5f1' : '#f1f3f8',
+                          color: field.active ? '#1f8c7d' : '#8892a4',
                           borderColor: field.active ? '#bbddc8' : '#d1d8e8' }}>
                         {field.active ? 'Ativo' : 'Inativo'}
                       </button>
                       <button onClick={() => removeField(field.key)}
-                        style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        style={{ fontSize: 11, color: '#8e4550', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         Remover
                       </button>
                     </div>
@@ -164,7 +164,7 @@ export function CarteiraConfigManager() {
           style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
           {saving ? 'Salvando...' : 'Salvar configurações'}
         </button>
-        {saved && !saving && <span style={{ fontSize: 12, color: '#1a7c3e' }}>✓ Salvo</span>}
+        {saved && !saving && <span style={{ fontSize: 12, color: '#1f8c7d' }}>✓ Salvo</span>}
       </div>
     </div>
   )

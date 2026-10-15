@@ -118,7 +118,7 @@ export default function PriceUsersPage() {
               </select>
             </div>
           </div>
-          {error && <p style={{ fontSize: 12, color: '#b91c1c', marginBottom: 8 }}>{error}</p>}
+          {error && <p style={{ fontSize: 12, color: '#8e4550', marginBottom: 8 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setShowForm(false)} style={{ padding: '8px 16px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', cursor: 'pointer' }}>Cancelar</button>
             <button onClick={handleCreate} disabled={saving} style={{ padding: '8px 20px', fontSize: 12, fontWeight: 500, borderRadius: 8, border: 'none', background: '#1a1f36', color: '#fff', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
@@ -158,13 +158,13 @@ export default function PriceUsersPage() {
                       <option value="admin">⚙️ Admin</option>
                     </select>
                     {savedId === u.id && (
-                      <span style={{ fontSize: 11, color: '#1a7c3e', fontWeight: 500 }}>✅ Salvo</span>
+                      <span style={{ fontSize: 11, color: '#1f8c7d', fontWeight: 500 }}>✅ Salvo</span>
                     )}
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                      background: u.is_banned ? '#fdecea' : '#eaf5ee',
-                      color: u.is_banned ? '#b91c1c' : '#1a7c3e' }}>
+                      background: u.is_banned ? '#f6e9ea' : '#e3f5f1',
+                      color: u.is_banned ? '#8e4550' : '#1f8c7d' }}>
                       {u.is_banned ? 'Inativo' : 'Ativo'}
                     </span>
                   </td>
@@ -175,7 +175,7 @@ export default function PriceUsersPage() {
                         {u.is_banned ? 'Reativar' : 'Desativar'}
                       </button>
                       <button onClick={() => handleDelete(u.id, u.email)}
-                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}>
+                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer' }}>
                         Excluir
                       </button>
                     </div>

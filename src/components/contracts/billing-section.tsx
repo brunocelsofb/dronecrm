@@ -160,9 +160,9 @@ export function BillingSection({
       </div>
 
       {type === 'fixed' ? (
-        <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+        <div className="rounded-lg border border-brand-100 bg-brand-100 p-4 text-sm text-brand-800">
           <p className="font-medium">Receita recorrente automática: {brl(contractValue)} por mês</p>
-          <p className="mt-1 text-xs text-blue-800">
+          <p className="mt-1 text-xs text-brand-700">
             Entra sozinha na receita de cada mês enquanto o contrato estiver ativo no funil (só sai se for rescindido). Não precisa lançar nada.
             Para mudar o valor, use &quot;Mudança de valor&quot; na Visão Geral.
           </p>

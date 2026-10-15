@@ -204,27 +204,27 @@ export default async function SuperAdminPage() {
         <form action={createNewTenantAndUser} className="p-6 grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nome da Empresa</label>
-            <input name="name" required placeholder="Acme Corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="name" required placeholder="Acme Corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Slug (único)</label>
-            <input name="slug" required placeholder="acme-corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="slug" required placeholder="acme-corp" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Email Admin</label>
-            <input name="email" type="email" required placeholder="admin@acme.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="email" type="email" required placeholder="admin@acme.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Senha Admin</label>
-            <input name="password" type="password" required placeholder="••••••••" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="password" type="password" required placeholder="••••••••" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Nome Completo Admin</label>
-            <input name="full_name" required placeholder="João Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="full_name" required placeholder="João Silva" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Plano</label>
-            <select name="plan" defaultValue="starter" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none">
+            <select name="plan" defaultValue="starter" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none">
               <option value="starter">Starter</option>
               <option value="professional">Professional</option>
               <option value="enterprise">Enterprise</option>
@@ -232,14 +232,14 @@ export default async function SuperAdminPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Máx. Usuários</label>
-            <input name="max_users" type="number" min="1" defaultValue="5" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="max_users" type="number" min="1" defaultValue="5" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Fim do Trial (opcional)</label>
-            <input name="trial_ends_at" type="datetime-local" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e6b8f] focus:outline-none" />
+            <input name="trial_ends_at" type="datetime-local" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none" />
           </div>
           <div className="col-span-2">
-            <button type="submit" className="rounded-lg bg-[#1e6b8f] px-6 py-2 text-sm font-medium text-white hover:bg-[#154459] transition-colors">
+            <button type="submit" className="rounded-lg bg-[#1b556b] px-6 py-2 text-sm font-medium text-white hover:bg-[#154459] transition-colors">
               Criar Tenant e Usuário Admin
             </button>
           </div>

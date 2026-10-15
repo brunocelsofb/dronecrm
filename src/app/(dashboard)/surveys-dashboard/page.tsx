@@ -14,9 +14,9 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const NPS_CATEGORY_LABELS = { promoter: 'Promotor', passive: 'Neutro', detractor: 'Detrator' } as const
 const NPS_CATEGORY_STYLE = {
-  promoter: { bg: '#eaf5ee', color: '#1a7c3e' },
-  passive:  { bg: '#fff8e6', color: '#92400e' },
-  detractor:{ bg: '#fdecea', color: '#b91c1c' },
+  promoter: { bg: '#e3f5f1', color: '#1f8c7d' },
+  passive:  { bg: '#fbeee5', color: '#c2683d' },
+  detractor:{ bg: '#f6e9ea', color: '#8e4550' },
 } as const
 
 function currentQuarterRange() {
@@ -278,7 +278,7 @@ async function SurveysTab({ supabase, from, to, selectedTemplateId }: {
             {[
               { label: 'Enviadas', value: totalSent, sub: 'total de disparos', color: '#1B556B' },
               { label: 'Respondidas', value: answeredInPeriod.length, sub: `${answeredInTime.length} dentro do prazo`, color: '#32AF9D' },
-              { label: 'Taxa de resposta', value: `${responseRate}%`, sub: 'respondidas / enviadas', color: responseRate >= 70 ? '#1a7c3e' : responseRate >= 40 ? '#92400e' : '#b91c1c' },
+              { label: 'Taxa de resposta', value: `${responseRate}%`, sub: 'respondidas / enviadas', color: responseRate >= 70 ? '#1f8c7d' : responseRate >= 40 ? '#c2683d' : '#8e4550' },
               { label: 'Pendentes / Expiradas', value: `${pending.length} / ${expired.length}`, sub: 'aguardando · vencidas', color: '#8892a4' },
             ].map(k => (
               <div key={k.label} className="rounded-xl border border-gray-200 bg-white p-4">

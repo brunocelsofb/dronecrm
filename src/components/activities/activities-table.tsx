@@ -179,8 +179,8 @@ export function ActivitiesTable({
                         onClick={() => handleToggle(a)}
                         disabled={togglingId === a.id}
                         style={{
-                          width: 20, height: 20, borderRadius: 4, border: `2px solid ${done ? '#1a7c3e' : '#d1d8e8'}`,
-                          background: done ? '#1a7c3e' : '#fff', cursor: 'pointer',
+                          width: 20, height: 20, borderRadius: 4, border: `2px solid ${done ? '#1f8c7d' : '#d1d8e8'}`,
+                          background: done ? '#1f8c7d' : '#fff', cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           opacity: togglingId === a.id ? 0.5 : 1,
                         }}>
@@ -190,10 +190,10 @@ export function ActivitiesTable({
 
                     {/* Data */}
                     <td style={td}>
-                      <span style={{ color: overdue ? '#b91c1c' : '#52514e', fontWeight: overdue ? 600 : 400 }}>
+                      <span style={{ color: overdue ? '#8e4550' : '#52514e', fontWeight: overdue ? 600 : 400 }}>
                         {fmtDate(a.activity_date, a.activity_time)}
                       </span>
-                      {overdue && <div style={{ fontSize: 9, color: '#b91c1c', fontWeight: 600 }}>ATRASADA</div>}
+                      {overdue && <div style={{ fontSize: 9, color: '#8e4550', fontWeight: 600 }}>ATRASADA</div>}
                     </td>
 
                     {/* Duração */}
@@ -229,7 +229,7 @@ export function ActivitiesTable({
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio ao cliente</span>
                       )}
                       {renewalPending && typeof md.last_error === 'string' && md.last_error && (
-                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
+                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#8e4550', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
                           ⚠ Última tentativa falhou
                           {typeof md.last_error_at === 'string'
                             ? ` (${new Date(md.last_error_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})`
@@ -238,18 +238,18 @@ export function ActivitiesTable({
                         </p>
                       )}
                       {renewalSent && (
-                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontWeight: 500 }}>Enviado ao cliente</span>
                       )}
                       {internalPending && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef6fb', color: '#1B556B', fontWeight: 500 }}>E-mail interno aguardando envio</span>
                       )}
                       {internalPending && typeof md.last_error === 'string' && md.last_error && (
-                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
+                        <p role="alert" style={{ margin: '4px 0 0', fontSize: 11, color: '#8e4550', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', lineHeight: 1.4 }}>
                           ⚠ Última tentativa falhou: {md.last_error}
                         </p>
                       )}
                       {internalSent && (
-                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao time interno</span>
+                        <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontWeight: 500 }}>Enviado ao time interno</span>
                       )}
                       {a.content && (
                         <p style={{ margin: '2px 0 0', fontSize: 11, color: '#8892a4', lineHeight: 1.4 }}>
@@ -306,7 +306,7 @@ export function ActivitiesTable({
                       <button
                         onClick={() => handleDelete(a.id)}
                         disabled={deletingId === a.id}
-                        style={{ fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5', opacity: deletingId === a.id ? 0.5 : 0.7 }}
+                        style={{ fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', color: '#dcadb3', opacity: deletingId === a.id ? 0.5 : 0.7 }}
                         title="Excluir">
                         🗑️
                       </button>

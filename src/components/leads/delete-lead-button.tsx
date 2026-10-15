@@ -20,7 +20,7 @@ export function DeleteLeadButton({ leadId, leadName, redirectAfter = false }: { 
 
   return (
     <button onClick={handle} disabled={busy}
-      style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: busy ? 0.5 : 1 }}>
+      style={{ fontSize: 11, color: '#8e4550', background: 'none', border: 'none', cursor: 'pointer', padding: 0, opacity: busy ? 0.5 : 1 }}>
       {busy ? '...' : 'Excluir'}
     </button>
   )

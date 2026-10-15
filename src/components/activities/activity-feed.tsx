@@ -103,7 +103,7 @@ export function ActivityFeed({
         return (
           <div key={a.id} style={{ display: 'flex', gap: 10, paddingBottom: 14, marginBottom: 14, borderBottom: '0.5px solid #f1f3f8' }}>
             {/* Ícone */}
-            <div style={{ width: 30, height: 30, borderRadius: '50%', background: isSystemEvent ? '#f1f3f8' : isPlanned ? '#eef3ff' : '#eaf5ee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: isSystemEvent ? '#f1f3f8' : isPlanned ? '#e8e7f4' : '#e3f5f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
               {icon}
             </div>
 
@@ -113,19 +113,19 @@ export function ActivityFeed({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {a.title && <span style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36' }}>{a.title}</span>}
                   {isPlanned && (
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef3ff', color: '#3b5bdb', fontWeight: 500 }}>Planejada</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e8e7f4', color: '#524e9c', fontWeight: 500 }}>Planejada</span>
                   )}
                   {renewalPending && (
                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio</span>
                   )}
                   {renewalSent && (
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao cliente</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontWeight: 500 }}>Enviado ao cliente</span>
                   )}
                   {internalPending && (
                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eef6fb', color: '#1B556B', fontWeight: 500 }}>E-mail interno aguardando envio</span>
                   )}
                   {internalSent && (
-                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#eaf5ee', color: '#1a7c3e', fontWeight: 500 }}>Enviado ao time interno</span>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontWeight: 500 }}>Enviado ao time interno</span>
                   )}
                 </div>
                 {!isSystemEvent && (
@@ -152,12 +152,12 @@ export function ActivityFeed({
                     )}
                     {isPlanned && (
                       <button onClick={() => handleToggleDone(a.id, a.status ?? null)}
-                        style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '0.5px solid #1a7c3e', background: '#eaf5ee', color: '#1a7c3e', cursor: 'pointer' }}>
+                        style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '0.5px solid #1f8c7d', background: '#e3f5f1', color: '#1f8c7d', cursor: 'pointer' }}>
                         Marcar concluída
                       </button>
                     )}
                     <button onClick={() => handleDelete(a.id)} disabled={deletingId === a.id}
-                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}>
+                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer' }}>
                       {deletingId === a.id ? '...' : 'Excluir'}
                     </button>
                   </div>

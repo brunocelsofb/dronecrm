@@ -87,7 +87,7 @@ export function ReviewForm({ token, contractId, reviewerName, reviewerRole, canA
         {/* Comentário */}
         <div>
           <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#1a1f36', marginBottom: 6 }}>
-            Comentário técnico <span style={{ color: '#b91c1c' }}>*</span>
+            Comentário técnico <span style={{ color: '#8e4550' }}>*</span>
           </label>
           <textarea
             value={comment}
@@ -114,22 +114,22 @@ export function ReviewForm({ token, contractId, reviewerName, reviewerRole, canA
               onChange={e => setRestrictions(e.target.value)}
               placeholder="Descreva as restrições. Ex: O número de leitos informado diverge do levantamento in loco. Recomendo revisar o inventário de equipamentos da UTI..."
               rows={3}
-              style={{ ...inp, border: '0.5px solid #fde68a', background: '#fffdf5' }}
+              style={{ ...inp, border: '0.5px solid #ffe596', background: '#fffdf5' }}
             />
           )}
         </div>
 
         {/* Decisão */}
         <div>
-          <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', marginBottom: 10 }}>Decisão <span style={{ color: '#b91c1c' }}>*</span></p>
+          <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', marginBottom: 10 }}>Decisão <span style={{ color: '#8e4550' }}>*</span></p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               onClick={() => { setDecision('approve'); setHasRestrictions(false); setRestrictions('') }}
               style={{
                 flex: 1, minWidth: 140, padding: '12px 16px', fontSize: 13, fontWeight: 500, borderRadius: 10, cursor: 'pointer',
-                border: decision === 'approve' ? '2px solid #1a7c3e' : '0.5px solid #d1d8e8',
-                background: decision === 'approve' ? '#eaf5ee' : '#fff',
-                color: decision === 'approve' ? '#1a7c3e' : '#52514e',
+                border: decision === 'approve' ? '2px solid #1f8c7d' : '0.5px solid #d1d8e8',
+                background: decision === 'approve' ? '#e3f5f1' : '#fff',
+                color: decision === 'approve' ? '#1f8c7d' : '#52514e',
               }}>
               ✅ Aprovado tecnicamente
             </button>
@@ -137,9 +137,9 @@ export function ReviewForm({ token, contractId, reviewerName, reviewerRole, canA
               onClick={() => { setDecision('approve_with_restrictions'); setHasRestrictions(true) }}
               style={{
                 flex: 1, minWidth: 140, padding: '12px 16px', fontSize: 13, fontWeight: 500, borderRadius: 10, cursor: 'pointer',
-                border: decision === 'approve_with_restrictions' ? '2px solid #92400e' : '0.5px solid #d1d8e8',
-                background: decision === 'approve_with_restrictions' ? '#fff8e6' : '#fff',
-                color: decision === 'approve_with_restrictions' ? '#92400e' : '#52514e',
+                border: decision === 'approve_with_restrictions' ? '2px solid #c2683d' : '0.5px solid #d1d8e8',
+                background: decision === 'approve_with_restrictions' ? '#fbeee5' : '#fff',
+                color: decision === 'approve_with_restrictions' ? '#c2683d' : '#52514e',
               }}>
               ⚠ Aprovado com restrições
             </button>
@@ -147,16 +147,16 @@ export function ReviewForm({ token, contractId, reviewerName, reviewerRole, canA
               onClick={() => setDecision('reject')}
               style={{
                 flex: 1, minWidth: 140, padding: '12px 16px', fontSize: 13, fontWeight: 500, borderRadius: 10, cursor: 'pointer',
-                border: decision === 'reject' ? '2px solid #b91c1c' : '0.5px solid #d1d8e8',
-                background: decision === 'reject' ? '#fdecea' : '#fff',
-                color: decision === 'reject' ? '#b91c1c' : '#52514e',
+                border: decision === 'reject' ? '2px solid #8e4550' : '0.5px solid #d1d8e8',
+                background: decision === 'reject' ? '#f6e9ea' : '#fff',
+                color: decision === 'reject' ? '#8e4550' : '#52514e',
               }}>
               ❌ Reprovado
             </button>
           </div>
         </div>
 
-        {error && <p style={{ fontSize: 12, color: '#b91c1c' }}>{error}</p>}
+        {error && <p style={{ fontSize: 12, color: '#8e4550' }}>{error}</p>}
 
         <button
           onClick={handleSubmit}

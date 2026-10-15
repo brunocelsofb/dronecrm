@@ -132,10 +132,10 @@ export default async function TicketsDashboardPage({
           { label: 'SLA dentro do prazo', value: slaComplianceRate !== null ? `${slaComplianceRate}%` : '—', sub: `${resolvedWithSla.length} avaliados`, alert: slaAlert },
           { label: 'Satisfação média', value: avgSatisfaction !== null ? `${avgSatisfaction.toFixed(1)}/5` : '—', sub: `${satisfactionRatings.length} avaliações` },
         ].map(k => (
-          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${(k as any).alert ? '#fca5a5' : '#e8edf5'}` }}>
+          <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${(k as any).alert ? '#dcadb3' : '#e8edf5'}` }}>
             <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{k.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 500, color: (k as any).alert ? '#b91c1c' : '#1a1f36', letterSpacing: '-0.5px', margin: 0 }}>{k.value}</p>
-            <p style={{ fontSize: 11, color: (k as any).alert ? '#b91c1c' : '#8892a4', marginTop: 3 }}>{k.sub}</p>
+            <p style={{ fontSize: 20, fontWeight: 500, color: (k as any).alert ? '#8e4550' : '#1a1f36', letterSpacing: '-0.5px', margin: 0 }}>{k.value}</p>
+            <p style={{ fontSize: 11, color: (k as any).alert ? '#8e4550' : '#8892a4', marginTop: 3 }}>{k.sub}</p>
           </div>
         ))}
       </div>
@@ -161,9 +161,9 @@ export default async function TicketsDashboardPage({
           const count = (tickets ?? []).filter((t) => t.priority === p).length
           const isCrit = p === 'critica' || p === 'muito_critica'
           return (
-            <div key={p} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${isCrit && count > 0 ? '#fca5a5' : '#e8edf5'}` }}>
+            <div key={p} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: `0.5px solid ${isCrit && count > 0 ? '#dcadb3' : '#e8edf5'}` }}>
               <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 6 }}>{PRIORITY_LABELS[p]}</p>
-              <p style={{ fontSize: 20, fontWeight: 500, color: isCrit && count > 0 ? '#b91c1c' : '#1a1f36', letterSpacing: '-0.5px', margin: 0 }}>{count}</p>
+              <p style={{ fontSize: 20, fontWeight: 500, color: isCrit && count > 0 ? '#8e4550' : '#1a1f36', letterSpacing: '-0.5px', margin: 0 }}>{count}</p>
             </div>
           )
         })}
@@ -178,9 +178,9 @@ export default async function TicketsDashboardPage({
           {satisfactionResponses.map((t) => {
             const rating = t.satisfaction_rating ?? 0
             const ratingStyle = rating >= 4
-              ? { bg: '#eaf5ee', color: '#1a7c3e' }
-              : rating === 3 ? { bg: '#fff8e6', color: '#92400e' }
-              : { bg: '#fdecea', color: '#b91c1c' }
+              ? { bg: '#e3f5f1', color: '#1f8c7d' }
+              : rating === 3 ? { bg: '#fbeee5', color: '#c2683d' }
+              : { bg: '#f6e9ea', color: '#8e4550' }
             return (
               <ExpandableRow
                 key={t.id}
@@ -200,7 +200,7 @@ export default async function TicketsDashboardPage({
                 <p style={{ fontSize: 11, color: '#8892a4', marginTop: 4 }}>
                   Avaliado em {new Date(t.satisfaction_responded_at!).toLocaleDateString('pt-BR')}
                 </p>
-                <Link href={`/tickets/${t.id}`} style={{ fontSize: 11, color: '#4f86f7', textDecoration: 'none' }}>Ver ticket →</Link>
+                <Link href={`/tickets/${t.id}`} style={{ fontSize: 11, color: '#1b556b', textDecoration: 'none' }}>Ver ticket →</Link>
               </ExpandableRow>
             )
           })}

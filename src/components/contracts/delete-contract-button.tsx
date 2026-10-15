@@ -19,10 +19,10 @@ export function DeleteContractButton({ contractId, label = 'Excluir oportunidade
   return (
     <div>
       <button onClick={handleClick} disabled={isPending}
-        style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #fca5a5', background: '#fff', color: '#b91c1c', cursor: 'pointer', opacity: isPending ? 0.5 : 1 }}>
+        style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #dcadb3', background: '#fff', color: '#8e4550', cursor: 'pointer', opacity: isPending ? 0.5 : 1 }}>
         {isPending ? 'Excluindo...' : label}
       </button>
-      {error && <p style={{ marginTop: 4, fontSize: 11, color: '#b91c1c' }}>{error}</p>}
+      {error && <p style={{ marginTop: 4, fontSize: 11, color: '#8e4550' }}>{error}</p>}
     </div>
   )
 }

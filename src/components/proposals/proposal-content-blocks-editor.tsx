@@ -27,7 +27,7 @@ type EditingState = {
 
 const PRESET_COLORS = [
   { label: 'Orbis',  value: '#1B556B' },
-  { label: 'Verde',  value: '#1a7c3e' },
+  { label: 'Verde',  value: '#1f8c7d' },
   { label: 'Cinza',  value: '#374151' },
   { label: 'Azul',   value: '#1e40af' },
   { label: 'Preto',  value: '#111827' },

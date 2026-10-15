@@ -24,7 +24,7 @@ export function InlineValueEditor({ contractId, currentValue }: { contractId: st
   if (!editing) {
     return (
       <button onClick={() => setEditing(true)}
-        style={{ fontSize: 11, color: '#4f86f7', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+        style={{ fontSize: 11, color: '#1b556b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
         Alterar
       </button>
     )
@@ -46,7 +46,7 @@ export function InlineValueEditor({ contractId, currentValue }: { contractId: st
           ✕
         </button>
       </div>
-      {error && <p style={{ fontSize: 10, color: '#b91c1c' }}>{error}</p>}
+      {error && <p style={{ fontSize: 10, color: '#8e4550' }}>{error}</p>}
     </div>
   )
 }

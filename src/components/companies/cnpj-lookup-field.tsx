@@ -39,10 +39,10 @@ export function CnpjLookupField({
           {loading ? 'Buscando...' : '🔍 Buscar CNPJ'}
         </button>
       </div>
-      {error && <p style={{ marginTop: 4, fontSize: 11, color: '#b91c1c' }}>{error}</p>}
+      {error && <p style={{ marginTop: 4, fontSize: 11, color: '#8e4550' }}>{error}</p>}
       {found && (
-        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#eaf5ee', border: '0.5px solid #bbddc8', fontSize: 11 }}>
-          <p style={{ color: '#1a7c3e', fontWeight: 500, marginBottom: 4 }}>✅ Dados encontrados na Receita Federal</p>
+        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: '#e3f5f1', border: '0.5px solid #bbddc8', fontSize: 11 }}>
+          <p style={{ color: '#1f8c7d', fontWeight: 500, marginBottom: 4 }}>✅ Dados encontrados na Receita Federal</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, color: '#52514e' }}>
             {found.municipio && <span>📍 {found.municipio}/{found.uf}</span>}
             {found.capitalSocial && <span>💰 Capital: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(found.capitalSocial)}</span>}
