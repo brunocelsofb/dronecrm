@@ -7,6 +7,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { INTEGRATIONS, CATEGORY_LABEL, type IntegrationCategory, type IntegrationDef } from '@/lib/marketing/integrations'
 import { activateIntegration, setIntegrationActive, rotateIntegrationKey, saveIntegrationSettings } from '@/lib/actions/integrations'
+import { ToolConnect, type ToolsStatus } from './tool-connect'
 
 export type IntegrationRow = {
   id: string; kind: string; name: string; key: string; active: boolean
@@ -19,7 +20,7 @@ const ICON: Record<string, string> = {
 }
 const brDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 
-export function IntegrationsCenter({ rows, campaigns, baseUrl }: { rows: IntegrationRow[]; campaigns: { id: string; name: string; status: string }[]; baseUrl: string }) {
+export function IntegrationsCenter({ rows, campaigns, baseUrl, tools }: { rows: IntegrationRow[]; campaigns: { id: string; name: string; status: string }[]; baseUrl: string; tools: ToolsStatus }) {
   const [cat, setCat] = useState<IntegrationCategory>('ads')
   const [open, setOpen] = useState<string | null>(null)
   const byKind = new Map(rows.map(r => [r.kind, r]))
@@ -57,20 +58,21 @@ export function IntegrationsCenter({ rows, campaigns, baseUrl }: { rows: Integra
                         {row?.active ? `Ativa · ${row.received_count} recebido(s)` : row ? 'Desativada' : 'Não configurada'}
                       </span>
                       {i.how === 'ponte' && <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-800">via Zapier/Make</span>}
+                      {((i.kind === 'mailchimp' && tools.mailchimp) || (i.kind === 'rd_station' && tools.rd_station)) && <span className="rounded-full bg-positive-100 px-2 py-0.5 text-[10px] text-positive-700">Envio de listas conectado</span>}
                     </span>
                   </span>
                 </button>
               )
             })}
           </div>
-          {def && <Detail key={def.kind} def={def} row={byKind.get(def.kind) ?? null} campaigns={campaigns} baseUrl={baseUrl} />}
+          {def && <Detail key={def.kind} def={def} row={byKind.get(def.kind) ?? null} campaigns={campaigns} baseUrl={baseUrl} tools={tools} />}
         </div>
       </div>
     </div>
   )
 }
 
-function Detail({ def, row, campaigns, baseUrl }: { def: IntegrationDef; row: IntegrationRow | null; campaigns: { id: string; name: string; status: string }[]; baseUrl: string }) {
+function Detail({ def, row, campaigns, baseUrl, tools }: { def: IntegrationDef; row: IntegrationRow | null; campaigns: { id: string; name: string; status: string }[]; baseUrl: string; tools: ToolsStatus }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -164,6 +166,7 @@ function Detail({ def, row, campaigns, baseUrl }: { def: IntegrationDef; row: In
         </div>
       )}
       {msg && <p role="status" className={`mt-3 text-sm ${msg.ok ? 'text-positive-700' : 'text-red-600'}`}>{msg.text}</p>}
+      {(def.kind === 'mailchimp' || def.kind === 'rd_station') && <ToolConnect provider={def.kind} status={tools} />}
     </section>
   )
 }

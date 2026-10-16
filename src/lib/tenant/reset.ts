@@ -15,6 +15,7 @@ const RESET_TABLES = [
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
   'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_submissions', 'billing_records', 'contract_ai_readings', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
   'proposals', 'tickets', 'automation_rules', 'lead_routing_rules', 'leads', 'pipeline_runs', 'contracts',
+  'marketing_list_syncs', 'marketing_lists', 'marketing_optouts',
   'marketing_campaign_costs', 'marketing_campaigns', 'lead_integrations',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals',
@@ -30,7 +31,7 @@ const EXPORT_TABLES = [
 
 // Nunca exportar segredos
 const SECRET_COLUMNS = new Set(['anthropic_api_key_enc', 'evo_api_key', 'evo_instance_token', 'zapi_token', 'zapi_client_token',
-  'zapi_webhook_secret', 'zapsign_api_token', 'mailgun_webhook_signing_key', 'smtp_password', 'access_token', 'refresh_token'])
+  'zapi_webhook_secret', 'zapsign_api_token', 'mailgun_webhook_signing_key', 'smtp_password', 'access_token', 'refresh_token', 'marketing_tools', 'billing_erp', 'zapsign_hook_secret'])
 
 function clean(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map(r => {

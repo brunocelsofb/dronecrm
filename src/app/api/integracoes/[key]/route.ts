@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { parseIntegrationPayload, type IntegrationKind } from '@/lib/leads/parse'
 import { ingestLead } from '@/lib/leads/ingest'
 import { integrationDef } from '@/lib/marketing/integrations'
+import { RD_CRM_PREFIX } from '@/lib/marketing/tools'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,12 +76,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ key: string }>
     // Mailchimp: descadastro não cria lead — registra no lead existente
     if (l.unsubscribe) {
       if (l.email) {
+        // Entra na lista de descadastrados: as listas do CRM deixam de mandar para este e-mail
+        await admin.from('marketing_optouts').upsert({ tenant_id: it.tenant_id, email: l.email, source: it.name }, { onConflict: 'tenant_id,email', ignoreDuplicates: true })
         const { data: lead } = await admin.from('leads').select('id').eq('tenant_id', it.tenant_id).ilike('email', l.email.replace(/[%_\\]/g, m => `\\${m}`)).limit(1).maybeSingle()
         if (lead) await admin.from('lead_activities').insert({ lead_id: lead.id, tenant_id: it.tenant_id, type: 'system', content: `🚫 Descadastrou-se da lista (${it.name}). Não enviar e-mail marketing.` })
       }
       skipped++
       continue
     }
+    // Conversão que o próprio CRM mandou ao RD (envio de lista): não volta como lead
+    if (it.kind === 'rd_station' && (l.conversion ?? '').toLowerCase().startsWith(RD_CRM_PREFIX)) { skipped++; continue }
     const name = l.name ?? (l.email ? l.email.split('@')[0] : null) ?? l.phone
     if (!name || (!l.email && !l.phone)) { skipped++; errors.push('lead sem nome e sem e-mail/telefone'); continue }
     const hasAd = !!(l.tracking.gclid || l.tracking.fbclid || /cpc|ads|paid|lead_ads|lead_gen/i.test(l.tracking.utm_medium ?? ''))

@@ -11,6 +11,9 @@ import { getUserAccess } from '@/lib/auth/access'
 import { loadMarketing } from '@/lib/marketing/data'
 import { MarketingView } from '@/components/marketing/marketing-view'
 import type { IntegrationRow } from '@/components/marketing/integrations-center'
+import type { ListRow, SyncRow, OptoutRow } from '@/components/marketing/lists-view'
+import { loadListFilterOptions } from '@/lib/marketing/list-data'
+import { readTools } from '@/lib/marketing/tools'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,13 +27,24 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const tenantId = await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
-  const [access, data, { data: tenant }, { data: people }, { data: integrations }] = await Promise.all([
+  const [access, data, { data: tenant }, { data: people }, { data: integrations }, { data: lists }, { data: syncs }, { data: optouts, count: optoutCount }, { data: org }, options] = await Promise.all([
     getUserAccess(),
     loadMarketing(tenantId, { year, month }, { year: nowYear, month: nowMonth }),
     db.from('tenants').select('slug').eq('id', tenantId).maybeSingle(),
     db.from('profiles').select('id, full_name').eq('tenant_id', tenantId).not('is_super_admin', 'is', true).order('full_name'),
     db.from('lead_integrations').select('id, kind, name, key, active, settings, received_count, last_received_at, last_error').order('created_at'),
+    db.from('marketing_lists').select('id, name, audience, filters, updated_at').order('created_at', { ascending: false }),
+    db.from('marketing_list_syncs').select('id, list_id, provider, target, status, total, sent, failed, errors, started_at').order('started_at', { ascending: false }).limit(30),
+    db.from('marketing_optouts').select('id, email, source, created_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(30),
+    db.from('organization_settings').select('marketing_tools').eq('tenant_id', tenantId).maybeSingle(),
+    loadListFilterOptions(tenantId),
   ])
+  // Ferramentas de e-mail: só o que a tela precisa (a chave nunca vai para o navegador)
+  const t = readTools(org?.marketing_tools)
+  const tools = {
+    mailchimp: t.mailchimp ? { last4: t.mailchimp.last4, dc: t.mailchimp.dc, list_id: t.mailchimp.list_id ?? null, list_name: t.mailchimp.list_name ?? null, double_optin: !!t.mailchimp.double_optin } : null,
+    rd_station: t.rd_station ? { last4: t.rd_station.last4, legal_basis: t.rd_station.legal_basis ?? null } : null,
+  }
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
   const base = host ? `${host.includes('localhost') ? 'http' : 'https'}://${host}` : ''
@@ -38,7 +52,12 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <MarketingView
       year={year} month={month} nowYear={nowYear} nowMonth={nowMonth}
-      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' ? sp.aba : 'resultados'}
+      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' || sp.aba === 'listas' ? sp.aba : 'resultados'}
+      tools={tools}
+      lists={(lists ?? []) as ListRow[]}
+      syncs={(syncs ?? []) as SyncRow[]}
+      optouts={{ count: optoutCount ?? 0, recent: (optouts ?? []) as OptoutRow[] }}
+      listOptions={options}
       integrations={(integrations ?? []) as IntegrationRow[]}
       campaigns={data.campaigns}
       costs={data.costs}

@@ -65,7 +65,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       'Salve e faça uma conversão de teste numa landing page ou formulário do RD.',
       'Se a mesma pessoa converter de novo, o CRM não duplica: registra a nova conversão no histórico do lead.',
     ],
-    note: 'O caminho dos menus pode variar conforme o plano do RD. Envio de listas do CRM para o RD: próxima etapa.',
+    note: 'O caminho dos menus pode variar conforme o plano do RD. Para o CRM mandar listas ao RD, conecte a chave de API logo abaixo. As conversões que o próprio CRM manda (crm-lista-…) não voltam como lead.',
   },
   {
     kind: 'mailchimp', name: 'Mailchimp', category: 'automacao', short: 'Novos inscritos e descadastros do Mailchimp', how: 'direto', source: 'formulario_site',
@@ -73,9 +73,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
       'No Mailchimp, abra o Público (Audience) → Configurações (Settings) → Webhooks → criar webhook.',
       'URL de retorno (Callback URL): {url}',
       'Marque os eventos: inscrições (subscribes), atualizações de perfil e descadastros (unsubscribes).',
-      'Salve. Novo inscrito vira lead; descadastro fica registrado no histórico do lead.',
+      'Em "Only send updates when a change is made…", DESMARQUE "via the API": assim os contatos que o próprio CRM manda não voltam como lead.',
+      'Salve. Novo inscrito vira lead; quem se descadastra entra na lista de descadastrados do CRM e deixa de receber as listas.',
     ],
-    note: 'Envio de listas do CRM para o Mailchimp: próxima etapa.',
+    note: 'Para o CRM mandar listas ao Mailchimp, conecte a chave de API logo abaixo.',
   },
   {
     kind: 'site', name: 'Site (JSON / JavaScript)', category: 'site', short: 'Formulário próprio do site, envio em JSON ou formulário comum', how: 'direto', source: 'formulario_site',
