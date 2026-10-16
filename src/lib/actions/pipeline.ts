@@ -356,7 +356,7 @@ export async function closeRun(
 
   const { data: run } = await supabase
     .from('pipeline_runs')
-    .select('id, stage_id, pipeline_id, value, revenue_type')
+    .select('id, stage_id, pipeline_id, value, revenue_type, report_storage_path, report_file_name')
     .eq('contract_id', contractId)
     .eq('status', 'open')
     .maybeSingle()
@@ -438,10 +438,14 @@ export async function closeRun(
     renewalPreviousValue = cv?.monthly_value !== null && cv?.monthly_value !== undefined ? Number(cv.monthly_value) : (Number(run.value) || null)
   }
 
-  // Avulso: só fatura com o relatório final anexado
+  // Avulso: só fatura com o relatório final anexado (antes, pelo botão do funil, ou na janela do ganho)
   if (outcome === 'won' && pipelineForGateType === 'servico_avulso') {
+    if (!(Number(run.value) > 0)) return { error: 'Informe o valor fechado do serviço antes do ganho — é ele que vai para faturamento.' }
     const rep = extra?.avulsoReport
-    if (!rep?.storagePath) return { error: 'Anexe o relatório final do serviço para marcar o faturamento.' }
+    if (!rep?.storagePath && !run.report_storage_path) return { error: 'Anexe o relatório final do serviço para marcar o faturamento.' }
+  }
+  if (outcome === 'won' && pipelineForGateType === 'servico_avulso' && extra?.avulsoReport?.storagePath) {
+    const rep = extra.avulsoReport
     const { data: f } = await supabase.from('contract_files').select('id')
       .eq('contract_id', contractId).eq('storage_path', rep.storagePath).maybeSingle()
     if (!f) return { error: 'O relatório anexado não foi encontrado nos arquivos do contrato. Envie de novo.' }
@@ -486,6 +490,24 @@ export async function closeRun(
     .from('pipeline_runs')
     .update({ status: outcome, ended_at: now })
     .eq('id', run.id)
+
+  // Avulso ganho: envio automático para faturamento (sem validação mensal) e
+  // conclui a tarefa do Hunter "dar ganho".
+  if (outcome === 'won' && pipelineForGateType === 'servico_avulso') {
+    const db = await createScopedAdmin()
+    const br = new Date(Date.now() - 3 * 3600 * 1000)
+    const { submitToBilling } = await import('@/lib/billing/submit')
+    const sent = await submitToBilling(db, user.id, { contractId, sourceType: 'avulso', year: br.getUTCFullYear(), month: br.getUTCMonth() + 1 })
+    if (!sent.ok) {
+      await db.from('activities').insert({
+        contract_id: contractId, user_id: user.id, type: 'system',
+        content: `⚠ Ganho registrado, mas o envio automático para faturamento não foi concluído: ${sent.error} Envie pela tela Financeiro.`,
+        metadata: { kind: 'billing_submission_failed' },
+      })
+    }
+    await db.from('activities').update({ status: 'done', completed: true })
+      .eq('contract_id', contractId).eq('metadata->>dedupe_key', `avulso-report:${run.id}`).neq('status', 'done')
+  }
 
   if (outcome === 'lost') {
     const { createAdminClient } = await import('@/lib/supabase/admin')

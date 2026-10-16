@@ -6,6 +6,8 @@ import { moveContractStage, reopenRun, closeRun, transferRunToPipeline } from '@
 import { addMonthsToDateString } from '@/lib/utils/date'
 import { createClient } from '@/lib/supabase/client'
 import { registerContractFile } from '@/lib/actions/files'
+import { attachAvulsoReport } from '@/lib/actions/avulso'
+import { useRouter } from 'next/navigation'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 
 type Stage = {
@@ -26,7 +28,7 @@ export function StageBar({
   wonLabel, lostLabel, canChangeStage, pipelineType,
   contractNature, contractValue, otherPipelines, lostReasons,
   accountOwnerOptions, currentOwnerId, billingCnpjs = [],
-  currentMonthlyValue, currentValidUntil,
+  currentMonthlyValue, currentValidUntil, currentReportName = null,
 }: {
   contractId: string; stages: Stage[]; currentStageId: string
   timings: StageTiming[]; status: string; wonLabel: string; lostLabel: string
@@ -40,7 +42,11 @@ export function StageBar({
   billingCnpjs?: { value: string; label: string }[]   // CNPJs de faturamento da empresa (Configurações)
   currentMonthlyValue?: number          // valor mensal do contrato hoje (antes da renovação)
   currentValidUntil?: string | null     // vigência atual (antes da renovação)
+  currentReportName?: string | null     // avulso: relatório final já anexado na passagem aberta
 }) {
+  const router = useRouter()
+  const [reportBusy, setReportBusy] = useState(false)
+  const [reportMsg, setReportMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [showWonModal, setShowWonModal] = useState(false)
@@ -76,7 +82,7 @@ export function StageBar({
   })()
   // Avulso: só o relatório final (sem vigência nem tipo de contrato)
   const modalValid = isAvulso
-    ? !!reportFile
+    ? (!!reportFile || !!currentReportName) && (Number(contractValue) || 0) > 0
     : !!validFrom && !!validUntil && (isGestaoContratos || !!contractType)
       && (!isVendas || !!accountOwnerId)
       && (!isGestaoContratos || renewalValueN > 0)
@@ -122,6 +128,27 @@ export function StageBar({
 
   function handleWonClick() { setShowWonModal(true) }
 
+  // Avulso: anexa o relatório final antes do ganho → Hunter abre a tarefa "dar ganho"
+  async function handleAttachReport(file: File) {
+    setReportMsg(null); setError(null); setReportBusy(true)
+    try {
+      const supabase = createClient()
+      const storagePath = `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(file.name)}`
+      const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, file)
+      if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
+      const reg = await registerContractFile(contractId, file.name, storagePath, file.size, file.type)
+      if ('error' in reg) { setError(reg.error ?? 'Falha ao registrar o relatório.'); return }
+      const r = await attachAvulsoReport(contractId, storagePath, file.name)
+      if (!r.ok) { setError(r.error); return }
+      setReportMsg('Relatório anexado. O consultor recebeu a tarefa para dar ganho; no ganho, o envio para faturamento é automático.')
+      router.refresh()
+    } catch {
+      setError('Falha de conexão ao anexar o relatório. Tente de novo.')
+    } finally {
+      setReportBusy(false)
+    }
+  }
+
   function handleClose(outcome: 'won' | 'lost', extraData?: {
     validFrom?: string; validUntil?: string
     cnpjBilling?: string; contractType?: string; monthlyValue?: string
@@ -154,7 +181,9 @@ export function StageBar({
       // Avulso: envia o relatório final antes de faturar
       let avulsoReport: { storagePath: string; fileName: string } | null = null
       if (outcome === 'won' && isAvulso) {
-        if (!reportFile) { setError('Anexe o relatório final do serviço.'); return }
+        if (!reportFile && !currentReportName) { setError('Anexe o relatório final do serviço.'); return }
+      }
+      if (outcome === 'won' && isAvulso && reportFile) {
         const supabase = createClient()
         const storagePath = `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(reportFile.name)}`
         const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, reportFile)
@@ -206,6 +235,20 @@ export function StageBar({
         })}
       </div>
 
+      {isAvulso && status === 'open' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs">
+          <span className="font-medium text-gray-700">Relatório final do serviço:</span>
+          {currentReportName
+            ? <span className="text-positive-700">✓ {currentReportName}</span>
+            : <span className="text-warn-700">ainda não anexado</span>}
+          <label className={`ml-auto cursor-pointer rounded-md border border-brand-700 px-2.5 py-1 font-medium text-brand-700 hover:bg-brand-100 ${reportBusy || !canChangeStage ? 'pointer-events-none opacity-50' : ''}`}>
+            {reportBusy ? 'Enviando…' : currentReportName ? 'Trocar relatório' : '📎 Anexar relatório'}
+            <input type="file" className="hidden" disabled={reportBusy || !canChangeStage} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleAttachReport(f) }} />
+          </label>
+          {reportMsg && <p className="w-full text-positive-700">{reportMsg}</p>}
+        </div>
+      )}
+
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Modal ao dar ganho */}
@@ -216,7 +259,7 @@ export function StageBar({
               {isGestaoContratos ? 'Confirmar Renovação' : `Confirmar ${wonLabel}`}
             </h2>
             <p style={{ fontSize: 12, color: '#8892a4', marginBottom: 20 }}>
-              {isGestaoContratos ? 'Preencha a nova vigência e o novo valor antes de confirmar.' : isAvulso ? 'Anexe o relatório final para faturar o serviço.' : 'Preencha os dados obrigatórios para transferir ao funil de contratos.'}
+              {isGestaoContratos ? 'Preencha a nova vigência e o novo valor antes de confirmar.' : isAvulso ? 'Com o relatório anexado, o ganho envia o valor fechado automaticamente para faturamento.' : 'Preencha os dados obrigatórios para transferir ao funil de contratos.'}
             </p>
 
             {!isAvulso && (<>
@@ -307,14 +350,15 @@ export function StageBar({
             {isAvulso && (
               <div style={{ marginBottom: 16, paddingTop: 8, borderTop: '0.5px solid #f1f3f8' }}>
                 <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Relatório final</p>
-                <label style={lbl}>Relatório do serviço <span style={{ color: '#8e4550' }}>*</span></label>
+                {currentReportName && <p style={{ fontSize: 12, color: '#1f8c7d', marginBottom: 8 }}>✓ Relatório já anexado: {currentReportName}</p>}
+                <label style={lbl}>{currentReportName ? 'Trocar relatório (opcional)' : <>Relatório do serviço <span style={{ color: '#8e4550' }}>*</span></>}</label>
                 <input type="file" onChange={e => setReportFile(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
-                <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>O faturamento do avulso só entra na receita com o relatório anexado. Ele também fica em Arquivos.</p>
+                <p style={{ fontSize: 10, color: '#8892a4', marginTop: 4 }}>Valor fechado que vai para faturamento: <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 }).format(Number(contractValue) || 0)}</strong>. O relatório também fica em Arquivos.</p>
               </div>
             )}
 
             {!modalValid && <p style={{ fontSize: 11, color: '#c2683d', marginBottom: 12 }}>
-              ⚠ {isAvulso ? 'Anexe o relatório final do serviço.'
+              ⚠ {isAvulso ? ((Number(contractValue) || 0) > 0 ? 'Anexe o relatório final do serviço.' : 'Informe o valor fechado do serviço antes do ganho.')
                 : !validFrom || !validUntil ? 'Preencha início e fim da vigência.'
                 : !isGestaoContratos && !contractType ? 'Selecione o tipo de contrato.'
                 : isVendas && !accountOwnerId ? 'Indique o consultor responsável pela conta.'

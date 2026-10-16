@@ -432,6 +432,7 @@ export default async function ContractDetailPage({
           contractValue={Number(displayRun.value) || 0}
           currentMonthlyValue={Number((contract as any).monthly_value) || Number(displayRun.value) || 0}
           currentValidUntil={contract.valid_until ?? null}
+          currentReportName={displayRun.status === 'open' ? ((displayRun as any).report_file_name ?? null) : null}
           otherPipelines={pipelineById.get(displayRun.pipeline_id)?.type === 'vendas'
             ? (pipelines ?? [])
                 .filter(p => p.type === 'vendas' && p.id !== displayRun.pipeline_id)
