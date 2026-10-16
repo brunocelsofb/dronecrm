@@ -30,9 +30,28 @@ export async function getTenantZapSignToken(tenantId: string): Promise<ZapAuth |
   return data?.zapsign_api_token ? { token: data.zapsign_api_token, sandbox: data.zapsign_env === 'sandbox' } : null
 }
 
+// Modo com Plano de API: consulta a ZapSign (fonte da verdade) e aplica.
 export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: ZapAuth, appUrl: string | null = null): Promise<{ status: string; savedSignedFile: boolean }> {
-  const admin = createAdminClient()
   const api: ZapSignDocument = await getZapSignDocument(apiToken, doc.zapsign_doc_token)
+  return applyZapSignState(doc, api, appUrl)
+}
+
+// Link do PDF assinado: só baixa de endereços da ZapSign/armazenamento dela
+// (no modo sem API o aviso não é reconsultado, então o link vem do aviso).
+export function isTrustedZapSignFileUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:') return false
+    const h = u.hostname.toLowerCase()
+    return h === 'zapsign.com.br' || h.endsWith('.zapsign.com.br') || h.endsWith('.amazonaws.com')
+  } catch {
+    return false
+  }
+}
+
+// Aplica um estado do documento (vindo da API ou do aviso) — uma vez só por troca.
+export async function applyZapSignState(doc: ZapSignDocRow, api: ZapSignDocument, appUrl: string | null = null): Promise<{ status: string; savedSignedFile: boolean }> {
+  const admin = createAdminClient()
   const status = STATUS_MAP[api.status] ?? 'enviado'
   const signers = (api.signers ?? []).map(s => ({ name: s.name, email: s.email, status: s.status, sign_url: s.sign_url, signed_at: s.signed_at ?? null }))
   const now = new Date().toISOString()
@@ -49,7 +68,10 @@ export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: ZapAuth, appU
   // 2. PDF assinado: na troca para "assinado" ou numa nova tentativa (ainda sem arquivo)
   let savedSignedFile = false
   const stillNoFile = won && !(claimed?.[0]?.signed_file_id)
-  if (status === 'assinado' && stillNoFile && api.signed_file) {
+  if (status === 'assinado' && stillNoFile && api.signed_file && !isTrustedZapSignFileUrl(api.signed_file)) {
+    console.error('[zapsign] link do PDF assinado fora dos endereços esperados — não baixado:', (() => { try { return new URL(api.signed_file!).hostname } catch { return 'inválido' } })())
+  }
+  if (status === 'assinado' && stillNoFile && api.signed_file && isTrustedZapSignFileUrl(api.signed_file)) {
     const res = await fetch(api.signed_file, { cache: 'no-store' })
     if (res.ok) {
       const buf = Buffer.from(await res.arrayBuffer())

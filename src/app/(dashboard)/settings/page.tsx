@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ZapSignWebhookButton, ZapSignTestButton } from '@/components/zapsign/zapsign-webhook-button'
+import { headers } from 'next/headers'
+import { ZapSignWebhookButton, ZapSignTestButton, ZapSignHookCard } from '@/components/zapsign/zapsign-webhook-button'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { OrganizationSettingsForm } from '@/components/settings/organization-settings-form'
@@ -100,7 +101,7 @@ export default async function SettingsPage() {
   const supabase = await createClient()
   const { data: settings } = await supabase
     .from('organization_settings')
-    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, ticket_number_prefix, proposal_number_prefix, inbound_email_domain, mailgun_webhook_signing_key, zapi_instance_id, evo_server_url, evo_api_key, evo_instance_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, whatsapp_daily_auto_limit, zapsign_api_token, zapsign_webhook_url, zapsign_env')
+    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, ticket_number_prefix, proposal_number_prefix, inbound_email_domain, mailgun_webhook_signing_key, zapi_instance_id, evo_server_url, evo_api_key, evo_instance_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, whatsapp_daily_auto_limit, zapsign_api_token, zapsign_webhook_url, zapsign_env, zapsign_hook_secret')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
@@ -196,6 +197,7 @@ export default async function SettingsPage() {
           </div>
           <button type="submit" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Salvar</button>
         </form>
+        <ZapSignHookCard currentUrl={settings?.zapsign_hook_secret ? `https://${(await headers()).get('x-forwarded-host') ?? (await headers()).get('host')}/api/zapsign-webhook?k=${settings.zapsign_hook_secret}` : null} />
         <ZapSignTestButton hasToken={!!settings?.zapsign_api_token} />
         <ZapSignWebhookButton hasToken={!!settings?.zapsign_api_token} currentUrl={settings?.zapsign_webhook_url ?? null} />
       </div>

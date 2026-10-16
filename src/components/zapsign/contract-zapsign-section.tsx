@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { sendForSignature, syncZapSignDocumentStatus, type SignatureSigner } from '@/lib/actions/zapsign'
+import { sendForSignature, syncZapSignDocumentStatus, registerZapSignDocument, type SignatureSigner } from '@/lib/actions/zapsign'
 import { getFileDownloadUrl } from '@/lib/actions/files'
 
 type Template = { id: string; name: string; type: string }
@@ -40,6 +40,24 @@ export function ContractZapSignSection({
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [showRegister, setShowRegister] = useState(false)
+  const [regLink, setRegLink] = useState('')
+  const [regName, setRegName] = useState(`Contrato — ${clientName}`)
+  const [regKind, setRegKind] = useState<'contrato' | 'aditivo'>('contrato')
+
+  async function handleRegister() {
+    setError(null); setBusy(true)
+    try {
+      const r = await registerZapSignDocument({ contractId, link: regLink, name: regName, kind: regKind })
+      if (r.error) { setError(r.error); return }
+      setShowRegister(false); setRegLink('')
+      router.refresh()
+    } catch {
+      setError('Não foi possível registrar agora (falha de conexão). Tente de novo.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const selectedFile = pdfDocs.some(f => f.id === fileId) ? fileId : (pdfDocs[0]?.id ?? '')
 
@@ -91,19 +109,47 @@ export function ContractZapSignSection({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-gray-900">✍️ Assinatura digital (ZapSign)</p>
-          <p className="text-xs text-gray-500">Gere o contrato pelo modelo ou envie um PDF desta aba. Quando todos assinarem, o PDF assinado entra na lista acima.</p>
+          <p className="text-xs text-gray-500">Envie o documento pela ZapSign e registre o link aqui: quando todos assinarem, o PDF assinado entra na lista acima e o consultor recebe a tarefa de dar ganho.</p>
         </div>
-        {isConnected && (
-          <button onClick={() => setShowForm(v => !v)} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800">
-            {showForm ? 'Fechar' : '+ Enviar para assinatura'}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => { setShowRegister(v => !v); setShowForm(false) }} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-800">
+            {showRegister ? 'Fechar' : '+ Registrar documento da ZapSign'}
           </button>
-        )}
+          {isConnected && (
+            <button onClick={() => { setShowForm(v => !v); setShowRegister(false) }} title="Cria o documento direto do CRM (exige Plano de API da ZapSign)" className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100">
+              {showForm ? 'Fechar' : 'Criar pelo CRM (Plano de API)'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {!isConnected && (
-        <p className="rounded-lg bg-warn-600/10 p-3 text-xs text-warn-700">
-          A empresa ainda não conectou a ZapSign. Um administrador cola o token em <a href="/settings" className="underline">Configurações</a>.
-        </p>
+      {showRegister && (
+        <div className="space-y-3 rounded-xl border border-brand-100 bg-brand-100/40 p-4">
+          <ol className="list-decimal space-y-0.5 pl-4 text-xs text-gray-700">
+            <li>Na ZapSign, crie e envie o documento normalmente.</li>
+            <li>Copie o link do documento (ou o link de assinatura de um signatário) e cole abaixo.</li>
+          </ol>
+          <div>
+            <label className="block text-xs text-gray-500">Link do documento na ZapSign</label>
+            <input value={regLink} onChange={e => setRegLink(e.target.value)} placeholder="https://app.zapsign.com.br/…" className={input} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs text-gray-500">Nome do documento</label>
+              <input value={regName} onChange={e => setRegName(e.target.value)} className={input} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Tipo</p>
+              <div className="mt-2 flex gap-3 text-xs text-gray-700">
+                <label className="flex items-center gap-1.5"><input type="radio" checked={regKind === 'contrato'} onChange={() => { setRegKind('contrato'); setRegName(n => n.replace(/^Aditivo — /, 'Contrato — ')) }} /> Contrato</label>
+                <label className="flex items-center gap-1.5"><input type="radio" checked={regKind === 'aditivo'} onChange={() => { setRegKind('aditivo'); setRegName(n => n.replace(/^Contrato — /, 'Aditivo — ')) }} /> Aditivo</label>
+              </div>
+            </div>
+          </div>
+          {error && <p role="alert" className="text-xs text-negative-700">{error}</p>}
+          <button onClick={handleRegister} disabled={busy || !regLink.trim()} className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{busy ? 'Registrando…' : 'Registrar'}</button>
+          <p className="text-[11px] text-gray-500">Para o retorno automático, o Admin ativa uma vez em Configurações → ZapSign → “Avisos de assinatura sem Plano de API”.</p>
+        </div>
       )}
 
       {showForm && isConnected && (
@@ -176,7 +222,7 @@ export function ContractZapSignSection({
           </div>
         </div>
       )}
-      {error && !showForm && <p role="alert" className="text-xs text-negative-700">{error}</p>}
+      {error && !showForm && !showRegister && <p role="alert" className="text-xs text-negative-700">{error}</p>}
 
       <div className="space-y-2">
         {documents.map(doc => (
@@ -186,7 +232,7 @@ export function ContractZapSignSection({
                 <p className="text-sm font-medium text-gray-900">{doc.name}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_COLOR[doc.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABEL[doc.status] ?? doc.status}</span>
-                  <span className="text-[11px] text-gray-500">{doc.document_kind === 'aditivo' ? 'Aditivo' : 'Contrato'} · {doc.source === 'pdf' ? 'PDF anexado' : 'modelo ZapSign'}</span>
+                  <span className="text-[11px] text-gray-500">{doc.document_kind === 'aditivo' ? 'Aditivo' : 'Contrato'} · {doc.source === 'manual' ? 'enviado pela ZapSign' : doc.source === 'pdf' ? 'PDF anexado' : 'modelo ZapSign'}</span>
                   {doc.sent_at && <span className="text-[11px] text-gray-400">Enviado {new Date(doc.sent_at).toLocaleDateString('pt-BR')}</span>}
                   {doc.signed_at && <span className="text-[11px] text-gray-400">Assinado {new Date(doc.signed_at).toLocaleDateString('pt-BR')}</span>}
                 </div>
@@ -195,7 +241,7 @@ export function ContractZapSignSection({
                 {doc.signed_file_id && signedFilePaths[doc.signed_file_id] && (
                   <button onClick={() => openSigned(doc.signed_file_id!)} className="text-xs font-medium text-positive-700 hover:underline">Baixar assinado</button>
                 )}
-                {(doc.status === 'enviado' || (doc.status === 'assinado' && !doc.signed_file_id)) && (
+                {doc.source !== 'manual' && isConnected && (doc.status === 'enviado' || (doc.status === 'assinado' && !doc.signed_file_id)) && (
                   <button onClick={() => handleSync(doc.id)} disabled={syncing === doc.id} className="text-xs text-gray-600 hover:underline disabled:opacity-50">
                     {syncing === doc.id ? 'Atualizando…' : 'Atualizar status'}
                   </button>

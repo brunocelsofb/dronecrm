@@ -215,3 +215,52 @@ export async function testZapSign(): Promise<{ ok: true; env: string } | { ok: f
     return { ok: false, error: e instanceof Error ? e.message : 'Falha ao falar com a ZapSign.' }
   }
 }
+
+// ── Modo sem Plano de API ─────────────────────────────────────────────────
+// O documento é criado e enviado na própria ZapSign; aqui o consultor só
+// registra o link para o CRM reconhecer o aviso de "assinado".
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+
+export async function registerZapSignDocument(input: { contractId: string; link: string; name: string; kind: 'contrato' | 'aditivo' }): Promise<ActionState> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Usuário não autenticado.' }
+  const token = input.link.match(UUID_RE)?.[0]?.toLowerCase()
+  if (!token) return { error: 'Não encontrei o código do documento nesse link. Cole o link do documento (ou de assinatura) copiado da ZapSign.' }
+  const name = input.name.trim()
+  if (!name) return { error: 'Dê um nome ao documento.' }
+  const tenantId = await resolveTenantId({ contractId: input.contractId })
+  const admin = await createScopedAdmin(tenantId)
+  const { data: contract } = await admin.from('contracts').select('id').eq('id', input.contractId).maybeSingle()
+  if (!contract) return { error: 'Contrato não encontrado.' }
+  const { data: dup } = await admin.from('zapsign_documents').select('id, contract_id').eq('zapsign_doc_token', token).maybeSingle()
+  if (dup) return { error: dup.contract_id === input.contractId ? 'Este documento já está registrado aqui.' : 'Este documento da ZapSign já está registrado em outro contrato.' }
+  const { error } = await admin.from('zapsign_documents').insert({
+    contract_id: input.contractId, name, zapsign_doc_token: token, source: 'manual',
+    document_kind: input.kind === 'aditivo' ? 'aditivo' : 'contrato',
+    status: 'enviado', sent_at: new Date().toISOString(), created_by: user.id, signers: [],
+  })
+  if (error) return { error: error.message }
+  await admin.from('activities').insert({
+    contract_id: input.contractId, user_id: user.id, type: 'system',
+    content: `✍️ "${name}" registrado como enviado pela ZapSign — o CRM avisa quando todos assinarem.`,
+    metadata: { kind: 'zapsign', zapsign_doc_token: token, manual: true },
+  })
+  revalidatePath(`/contracts/${input.contractId}`)
+  return {}
+}
+
+// Configurações: gera a chave do endereço de aviso (webhook cadastrado na tela da ZapSign)
+export async function generateZapSignHookUrl(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  if (!(await isCurrentUserAdmin())) return { ok: false, error: 'Só administradores podem configurar isso.' }
+  const tenantId = await resolveTenantId()
+  const { randomBytes } = await import('node:crypto')
+  const key = randomBytes(24).toString('hex')
+  const admin = await createScopedAdmin(tenantId)
+  const { error } = await admin.from('organization_settings').update({ zapsign_hook_secret: key }).eq('tenant_id', tenantId)
+  if (error) return { ok: false, error: error.message }
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
+  revalidatePath('/settings')
+  return { ok: true, url: `https://${host}/api/zapsign-webhook?k=${key}` }
+}
