@@ -41,6 +41,8 @@ export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { 
   const [files, setFiles] = useState(initialFiles)
   const [uploadKind, setUploadKind] = useState<DocumentKind>(mode === 'arquivos' ? 'arquivo' : (initialFiles.some(f => f.document_kind === 'contrato') ? 'aditivo' : 'contrato'))
   const [uploading, setUploading] = useState(false)
+  const [alreadySigned, setAlreadySigned] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -84,7 +86,7 @@ export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { 
       return
     }
 
-    const result = await registerContractFile(contractId, file.name, storagePath, file.size, file.type, uploadKind)
+    const result = await registerContractFile(contractId, file.name, storagePath, file.size, file.type, uploadKind, mode === 'contrato' && alreadySigned)
 
     if ('error' in result) {
       setError(result.error ?? 'Falha ao registrar o arquivo.')
@@ -98,6 +100,7 @@ export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { 
     ])
     setUploading(false)
     if (inputRef.current) inputRef.current.value = ''
+    if (mode === 'contrato' && alreadySigned) { setNotice('Anexado como assinado: o consultor recebeu a tarefa para validar e dar ganho, e o gestor foi avisado no WhatsApp.'); setAlreadySigned(false) }
     router.refresh()
   }
 
@@ -149,6 +152,13 @@ export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { 
         </div>
       </div>
 
+      {mode === 'contrato' && (
+        <label className="flex items-start gap-2 text-xs text-gray-600">
+          <input type="checkbox" checked={alreadySigned} onChange={e => setAlreadySigned(e.target.checked)} className="mt-0.5" />
+          <span>O próximo arquivo já está <strong>assinado</strong> (contrato do cliente, assinado fora da ZapSign) — cria a tarefa para o consultor validar e dar ganho e avisa o gestor no WhatsApp.</span>
+        </label>
+      )}
+      {notice && <p className="text-xs text-positive-700">✓ {notice}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {files.length === 0 ? (

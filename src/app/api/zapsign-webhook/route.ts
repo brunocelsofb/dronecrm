@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   if (!apiToken) return NextResponse.json({ ok: true, skipped: 'empresa sem token' })
 
   try {
-    const r = await syncZapSignDoc(doc as ZapSignDocRow, apiToken)
+    const r = await syncZapSignDoc(doc as ZapSignDocRow, apiToken, new URL(request.url).origin)
     console.log(`[zapsign] aviso ${body?.event_type ?? '?'} · doc ${doc.id} · status ${r.status}${r.savedSignedFile ? ' · PDF assinado guardado' : ''}`)
     return NextResponse.json({ ok: true })
   } catch (e) {

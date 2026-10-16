@@ -141,7 +141,9 @@ export async function syncZapSignDocumentStatus(zapsignDocId: string): Promise<A
   const apiToken = await getTenantZapSignToken(doc.tenant_id)
   if (!apiToken) return { error: 'Token da ZapSign não configurado.' }
   try {
-    await syncZapSignDoc(doc as ZapSignDocRow, apiToken)
+    const h = await headers()
+    const host = h.get('x-forwarded-host') ?? h.get('host')
+    await syncZapSignDoc(doc as ZapSignDocRow, apiToken, host ? `https://${host}` : null)
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Falha ao consultar a ZapSign.' }
   }

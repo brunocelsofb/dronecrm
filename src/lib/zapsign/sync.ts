@@ -8,6 +8,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { getZapSignDocument, type ZapSignDocument } from './api'
+import { onContractSigned } from '@/lib/contracts/signed-followup'
 
 const STATUS_MAP: Record<string, string> = { pending: 'enviado', awaiting: 'enviado', signed: 'assinado', refused: 'recusado', expired: 'expirado' }
 
@@ -29,15 +30,26 @@ export async function getTenantZapSignToken(tenantId: string): Promise<string | 
   return data?.zapsign_api_token ?? null
 }
 
-export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string): Promise<{ status: string; savedSignedFile: boolean }> {
+export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string, appUrl: string | null = null): Promise<{ status: string; savedSignedFile: boolean }> {
   const admin = createAdminClient()
   const api: ZapSignDocument = await getZapSignDocument(apiToken, doc.zapsign_doc_token)
   const status = STATUS_MAP[api.status] ?? 'enviado'
   const signers = (api.signers ?? []).map(s => ({ name: s.name, email: s.email, status: s.status, sign_url: s.sign_url, signed_at: s.signed_at ?? null }))
-  const update: Record<string, unknown> = { status, signers, last_sync_at: new Date().toISOString() }
-  let savedSignedFile = false
+  const now = new Date().toISOString()
 
-  if (status === 'assinado' && !doc.signed_file_id && api.signed_file) {
+  // 1. Grava o status só se ainda estiver como lido (a ZapSign pode mandar
+  //    vários avisos ao mesmo tempo): quem conseguir a troca faz o resto, uma vez.
+  const update: Record<string, unknown> = { status, signers, last_sync_at: now }
+  if (status === 'assinado' && doc.status !== 'assinado') update.signed_at = now
+  const { data: claimed } = await admin.from('zapsign_documents').update(update)
+    .eq('id', doc.id).eq('tenant_id', doc.tenant_id).eq('status', doc.status).select('id, signed_file_id')
+  const won = (claimed ?? []).length > 0
+  const transition = won && status !== doc.status
+
+  // 2. PDF assinado: na troca para "assinado" ou numa nova tentativa (ainda sem arquivo)
+  let savedSignedFile = false
+  const stillNoFile = won && !(claimed?.[0]?.signed_file_id)
+  if (status === 'assinado' && stillNoFile && api.signed_file) {
     const res = await fetch(api.signed_file, { cache: 'no-store' })
     if (res.ok) {
       const buf = Buffer.from(await res.arrayBuffer())
@@ -49,7 +61,10 @@ export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string): Prom
           tenant_id: doc.tenant_id, contract_id: doc.contract_id, file_name: fileName, storage_path: storagePath,
           file_size: buf.byteLength, mime_type: 'application/pdf', uploaded_by: doc.created_by, document_kind: doc.document_kind,
         }).select('id').single()
-        if (file) { update.signed_file_id = file.id; savedSignedFile = true }
+        if (file) {
+          await admin.from('zapsign_documents').update({ signed_file_id: file.id }).eq('id', doc.id).eq('tenant_id', doc.tenant_id)
+          savedSignedFile = true
+        }
       } else {
         console.error('[zapsign] falha ao guardar PDF assinado:', up.error.message)
       }
@@ -57,11 +72,9 @@ export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string): Prom
       console.error('[zapsign] falha ao baixar PDF assinado:', res.status)
     }
   }
-  if (status === 'assinado' && doc.status !== 'assinado') update.signed_at = new Date().toISOString()
 
-  await admin.from('zapsign_documents').update(update).eq('id', doc.id).eq('tenant_id', doc.tenant_id)
-
-  if (status !== doc.status && (status === 'assinado' || status === 'recusado' || status === 'expirado')) {
+  // 3. Linha do tempo + (assinado) tarefa para dar ganho e aviso ao gestor — só na troca
+  if (transition && (status === 'assinado' || status === 'recusado' || status === 'expirado')) {
     const content = status === 'assinado'
       ? `✅ "${doc.name}" assinado por todos os signatários.${savedSignedFile ? ' O PDF assinado foi guardado na aba Contrato e aditivos.' : ''}`
       : status === 'recusado' ? `❌ "${doc.name}" foi recusado por um dos signatários.` : `🕐 "${doc.name}" expirou na ZapSign sem todas as assinaturas.`
@@ -69,6 +82,12 @@ export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string): Prom
       tenant_id: doc.tenant_id, contract_id: doc.contract_id, type: 'system', content,
       metadata: { kind: 'zapsign', zapsign_doc_token: doc.zapsign_doc_token },
     })
+    if (status === 'assinado') {
+      await onContractSigned({
+        tenantId: doc.tenant_id, contractId: doc.contract_id, documentName: doc.name, kind: doc.document_kind,
+        via: 'zapsign', dedupeKey: `signed:zapsign:${doc.id}`, appUrl,
+      })
+    }
   }
   return { status, savedSignedFile }
 }

@@ -1,7 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { resolveTenantId } from '@/lib/tenant/context'
+import { onContractSigned } from '@/lib/contracts/signed-followup'
 
 export type DocumentKind = 'arquivo' | 'contrato' | 'aditivo'
 const KIND_LABEL: Record<DocumentKind, string> = { arquivo: 'Arquivo', contrato: 'Contrato', aditivo: 'Aditivo' }
@@ -31,7 +34,8 @@ export async function registerContractFile(
   storagePath: string,
   fileSize: number,
   mimeType: string,
-  kind: DocumentKind = 'arquivo'
+  kind: DocumentKind = 'arquivo',
+  alreadySigned = false
 ) {
   const supabase = await createClient()
   const {
@@ -40,7 +44,7 @@ export async function registerContractFile(
 
   if (!user) return { error: 'Usuário não autenticado.' }
 
-  const { error } = await supabase.from('contract_files').insert({
+  const { data: inserted, error } = await supabase.from('contract_files').insert({
     contract_id: contractId,
     file_name: fileName,
     storage_path: storagePath,
@@ -48,7 +52,7 @@ export async function registerContractFile(
     mime_type: mimeType,
     uploaded_by: user.id,
     document_kind: kind,
-  })
+  }).select('id').single()
 
   if (error) return { error: error.message }
 
@@ -58,6 +62,17 @@ export async function registerContractFile(
     type: 'system',
     content: `${KIND_LABEL[kind]} "${fileName}" anexado.`,
   })
+
+  // Contrato/aditivo do cliente, assinado fora do CRM: mesma tarefa de "dar ganho"
+  // e o mesmo aviso ao gestor que a ZapSign dispara quando todos assinam.
+  if (alreadySigned && inserted && (kind === 'contrato' || kind === 'aditivo')) {
+    const h = await headers()
+    const host = h.get('x-forwarded-host') ?? h.get('host')
+    await onContractSigned({
+      tenantId: await resolveTenantId({ contractId }), contractId, documentName: fileName, kind,
+      via: 'anexo', dedupeKey: `signed:anexo:${inserted.id}`, appUrl: host ? `https://${host}` : null,
+    })
+  }
 
   revalidatePath(`/contracts/${contractId}`)
   return { success: true }
