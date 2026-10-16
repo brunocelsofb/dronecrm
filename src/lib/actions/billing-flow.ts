@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { resolveTenantId } from '@/lib/tenant/context'
-import { readErpConfig } from '@/lib/erp/connectors'
+import { readErpConfig, isAllowedOutUrl, buildWebhookPayload, postSignedWebhook } from '@/lib/erp/connectors'
 import { submitToBilling } from '@/lib/billing/submit'
 import { brl, MONTHS_LONG } from '@/lib/revenue/measurement'
 
@@ -47,7 +47,9 @@ export async function sendToBilling(input: SendInput): Promise<Result> {
   if (!contract) return { ok: false, error: 'Contrato não encontrado.' }
   if (!user.isAdmin && contract.owner_id !== user.id) return { ok: false, error: 'Só o consultor responsável ou o Admin envia para faturamento.' }
 
-  const r = await submitToBilling(db, user.id, input)
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host')
+  const r = await submitToBilling(db, user.id, input, host ? `https://${host}/api/faturamento/retorno` : null)
   revalidateAll(contractId)
   return r
 }
@@ -142,4 +144,57 @@ export async function generateBillingReturnKey(): Promise<{ ok: true; url: strin
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
   return { ok: true, key, url: `https://${host}/api/faturamento/retorno` }
+}
+
+// Admin: modo de envio (manual ou webhook) e endereço que recebe os envios
+export async function saveBillingDelivery(input: { provider: 'manual' | 'webhook'; outUrl: string }): Promise<Result> {
+  const user = await me()
+  if (!user?.isAdmin) return { ok: false, error: 'Só o Admin altera isso.' }
+  const provider = input.provider === 'webhook' ? 'webhook' : 'manual'
+  const outUrl = input.outUrl.trim()
+  if (provider === 'webhook' && !isAllowedOutUrl(outUrl)) return { ok: false, error: 'Informe um endereço https válido (endereços internos não são aceitos).' }
+  const tenantId = await resolveTenantId()
+  const db = await createScopedAdmin(tenantId)
+  const { data: org } = await db.from('organization_settings').select('billing_erp').limit(1).maybeSingle()
+  const cfg = { ...readErpConfig(org?.billing_erp), provider, out_url: outUrl || null }
+  const { error } = await db.from('organization_settings').update({ billing_erp: cfg }).eq('tenant_id', tenantId)
+  if (error) return { ok: false, error: error.message }
+  revalidateAll()
+  return { ok: true }
+}
+
+export async function generateBillingOutSecret(): Promise<{ ok: true; secret: string } | { ok: false; error: string }> {
+  const user = await me()
+  if (!user?.isAdmin) return { ok: false, error: 'Só o Admin gera a chave.' }
+  const tenantId = await resolveTenantId()
+  const db = await createScopedAdmin(tenantId)
+  const { data: org } = await db.from('organization_settings').select('billing_erp').limit(1).maybeSingle()
+  const secret = randomBytes(24).toString('hex')
+  const { error } = await db.from('organization_settings').update({ billing_erp: { ...readErpConfig(org?.billing_erp), out_secret: secret } }).eq('tenant_id', tenantId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, secret }
+}
+
+// Admin: manda um aviso de teste (evento faturamento.teste) — nada é registrado
+export async function testBillingWebhook(): Promise<Result> {
+  const user = await me()
+  if (!user?.isAdmin) return { ok: false, error: 'Só o Admin testa.' }
+  const db = await createScopedAdmin(await resolveTenantId())
+  const { data: org } = await db.from('organization_settings').select('billing_erp').limit(1).maybeSingle()
+  const cfg = readErpConfig(org?.billing_erp)
+  if (!cfg.out_url || !isAllowedOutUrl(cfg.out_url)) return { ok: false, error: 'Salve o endereço do webhook primeiro.' }
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host')
+  const sample = buildWebhookPayload({
+    submissionId: '00000000-0000-0000-0000-000000000000', sourceType: 'recorrente', year: 2026, month: 1, amount: 1234.56,
+    description: 'TESTE — não faturar',
+    contract: { id: '00000000-0000-0000-0000-000000000000', client_name: 'CLIENTE TESTE', process_number: null, contract_number: 'TESTE', cnpj: '00000000000000', razao_social: 'CLIENTE TESTE LTDA', nome_fantasia: 'Cliente Teste', cnpj_emitente: null },
+  }, { returnUrl: host ? `https://${host}/api/faturamento/retorno` : null })
+  try {
+    const r = await postSignedWebhook(cfg.out_url, cfg.out_secret ?? null, { ...sample, evento: 'faturamento.teste' }, 'faturamento.teste')
+    if (r.status >= 200 && r.status < 300) return { ok: true }
+    return { ok: false, error: `O endereço respondeu ${r.status}${r.text ? `: ${r.text.slice(0, 200)}` : ''}` }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error && e.name === 'AbortError' ? 'O endereço não respondeu em 15 segundos.' : 'Não foi possível chamar o endereço.' }
+  }
 }

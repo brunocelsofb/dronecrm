@@ -497,7 +497,10 @@ export async function closeRun(
     const db = await createScopedAdmin()
     const br = new Date(Date.now() - 3 * 3600 * 1000)
     const { submitToBilling } = await import('@/lib/billing/submit')
-    const sent = await submitToBilling(db, user.id, { contractId, sourceType: 'avulso', year: br.getUTCFullYear(), month: br.getUTCMonth() + 1 })
+    const { headers } = await import('next/headers')
+    const hh = await headers()
+    const host = hh.get('x-forwarded-host') ?? hh.get('host')
+    const sent = await submitToBilling(db, user.id, { contractId, sourceType: 'avulso', year: br.getUTCFullYear(), month: br.getUTCMonth() + 1 }, host ? `https://${host}/api/faturamento/retorno` : null)
     if (!sent.ok) {
       await db.from('activities').insert({
         contract_id: contractId, user_id: user.id, type: 'system',

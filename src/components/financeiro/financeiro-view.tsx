@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { fmtBRL } from '@/lib/format'
 import type { FinanceRow } from '@/lib/revenue/dashboard-compute'
-import { sendToBilling, sendManyToBilling, markInvoiced, cancelSubmission, saveBillingFlowStart, generateBillingReturnKey } from '@/lib/actions/billing-flow'
+import { sendToBilling, sendManyToBilling, markInvoiced, cancelSubmission, saveBillingFlowStart, generateBillingReturnKey, saveBillingDelivery, generateBillingOutSecret, testBillingWebhook } from '@/lib/actions/billing-flow'
 import { saveRecurringDiscount } from '@/lib/actions/measurements'
 import { ERP_LABEL, type ErpProvider } from '@/lib/erp/connectors'
 
@@ -27,7 +27,7 @@ type Props = {
   errors: { id: string; contract_id: string; source_type: string; erp_error: string | null; client: string }[]
   me: { id: string; isAdmin: boolean }
   due: { iso: string; overdue: boolean; day: number }
-  erp: { provider: ErpProvider; flowStart: string | null; hasReturnKey: boolean }
+  erp: { provider: ErpProvider; flowStart: string | null; hasReturnKey: boolean; outUrl: string | null; hasOutSecret: boolean }
 }
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -307,6 +307,29 @@ function IntegrationCard({ erp }: { erp: Props['erp'] }) {
   const [msg, setMsg] = useState<string | null>(null)
   const [key, setKey] = useState<{ url: string; key: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [provider, setProvider] = useState<ErpProvider>(erp.provider)
+  const [outUrl, setOutUrl] = useState(erp.outUrl ?? '')
+  const [outSecret, setOutSecret] = useState<string | null>(null)
+
+  async function saveDelivery() {
+    setBusy(true); setMsg(null)
+    const r = await saveBillingDelivery({ provider, outUrl })
+    setBusy(false); setMsg(r.ok ? 'Envio para faturamento salvo.' : r.error)
+    if (r.ok) router.refresh()
+  }
+  async function genOutSecret() {
+    if (erp.hasOutSecret && !window.confirm('Gerar uma nova chave de assinatura invalida a anterior (atualize no sistema que recebe). Continuar?')) return
+    setBusy(true); setMsg(null)
+    const r = await generateBillingOutSecret()
+    setBusy(false)
+    if (r.ok) setOutSecret(r.secret)
+    else setMsg(r.error)
+  }
+  async function sendTest() {
+    setBusy(true); setMsg(null)
+    const r = await testBillingWebhook()
+    setBusy(false); setMsg(r.ok ? '✓ Aviso de teste entregue (evento faturamento.teste).' : r.error)
+  }
 
   async function saveStart() {
     setBusy(true); setMsg(null)
@@ -327,10 +350,33 @@ function IntegrationCard({ erp }: { erp: Props['erp'] }) {
     <details className="rounded-2xl border border-gray-200 bg-white p-4 text-sm">
       <summary className="cursor-pointer font-semibold text-gray-900">Integração com o faturamento (Admin)</summary>
       <div className="mt-3 grid gap-4 md:grid-cols-3">
-        <div>
-          <p className="text-xs font-medium text-gray-600">Sistema de faturamento</p>
-          <p className="mt-1 text-gray-900">{ERP_LABEL[erp.provider]}</p>
-          <p className="mt-1 text-[11px] text-gray-500">Sankhya e TOTVS estão preparados; a conexão é ligada quando a empresa tiver as credenciais e a documentação da API.</p>
+        <div className="md:col-span-3 space-y-2 rounded-lg border border-gray-100 p-3">
+          <p className="text-xs font-medium text-gray-600">Como os envios chegam ao faturamento</p>
+          <div className="flex flex-wrap gap-4 text-xs text-gray-700">
+            {(['manual', 'webhook'] as ErpProvider[]).map(pv => (
+              <label key={pv} className="flex items-center gap-1.5"><input type="radio" checked={provider === pv} onChange={() => setProvider(pv)} /> {ERP_LABEL[pv]}</label>
+            ))}
+          </div>
+          {provider === 'webhook' && (
+            <div className="space-y-1">
+              <label className="text-[11px] text-gray-500" htmlFor="out-url">Endereço que recebe os envios (https)</label>
+              <input id="out-url" value={outUrl} onChange={e => setOutUrl(e.target.value)} placeholder="https://…" className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" />
+              <p className="text-[11px] text-gray-500">
+                A cada envio o CRM faz um POST com: <code>envio_id</code>, <code>cliente.cnpj</code>, <code>cliente.razao_social</code>, <code>tipo</code>, <code>competencia</code> (AAAA-MM), <code>valor</code>, <code>descricao</code>, <code>contrato.numero</code> e o endereço de retorno.
+                {' '}Cabeçalho <code>X-CRM-Assinatura: sha256=…</code> (HMAC do corpo com a chave de assinatura) para o destino conferir que veio do CRM.
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={saveDelivery} disabled={busy} className="rounded-md bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-50">Salvar</button>
+            {provider === 'webhook' && erp.provider === 'webhook' && (
+              <>
+                <button onClick={genOutSecret} disabled={busy} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">{erp.hasOutSecret ? 'Gerar nova chave de assinatura' : 'Gerar chave de assinatura'}</button>
+                <button onClick={sendTest} disabled={busy} className="rounded-md border border-brand-700 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">Enviar teste</button>
+              </>
+            )}
+          </div>
+          {outSecret && <p className="rounded bg-gray-50 p-2 text-xs">Chave de assinatura (guarde agora, não aparece de novo): <code className="break-all">{outSecret}</code></p>}
         </div>
         <div>
           <label className="text-xs font-medium text-gray-600" htmlFor="flow-start">Início do fluxo (mês)</label>
@@ -342,7 +388,7 @@ function IntegrationCard({ erp }: { erp: Props['erp'] }) {
         </div>
         <div>
           <p className="text-xs font-medium text-gray-600">Retorno automático do faturado</p>
-          <p className="mt-1 text-[11px] text-gray-500">O ERP (ou a integração) avisa o CRM quando faturar, com nº da nota, data e valor.</p>
+          <p className="mt-1 text-[11px] text-gray-500">O sistema de faturamento avisa o CRM quando faturar: nº da nota, data e valor, identificando o envio pelo <code>envio_id</code> ou por CNPJ + competência.</p>
           <button onClick={genKey} disabled={busy} className="mt-2 rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             {erp.hasReturnKey ? 'Gerar nova chave' : 'Gerar chave de retorno'}
           </button>
@@ -354,6 +400,7 @@ function IntegrationCard({ erp }: { erp: Props['erp'] }) {
           <p>Endereço: <code className="break-all">{key.url}</code></p>
           <p>Cabeçalho: <code className="break-all">Authorization: Bearer {key.key}</code></p>
           <p>Corpo (JSON): <code className="break-all">{'{"envio_id":"…","numero_nota":"12345","data_faturamento":"AAAA-MM-DD","valor_faturado":1234.56}'}</code></p>
+          <p>Ou, sem o envio_id: <code className="break-all">{'{"cnpj":"00000000000000","competencia":"AAAA-MM","tipo":"recorrente","numero_nota":"12345","data_faturamento":"AAAA-MM-DD","valor_faturado":1234.56}'}</code></p>
         </div>
       )}
       {msg && <p className="mt-2 text-xs text-gray-700">{msg}</p>}

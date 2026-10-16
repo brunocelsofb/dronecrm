@@ -12,10 +12,10 @@ type Db = Awaited<ReturnType<typeof createScopedAdmin>>
 const BR_OFFSET_MS = 3 * 3600 * 1000
 export const brMonthOf = (iso: string) => { const d = new Date(Date.parse(iso) - BR_OFFSET_MS); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 } }
 
-export async function submitToBilling(db: Db, userId: string | null, input: SubmitInput): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function submitToBilling(db: Db, userId: string | null, input: SubmitInput, returnUrl: string | null = null): Promise<{ ok: true } | { ok: false; error: string }> {
   const { contractId, sourceType, year, month } = input
   const [{ data: contract }, { data: org }] = await Promise.all([
-    db.from('contracts').select('id, client_name, process_number, companies(cnpj)').eq('id', contractId).maybeSingle(),
+    db.from('contracts').select('id, client_name, process_number, contract_number, cnpj_billing, companies(cnpj, name, trade_name)').eq('id', contractId).maybeSingle(),
     db.from('organization_settings').select('billing_erp').limit(1).maybeSingle(),
   ])
   if (!contract) return { ok: false, error: 'Contrato não encontrado.' }
@@ -45,6 +45,11 @@ export async function submitToBilling(db: Db, userId: string | null, input: Subm
   if (amount <= 0) return { ok: false, error: 'Valor apurado zerado: nada a enviar.' }
 
   const config = readErpConfig(org?.billing_erp)
+  const company = (contract as { companies?: { cnpj?: string | null; name?: string | null; trade_name?: string | null } | null }).companies
+  // Envio por webhook identifica o cliente pelo CNPJ: confere antes de registrar
+  if (config.provider === 'webhook' && (company?.cnpj ?? '').replace(/\D/g, '').length !== 14) {
+    return { ok: false, error: `${contract.client_name ?? 'Cliente'} sem CNPJ válido: ligue o contrato a uma empresa com CNPJ antes de enviar.` }
+  }
   const { data: sub, error: insErr } = await db.from('billing_submissions').insert({
     contract_id: contractId, source_type: sourceType, billing_record_id: billingRecordId, run_id: runId,
     year, month, amount_sent: amount, status: 'enviado', erp_provider: config.provider, sent_by: userId,
@@ -54,15 +59,17 @@ export async function submitToBilling(db: Db, userId: string | null, input: Subm
     return { ok: false, error: insErr?.message ?? 'Falha ao registrar o envio.' }
   }
 
-  const company = (contract as { companies?: { cnpj?: string | null } | null }).companies
   const ref = `${MONTHS_LONG[month - 1]}/${year}`
   const item: BillingItem = {
     submissionId: sub.id, sourceType, year, month, amount,
     description: `${sourceType === 'recorrente' ? 'Recorrência' : sourceType === 'medicao' ? 'Medição' : 'Serviço avulso'} ${ref} — ${contract.client_name ?? ''}`,
-    contract: { id: contract.id, client_name: contract.client_name, process_number: contract.process_number, cnpj: company?.cnpj ?? null },
+    contract: {
+      id: contract.id, client_name: contract.client_name, process_number: contract.process_number, contract_number: contract.contract_number ?? null,
+      cnpj: company?.cnpj ?? null, razao_social: company?.name ?? null, nome_fantasia: company?.trade_name ?? null, cnpj_emitente: contract.cnpj_billing ?? null,
+    },
   }
   try {
-    const r = await getConnector(config.provider).send(item, config)
+    const r = await getConnector(config.provider).send(item, config, { returnUrl })
     await db.from('billing_submissions').update({ erp_reference: r.reference, erp_payload: r.payload as object }).eq('id', sub.id)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

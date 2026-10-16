@@ -14,6 +14,8 @@ import { FinanceiroView } from '@/components/financeiro/financeiro-view'
 
 export const dynamic = 'force-dynamic'
 
+const p_isAdmin = (role: string | null | undefined) => role === 'admin'
+
 export default async function FinanceiroPage({ searchParams }: { searchParams: Promise<{ ano?: string; mes?: string }> }) {
   const sp = await searchParams
   const now = new Date(Date.now() - 3 * 60 * 60 * 1000) // Brasília
@@ -60,7 +62,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       errors={(errors ?? []).map(e => ({ ...e, client: input.contracts.find(c => c.id === e.contract_id)?.client_name ?? '—' }))}
       me={{ id: profile?.id ?? '', isAdmin: profile?.role === 'admin' }}
       due={{ iso: dueIso, overdue: todayIso > dueIso, day: dueDay }}
-      erp={{ provider: cfg.provider, flowStart: cfg.flow_start ?? null, hasReturnKey: !!cfg.webhook_secret }}
+      erp={{ provider: cfg.provider, flowStart: cfg.flow_start ?? null, hasReturnKey: !!cfg.webhook_secret, outUrl: p_isAdmin(profile?.role) ? (cfg.out_url ?? null) : null, hasOutSecret: !!cfg.out_secret }}
     />
   )
 }
