@@ -18,7 +18,7 @@ export async function buildKpiSection(tenantId: string): Promise<string> {
   const lines: string[] = []
   lines.push(`📊 *Indicadores de ${MONTHS_LONG[month - 1]}* (até hoje)`)
   lines.push(`Em contrato: ${brl(rv.contractPotential)} · apurado: ${brl(rv.contractBilled)} · enviado p/ faturamento: ${brl(rv.contractSent)} · faturado: ${brl(rv.contractInvoiced)} (${pc(rv.contractInvoicedPct)})${rv.contractGap > 0 ? ` · diferença ${brl(rv.contractGap)} (recorrência não confirmada ${brl(rv.gapParts.pendingConfirm.total)}, medições pendentes ${brl(rv.gapParts.pending.total)}, descontos ${brl(rv.gapParts.discounts.total)}, glosas ${brl(rv.gapParts.glosas.total)}, não enviado ${brl(rv.gapParts.notSent.total)}, aguardando faturamento ${brl(rv.gapParts.notInvoiced.total)})` : ''}`)
-  lines.push(`Receita: ${brl(rv.total)}${rv.goal > 0 ? ` — ${pc(rv.goalPct)} da meta (${brl(rv.goal)})` : ' — sem meta cadastrada'}`)
+  lines.push(`Faturado (vale para a meta): ${brl(rv.total)}${rv.goal > 0 ? ` — ${pc(rv.goalPct)} da meta (${brl(rv.goal)})` : ' — sem meta cadastrada'}`)
   lines.push(`  $ Recorrente ${brl(rv.recurringTotal)} · 📏 Medição ${brl(rv.meteredTotal)} · Avulso ${brl(rv.avulsoTotal)}`)
   lines.push('')
   lines.push(`🎯 *Hunter*: conversão ${pc(h.conversion)} (${h.won.length}/${h.closed}) · novo recorrente ${brl(h.newMrr)} · ticket médio ${brl(h.ticket)} · avulso ${brl(h.avulso.value)}`)

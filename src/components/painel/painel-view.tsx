@@ -94,29 +94,32 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
       </Section>
 
       {/* ── Receita x meta ─────────────────────────────────────────── */}
-      <Section title={isYear ? 'Receita do período' : `Receita de ${MONTHS_LONG[month - 1]}`} subtitle="Receita apurada: recorrente confirmado + medição validada + avulso ganho">
+      <Section title={isYear ? 'Faturado do período x meta' : `Faturado de ${MONTHS_LONG[month - 1]} x meta`} subtitle="A meta é comparada com o faturado (recorrente + medição + avulso). Abaixo, o apurado de cada tipo.">
         <div className="grid gap-3">
           <div>
             <RevenueHero
-              label={isYear ? `Receita · ${allYear ? 'ano todo' : `${sel.length} ${sel.length === 1 ? 'mês' : 'meses'}`}` : 'Receita do mês'}
+              label={isYear ? `Faturado · ${allYear ? 'ano todo' : `${sel.length} ${sel.length === 1 ? 'mês' : 'meses'}`}` : 'Faturado do mês'}
               total={rv.total}
               goal={rv.goal}
               goalPct={rv.goalPct}
               gap={rv.gap}
-              extra={isYear && goalToDate > 0 && goalToDate !== rv.goal ? <>Nos meses já fechados: {pctTxt(goalToDatePct)} da meta ({brl(goalToDate)})</> : null}
+              extra={<>
+                {rv.apuradoTotal !== rv.total && <span className="block">Apurado (ainda não todo faturado): {brl(rv.apuradoTotal)}</span>}
+                {isYear && goalToDate > 0 && goalToDate !== rv.goal && <span className="block">Nos meses já fechados: {pctTxt(goalToDatePct)} da meta ({brl(goalToDate)})</span>}
+              </>}
               parts={[
-                { key: 'recurring', label: '$ Recorrente', value: rv.recurringTotal },
-                { key: 'metered', label: '📏 Medição', value: rv.meteredTotal },
-                { key: 'avulso', label: 'Avulso', value: rv.avulsoTotal },
+                { key: 'recurring', label: '$ Recorrente', value: rv.invoicedRecurring },
+                { key: 'metered', label: '📏 Medição', value: rv.invoicedMetered },
+                { key: 'avulso', label: 'Avulso', value: rv.invoicedAvulso },
               ]}
               noGoal={<>Sem meta {isYear ? 'nos meses escolhidos' : 'para este mês'}. {isAdmin ? <Link href={`/settings/metas?ano=${year}`} className="underline">Cadastrar metas</Link> : 'Peça ao administrador.'}</>}
             />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Kpi accent={REV_COLORS.recurring} label="$ Recorrente" value={brl(rv.recurringTotal)} hint={<>apurado de {brl(rv.recurringPotential)} em contrato{rv.gapParts.pendingConfirm.total > 0 ? <span className="block font-medium text-amber-700">Não confirmado: {brl(rv.gapParts.pendingConfirm.total)}</span> : null}{rv.gapParts.discounts.total > 0 ? <span className="block font-medium text-red-700">Descontos: {brl(rv.recurringPotential - rv.recurringTotal - rv.gapParts.pendingConfirm.total)}</span> : null}</>} lines={rv.recurring} />
+            <Kpi accent={REV_COLORS.recurring} label="$ Recorrente (apurado)" value={brl(rv.recurringTotal)} hint={<>apurado de {brl(rv.recurringPotential)} em contrato{rv.gapParts.pendingConfirm.total > 0 ? <span className="block font-medium text-amber-700">Não confirmado: {brl(rv.gapParts.pendingConfirm.total)}</span> : null}{rv.gapParts.discounts.total > 0 ? <span className="block font-medium text-red-700">Descontos: {brl(rv.recurringPotential - rv.recurringTotal - rv.gapParts.pendingConfirm.total)}</span> : null}</>} lines={rv.recurring} />
             <Kpi
               accent={REV_COLORS.metered}
-              label="📏 Medição"
+              label="📏 Medição (apurado)"
               value={brl(rv.meteredTotal)}
               hint={<>
                 {rv.measured.length} validada(s) · {rv.measurePending.length} pendente(s)
@@ -289,7 +292,7 @@ function YearTable({ year, series, selected }: {
               <th className="px-3 py-2 text-right font-medium">Faturado</th>
               <th className="px-3 py-2 text-right font-medium">Diferença</th>
               <th className="px-3 py-2 text-right font-medium">Avulso</th>
-              <th className="px-3 py-2 text-right font-medium">Receita apurada</th>
+              <th className="px-3 py-2 text-right font-medium">Faturado total</th>
               <th className="px-3 py-2 text-right font-medium">Meta</th>
               <th className="px-3 py-2 text-right font-medium">% meta</th>
             </tr>

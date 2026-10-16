@@ -30,7 +30,7 @@ export default async function MetasPage({ searchParams }: { searchParams: Promis
         <Link href="/settings" style={{ fontSize: 12, color: '#8892a4', textDecoration: 'none' }}>← Configurações</Link>
         <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: '4px 0 0' }}>Metas de receita</h1>
         <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>
-          Meta total da empresa, mês a mês. O Painel gerencial compara cada mês com a receita realizada (recorrente + medição + avulso).
+          Meta total da empresa, mês a mês. O Painel gerencial compara cada mês com o faturado (recorrente + medição + avulso faturados).
         </p>
       </div>
       <GoalsYearForm key={year} year={year} initial={initial} dueDay={Number(org?.measurement_due_day ?? 5)} />

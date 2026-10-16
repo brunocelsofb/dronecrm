@@ -1,7 +1,8 @@
 import { fmtPct, fmtNum1 } from '@/lib/format'
 // ─── Painel gerencial: cálculos (funções puras, sem banco) ───────────────────
 // Regras combinadas com o gestor:
-//   Receita do mês = Recorrente + Medição + Avulso
+//   Meta x FATURADO do mês (recorrente + medição + avulso faturados; antes do
+//   início do fluxo de faturamento, faturado = apurado). Apurado:
 //     • Recorrente: contrato ativo no funil de Gestão de Contratos no mês, pelo
 //       valor mensal vigente (vale até ser rescindido; vencer sem renovar não tira).
 //       O mês da rescisão ainda conta; a partir do mês seguinte, não.
@@ -204,12 +205,14 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     const notInvoiced: ContractLine[] = []
     const invoiceDiff: ContractLine[] = []
     let sentTotal = 0, invoicedTotal = 0, avulsoSent = 0, avulsoInvoiced = 0
+    const invByKind = { recorrente: 0, medicao: 0, avulso: 0 }
     // Situação de envio/faturamento de um valor apurado
     const track = (contractId: string, kind: FinanceRow['kind'], potential: number, apurado: number, note?: string) => {
       const c = contractById.get(contractId)
       const base = { contractId, client: c?.client_name ?? '—', number: c?.process_number ?? '', kind, potential: r2(potential), apurado: r2(apurado), note }
       if (!flow) {
         if (kind !== 'avulso') { sentTotal += apurado; invoicedTotal += apurado } else { avulsoSent += apurado; avulsoInvoiced += apurado }
+        invByKind[kind] += apurado
         finRows.push({ ...base, state: 'anterior', sent: null, invoiced: null, invoiceNumber: null, invoicedAt: null, submissionId: null, changedAfterSend: false })
         return
       }
@@ -217,6 +220,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       const sent = s ? Number(s.amount_sent) || 0 : 0
       const inv = s && s.status === 'faturado' ? Number(s.invoiced_amount) || 0 : 0
       if (kind !== 'avulso') { sentTotal += sent; invoicedTotal += inv } else { avulsoSent += sent; avulsoInvoiced += inv }
+      invByKind[kind] += inv
       if (kind !== 'avulso') {
         if (!s) notSent.push(line(contractId, apurado, 'apurado, ainda não enviado ao faturamento'))
         else {
@@ -313,8 +317,12 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     const contractPotential = r2(recurringPotential + meteredPotential)
     const contractBilled = r2(recurringTotal + meteredTotal)
     const goal = Number(input.goals.find(g => g.year === y && g.month === m)?.target_value) || 0
-    const total = r2(recurringTotal + meteredTotal + avulsoTotal)
+    // Meta x FATURADO (contratos + avulso). Antes do início do fluxo, faturado = apurado.
+    const apuradoTotal = r2(recurringTotal + meteredTotal + avulsoTotal)
+    const total = r2(invoicedTotal + avulsoInvoiced)
     return {
+      apuradoTotal,
+      invoicedRecurring: r2(invByKind.recorrente), invoicedMetered: r2(invByKind.medicao), invoicedAvulso: r2(invByKind.avulso),
       year: y, month: m,
       recurring, recurringTotal, recurringPotential,
       measured, meteredTotal, measurePending, lostPotential: r2(lostPotential), glosaTotal: r2(glosaTotal),
@@ -358,9 +366,11 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     return {
       month: m,
       total: r ? r.total : null as number | null,
-      recurring: r ? r.recurringTotal : null as number | null,
-      metered: r ? r.meteredTotal : null as number | null,
-      avulso: r ? r.avulsoTotal : null as number | null,
+      // partes do faturado (somam o total comparado com a meta)
+      recurring: r ? r.invoicedRecurring : null as number | null,
+      metered: r ? r.invoicedMetered : null as number | null,
+      avulso: r ? r.invoicedAvulso : null as number | null,
+      apurado: r ? r.apuradoTotal : null as number | null,
       lostPotential: r ? r.lostPotential : null as number | null,
       potential: r ? r.contractPotential : null as number | null,
       billed: r ? r.contractBilled : null as number | null,
@@ -377,7 +387,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   const current = (() => {
     if (scope === 'month') return revenueOf(year, month)
     const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null && selSet.has(r.month))
-    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential' | 'recurringPotential' | 'contractPotential' | 'contractBilled' | 'contractSent' | 'contractInvoiced' | 'avulsoSent' | 'avulsoInvoiced') => r2(done.reduce((s, r) => s + r[k], 0))
+    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential' | 'recurringPotential' | 'contractPotential' | 'contractBilled' | 'contractSent' | 'contractInvoiced' | 'avulsoSent' | 'avulsoInvoiced' | 'apuradoTotal' | 'invoicedRecurring' | 'invoicedMetered' | 'invoicedAvulso') => r2(done.reduce((s, r) => s + r[k], 0))
     const tag = (r: { month: number }, l: ContractLine) => ({ ...l, note: `${MONTHS_SHORT_PT[r.month - 1]}${l.note ? ` · ${l.note}` : ''}` })
     const part = (k: 'discounts' | 'glosas' | 'below' | 'pending' | 'pendingConfirm' | 'above' | 'notSent' | 'notInvoiced' | 'invoiceDiff') => {
       const lines = done.flatMap(r => r.gapParts[k].lines.map(l => tag(r, l)))
@@ -396,6 +406,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       recurringPotential: sumOf('recurringPotential'),
       contractPotential: cPot, contractBilled: cBil, contractGap: r2(cPot - cInv), contractBilledPct: pct(cBil, cPot),
       contractSent: sumOf('contractSent'), contractInvoiced: cInv, contractInvoicedPct: pct(cInv, cPot),
+      apuradoTotal: sumOf('apuradoTotal'), invoicedRecurring: sumOf('invoicedRecurring'), invoicedMetered: sumOf('invoicedMetered'), invoicedAvulso: sumOf('invoicedAvulso'),
       avulsoSent: sumOf('avulsoSent'), avulsoInvoiced: sumOf('avulsoInvoiced'),
       billingFlow: done.some(r => r.billingFlow),
       finRows: done.flatMap(r => r.finRows.map(f => ({ ...f, note: `${MONTHS_SHORT_PT[r.month - 1]}${f.note ? ` · ${f.note}` : ''}` }))),
