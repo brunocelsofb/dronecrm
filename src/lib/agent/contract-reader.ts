@@ -1,12 +1,12 @@
 // ─── Farmer: leitura do contrato (PDF) e próximos passos da renovação ────────
-// O PDF vai para o Claude com a chave da Anthropic da empresa. A resposta vem
-// em JSON validado por schema (structured outputs — `output_config.format`),
-// citando cláusula e trecho. Datas-chave (prazo do aviso prévio, dias até o
+// O PDF vai para o Claude com a chave da Anthropic da empresa. O modelo do JSON
+// vai no próprio pedido (o formato forçado pela API recusa um schema deste
+// tamanho: "compiled grammar is too large"); o CRM extrai e valida a resposta
+// em normalizeReading(), citando cláusula e trecho. Datas-chave (prazo do aviso prévio, dias até o
 // fim) são RECALCULADAS pelo CRM a partir do que foi lido — a IA não faz conta
 // de datas.
 //
-// No schema todos os campos são obrigatórios (limite da API para campos
-// opcionais/nulos). O que não está no contrato vem como "" (texto), 0 (número)
+// O não está no contrato vem como "" (texto), 0 (número)
 // ou "nao_encontrado" (sim/não) e é convertido em null por normalizeReading().
 
 import Anthropic from '@anthropic-ai/sdk'
@@ -131,9 +131,41 @@ const SCHEMA = obj({
   }), 'Ações concretas para conduzir a renovação, em ordem'),
 })
 
+// Modelo do JSON para o pedido, gerado do schema acima (uma fonte só)
+function skeleton(node: Record<string, unknown>): unknown {
+  if (node.type === 'object') {
+    const props = node.properties as Record<string, Record<string, unknown>>
+    return Object.fromEntries(Object.entries(props).map(([k, v]) => [k, skeleton(v)]))
+  }
+  if (node.type === 'array') return [skeleton(node.items as Record<string, unknown>)]
+  if (Array.isArray(node.enum)) return (node.enum as string[]).join(' | ')
+  const d = typeof node.description === 'string' ? node.description : ''
+  if (node.type === 'number') return d ? `<número: ${d}>` : '<número>'
+  return d ? `<texto: ${d}>` : '<texto>'
+}
+const TEMPLATE = JSON.stringify(skeleton(SCHEMA), null, 1)
+
+// Tira o JSON da resposta (aceita bloco ```json ou texto antes/depois)
+export function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const body = fenced ? fenced[1] : text
+  const a = body.indexOf('{'), b = body.lastIndexOf('}')
+  if (a < 0 || b <= a) throw new Error('sem JSON')
+  return JSON.parse(body.slice(a, b + 1))
+}
+
 // ─── Normalização ("" / 0 / nao_encontrado → null) ───────────────────────────
 const s = (v: unknown): string | null => (typeof v === 'string' && v.trim() && !/^n[ãa]o (encontrad|consta)/i.test(v.trim()) ? v.trim() : null)
-const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null)
+// Número: aceita também texto ("12", "1.234,56", "R$ 10.000,00") caso a IA devolva entre aspas
+const n = (v: unknown): number | null => {
+  let x = v
+  if (typeof x === 'string') {
+    const c = x.replace(/[R$\s]/g, '')
+    if (!/^[\d.,]+$/.test(c)) return null
+    x = Number(c.includes(',') || /^\d{1,3}(\.\d{3})+$/.test(c) ? c.replace(/\./g, '').replace(',', '.') : c)
+  }
+  return typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null
+}
 const sn = (v: unknown): SimNao => (v === 'sim' || v === 'nao' ? v : null)
 const list = <T,>(v: unknown, map: (x: Record<string, unknown>) => T | null): T[] =>
   Array.isArray(v) ? v.map(x => (x && typeof x === 'object' ? map(x as Record<string, unknown>) : null)).filter((x): x is T => x !== null) : []
@@ -221,7 +253,9 @@ export async function readContractPdf(opts: {
   const today = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
   const prompt =
     `Você é o Farmer, agente que cuida da carteira de contratos da ${opts.crm.company}. Leia o contrato anexo (${opts.fileName}) ` +
-    `por inteiro, incluindo anexos e termo de referência, e preencha o JSON pedido.\n\n` +
+    `por inteiro, incluindo anexos e termo de referência, e responda SOMENTE com um JSON no modelo abaixo (sem texto antes ou depois). ` +
+    `Onde o modelo diz <texto: ...> ou <número: ...>, troque pelo valor; nos campos "sim | nao | nao_encontrado" e na área, use exatamente uma das opções. ` +
+    `Listas podem ter quantos itens forem necessários.\n\n` +
     `Regras:\n` +
     `- Use SOMENTE o que está no documento. Nunca invente nem complete com o que é "comum" em contratos.\n` +
     `- Quando a informação não estiver no documento: texto "" , número 0, sim/não "nao_encontrado", lista vazia [].\n` +
@@ -236,12 +270,12 @@ export async function readContractPdf(opts: {
     `- Escreva em português do Brasil, frases curtas.\n\n` +
     `Dados no CRM (só para comparação; se o contrato disser outra coisa, registre o que está no contrato): cliente ${opts.crm.client_name}` +
     `${opts.crm.process_number ? `, nº ${opts.crm.process_number}` : ''}, início ${opts.crm.valid_from ?? 'não informado'}, ` +
-    `fim ${opts.crm.valid_until ?? 'não informado'}, valor mensal ${opts.crm.monthly_value ?? 'não informado'}.`
+    `fim ${opts.crm.valid_until ?? 'não informado'}, valor mensal ${opts.crm.monthly_value ?? 'não informado'}.\n\n` +
+    `Modelo do JSON:\n${TEMPLATE}`
 
   const res = await client.messages.create({
     model: CONTRACT_READER_MODEL,
     max_tokens: 12000,
-    output_config: { format: { type: 'json_schema', schema: SCHEMA } },
     messages: [{
       role: 'user',
       content: [
@@ -255,7 +289,7 @@ export async function readContractPdf(opts: {
   const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('')
   let parsed: unknown
   try {
-    parsed = JSON.parse(text)
+    parsed = extractJson(text)
   } catch {
     throw new Error('A IA não devolveu a leitura no formato esperado. Tente de novo.')
   }

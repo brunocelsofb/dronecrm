@@ -71,7 +71,7 @@ export function ContractReadingSection({
     setBusy(true)
     try {
       const r = await readContractWithAI(contractId, selectedId)
-      if (!r.ok) { setError(r.error); return }
+      if (!r.ok) { setError(r.error); router.refresh(); return }
       setCreated({})
       router.refresh()
     } catch (e) {
