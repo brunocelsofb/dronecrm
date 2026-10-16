@@ -94,6 +94,7 @@ const CONFIG_SECTIONS = [
     title: 'Conta e Acesso',
     items: [
       { href: '/users', label: 'Usuários', description: 'Gerencie os membros da equipe e suas permissões' },
+      { href: '/settings/perfis-acesso', label: '🔐 Perfis de acesso', description: 'Quais abas cada perfil vê (Gestor, Hunter, Farmer, Marketing, Financeiro, Técnico)' },
       { href: '/settings/price-users', label: 'Usuários do ORBIS Price', description: 'Cadastre aprovadores e precificadores com acesso ao Price' },
       { href: '/minha-conta', label: 'Minha Conta', description: 'Seus dados pessoais, foto e assinatura de e-mail' },
     ],

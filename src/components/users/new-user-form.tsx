@@ -3,6 +3,7 @@
 import { useActionState, useRef, useEffect } from 'react'
 import { createUserByAdmin, type ActionState } from '@/lib/actions/users'
 import { DEPARTMENTS } from '@/lib/constants/departments'
+import { ACCESS_PROFILES } from '@/lib/auth/access-profiles'
 
 const initialState: ActionState = {}
 
@@ -56,6 +57,16 @@ export function NewUserForm() {
         >
           <option value="member">Membro</option>
           <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700">Perfil de acesso (se não for Admin)</label>
+        <select
+          name="access_profile"
+          defaultValue="gestor"
+          className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
+        >
+          {ACCESS_PROFILES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
         </select>
       </div>
       <div>

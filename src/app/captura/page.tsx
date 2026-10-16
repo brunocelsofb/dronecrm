@@ -3,11 +3,17 @@ import { LeadCaptureForm } from '@/components/leads/lead-capture-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
+import { readTracking } from '@/lib/marketing/tracking'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PublicCapturePage({ searchParams }: { searchParams: Promise<{ phone?: string; empresa?: string }> }) {
-  const { phone, empresa } = await searchParams
+export default async function PublicCapturePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams
+  const one = (k: string) => { const v = sp[k]; return Array.isArray(v) ? v[0] : v }
+  const phone = one('phone')
+  const empresa = one('empresa')
+  // Origem: o que o anúncio/link trouxe no endereço (UTM, gclid, fbclid)
+  const tracking = readTracking(k => (k === 'landing_page' || k === 'referrer') ? undefined : one(k))
   const tenantId = await resolvePublicTenantId(empresa ?? null)
 
   const { wallpaperUrl, bgColor, logoUrl, companyName } = await getPublicBranding(tenantId)
@@ -51,7 +57,7 @@ export default async function PublicCapturePage({ searchParams }: { searchParams
               </div>
             </div>
             <div className="p-6 pt-0">
-              <LeadCaptureForm defaultPhone={phone} empresa={empresa} />
+              <LeadCaptureForm defaultPhone={phone} empresa={empresa} tracking={tracking} />
             </div>
           </div>
           <p className="text-center text-xs text-white/40">

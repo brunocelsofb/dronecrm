@@ -15,7 +15,7 @@ export function parseFlowStart(v: unknown): { year: number; month: number } | nu
 
 // PostgREST devolve no máximo 1000 linhas por chamada: pagina até o fim
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> {
+export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await build(from, from + PAGE - 1)

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { requireTenantId } from '@/lib/tenant/context'
+import { isAccessProfile } from '@/lib/auth/access-profiles'
 
 // Só mexe em usuário da MESMA empresa e nunca no Super Admin (login da plataforma)
 async function canManage(targetUserId: string): Promise<boolean> {
@@ -30,6 +31,8 @@ export async function createUserByAdmin(
   const password = formData.get('password') as string
   const role = (formData.get('role') as string) === 'admin' ? 'admin' : 'member'
   const department = (formData.get('department') as string) || null
+  const rawProfile = formData.get('access_profile') as string
+  const access_profile = role === 'admin' ? null : isAccessProfile(rawProfile) ? rawProfile : 'gestor'
 
   if (!email || !fullName || !password) {
     return { error: 'Preencha nome, e-mail e senha.' }
@@ -68,6 +71,7 @@ export async function createUserByAdmin(
     email,
     role,
     department,
+    access_profile,
     tenant_id: tenantId,
   })
 
@@ -104,8 +108,24 @@ export async function updateUserRole(targetUserId: string, formData: FormData) {
   if (!validRoles.includes(newRole)) return
 
   const supabase = createAdminClient()
-  await supabase.from('profiles').update({ role: newRole }).eq('id', targetUserId)
+  const { data: target } = await supabase.from('profiles').select('access_profile').eq('id', targetUserId).maybeSingle()
+  await supabase.from('profiles').update({
+    role: newRole,
+    ...(newRole !== 'admin' && !target?.access_profile ? { access_profile: newRole === 'aprovador_tecnico' ? 'tecnico' : 'gestor' } : {}),
+  }).eq('id', targetUserId)
 
+  revalidatePath('/users')
+}
+
+// Perfil de acesso: decide quais abas a pessoa vê (Admin vê tudo do plano)
+export async function updateUserAccessProfile(targetUserId: string, formData: FormData) {
+  const currentProfile = await getCurrentProfile()
+  if (currentProfile?.role !== 'admin') return
+  if (!(await canManage(targetUserId))) return
+  const value = formData.get('access_profile') as string
+  if (!isAccessProfile(value)) return
+  const supabase = createAdminClient()
+  await supabase.from('profiles').update({ access_profile: value }).eq('id', targetUserId)
   revalidatePath('/users')
 }
 

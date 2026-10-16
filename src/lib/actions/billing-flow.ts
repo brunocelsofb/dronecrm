@@ -25,8 +25,10 @@ async function me() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  return { id: user.id, isAdmin: profile?.role === 'admin' }
+  const { data: profile } = await supabase.from('profiles').select('role, access_profile').eq('id', user.id).maybeSingle()
+  const isAdmin = profile?.role === 'admin'
+  // Perfil Financeiro lança o faturado e cancela envios (configurações seguem só do Admin)
+  return { id: user.id, isAdmin, canInvoice: isAdmin || profile?.access_profile === 'financeiro' }
 }
 
 function revalidateAll(contractId?: string) {
@@ -69,7 +71,7 @@ export async function sendManyToBilling(items: SendInput[]): Promise<{ sent: num
 export async function markInvoiced(input: { submissionId: string; amount: number; invoiceNumber: string; invoicedAt: string }): Promise<Result> {
   const user = await me()
   if (!user) return { ok: false, error: 'Usuário não autenticado.' }
-  if (!user.isAdmin) return { ok: false, error: 'Só o Admin lança o faturado.' }
+  if (!user.canInvoice) return { ok: false, error: 'Só o Admin ou o perfil Financeiro lança o faturado.' }
   const amount = Math.round(Number(input.amount) * 100) / 100
   if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: 'Valor faturado inválido.' }
   if (!input.invoiceNumber.trim()) return { ok: false, error: 'Informe o número da nota.' }
@@ -97,7 +99,7 @@ export async function markInvoiced(input: { submissionId: string; amount: number
 export async function cancelSubmission(input: { submissionId: string; reason: string }): Promise<Result> {
   const user = await me()
   if (!user) return { ok: false, error: 'Usuário não autenticado.' }
-  if (!user.isAdmin) return { ok: false, error: 'Só o Admin cancela um envio.' }
+  if (!user.canInvoice) return { ok: false, error: 'Só o Admin ou o perfil Financeiro cancela um envio.' }
   if (!input.reason.trim()) return { ok: false, error: 'Informe o motivo do cancelamento.' }
   const db = await createScopedAdmin()
   const { data: sub } = await db.from('billing_submissions').select('id, contract_id, status, year, month, amount_sent').eq('id', input.submissionId).maybeSingle()

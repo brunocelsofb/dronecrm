@@ -6,6 +6,8 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { LeadWhatsAppSection } from '@/components/whatsapp/lead-whatsapp-section'
 import { getWhatsAppMessagesByLead } from '@/lib/actions/whatsapp'
+import { CampaignPicker } from '@/components/marketing/campaign-picker'
+import { channelLabel, inferChannel } from '@/lib/marketing/tracking'
 
 export default async function LeadDetailPage({
   params,
@@ -15,7 +17,7 @@ export default async function LeadDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: lead }, { data: activities }, { data: allProfiles }, { data: pipelines }, { data: stages }, isAdmin, whatsappMessages] = await Promise.all([
+  const [{ data: lead }, { data: activities }, { data: allProfiles }, { data: pipelines }, { data: stages }, isAdmin, whatsappMessages, { data: campaigns }] = await Promise.all([
     supabase.from('leads').select('*').eq('id', id).maybeSingle(),
     supabase.from('lead_activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name'),
@@ -23,6 +25,7 @@ export default async function LeadDetailPage({
     supabase.from('stages').select('id, name, pipeline_id').order('order_index'),
     isCurrentUserAdmin(),
     getWhatsAppMessagesByLead(id),
+    supabase.from('marketing_campaigns').select('id, name, status').order('name'),
   ])
 
   if (!lead) notFound()
@@ -84,6 +87,25 @@ export default async function LeadDetailPage({
           <p className="text-xs text-gray-500">Origem</p>
           <p className="text-gray-900">{lead.source ?? 'manual'}</p>
         </div>
+        <div>
+          <p className="text-xs text-gray-500">Campanha</p>
+          <CampaignPicker kind="lead" id={lead.id} value={lead.campaign_id ?? null} campaigns={campaigns ?? []} />
+        </div>
+        <div>
+          <p className="text-xs text-gray-500">Canal</p>
+          <p className="text-gray-900">{channelLabel(inferChannel(lead))}</p>
+        </div>
+        {(lead.utm_source || lead.utm_campaign || lead.gclid || lead.fbclid || lead.landing_page) && (
+          <div className="col-span-2 rounded-md bg-gray-50 p-2 text-xs text-gray-600">
+            <p className="font-medium text-gray-700">Veio de</p>
+            {[['utm_source', 'Fonte'], ['utm_medium', 'Meio'], ['utm_campaign', 'Campanha (link)'], ['utm_content', 'Variação'], ['utm_term', 'Palavra-chave']]
+              .filter(([k]) => lead[k]).map(([k, l]) => <p key={k}>{l}: <code>{String(lead[k])}</code></p>)}
+            {lead.gclid && <p>Clique de anúncio Google (gclid)</p>}
+            {lead.fbclid && <p>Clique de anúncio Meta (fbclid)</p>}
+            {lead.landing_page && <p className="break-all">Página: {lead.landing_page}</p>}
+            {lead.referrer && <p className="break-all">Antes estava em: {lead.referrer}</p>}
+          </div>
+        )}
         <div>
           <p className="text-xs text-gray-500">Recebido em</p>
           <p className="text-gray-900">{new Date(lead.created_at).toLocaleString('pt-BR')}</p>

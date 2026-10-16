@@ -8,7 +8,8 @@ import { NotificationBell } from '@/components/layout/notification-bell'
 import { AssistantPanel } from '@/components/assistant/assistant-panel'
 import { RealtimeWatcher } from '@/components/layout/realtime-watcher'
 import { LogOut, Eye, ArrowLeft } from 'lucide-react'
-import { FEATURE_KEYS, featureForPath } from '@/lib/config/plans'
+import { FEATURE_KEYS, FEATURES, featureForPath } from '@/lib/config/plans'
+import { featuresForUser, readProfileFeatures } from '@/lib/auth/access-profiles'
 import { PageFrame } from '@/components/layout/page-frame'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { headers } from 'next/headers'
@@ -31,13 +32,13 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, full_name, is_super_admin, tenant_id, impersonating_tenant_id')
+    .select('role, access_profile, full_name, is_super_admin, tenant_id, impersonating_tenant_id')
     .eq('id', user.id)
     .maybeSingle()
 
   const { data: orgSettings } = await supabase
     .from('organization_settings')
-    .select('name, logo_storage_path')
+    .select('name, logo_storage_path, profile_features')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
@@ -61,8 +62,14 @@ export default async function DashboardLayout({
     ? impersonation.tenantId
     : (profile as { tenant_id?: string | null } | null)?.tenant_id ?? null
   const { features: tenantFeatures } = await getTenantFeatures(viewTenantId)
-  const enabledFeatures = isSuperAdmin && !impersonation.active ? FEATURE_KEYS : tenantFeatures
-
+  const planFeatures = isSuperAdmin && !impersonation.active ? FEATURE_KEYS : tenantFeatures
+  // Perfil de acesso: Admin (e Super Admin) vê o plano inteiro; os demais, plano ∩ perfil
+  const enabledFeatures = featuresForUser({
+    isAdmin: isAdmin || isSuperAdmin,
+    profile: (profile as { access_profile?: string | null } | null)?.access_profile,
+    planFeatures,
+    matrix: readProfileFeatures((orgSettings as { profile_features?: unknown } | null)?.profile_features),
+  })
 
   // Logo dinamica
   const rawLogo = (orgSettings as any)?.logo_storage_path
@@ -79,8 +86,12 @@ export default async function DashboardLayout({
   const requestPath = (await headers()).get('x-pathname') ?? ''
   const requestFeature = featureForPath(requestPath)
   if (requestFeature && !enabledFeatures.includes(requestFeature)) {
-    // Configurações é sempre liberada: evita voltar para outra aba bloqueada
-    redirect(`/settings?bloqueado=${encodeURIComponent(requestFeature)}`)
+    // Vai para a primeira aba liberada (Configurações só abre para Admin;
+    // sem nenhuma aba, "Minha conta", que é sempre liberada)
+    const reason = planFeatures.includes(requestFeature) ? 'perfil' : 'plano'
+    const first = FEATURES.find(f => enabledFeatures.includes(f.key))
+    const target = isAdmin || isSuperAdmin ? '/settings' : first ? first.paths[0] : '/minha-conta'
+    redirect(`${target}?bloqueado=${encodeURIComponent(requestFeature)}&motivo=${reason}`)
   }
 
   return (
@@ -141,7 +152,7 @@ export default async function DashboardLayout({
       </aside>
       <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
         {/* Bloqueio no navegador (trocar de tela pelo menu); pelo endereço, o redirect acima */}
-        <PageFrame enabledFeatures={enabledFeatures}>{children}</PageFrame>
+        <PageFrame enabledFeatures={enabledFeatures} planFeatures={planFeatures}>{children}</PageFrame>
       </main>
       <RealtimeWatcher />
       {profile?.role === 'admin' && <AssistantPanel />}

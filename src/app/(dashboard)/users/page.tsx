@@ -2,7 +2,9 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { requireTenantId } from '@/lib/tenant/context'
-import { updateUserRole, updateUserDepartment, deleteUser, toggleUserActive } from '@/lib/actions/users'
+import { updateUserRole, updateUserDepartment, updateUserAccessProfile, deleteUser, toggleUserActive } from '@/lib/actions/users'
+import { UserAccessSelect } from '@/components/users/user-access-select'
+import Link from 'next/link'
 import { UserRoleSelect } from '@/components/users/user-role-select'
 import { UserDepartmentSelect } from '@/components/users/user-department-select'
 import { NewUserForm } from '@/components/users/new-user-form'
@@ -19,7 +21,7 @@ export default async function UsersPage() {
   const tenantId = await requireTenantId()
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, full_name, email, role, department, created_at')
+    .select('id, full_name, email, role, access_profile, department, created_at')
     .eq('tenant_id', tenantId)
     .not('is_super_admin', 'is', true)
     .order('created_at')
@@ -33,7 +35,9 @@ export default async function UsersPage() {
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Usuários</h1>
         <p className="mt-0.5 text-sm text-gray-500">
-          Gerencie os membros da equipe, seus papéis e departamentos.
+          Gerencie os membros da equipe. <strong>Perfil de acesso</strong> decide as abas que a pessoa vê (Admin vê todas);
+          <strong> Papel</strong> define Admin e quem aprova propostas.{' '}
+          <Link href="/settings/perfis-acesso" className="text-brand-700 hover:underline">Ajustar as abas de cada perfil</Link>
         </p>
       </div>
 
@@ -45,6 +49,7 @@ export default async function UsersPage() {
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Nome</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Papel</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-500">Perfil de acesso</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Departamento</th>
               <th className="px-4 py-3 text-left font-medium text-gray-500">Status</th>
               <th className="px-4 py-3" />
@@ -65,6 +70,13 @@ export default async function UsersPage() {
                       <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">Admin (você)</span>
                     ) : (
                       <UserRoleSelect key={`${p.id}-${p.role}`} defaultValue={p.role} action={updateUserRole.bind(null, p.id)} />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {p.role === 'admin' ? (
+                      <span className="text-xs text-gray-500">Tudo (Admin)</span>
+                    ) : (
+                      <UserAccessSelect key={`${p.id}-${p.access_profile}`} defaultValue={p.access_profile} action={updateUserAccessProfile.bind(null, p.id)} />
                     )}
                   </td>
                   <td className="px-4 py-3">

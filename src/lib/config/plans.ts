@@ -21,6 +21,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'financeiro',          label: 'Financeiro',           paths: ['/financeiro'] },
   { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines'] },
   { key: 'leads',               label: 'Leads',                paths: ['/leads'] },
+  { key: 'marketing',           label: 'Marketing',            paths: ['/marketing'] },
   { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts'] },
   { key: 'propostas',           label: 'Propostas',            paths: ['/propostas', '/proposals'] },
   { key: 'carteira',            label: 'Gestão de Carteira',   paths: ['/carteira'] },
@@ -37,7 +38,7 @@ export const FEATURE_KEYS = FEATURES.map(f => f.key)
 // Usado só se a tabela plan_features não responder
 export const DEFAULT_PLAN_FEATURES: Record<PlanId, string[]> = {
   starter: ['dashboard', 'pipeline', 'leads', 'tickets', 'copiloto'],
-  professional: ['dashboard', 'painel', 'financeiro', 'pipeline', 'leads', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
+  professional: ['dashboard', 'painel', 'financeiro', 'pipeline', 'leads', 'marketing', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
   enterprise: FEATURE_KEYS,
 }
 

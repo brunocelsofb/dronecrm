@@ -15,6 +15,7 @@ const RESET_TABLES = [
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
   'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_submissions', 'billing_records', 'contract_ai_readings', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
   'proposals', 'tickets', 'automation_rules', 'lead_routing_rules', 'leads', 'pipeline_runs', 'contracts',
+  'marketing_campaign_costs', 'marketing_campaigns',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals',
 ] as const
@@ -24,6 +25,7 @@ const EXPORT_TABLES = [
   'companies', 'contacts', 'contracts', 'pipelines', 'stages', 'pipeline_runs', 'activities', 'leads',
   'proposals', 'tickets', 'contract_whatsapp_messages', 'nps_surveys', 'custom_surveys', 'billing_records',
   'contract_renewals', 'contract_measurements', 'implementation_schedules', 'tags', 'lost_reasons', 'custom_fields', 'email_templates', 'automation_rules',
+  'marketing_campaigns', 'marketing_campaign_costs',
 ] as const
 
 // Nunca exportar segredos

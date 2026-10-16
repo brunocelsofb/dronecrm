@@ -51,6 +51,7 @@ import { ImplementationTab } from '@/components/implementation/implementation-ta
 import { getContractSchedule, getImplementationTemplates } from '@/lib/actions/implementation'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { CampaignPicker } from '@/components/marketing/campaign-picker'
 
 export default async function ContractDetailPage({
   params,
@@ -352,6 +353,10 @@ export default async function ContractDetailPage({
     .from('organization_settings').select('billing_cnpjs').eq('tenant_id', await resolveTenantId({ contractId: contract.id })).maybeSingle()
   const billingCnpjs = (Array.isArray(billingOrg?.billing_cnpjs) ? billingOrg.billing_cnpjs : []) as { value: string; label: string }[]
 
+  // Origem de marketing (campanha) — liga a oportunidade ao resultado da campanha
+  const { data: mkCampaigns } = await supabase.from('marketing_campaigns').select('id, name, status').order('name')
+  const originLead = (contract as { lead_id?: string | null }).lead_id ?? null
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <Link href="/pipeline" style={{ fontSize: 12, color: '#8892a4', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -385,6 +390,12 @@ export default async function ContractDetailPage({
               )}
             </div>
             <p style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 12, color: '#b0b8c8' }}>{contract.process_number}</p>
+            <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12, color: '#8892a4' }}>
+              <span>Origem:</span>
+              <CampaignPicker kind="contract" id={contract.id} value={(contract as { campaign_id?: string | null }).campaign_id ?? null} campaigns={mkCampaigns ?? []} />
+              {originLead && <Link href={`/leads/${originLead}`} style={{ color: '#1b556b', textDecoration: 'none' }}>ver lead de origem →</Link>}
+              {(contract as { lead_source?: string | null }).lead_source && <span>· {(contract as { lead_source?: string | null }).lead_source}</span>}
+            </div>
             {linkedCompany && (
               <Link href={`/companies/${linkedCompany.id}`} style={{ marginTop: 4, display: 'inline-block', fontSize: 12, color: '#1b556b', textDecoration: 'none' }}>
                 {linkedCompany.name} →

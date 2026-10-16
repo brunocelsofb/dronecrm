@@ -33,6 +33,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
     db.from('billing_submissions').select('id, contract_id, source_type, erp_error, sent_at').eq('year', year).eq('month', month).eq('status', 'erro').order('sent_at', { ascending: false }).limit(50),
     db.from('organization_settings').select('billing_erp').limit(1).maybeSingle(),
   ])
+  const { data: me2 } = profile ? await db.from('profiles').select('access_profile').eq('id', profile.id).maybeSingle() : { data: null }
   const d = computeDashboard(input, year, month)
   const ownerIds = [...new Set((owners ?? []).map(o => o.owner_id).filter(Boolean))] as string[]
   const { data: people } = ownerIds.length ? await db.from('profiles').select('id, full_name').in('id', ownerIds) : { data: [] as { id: string; full_name: string | null }[] }
@@ -60,7 +61,7 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       rows={d.revenue.finRows}
       owners={ownerOf}
       errors={(errors ?? []).map(e => ({ ...e, client: input.contracts.find(c => c.id === e.contract_id)?.client_name ?? '—' }))}
-      me={{ id: profile?.id ?? '', isAdmin: profile?.role === 'admin' }}
+      me={{ id: profile?.id ?? '', isAdmin: profile?.role === 'admin', canInvoice: profile?.role === 'admin' || me2?.access_profile === 'financeiro' }}
       due={{ iso: dueIso, overdue: todayIso > dueIso, day: dueDay }}
       erp={{ provider: cfg.provider, flowStart: cfg.flow_start ?? null, hasReturnKey: !!cfg.webhook_secret, outUrl: p_isAdmin(profile?.role) ? (cfg.out_url ?? null) : null, hasOutSecret: !!cfg.out_secret }}
     />

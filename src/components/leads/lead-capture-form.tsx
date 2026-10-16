@@ -3,17 +3,20 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createLead } from '@/lib/actions/leads'
+import type { Tracking } from '@/lib/marketing/tracking'
 
 export function LeadCaptureForm({
   onSuccess,
   redirectAfter,
   defaultPhone,
   empresa,
+  tracking,
 }: {
   onSuccess?: () => void
   redirectAfter?: (leadId: string) => string
   defaultPhone?: string
   empresa?: string   // slug da empresa (formulário público)
+  tracking?: Tracking // origem do link (UTM, gclid, fbclid) — formulário público
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -23,6 +26,11 @@ export function LeadCaptureForm({
   async function handleSubmit(formData: FormData) {
     setBusy(true)
     setError(null)
+    // Formulário público: página e de onde a pessoa veio
+    if (tracking) {
+      formData.set('landing_page', window.location.href.split('#')[0].slice(0, 500))
+      if (document.referrer) formData.set('referrer', document.referrer.slice(0, 500))
+    }
     const result = await createLead(formData)
     setBusy(false)
 
@@ -52,6 +60,11 @@ export function LeadCaptureForm({
   return (
     <form action={handleSubmit} className="space-y-3 rounded-xl border border-gray-200 bg-white p-6">
       {empresa && <input type="hidden" name="empresa" value={empresa} />}
+      {tracking && Object.entries(tracking).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+      {/* Campo-armadilha para robôs: fica fora da tela */}
+      <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+        <label>Site <input type="text" name="website" tabIndex={-1} autoComplete="off" /></label>
+      </div>
       <div>
         <label className="block text-sm font-medium text-gray-700">Nome</label>
         <input name="name" required className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none" />
@@ -74,7 +87,7 @@ export function LeadCaptureForm({
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700">Como você conheceu a gente?</label>
-        <select name="source" defaultValue="formulario_site" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none">
+        <select name="source" defaultValue={tracking?.utm_source || tracking?.gclid || tracking?.fbclid ? 'anuncio' : 'formulario_site'} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none">
           <option value="indicacao">Indicação de alguém</option>
           <option value="evento">Evento / congresso</option>
           <option value="formulario_site">Site / busca na internet</option>

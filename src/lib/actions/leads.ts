@@ -2,19 +2,23 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { readTracking } from '@/lib/marketing/tracking'
 
 export type ActionState = { error?: string }
 
 // Criação de lead — usado tanto pelo formulário PÚBLICO de captação
-// quanto pelo cadastro manual da equipe. Sem exigir login (o público
-// não tem conta), por isso usa o cliente comum (RLS já libera insert).
+// quanto pelo cadastro manual da equipe. Sem exigir login (o público não tem
+// conta). A empresa vem do ?empresa=<slug> (ou do usuário logado) e TUDO depois
+// usa essa empresa — antes, para visitante, as etapas seguintes caíam na
+// empresa padrão. Grava com o cliente admin preso à empresa: o visitante não
+// pode ler leads, e o insert com retorno do id falhava no RLS.
 export async function createLead(formData: FormData): Promise<ActionState & { leadId?: string }> {
-  const supabase = await createClient()
+  // Campo escondido "website": robôs preenchem, pessoas não veem — finge sucesso
+  if (((formData.get('website') as string) ?? '').trim()) return {}
 
   const name = (formData.get('name') as string)?.trim()
   const email = (formData.get('email') as string)?.trim() || null
@@ -22,36 +26,50 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
   const company_name = (formData.get('company_name') as string)?.trim() || null
   const cnpj = (formData.get('cnpj') as string)?.trim() || null
   const message = (formData.get('message') as string)?.trim() || null
-  const source = (formData.get('source') as string) || 'manual'
+  const source = ((formData.get('source') as string) || 'manual').slice(0, 60)
 
   if (!name) return { error: 'Nome é obrigatório.' }
   if (!company_name) return { error: 'Empresa é obrigatória.' }
   if (!cnpj) return { error: 'CNPJ é obrigatório.' }
 
-  // Busca regras dinâmicas do banco
-  const { data: rules } = await supabase.from('lead_scoring_rules').select('criterion_key, label, points, is_active').eq('is_active', true)
+  const tenantId = await resolvePublicTenantId((formData.get('empresa') as string) || null)
+  const db = await createScopedAdmin(tenantId)
+
+  // Origem: UTM / gclid / fbclid / página. Campanha pelo código do link (utm_campaign)
+  const tracking = readTracking(k => formData.get(k))
+  let campaignId: string | null = null
+  if (tracking.utm_campaign) {
+    const { data: camp } = await db.from('marketing_campaigns').select('id').eq('utm_campaign', tracking.utm_campaign).maybeSingle()
+    campaignId = camp?.id ?? null
+  }
+  const manualCampaign = (formData.get('campaign_id') as string) || null
+  if (!campaignId && manualCampaign) {
+    const { data: camp } = await db.from('marketing_campaigns').select('id').eq('id', manualCampaign).maybeSingle()
+    campaignId = camp?.id ?? null
+  }
+
+  // Busca regras dinâmicas do banco (obs.: hoje esta tabela não tem empresa — é a mesma para todas)
+  const { data: rules } = await db.from('lead_scoring_rules').select('criterion_key, label, points, is_active').eq('is_active', true)
   const { score } = calculateLeadScore({ email, phone, company_name, message, source }, rules ?? undefined)
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('leads')
-    .insert({ name, email, phone, company_name, cnpj, message, source, score,
-      tenant_id: await resolvePublicTenantId((formData.get('empresa') as string) || null) })
+    .insert({ name, email, phone, company_name, cnpj, message, source, score, tenant_id: tenantId, campaign_id: campaignId, ...tracking })
     .select('id')
     .single()
 
-  if (error) return { error: error.message }
+  if (error || !data) return { error: error?.message ?? 'Não foi possível registrar o contato.' }
 
   // Tenta vincular automaticamente a uma empresa existente por CNPJ
   if (cnpj) {
-    const adminClient = (await createScopedAdmin())
     const cnpjDigits = cnpj.replace(/\D/g, '')
-    const { data: existingCompany } = await adminClient
+    const { data: existingCompany } = await db
       .from('companies').select('id')
-      .or(`cnpj.eq.${cnpjDigits},cnpj.eq.${cnpj}`)
-      .maybeSingle()
+      .or(`cnpj.eq.${cnpjDigits},cnpj.eq.${cnpj.replace(/[^\d./-]/g, '')}`)
+      .limit(1).maybeSingle()
     if (existingCompany) {
       // Registra atividade na empresa sobre o novo lead
-      await adminClient.from('activities').insert({
+      await db.from('activities').insert({
         company_id: existingCompany.id,
         type: 'note',
         content: `📥 Novo lead recebido: "${name}" (${source ?? 'formulário'})`,
@@ -62,24 +80,22 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
   // Se essa pessoa tinha mandado mensagem de WhatsApp antes de
   // preencher o formulário (fluxo de triagem), vincula a conversa a
   // esse lead agora — fecha o ciclo, o histórico não fica solto.
-  if (phone) {
-    const adminClient = (await createScopedAdmin())
-    const cleanPhone = phone.replace(/\D/g, '')
-    await adminClient.from('contract_whatsapp_messages').update({ lead_id: data.id, unlinked_sender_name: null }).ilike('phone', `%${cleanPhone.slice(-8)}%`).is('contract_id', null)
-    await adminClient.from('whatsapp_capture_prompts').update({ lead_id: data.id }).ilike('phone', `%${cleanPhone.slice(-8)}%`)
+  const cleanPhone = (phone ?? '').replace(/\D/g, '')
+  if (cleanPhone.length >= 8) {
+    await db.from('contract_whatsapp_messages').update({ lead_id: data.id, unlinked_sender_name: null }).ilike('phone', `%${cleanPhone.slice(-8)}%`).is('contract_id', null)
+    await db.from('whatsapp_capture_prompts').update({ lead_id: data.id }).ilike('phone', `%${cleanPhone.slice(-8)}%`)
   }
 
-  // Avisa o time comercial de um lead novo — mesmo padrão de
-  // notificação já usado no resto do sistema.
-  const adminClient = (await createScopedAdmin())
-  const { data: commercialProfiles } = await adminClient.from('profiles').select('id').eq('department', 'comercial')
+  // Avisa o time comercial (e o marketing) de um lead novo
+  const { data: commercialProfiles } = await db.from('profiles').select('id').eq('tenant_id', tenantId).in('department', ['comercial', 'marketing'])
   if (commercialProfiles && commercialProfiles.length > 0) {
-    await adminClient.from('notifications').insert(
+    await db.from('notifications').insert(
       commercialProfiles.map((p) => ({ user_id: p.id, message: `Novo lead: ${name}${company_name ? ` (${company_name})` : ''}.` }))
     )
   }
 
   revalidatePath('/leads')
+  revalidatePath('/marketing')
   return { leadId: data.id }
 }
 
@@ -239,6 +255,9 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionSt
       contact_id: contactId,
       owner_id: user.id,
       current_assignee_id: user.id,
+      lead_id: lead.id,
+      campaign_id: lead.campaign_id ?? null,
+      lead_source: lead.source ?? null,
     })
     .select()
     .single()
@@ -331,35 +350,67 @@ export async function convertLeadWithOptions(
     contactId = data?.id ?? null
   }
 
-  // Contrato/Oportunidade
+  // Etapa precisa ser do funil escolhido
+  const { data: stage } = await supabase.from('stages').select('id, pipeline_id').eq('id', options.stageId).maybeSingle()
+  if (!stage || stage.pipeline_id !== options.pipelineId) return { error: 'Etapa inválida para o funil escolhido.' }
+  const { data: responsible } = await supabase.from('profiles').select('id').eq('id', options.responsibleId).maybeSingle()
+  if (!responsible) return { error: 'Responsável inválido.' }
+
+  // Número da oportunidade: sequência da empresa (Configurações → Numeração), senão provisório
+  let processNumber = `OPP-${Date.now()}`
+  try {
+    const { data: seq } = await supabase.rpc('next_opportunity_number' as never)
+    if (seq) processNumber = seq as unknown as string
+  } catch { /* sem sequência: usa o provisório */ }
+
+  // Contrato/Oportunidade — leva a origem do lead (campanha) até o ganho e o faturado
   const { data: contract, error } = await supabase.from('contracts').insert({
+    process_number: processNumber,
+    title: lead.company_name ?? lead.name,
     client_name: lead.company_name ?? lead.name,
+    description: lead.message,
     company_id: companyId,
     contact_id: contactId,
     owner_id: options.responsibleId,
-    status: 'active',
-    value: options.estimatedValue ?? null,
+    current_assignee_id: options.responsibleId,
     lead_id: leadId,
-    source: lead.source,
+    campaign_id: lead.campaign_id ?? null,
+    lead_source: lead.source ?? null,
   }).select('id').single()
 
   if (error || !contract) return { error: error?.message ?? 'Erro ao criar oportunidade.' }
 
-  // Pipeline run
-  await supabase.from('pipeline_runs').insert({
+  // Entrada no funil
+  const now = new Date().toISOString()
+  const { data: run, error: runError } = await supabase.from('pipeline_runs').insert({
     contract_id: contract.id,
     pipeline_id: options.pipelineId,
     stage_id: options.stageId,
+    stage_entered_at: now,
     status: 'open',
-    entered_at: new Date().toISOString(),
-  })
+    value: options.estimatedValue ?? null,
+    created_by: user.id,
+  }).select('id').single()
+  if (runError || !run) {
+    await supabase.from('contracts').delete().eq('id', contract.id)
+    return { error: `Falha ao colocar a oportunidade no funil: ${runError?.message ?? 'erro desconhecido'}` }
+  }
+  await supabase.from('stage_history').insert({ pipeline_run_id: run.id, stage_id: options.stageId, entered_at: now, changed_by: user.id })
 
   // Atualiza status do lead
   await supabase.from('leads').update({
     status: 'convertido',
     converted_contract_id: contract.id,
-    converted_at: new Date().toISOString(),
+    updated_at: now,
   }).eq('id', leadId)
+
+  // Histórico de WhatsApp e linha do tempo acompanham a oportunidade
+  await supabase.from('contract_whatsapp_messages').update({ contract_id: contract.id, lead_id: null }).eq('lead_id', leadId)
+  await supabase.from('lead_activities').insert({ lead_id: leadId, user_id: user.id, type: 'system', content: 'Lead convertido em oportunidade.' })
+  await supabase.from('activities').insert({
+    contract_id: contract.id, user_id: user.id, type: 'system',
+    content: `Oportunidade criada a partir do lead "${lead.name}" (origem: ${lead.source ?? 'manual'}).`,
+  })
 
   // Atividade na empresa
   if (companyId) {

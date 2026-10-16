@@ -25,7 +25,7 @@ type Props = {
   rows: FinanceRow[]
   owners: Record<string, { id: string | null; name: string }>
   errors: { id: string; contract_id: string; source_type: string; erp_error: string | null; client: string }[]
-  me: { id: string; isAdmin: boolean }
+  me: { id: string; isAdmin: boolean; canInvoice: boolean }
   due: { iso: string; overdue: boolean; day: number }
   erp: { provider: ErpProvider; flowStart: string | null; hasReturnKey: boolean; outUrl: string | null; hasOutSecret: boolean }
 }
@@ -252,7 +252,7 @@ export function FinanceiroView(p: Props) {
                           <button disabled={pending} onClick={() => run(() => sendToBilling({ contractId: x.contractId, sourceType: x.kind, year: p.year, month: p.month }), 'Enviado para faturamento.')}
                             className="rounded-md bg-brand-700 px-2.5 py-1 font-medium text-white hover:bg-brand-800 disabled:opacity-50">Enviar</button>
                         )}
-                        {x.state === 'enviado' && p.me.isAdmin && x.submissionId && (
+                        {x.state === 'enviado' && p.me.canInvoice && x.submissionId && (
                           invoicing === x.submissionId ? (
                             <div className="flex w-56 flex-col gap-1 rounded-lg border border-gray-200 bg-gray-50 p-2 text-left">
                               <input placeholder="Nº da nota" value={inv.number} onChange={e => setInv(v => ({ ...v, number: e.target.value }))} className="rounded border border-gray-300 px-2 py-1" />

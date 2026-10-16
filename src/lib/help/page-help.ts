@@ -13,6 +13,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
 
   { test: /^\/pipeline/, help: { title: 'Funil', text: 'Quadro com as oportunidades em cada etapa. Arraste o cartão para mudar de etapa.', tips: ['Ganho e Perdido só aparecem nas etapas habilitadas em Funis e Etapas.', 'No ganho de vendas, o sistema pede o consultor responsável pela conta.'] } },
 
+  { test: /^\/marketing/, help: { title: 'Marketing', text: 'Campanhas ligadas ao resultado: investimento, leads, oportunidades, ganhos e faturado (mesma regra da meta), por campanha e por canal.', tips: ['Cadastre a campanha e use o link dela no anúncio, no e-mail ou no QR Code: o lead entra já ligado à campanha.', 'O formulário do site usa o endereço e o código da aba Links e formulário (também serve para Zapier/Make).', 'Lance o investimento de cada mês (o que saiu na fatura do Meta, Google etc.) para ver custo por lead, CAC e ROAS.', 'A oportunidade herda a campanha do lead; dá para corrigir na própria oportunidade (Origem).', 'Público "Clientes atuais" marca campanhas de relacionamento com a carteira (Farmer).', 'ROAS = faturado ÷ investimento. CAC = investimento ÷ clientes ganhos.'] } },
   { test: /^\/leads\/new/, help: { title: 'Novo lead', text: 'Cadastre um contato que ainda não é oportunidade. Depois ele pode ser convertido.' } },
   { test: /^\/leads\/[^/]+/, help: { title: 'Lead', text: 'Detalhes, histórico e conversão do lead em oportunidade.' } },
   { test: /^\/leads/, help: { title: 'Leads', text: 'Contatos que chegaram por formulário, WhatsApp ou cadastro manual e ainda não viraram oportunidade.', tips: ['A pontuação ajuda a priorizar (Configurações → Pontuação de leads).', 'Converter cria a oportunidade no funil escolhido.'] } },
@@ -52,6 +53,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/settings\/whatsapp-bot/, help: { title: 'Bot e automações', text: 'Mensagens automáticas de boas-vindas e o status online/offline do atendimento.' } },
   { test: /^\/settings\/implementation-templates/, help: { title: 'Modelos de implantação', text: 'Cronogramas padrão (fases e semanas) usados ao iniciar a implantação de um contrato.' } },
   { test: /^\/settings\/layout-abas/, help: { title: 'Layout das abas', text: 'Escolha a ordem e quais abas aparecem na tela da oportunidade, por funil.' } },
+  { test: /^\/settings\/perfis-acesso/, help: { title: 'Perfis de acesso', text: 'Quais abas cada perfil vê no menu: Gestor, Hunter, Farmer, Marketing, Financeiro e Técnico. O Admin vê sempre todas as abas do plano.', tips: ['O perfil de cada pessoa é escolhido em Usuários.', 'Abas fora do plano da licença não aparecem.', 'O perfil Financeiro também lança o faturado e cancela envios.', 'Hoje o perfil controla as abas; o que cada pessoa vê dentro da aba segue igual para todos.'] } },
   { test: /^\/settings\/lead-routing/, help: { title: 'Distribuição de leads', text: 'Regras que mandam cada lead novo para o funil e o responsável certos.' } },
   { test: /^\/settings\/lead-scoring/, help: { title: 'Pontuação de leads', text: 'Critérios que somam pontos para priorizar os leads mais promissores.' } },
   { test: /^\/settings\/motivos-perda/, help: { title: 'Motivos de perda', text: 'Lista de motivos exigida ao marcar uma oportunidade como perdida.' } },
@@ -70,7 +72,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/automations/, help: { title: 'Automações', text: 'Ações automáticas por etapa, prazo ou evento (mensagens, tarefas, mudança de funil).' } },
   { test: /^\/tags/, help: { title: 'Tags', text: 'Etiquetas para classificar oportunidades e empresas.' } },
   { test: /^\/zapsign/, help: { title: 'Modelos ZapSign', text: 'Modelos de contrato e aditivo da ZapSign. O CRM preenche as variáveis com os dados do contrato e envia para assinatura pela aba Contrato e aditivos.' } },
-  { test: /^\/users/, help: { title: 'Usuários', text: 'Equipe da empresa: cadastro, papel (admin, membro, aprovadores) e departamento.', tips: ['O limite de usuários depende da licença.'] } },
+  { test: /^\/users/, help: { title: 'Usuários', text: 'Equipe da empresa: cadastro, papel (admin, membro, aprovadores), perfil de acesso e departamento.', tips: ['Perfil de acesso decide as abas que a pessoa vê (Configurações → Perfis de acesso). O Admin vê tudo.', 'Papel define quem é Admin e quem aprova propostas (técnico/comercial).', 'O limite de usuários depende da licença.'] } },
   { test: /^\/minha-conta/, help: { title: 'Minha conta', text: 'Seus dados, assinatura de e-mail e a conexão do seu Gmail (de onde saem seus e-mails pelo CRM).' } },
   { test: /^\/super-admin/, help: { title: 'Super Admin', text: 'Central das licenças: crie empresas, defina planos e abas, acesse ou resete uma empresa.' } },
 ]
@@ -87,6 +89,7 @@ export const NAV_HELP: Record<string, string> = {
   '/financeiro': 'Enviado para faturamento, faturado e pendências',
   '/pipeline': 'Oportunidades por etapa',
   '/leads': 'Contatos ainda não qualificados',
+  '/marketing': 'Campanhas, origem dos leads e retorno',
   '/contracts': 'Todas as oportunidades e contratos',
   '/propostas': 'Propostas e aprovações',
   '/carteira': 'Contratos ativos e renovações',
