@@ -6,6 +6,13 @@ import type { DashboardInput } from './dashboard-compute'
 
 const PAGE = 1000
 
+// "YYYY-MM" → { year, month }; sem valor = fluxo novo desde sempre
+export function parseFlowStart(v: unknown): { year: number; month: number } | null {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}$/.test(v)) return null
+  const [year, month] = v.split('-').map(Number)
+  return month >= 1 && month <= 12 ? { year, month } : null
+}
+
 // PostgREST devolve no máximo 1000 linhas por chamada: pagina até o fim
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: any; error: any }>): Promise<T[]> {
@@ -30,7 +37,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
   const tenantId = tenantIdArg ?? await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
 
-  const [pipelines, runs, contracts, billing, renewals, goals, tags, stages, nps, tickets, leads, org] = await Promise.all([
+  const [pipelines, runs, contracts, billing, renewals, goals, tags, stages, nps, tickets, leads, org, submissions] = await Promise.all([
     fetchAll<DashboardInput['pipelines'][number]>((a, b) => db.from('pipelines').select('id, name, type').order('id').range(a, b)),
     fetchAll<DashboardInput['runs'][number]>((a, b) => db.from('pipeline_runs')
       .select('id, contract_id, pipeline_id, stage_id, status, value, started_at, ended_at, stage_entered_at, tag_id, report_file_name')
@@ -38,7 +45,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     fetchAll<DashboardInput['contracts'][number]>((a, b) => db.from('contracts')
       .select('id, client_name, process_number, billing_type, monthly_value, valid_from').order('id').range(a, b)),
     fetchAll<DashboardInput['billing'][number]>((a, b) => db.from('billing_records')
-      .select('contract_id, year, month, amount, measured_amount, glosa_amount, glosa_reason, discount_amount, discount_reason, contract_value, status').order('id').range(a, b)),
+      .select('id, contract_id, year, month, amount, measured_amount, glosa_amount, glosa_reason, discount_amount, discount_reason, contract_value, status').order('id').range(a, b)),
     fetchAll<DashboardInput['renewals'][number]>((a, b) => db.from('contract_renewals')
       .select('contract_id, renewed_at, previous_value, new_value').order('id').range(a, b)),
     fetchAll<DashboardInput['goals'][number]>((a, b) => db.from('monthly_goals').select('year, month, target_value').eq('year', year).order('month').range(a, b)),
@@ -47,7 +54,10 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     fetchAll<DashboardInput['nps'][number]>((a, b) => db.from('nps_surveys').select('score, answered_at').not('score', 'is', null).order('id').range(a, b)),
     fetchAll<DashboardInput['tickets'][number]>((a, b) => db.from('tickets').select('status, sla_due_at').order('id').range(a, b)),
     fetchAll<DashboardInput['leads'][number]>((a, b) => db.from('leads').select('created_at, status').order('id').range(a, b)),
-    db.from('organization_settings').select('measurement_due_day').limit(1).maybeSingle(),
+    db.from('organization_settings').select('measurement_due_day, billing_erp').limit(1).maybeSingle(),
+    fetchAll<NonNullable<DashboardInput['submissions']>[number]>((a, b) => db.from('billing_submissions')
+      .select('id, contract_id, source_type, year, month, amount_sent, status, invoiced_amount, invoice_number, invoiced_at, sent_at')
+      .in('status', ['enviado', 'faturado']).order('id').range(a, b)),
   ])
 
   // Tags por contrato (tabela sem tenant_id: filtra pelos contratos da empresa)
@@ -74,6 +84,8 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     tickets,
     leads,
     measurementDueDay: Number(org.data?.measurement_due_day ?? 5),
+    submissions: submissions.map(s => ({ ...s, amount_sent: Number(s.amount_sent) || 0, invoiced_amount: num(s.invoiced_amount) })),
+    billingFlowStart: parseFlowStart((org.data?.billing_erp as { flow_start?: unknown } | null)?.flow_start),
     now: new Date(),
   }
 }

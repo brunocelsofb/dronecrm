@@ -7,7 +7,9 @@ export type PageHelp = { title: string; text: string; tips?: string[] }
 const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/$/, help: { title: 'Dashboard', text: 'Visão geral do comercial: valores em funil, metas, atividades da equipe e indicadores do período.', tips: ['Use o filtro de período no topo para comparar meses.'] } },
 
-  { test: /^\/painel/, help: { title: 'Painel gerencial', text: 'Receita do mês x meta e os indicadores do Hunter (novos negócios) e do Farmer (carteira). Clique em um número para ver os contratos que o compõem.', tips: ['Abas: Mês e Consolidado. No Consolidado, marque os meses que quiser (soltos, trimestre, semestre ou ano) e tudo é recalculado só sobre eles.', 'Em contrato x faturado: potencial de todos os contratos contra o que foi faturado, com a diferença explicada (descontos, glosas, medido abaixo, medições pendentes).', 'Receita = recorrente (valor − descontos do mês) + medição validada + avulso faturado.', 'Churn é só rescisão; vencer sem renovar não conta.', 'Metas em Configurações → Metas de receita.'] } },
+  { test: /^\/painel/, help: { title: 'Painel gerencial', text: 'Receita do mês x meta e os indicadores do Hunter (novos negócios) e do Farmer (carteira). Clique em um número para ver os contratos que o compõem.', tips: ['Abas: Mês e Consolidado. No Consolidado, marque os meses que quiser (soltos, trimestre, semestre ou ano) e tudo é recalculado só sobre eles.', 'Em contrato x faturado: potencial, enviado para faturamento e faturado, com a diferença explicada (confirmações e medições pendentes, descontos, glosas, não enviado, aguardando faturamento).', 'Receita apurada = recorrente confirmado (valor − desconto) + medição validada + avulso ganho.', 'Churn é só rescisão; vencer sem renovar não conta.', 'Metas em Configurações → Metas de receita.'] } },
+
+  { test: /^\/financeiro/, help: { title: 'Financeiro', text: 'Mês a mês: em contrato (potencial), apurado, enviado para faturamento, faturado e a diferença, contrato por contrato.', tips: ['Recorrente: o consultor confirma o valor do mês (cheio ou com desconto) e envia.', 'Medição: só vai depois de validada (relatório até o dia definido em Metas de receita, ou aprovação do Admin).', 'Avulso ganho no mês também entra na fila.', 'O faturado volta do sistema de faturamento; enquanto a integração não estiver ligada, o Admin lança nº da nota, data e valor.', 'Envio com valor errado: o Admin cancela e o consultor reenvia.'] } },
 
   { test: /^\/pipeline/, help: { title: 'Funil', text: 'Quadro com as oportunidades em cada etapa. Arraste o cartão para mudar de etapa.', tips: ['Ganho e Perdido só aparecem nas etapas habilitadas em Funis e Etapas.', 'No ganho de vendas, o sistema pede o consultor responsável pela conta.'] } },
 
@@ -81,6 +83,7 @@ export function getPageHelp(pathname: string): PageHelp | null {
 export const NAV_HELP: Record<string, string> = {
   '/': 'Visão geral e indicadores',
   '/painel': 'Receita x meta, Hunter e Farmer',
+  '/financeiro': 'Enviado para faturamento, faturado e pendências',
   '/pipeline': 'Oportunidades por etapa',
   '/leads': 'Contatos ainda não qualificados',
   '/contracts': 'Todas as oportunidades e contratos',

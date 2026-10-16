@@ -289,9 +289,8 @@ function RecurringDiscountPanel({ contractId, contractValue, records, defYear, d
 
   const d = parseMoney(discount)
   const billed = !Number.isNaN(d) ? Math.max(0, contractValue - d) : null
-  const withDiscount = records
-    .filter(r => Number(r.discount_amount ?? 0) > 0)
-    .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))
+  const confirmed = [...records].sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))
+  const isConfirmed = records.some(r => r.year === year && r.month === month)
 
   async function save(value: number, why: string, y = year, m = month) {
     setError(null); setOkMsg(null)
@@ -302,7 +301,7 @@ function RecurringDiscountPanel({ contractId, contractValue, records, defYear, d
     const r = await saveRecurringDiscount({ contractId, year: y, month: m, discount: value, reason: why })
     setBusy(false)
     if (!r.ok) { setError(r.error); return }
-    setOkMsg(value > 0 ? 'Desconto registrado.' : 'Desconto removido.')
+    setOkMsg(value > 0 ? `${MONTHS_LONG[m - 1]}/${y} confirmado com desconto.` : `${MONTHS_LONG[m - 1]}/${y} confirmado pelo valor cheio.`)
     setDiscount(''); setReason('')
     router.refresh()
   }
@@ -310,15 +309,15 @@ function RecurringDiscountPanel({ contractId, contractValue, records, defYear, d
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-brand-100 bg-brand-100 p-4 text-sm text-brand-800">
-        <p className="font-medium">Faturamento recorrente: {brl(contractValue)} por mês</p>
+        <p className="font-medium">Recorrente: {brl(contractValue)} por mês em contrato</p>
         <p className="mt-1 text-xs text-brand-700">
-          Todo mês o faturado é o valor do contrato. Se houver desconto ou abatimento num mês, registre abaixo: o Painel gerencial
-          mostra o potencial do contrato x o que foi faturado, e de onde veio a diferença.
+          Todo mês o consultor confirma o valor do mês (cheio ou com desconto). Depois de confirmado, ele é enviado para faturamento na tela{' '}
+          <a href="/financeiro" className="font-medium underline">Financeiro</a>, e o faturado volta do sistema de faturamento.
         </p>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <p className="text-xs font-medium text-gray-700">Desconto no mês</p>
+        <p className="text-xs font-medium text-gray-700">Confirmar o mês {isConfirmed && <span className="ml-1 rounded-full bg-positive-100 px-2 py-0.5 text-[10px] font-semibold text-positive-700">já confirmado</span>}</p>
         <div className="mt-2 flex flex-wrap items-end gap-2">
           <div>
             <label className="block text-[10px] text-gray-500">Mês</label>
@@ -344,30 +343,37 @@ function RecurringDiscountPanel({ contractId, contractValue, records, defYear, d
             Faturado em {MONTHS_LONG[month - 1]}: <strong>{brl(billed)}</strong> de {brl(contractValue)} — perdemos {brl(Math.min(d, contractValue))} no mês.
           </p>
         )}
-        <button onClick={() => save(d, reason)} disabled={busy || !discount} className="mt-3 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
-          {busy ? 'Salvando...' : 'Registrar desconto'}
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => save(0, '')} disabled={busy || (!!discount && d > 0)} className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
+            {busy ? 'Salvando...' : `Confirmar ${MONTHS_LONG[month - 1]} — ${brl(contractValue)}`}
+          </button>
+          <button onClick={() => save(d, reason)} disabled={busy || !discount || !(d > 0)} className="rounded-md border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+            Confirmar com desconto
+          </button>
+        </div>
         {error && <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>}
         {okMsg && <p role="status" className="mt-1 text-xs text-green-700">{okMsg}</p>}
       </div>
 
-      {withDiscount.length > 0 && (
+      {confirmed.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-gray-500">Meses com desconto</p>
-          {withDiscount.map(r => {
+          <p className="text-xs font-medium text-gray-500">Meses confirmados</p>
+          {confirmed.map(r => {
             const cv = Number(r.contract_value ?? contractValue) || 0
             const disc = Number(r.discount_amount ?? 0)
             return (
               <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
                 <div className="min-w-0">
                   <span className="font-medium text-gray-900">{MONTHS_LONG[r.month - 1]}/{r.year}</span>
-                  <span className="ml-2 text-gray-700">faturado {brl(cv - disc)} de {brl(cv)}</span>
-                  <span className="ml-2 text-xs font-medium text-red-700">desconto {brl(disc)}</span>
+                  <span className="ml-2 text-gray-700">apurado {brl(cv - disc)} de {brl(cv)}</span>
+                  {disc > 0 && <span className="ml-2 text-xs font-medium text-red-700">desconto {brl(disc)}</span>}
                   {r.discount_reason && <span className="ml-2 text-xs text-gray-500">— {r.discount_reason}</span>}
                 </div>
-                <button onClick={() => { if (window.confirm(`Remover o desconto de ${MONTHS_LONG[r.month - 1]}/${r.year}?`)) save(0, '', r.year, r.month) }} disabled={busy} className="text-xs text-brand-700 hover:underline">
-                  Remover
-                </button>
+                {disc > 0 && (
+                  <button onClick={() => { if (window.confirm(`Tirar o desconto de ${MONTHS_LONG[r.month - 1]}/${r.year} (fica pelo valor cheio)?`)) save(0, '', r.year, r.month) }} disabled={busy} className="text-xs text-brand-700 hover:underline">
+                    Tirar desconto
+                  </button>
+                )}
               </div>
             )
           })}

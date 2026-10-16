@@ -75,12 +75,15 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
       {isYear && <MonthPicker key={`${year}-${sel.join(',')}`} year={year} selected={sel} currentMonth={currentMonthOfYear || null} />}
 
       {/* ── Em contrato x faturado ─────────────────────────────────── */}
-      <Section title="Em contrato x faturado" subtitle={isYear ? 'Soma dos meses escolhidos — o que está em contrato e o que de fato foi faturado' : 'O que está em contrato e o que de fato foi faturado no mês'}>
+      <Section title="Em contrato x faturado" subtitle={isYear ? 'Soma dos meses escolhidos — em contrato, enviado para faturamento e faturado' : 'Em contrato, enviado para faturamento e faturado no mês'}>
         <ContractVsBilled
           potential={rv.contractPotential}
           billed={rv.contractBilled}
+          sent={rv.contractSent}
+          invoiced={rv.contractInvoiced}
           gap={rv.contractGap}
-          billedPct={rv.contractBilledPct}
+          invoicedPct={rv.contractInvoicedPct}
+          flow={rv.billingFlow}
           recurringPotential={rv.recurringPotential}
           recurringBilled={rv.recurringTotal}
           meteredPotential={rv.meteredPotential}
@@ -91,7 +94,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
       </Section>
 
       {/* ── Receita x meta ─────────────────────────────────────────── */}
-      <Section title={isYear ? 'Receita do período' : `Receita de ${MONTHS_LONG[month - 1]}`} subtitle="Recorrente + medição validada + avulso faturado">
+      <Section title={isYear ? 'Receita do período' : `Receita de ${MONTHS_LONG[month - 1]}`} subtitle="Receita apurada: recorrente confirmado + medição validada + avulso ganho">
         <div className="grid gap-3">
           <div>
             <RevenueHero
@@ -110,7 +113,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
             />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Kpi accent={REV_COLORS.recurring} label="$ Recorrente" value={brl(rv.recurringTotal)} hint={<>faturado de {brl(rv.recurringPotential)} em contrato{rv.gapParts.discounts.total > 0 ? <span className="block font-medium text-red-700">Descontos: {brl(rv.recurringPotential - rv.recurringTotal)}</span> : null}</>} lines={rv.recurring} />
+            <Kpi accent={REV_COLORS.recurring} label="$ Recorrente" value={brl(rv.recurringTotal)} hint={<>apurado de {brl(rv.recurringPotential)} em contrato{rv.gapParts.pendingConfirm.total > 0 ? <span className="block font-medium text-amber-700">Não confirmado: {brl(rv.gapParts.pendingConfirm.total)}</span> : null}{rv.gapParts.discounts.total > 0 ? <span className="block font-medium text-red-700">Descontos: {brl(rv.recurringPotential - rv.recurringTotal - rv.gapParts.pendingConfirm.total)}</span> : null}</>} lines={rv.recurring} />
             <Kpi
               accent={REV_COLORS.metered}
               label="📏 Medição"
@@ -122,7 +125,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
               tone={rv.measurePending.length > 0 ? 'warn' : 'neutral'}
               lines={[...rv.measured, ...rv.measurePending.map(p => ({ ...p, value: 0, note: `⚠ ${p.note} — potencial ${brl2(p.value)}` }))]}
             />
-            <Kpi accent={REV_COLORS.avulso} label="Avulso faturado" value={brl(rv.avulsoTotal)} hint={`${rv.avulso.length} serviço(s) ${noPeriodo}`} lines={rv.avulso} />
+            <Kpi accent={REV_COLORS.avulso} label="Avulso ganho" value={brl(rv.avulsoTotal)} hint={`${rv.avulso.length} serviço(s) ${noPeriodo}`} lines={rv.avulso} />
           </div>
         </div>
 
@@ -200,7 +203,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
         <summary className="cursor-pointer font-medium text-gray-800">Como os números são calculados</summary>
         <ul className="mt-2 list-disc space-y-1 pl-4">
           <li><strong>Consolidado:</strong> marque os meses que quiser (soltos ou em sequência); receita, meta, Hunter e Farmer passam a contar só esses meses.</li>
-          <li><strong>Em contrato x faturado:</strong> em contrato é o valor (potencial) de todos os contratos ativos no mês; faturado é o que entrou de fato — recorrente = valor do contrato − desconto do mês; medição = medido − glosa (só validada). A diferença mostra de onde veio: descontos, glosas, medido abaixo do potencial e medições pendentes.</li>
+          <li><strong>Em contrato x faturado:</strong> em contrato é o valor (potencial) de todos os contratos ativos no mês. Apurado = recorrente confirmado pelo consultor (valor − desconto) + medição validada (medido − glosa). Enviado = o que o comercial mandou para faturamento (tela Financeiro). Faturado = o que voltou do sistema de faturamento (ou lançado pelo Admin). A diferença mostra de onde veio: confirmações e medições pendentes, descontos, glosas, medido abaixo, não enviado e aguardando faturamento.</li>
           <li><strong>$ Recorrente:</strong> contrato ativo no funil de Gestão de Contratos, pelo valor mensal vigente, menos os descontos do mês. Vencer sem renovar não tira da receita; só a rescisão. O mês da rescisão ainda conta.</li>
           <li><strong>📏 Medição:</strong> só a medição validada do mês (com relatório ou aprovada pelo administrador), já descontada a glosa.</li>
           <li><strong>Avulso:</strong> serviço marcado como Faturamento (ganho), com o relatório final.</li>
@@ -260,12 +263,12 @@ function TagTable({ title, rows }: { title: string; rows: { tagId: string | null
 function YearTable({ year, series, selected }: {
   year: number
   selected: number[]
-  series: { month: number; total: number | null; recurring: number | null; metered: number | null; avulso: number | null; lostPotential: number | null; pending: number | null; potential: number | null; billed: number | null; contractGap: number | null; goal: number; goalPct: number | null }[]
+  series: { month: number; total: number | null; recurring: number | null; metered: number | null; avulso: number | null; lostPotential: number | null; pending: number | null; potential: number | null; billed: number | null; sent: number | null; invoiced: number | null; contractGap: number | null; goal: number; goalPct: number | null }[]
 }) {
   const sel = new Set(selected)
   const rows = series.filter(s => sel.has(s.month))
   const done = rows.filter(s => s.total !== null)
-  const sum = (k: 'total' | 'recurring' | 'metered' | 'avulso' | 'lostPotential' | 'potential' | 'billed' | 'contractGap') => done.reduce((a, s) => a + (s[k] ?? 0), 0)
+  const sum = (k: 'total' | 'recurring' | 'metered' | 'avulso' | 'lostPotential' | 'potential' | 'billed' | 'sent' | 'invoiced' | 'contractGap') => done.reduce((a, s) => a + (s[k] ?? 0), 0)
   const goalSel = rows.reduce((a, s) => a + s.goal, 0)
   const goalDone = done.reduce((a, s) => a + s.goal, 0)
   const pctDone = goalDone > 0 ? Math.round((sum('total') / goalDone) * 1000) / 10 : null
@@ -282,10 +285,11 @@ function YearTable({ year, series, selected }: {
             <tr>
               <th className="px-3 py-2 text-left font-medium">Mês</th>
               <th className="px-3 py-2 text-right font-medium">Em contrato</th>
+              <th className="px-3 py-2 text-right font-medium">Enviado</th>
               <th className="px-3 py-2 text-right font-medium">Faturado</th>
               <th className="px-3 py-2 text-right font-medium">Diferença</th>
               <th className="px-3 py-2 text-right font-medium">Avulso</th>
-              <th className="px-3 py-2 text-right font-medium">Receita total</th>
+              <th className="px-3 py-2 text-right font-medium">Receita apurada</th>
               <th className="px-3 py-2 text-right font-medium">Meta</th>
               <th className="px-3 py-2 text-right font-medium">% meta</th>
             </tr>
@@ -302,7 +306,8 @@ function YearTable({ year, series, selected }: {
                     {!future && (s.pending ?? 0) > 0 && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-px text-[10px] text-amber-800">{s.pending} medição(ões) pendente(s)</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{future ? '—' : brl(s.potential)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-brand-700">{future ? '—' : brl(s.billed)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-brand-700">{future ? '—' : brl(s.sent)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-positive-700">{future ? '—' : brl(s.invoiced)}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${(s.contractGap ?? 0) > 0 ? 'text-red-700' : ''}`}>{future ? '—' : (s.contractGap ?? 0) > 0 ? `− ${brl(s.contractGap)}` : brl(0)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{future ? '—' : brl(s.avulso)}</td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900">{future ? '—' : brl(s.total)}</td>
@@ -316,7 +321,8 @@ function YearTable({ year, series, selected }: {
             <tr>
               <td className="px-3 py-2.5">Total do período</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{brl(sum('potential'))}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-brand-700">{brl(sum('billed'))}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-brand-700">{brl(sum('sent'))}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-positive-700">{brl(sum('invoiced'))}</td>
               <td className="px-3 py-2.5 text-right tabular-nums text-red-700">{sum('contractGap') > 0 ? `− ${brl(sum('contractGap'))}` : brl(0)}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{brl(sum('avulso'))}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">{brl(sum('total'))}</td>

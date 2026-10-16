@@ -221,68 +221,86 @@ export function RevenueGoalChart({
 // Em contrato (potencial) x faturado, com a origem da diferença
 type GapPart = { total: number; lines: ContractLine[] }
 export function ContractVsBilled({
-  potential, billed, gap, billedPct, recurringPotential, recurringBilled, meteredPotential, meteredBilled, parts, periodo,
+  potential, billed, sent, invoiced, gap, invoicedPct, recurringPotential, meteredPotential, recurringBilled, meteredBilled, parts, periodo, flow,
 }: {
-  potential: number; billed: number; gap: number; billedPct: number | null
-  recurringPotential: number; recurringBilled: number; meteredPotential: number; meteredBilled: number
-  parts: { discounts: GapPart; glosas: GapPart; below: GapPart; pending: GapPart; above: GapPart }
+  potential: number; billed: number; sent: number; invoiced: number; gap: number; invoicedPct: number | null
+  recurringPotential: number; meteredPotential: number; recurringBilled: number; meteredBilled: number
+  parts: Record<'discounts' | 'glosas' | 'below' | 'pending' | 'pendingConfirm' | 'above' | 'notSent' | 'notInvoiced' | 'invoiceDiff', GapPart>
   periodo: string
+  flow: boolean
 }) {
-  const rows: { key: string; label: string; hint: string; part: GapPart; sign: 1 | -1 }[] = [
-    { key: 'discounts', label: 'Descontos concedidos', hint: 'Descontos registrados no mês, com o motivo', part: parts.discounts, sign: 1 as const },
-    { key: 'glosas', label: 'Glosas', hint: 'Valores glosados nas medições', part: parts.glosas, sign: 1 as const },
-    { key: 'below', label: 'Medido abaixo do potencial', hint: 'Medição menor que o valor do contrato', part: parts.below, sign: 1 as const },
-    { key: 'pending', label: 'Medições pendentes', hint: 'Sem medição validada: ainda não faturado', part: parts.pending, sign: 1 as const },
-    { key: 'above', label: 'Medido acima do potencial', hint: 'Medição maior que o valor do contrato (soma ao faturado)', part: parts.above, sign: -1 as const },
-  ].filter(r => r.part.total > 0 || r.key === 'discounts' || r.key === 'pending')
-  const maxPart = Math.max(1, ...rows.map(r => r.part.total))
-  const w = potential > 0 ? Math.min(100, (billed / potential) * 100) : 0
+  // sign: 1 = tira do faturado; -1 = soma (medido acima). Valores negativos (ex.: enviado acima do apurado) somam.
+  const rows: { key: string; label: string; hint: string; part: GapPart; sign: 1 | -1; tone: 'bad' | 'warn' | 'brand' }[] = [
+    { key: 'pendingConfirm', label: 'Recorrência não confirmada', hint: 'Recorrente do mês ainda não confirmado pelo consultor', part: parts.pendingConfirm, sign: 1 as const, tone: 'warn' as const },
+    { key: 'pending', label: 'Medições pendentes', hint: 'Sem medição validada (falta lançamento, relatório ou aprovação)', part: parts.pending, sign: 1 as const, tone: 'warn' as const },
+    { key: 'discounts', label: 'Descontos concedidos', hint: 'Descontos registrados no mês, com o motivo', part: parts.discounts, sign: 1 as const, tone: 'bad' as const },
+    { key: 'glosas', label: 'Glosas', hint: 'Valores glosados nas medições', part: parts.glosas, sign: 1 as const, tone: 'bad' as const },
+    { key: 'below', label: 'Medido abaixo do potencial', hint: 'Medição menor que o valor do contrato', part: parts.below, sign: 1 as const, tone: 'bad' as const },
+    { key: 'above', label: 'Medido acima do potencial', hint: 'Medição maior que o valor do contrato (soma ao faturado)', part: parts.above, sign: -1 as const, tone: 'bad' as const },
+    { key: 'notSent', label: 'Apurado e não enviado', hint: 'Confirmado/validado, mas ainda não enviado para faturamento', part: parts.notSent, sign: 1 as const, tone: 'brand' as const },
+    { key: 'notInvoiced', label: 'Enviado, aguardando faturamento', hint: 'Já está com o faturamento; falta voltar como faturado', part: parts.notInvoiced, sign: 1 as const, tone: 'brand' as const },
+    { key: 'invoiceDiff', label: 'Faturado diferente do enviado', hint: 'Nota emitida com valor diferente do enviado', part: parts.invoiceDiff, sign: 1 as const, tone: 'bad' as const },
+  ].filter(r => Math.abs(r.part.total) > 0.005 || r.key === 'discounts' || r.key === 'pending')
+  const maxPart = Math.max(1, ...rows.map(r => Math.abs(r.part.total)))
+  const w = (v: number) => (potential > 0 ? Math.min(100, Math.max(0, (v / potential) * 100)) : 0)
+  const bar = { bad: 'bg-negative-600', warn: 'bg-warn-600', brand: 'bg-brand-700' }
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-      <div className="grid gap-0 divide-y divide-gray-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+      <div className="grid gap-0 divide-y divide-gray-100 md:grid-cols-4 md:divide-x md:divide-y-0">
         <div className="p-5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Em contrato (potencial)</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-gray-900">{brl(potential)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{brl(potential)}</p>
           <p className="mt-1.5 text-xs text-gray-500"><span className="block">$ Recorrente <span className="tabular-nums text-gray-700">{brl(recurringPotential)}</span></span><span className="block">📏 Medição <span className="tabular-nums text-gray-700">{brl(meteredPotential)}</span></span></p>
         </div>
         <div className="p-5">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Enviado para faturamento</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-brand-700">{brl(sent)}</p>
+          <p className="mt-1.5 text-xs text-gray-500">Apurado <span className="tabular-nums text-gray-700">{brl(billed)}</span><span className="block">$ {brl(recurringBilled)} · 📏 {brl(meteredBilled)}</span></p>
+        </div>
+        <div className="p-5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Faturado</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-brand-700">{brl(billed)}</p>
-          <p className="mt-1.5 text-xs text-gray-500"><span className="block">$ Recorrente <span className="tabular-nums text-gray-700">{brl(recurringBilled)}</span></span><span className="block">📏 Medição <span className="tabular-nums text-gray-700">{brl(meteredBilled)}</span></span></p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-positive-700">{brl(invoiced)}</p>
+          <p className="mt-1.5 text-xs text-gray-500">{pctTxt(invoicedPct)} do que está em contrato{!flow && <span className="block text-gray-400">antes do fluxo: apurado = faturado</span>}</p>
         </div>
         <div className="p-5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Diferença {periodo}</p>
-          <p className={`mt-1 text-3xl font-semibold tabular-nums tracking-tight ${gap > 0 ? 'text-negative-700' : 'text-positive-700'}`}>{gap > 0 ? `− ${brl(gap)}` : brl(-gap)}</p>
-          <p className="mt-1 text-xs text-gray-500">Faturamos {pctTxt(billedPct)} do que está em contrato</p>
+          <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight ${gap > 0 ? 'text-negative-700' : 'text-positive-700'}`}>{gap > 0 ? `− ${brl(gap)}` : brl(-gap)}</p>
+          <p className="mt-1 text-xs text-gray-500">em contrato − faturado</p>
         </div>
       </div>
       <div className="px-5 pb-2">
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-negative-100" role="progressbar" aria-valuenow={Math.round(w)} aria-valuemin={0} aria-valuemax={100} aria-label="Faturado sobre o potencial">
-          <div className="h-full rounded-full bg-brand-700" style={{ width: `${w}%` }} />
+        <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-negative-100" role="progressbar" aria-valuenow={Math.round(w(invoiced))} aria-valuemin={0} aria-valuemax={100} aria-label="Faturado sobre o potencial">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-brand-100" style={{ width: `${w(sent)}%` }} />
+          <div className="absolute inset-y-0 left-0 rounded-full bg-positive-600" style={{ width: `${w(invoiced)}%` }} />
         </div>
+        <p className="mt-1 text-[10px] text-gray-400">Verde: faturado · azul claro: enviado · vermelho claro: ainda não enviado</p>
       </div>
       <div className="border-t border-gray-100 px-5 py-4">
         <p className="text-xs font-semibold text-gray-700">De onde veio a diferença</p>
         <div className="mt-2 divide-y divide-gray-50">
-          {rows.map(r => (
-            <details key={r.key} className="group py-2">
-              <summary className="flex cursor-pointer list-none items-center gap-3">
-                <span className="w-48 shrink-0 text-xs text-gray-700">
-                  <span className="inline-block w-3 text-gray-400 transition-transform group-open:rotate-90">›</span>
-                  {r.label}
-                  {r.part.lines.length > 0 && <span className="ml-1 text-gray-400">({r.part.lines.length})</span>}
-                </span>
-                <span className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
-                  <span className={`block h-full rounded-full ${r.sign < 0 ? 'bg-positive-600' : r.key === 'pending' ? 'bg-warn-600' : 'bg-negative-600'}`} style={{ width: `${(r.part.total / maxPart) * 100}%` }} />
-                </span>
-                <span className={`w-36 shrink-0 text-right text-sm font-semibold tabular-nums ${r.part.total === 0 ? 'text-gray-300' : r.sign < 0 ? 'text-positive-700' : 'text-gray-900'}`}>
-                  {r.part.total === 0 ? brl(0) : `${r.sign < 0 ? '+ ' : '− '}${brl(r.part.total)}`}
-                </span>
-              </summary>
-              <p className="ml-3 mt-1 text-[11px] text-gray-400">{r.hint}</p>
-              <DrillList lines={r.part.lines} empty="Nada neste item." />
-            </details>
-          ))}
+          {rows.map(r => {
+            const adds = r.sign < 0 || r.part.total < 0
+            const abs = Math.abs(r.part.total)
+            return (
+              <details key={r.key} className="group py-2">
+                <summary className="flex cursor-pointer list-none items-center gap-3">
+                  <span className="w-52 shrink-0 text-xs text-gray-700">
+                    <span className="inline-block w-3 text-gray-400 transition-transform group-open:rotate-90">›</span>
+                    {r.label}
+                    {r.part.lines.length > 0 && <span className="ml-1 text-gray-400">({r.part.lines.length})</span>}
+                  </span>
+                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+                    <span className={`block h-full rounded-full ${adds ? 'bg-positive-600' : bar[r.tone]}`} style={{ width: `${(abs / maxPart) * 100}%` }} />
+                  </span>
+                  <span className={`w-36 shrink-0 text-right text-sm font-semibold tabular-nums ${abs < 0.005 ? 'text-gray-300' : adds ? 'text-positive-700' : 'text-gray-900'}`}>
+                    {abs < 0.005 ? brl(0) : `${adds ? '+ ' : '− '}${brl(abs)}`}
+                  </span>
+                </summary>
+                <p className="ml-3 mt-1 text-[11px] text-gray-400">{r.hint}</p>
+                <DrillList lines={r.part.lines} empty="Nada neste item." />
+              </details>
+            )
+          })}
         </div>
       </div>
     </div>

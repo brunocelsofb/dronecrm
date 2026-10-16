@@ -4,7 +4,7 @@
 //   - valor medido (bruto) − glosa = líquido (entra na receita)
 //   - com relatório anexado → validado
 //   - sem relatório → aguardando aprovação do admin (só então entra na receita)
-// Recorrente não usa isto: entra automático pelo valor do contrato.
+// Recorrente não usa isto: o consultor confirma o mês (saveRecurringDiscount).
 
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
@@ -43,7 +43,7 @@ export async function saveMeasurement(input: MeasurementInput): Promise<Measurem
   const admin = await createScopedAdmin()
   const { data: contract } = await admin.from('contracts').select('id, monthly_value, billing_type').eq('id', contractId).maybeSingle()
   if (!contract) return { ok: false, error: 'Contrato não encontrado.' }
-  if (contract.billing_type !== 'metered') return { ok: false, error: 'Este contrato é recorrente: a receita entra automática pelo valor do contrato.' }
+  if (contract.billing_type !== 'metered') return { ok: false, error: 'Este contrato é recorrente: confirme o valor do mês (com ou sem desconto) na aba Faturamento.' }
 
   const { data: existing } = await admin.from('billing_records')
     .select('id, file_storage_path, file_name')
@@ -187,13 +187,14 @@ export async function saveRecurringDiscount(input: {
     user_id: user.id,
     type: 'system',
     content: discount > 0
-      ? `💲 Desconto de ${brl(discount)} em ${ref} (motivo: ${input.reason!.trim()}). Faturado no mês: ${brl(contractValue - discount)} de ${brl(contractValue)}.`
-      : `💲 Desconto de ${ref} removido. Faturado no mês: ${brl(contractValue)}.`,
+      ? `💲 Recorrência de ${ref} confirmada com desconto de ${brl(discount)} (motivo: ${input.reason!.trim()}). Apurado: ${brl(contractValue - discount)} de ${brl(contractValue)}.`
+      : `💲 Recorrência de ${ref} confirmada pelo valor cheio: ${brl(contractValue)}.`,
     metadata: { kind: 'recurring_discount', year, month, discount },
   })
 
   revalidatePath(`/contracts/${contractId}`)
   revalidatePath('/pipeline')
   revalidatePath('/painel')
+  revalidatePath('/financeiro')
   return { ok: true }
 }

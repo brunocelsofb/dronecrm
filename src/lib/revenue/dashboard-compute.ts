@@ -23,9 +23,16 @@ export type ContractRow = {
   billing_type: string | null; monthly_value: number | null; valid_from: string | null
 }
 export type BillingRow = {
+  id?: string
   contract_id: string; year: number; month: number; amount: number
   measured_amount: number | null; glosa_amount: number | null; contract_value: number | null; status: string
   discount_amount?: number | null; discount_reason?: string | null; glosa_reason?: string | null
+}
+// Envio para faturamento (ERP) — billing_submissions
+export type SubmissionRow = {
+  id: string; contract_id: string; source_type: 'recorrente' | 'medicao' | 'avulso'
+  year: number; month: number; amount_sent: number; status: string
+  invoiced_amount: number | null; invoice_number: string | null; invoiced_at: string | null; sent_at: string | null
 }
 export type RenewalRow = {
   contract_id: string; renewed_at: string; previous_value: number | null; new_value: number
@@ -51,7 +58,21 @@ export type DashboardInput = {
   tickets: TicketRow[]
   leads: LeadRow[]
   measurementDueDay: number
+  submissions?: SubmissionRow[]
+  // Mês em que começa o fluxo "confirmar → enviar ao faturamento → faturado".
+  // Antes dele vale a regra antiga (recorrente automático; apurado = faturado).
+  billingFlowStart?: { year: number; month: number } | null
   now: Date
+}
+
+// Uma linha por contrato/mês na visão financeira (tela Financeiro)
+export type FinanceState = 'pendente_confirmacao' | 'sem_medicao' | 'aguardando_aprovacao' | 'pronto' | 'enviado' | 'faturado' | 'anterior'
+export type FinanceRow = {
+  contractId: string; client: string; number: string
+  kind: 'recorrente' | 'medicao' | 'avulso'
+  potential: number; apurado: number | null; state: FinanceState
+  sent: number | null; invoiced: number | null; invoiceNumber: string | null; invoicedAt: string | null
+  submissionId: string | null; changedAfterSend: boolean; note?: string
 }
 
 export type ContractLine = { contractId: string; client: string; number: string; value: number; note?: string }
@@ -168,10 +189,56 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   //   recorrente: faturado = valor do contrato − desconto do mês
   //   medição:    faturado = medido − glosa − desconto (só medição validada; pendente = 0)
   // Diferença = descontos + glosas + medido abaixo do potencial + medições pendentes − medido acima
+  const flowStart = input.billingFlowStart ?? null
+  const inFlow = (y: number, m: number) => !flowStart || y > flowStart.year || (y === flowStart.year && m >= flowStart.month)
+
+  const BRLf = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r2(v))
+
   function revenueOf(y: number, m: number) {
+    const flow = inFlow(y, m)
+    const subsOfMonth = (input.submissions ?? []).filter(s => s.year === y && s.month === m && (s.status === 'enviado' || s.status === 'faturado'))
+    const subOf = (cid: string, type: SubmissionRow['source_type']) => subsOfMonth.find(s => s.contract_id === cid && s.source_type === type) ?? null
+    const finRows: FinanceRow[] = []
+    const pendingConfirm: ContractLine[] = []
+    const notSent: ContractLine[] = []
+    const notInvoiced: ContractLine[] = []
+    const invoiceDiff: ContractLine[] = []
+    let sentTotal = 0, invoicedTotal = 0, avulsoSent = 0, avulsoInvoiced = 0
+    // Situação de envio/faturamento de um valor apurado
+    const track = (contractId: string, kind: FinanceRow['kind'], potential: number, apurado: number, note?: string) => {
+      const c = contractById.get(contractId)
+      const base = { contractId, client: c?.client_name ?? '—', number: c?.process_number ?? '', kind, potential: r2(potential), apurado: r2(apurado), note }
+      if (!flow) {
+        if (kind !== 'avulso') { sentTotal += apurado; invoicedTotal += apurado } else { avulsoSent += apurado; avulsoInvoiced += apurado }
+        finRows.push({ ...base, state: 'anterior', sent: null, invoiced: null, invoiceNumber: null, invoicedAt: null, submissionId: null, changedAfterSend: false })
+        return
+      }
+      const s = subOf(contractId, kind)
+      const sent = s ? Number(s.amount_sent) || 0 : 0
+      const inv = s && s.status === 'faturado' ? Number(s.invoiced_amount) || 0 : 0
+      if (kind !== 'avulso') { sentTotal += sent; invoicedTotal += inv } else { avulsoSent += sent; avulsoInvoiced += inv }
+      if (kind !== 'avulso') {
+        if (!s) notSent.push(line(contractId, apurado, 'apurado, ainda não enviado ao faturamento'))
+        else {
+          if (Math.abs(apurado - sent) > 0.005) notSent.push(line(contractId, apurado - sent, `apurado mudou depois do envio (enviado ${BRLf(sent)})`))
+          if (s.status === 'enviado') notInvoiced.push(line(contractId, sent, 'enviado, aguardando faturamento'))
+          else if (Math.abs(sent - inv) > 0.005) invoiceDiff.push(line(contractId, sent - inv, `faturado ${BRLf(inv)} de ${BRLf(sent)} enviados${s.invoice_number ? ` · NF ${s.invoice_number}` : ''}`))
+        }
+      }
+      finRows.push({
+        ...base, state: !s ? 'pronto' : s.status === 'faturado' ? 'faturado' : 'enviado',
+        sent: s ? r2(sent) : null, invoiced: s && s.status === 'faturado' ? r2(inv) : null,
+        invoiceNumber: s?.invoice_number ?? null, invoicedAt: s?.invoiced_at ?? null, submissionId: s?.id ?? null,
+        changedAfterSend: !!s && Math.abs(apurado - sent) > 0.005,
+      })
+    }
+    const pendingRow = (contractId: string, kind: FinanceRow['kind'], potential: number, state: FinanceState, note: string) => {
+      const c = contractById.get(contractId)
+      finRows.push({ contractId, client: c?.client_name ?? '—', number: c?.process_number ?? '', kind, potential: r2(potential), apurado: null, state,
+        sent: null, invoiced: null, invoiceNumber: null, invoicedAt: null, submissionId: null, changedAfterSend: false, note })
+    }
     const start = monthStartMs(y, m)
     const end = m === 12 ? monthStartMs(y + 1, 1) : monthStartMs(y, m + 1)
-    const BRLf = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(r2(v))
     const billingOfMonth = input.billing.filter(b => b.year === y && b.month === m)
 
     const recurring: ContractLine[] = []          // faturado recorrente
@@ -189,9 +256,16 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       if (c?.billing_type === 'metered') { meteredExpected.push(line(contractId, v)); continue }
       recurringPotentialL.push(line(contractId, v))
       const rec = billingOfMonth.find(b => b.contract_id === contractId)
+      // No fluxo novo, a recorrência do mês só conta depois de confirmada pelo consultor
+      if (flow && !rec) {
+        pendingConfirm.push(line(contractId, v, 'recorrência do mês não confirmada'))
+        pendingRow(contractId, 'recorrente', v, 'pendente_confirmacao', 'confirmar o valor do mês (ou lançar desconto)')
+        continue
+      }
       const disc = Math.min(Math.max(Number(rec?.discount_amount) || 0, 0), v)
       if (disc > 0) discounts.push(line(contractId, disc, rec?.discount_reason ? `desconto: ${rec.discount_reason}` : 'desconto'))
       recurring.push(line(contractId, v - disc, disc > 0 ? `desconto de ${BRLf(disc)} sobre ${BRLf(v)}` : undefined))
+      track(contractId, 'recorrente', v, v - disc, disc > 0 ? `desconto de ${BRLf(disc)}` : undefined)
     }
 
     const measured: ContractLine[] = []
@@ -202,6 +276,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       const rec = billingOfMonth.find(b => b.contract_id === exp.contractId)
       if (!rec || rec.status !== 'validado') {
         measurePending.push({ ...exp, note: rec ? 'lançada, aguardando aprovação do admin' : 'sem medição lançada' })
+        pendingRow(exp.contractId, 'medicao', exp.value, rec ? 'aguardando_aprovacao' : 'sem_medicao', rec ? 'medição sem relatório: aguardando aprovação do admin' : 'medição do mês não lançada')
         continue
       }
       const potential = Number(rec.contract_value ?? exp.value) || 0
@@ -217,6 +292,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       if (potential - meas > 0) below.push(line(exp.contractId, potential - meas, `medido ${BRLf(meas)} de ${BRLf(potential)}`))
       if (meas - potential > 0) above.push(line(exp.contractId, meas - potential, `medido ${BRLf(meas)} acima de ${BRLf(potential)}`))
       measured.push(line(exp.contractId, net, lost > 0 ? `perdemos ${BRLf(lost)} do potencial (${String(pct(lost, potential)).replace('.', ',')}%)` : '100% do potencial'))
+      track(exp.contractId, 'medicao', potential, net, g > 0 ? `glosa de ${BRLf(g)}` : undefined)
     }
 
     const avulso: ContractLine[] = []
@@ -225,6 +301,7 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       const e = ts(r.ended_at)
       if (e === null || e < start || e >= end) continue
       avulso.push(line(r.contract_id, Number(r.value) || 0, r.report_file_name ? `relatório: ${r.report_file_name}` : 'sem relatório anexado'))
+      track(r.contract_id, 'avulso', Number(r.value) || 0, Number(r.value) || 0, r.report_file_name ? undefined : 'sem relatório anexado')
     }
 
     const sum = (l: ContractLine[]) => r2(l.reduce((s, x) => s + x.value, 0))
@@ -243,15 +320,26 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       measured, meteredTotal, measurePending, lostPotential: r2(lostPotential), glosaTotal: r2(glosaTotal),
       meteredPotential,
       avulso, avulsoTotal,
+      // contractBilled = APURADO (recorrente confirmado + medição validada).
+      // Faturado de verdade = contractInvoiced (retorno do ERP ou lançamento manual).
       contractPotential, contractBilled,
-      contractGap: r2(contractPotential - contractBilled),
+      contractSent: r2(sentTotal), contractInvoiced: r2(invoicedTotal),
+      contractGap: r2(contractPotential - invoicedTotal),
       contractBilledPct: pct(contractBilled, contractPotential),
+      contractInvoicedPct: pct(r2(invoicedTotal), contractPotential),
+      avulsoSent: r2(avulsoSent), avulsoInvoiced: r2(avulsoInvoiced),
+      billingFlow: flow,
+      finRows,
       gapParts: {
         discounts: { total: sum(discounts), lines: discounts },
         glosas: { total: sum(glosas), lines: glosas },
         below: { total: sum(below), lines: below },
         pending: { total: sum(measurePending), lines: measurePending },
+        pendingConfirm: { total: sum(pendingConfirm), lines: pendingConfirm },
         above: { total: sum(above), lines: above },
+        notSent: { total: sum(notSent), lines: notSent },
+        notInvoiced: { total: sum(notInvoiced), lines: notInvoiced },
+        invoiceDiff: { total: sum(invoiceDiff), lines: invoiceDiff },
       },
       total, goal, goalPct: pct(total, goal), gap: r2(goal - total),
     }
@@ -276,6 +364,8 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       lostPotential: r ? r.lostPotential : null as number | null,
       potential: r ? r.contractPotential : null as number | null,
       billed: r ? r.contractBilled : null as number | null,
+      sent: r ? r.contractSent : null as number | null,
+      invoiced: r ? r.contractInvoiced : null as number | null,
       contractGap: r ? r.contractGap : null as number | null,
       pending: r ? r.measurePending.length : null as number | null,
       goal: goalOf(m),
@@ -287,13 +377,13 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   const current = (() => {
     if (scope === 'month') return revenueOf(year, month)
     const done = monthRevenues.filter((r): r is NonNullable<typeof r> => r !== null && selSet.has(r.month))
-    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential' | 'recurringPotential' | 'contractPotential' | 'contractBilled') => r2(done.reduce((s, r) => s + r[k], 0))
+    const sumOf = (k: 'recurringTotal' | 'meteredTotal' | 'avulsoTotal' | 'lostPotential' | 'glosaTotal' | 'meteredPotential' | 'recurringPotential' | 'contractPotential' | 'contractBilled' | 'contractSent' | 'contractInvoiced' | 'avulsoSent' | 'avulsoInvoiced') => r2(done.reduce((s, r) => s + r[k], 0))
     const tag = (r: { month: number }, l: ContractLine) => ({ ...l, note: `${MONTHS_SHORT_PT[r.month - 1]}${l.note ? ` · ${l.note}` : ''}` })
-    const part = (k: 'discounts' | 'glosas' | 'below' | 'pending' | 'above') => {
+    const part = (k: 'discounts' | 'glosas' | 'below' | 'pending' | 'pendingConfirm' | 'above' | 'notSent' | 'notInvoiced' | 'invoiceDiff') => {
       const lines = done.flatMap(r => r.gapParts[k].lines.map(l => tag(r, l)))
       return { total: r2(lines.reduce((s, l) => s + l.value, 0)), lines }
     }
-    const cPot = sumOf('contractPotential'), cBil = sumOf('contractBilled')
+    const cPot = sumOf('contractPotential'), cBil = sumOf('contractBilled'), cInv = sumOf('contractInvoiced')
     const total = r2(done.reduce((s, r) => s + r.total, 0))
     const goal = r2(sel.reduce((s, m) => s + goalOf(m), 0))
     const goalToDate = r2(done.reduce((s, r) => s + r.goal, 0))
@@ -304,8 +394,12 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       measurePending: done.flatMap(r => r.measurePending.map(p => ({ ...p, note: `${MONTHS_SHORT_PT[r.month - 1]}: ${p.note}` }))),
       lostPotential: sumOf('lostPotential'), glosaTotal: sumOf('glosaTotal'), meteredPotential: sumOf('meteredPotential'),
       recurringPotential: sumOf('recurringPotential'),
-      contractPotential: cPot, contractBilled: cBil, contractGap: r2(cPot - cBil), contractBilledPct: pct(cBil, cPot),
-      gapParts: { discounts: part('discounts'), glosas: part('glosas'), below: part('below'), pending: part('pending'), above: part('above') },
+      contractPotential: cPot, contractBilled: cBil, contractGap: r2(cPot - cInv), contractBilledPct: pct(cBil, cPot),
+      contractSent: sumOf('contractSent'), contractInvoiced: cInv, contractInvoicedPct: pct(cInv, cPot),
+      avulsoSent: sumOf('avulsoSent'), avulsoInvoiced: sumOf('avulsoInvoiced'),
+      billingFlow: done.some(r => r.billingFlow),
+      finRows: done.flatMap(r => r.finRows.map(f => ({ ...f, note: `${MONTHS_SHORT_PT[r.month - 1]}${f.note ? ` · ${f.note}` : ''}` }))),
+      gapParts: { discounts: part('discounts'), glosas: part('glosas'), below: part('below'), pending: part('pending'), pendingConfirm: part('pendingConfirm'), above: part('above'), notSent: part('notSent'), notInvoiced: part('notInvoiced'), invoiceDiff: part('invoiceDiff') },
       avulso: done.flatMap(r => r.avulso.map(a => ({ ...a, note: `${MONTHS_SHORT_PT[r.month - 1]} · ${a.note ?? ''}` }))), avulsoTotal: sumOf('avulsoTotal'),
       total, goal, goalPct: pct(total, goal), gap: r2(goal - total),
       goalToDate, goalToDatePct: pct(total, goalToDate),

@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { NAV_HELP } from '@/lib/help/page-help'
-import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck, ClipboardList, BrainCircuit } from 'lucide-react'
+import { LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3, Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt } from 'lucide-react'
 
 const ALL_NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
   { href: '/painel', label: 'Painel gerencial', icon: BarChart3, feature: 'painel' },
+  { href: '/financeiro', label: 'Financeiro', icon: Receipt, feature: 'financeiro' },
   { href: '/pipeline', label: 'Funil', icon: KanbanSquare, feature: 'pipeline' },
   { href: '/leads', label: 'Leads', icon: Target, feature: 'leads' },
   { href: '/contracts', label: 'Oportunidades', icon: FileText, feature: 'contracts' },
