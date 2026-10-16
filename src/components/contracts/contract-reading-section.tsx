@@ -10,6 +10,7 @@ import type { ContractReading, ReadingChecks, ReadingStep, SimNao } from '@/lib/
 import { fmtBRL } from '@/lib/format'
 
 const br = (iso: string | null | undefined) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso || '—')
+const RESP: Record<string, string> = { contratada: 'Contratada', contratante: 'Contratante', nao_claro: 'Não está claro' }
 const SIMNAO = (v: SimNao, sim = 'Sim', nao = 'Não') => (v === 'sim' ? sim : v === 'nao' ? nao : 'Não encontrado no contrato')
 const AREA: Record<string, string> = { comercial: 'Comercial', juridico: 'Jurídico', tecnico: 'Técnico', financeiro: 'Financeiro', cliente: 'Cliente' }
 
@@ -94,7 +95,7 @@ export function ContractReadingSection({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">🌱 Farmer · leitura do contrato</p>
-            <p className="text-xs text-gray-600">A IA lê o PDF do contrato (vigência, renovação, reajuste, repactuação, equipe, SLA, prazos, rescisão e multas) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
+            <p className="text-xs text-gray-600">A IA lê o PDF do contrato (vigência, renovação, reajuste, repactuação, equipe, serviços, infraestrutura, normas, SLA, prazos, rescisão, multas e pontos não claros) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
           </div>
           {pdfFiles.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -217,6 +218,28 @@ export function ContractReadingSection({
               : 'Não encontrada'} />
           </div>
 
+          {reading.nao_claros.length > 0 && (
+            <div className="rounded-2xl border border-warn-600/40 bg-white">
+              <p className="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold text-warn-700">O que não está claro no contrato <span className="font-normal text-gray-400">· {reading.nao_claros.length}</span></p>
+              <ul className="divide-y divide-gray-50">
+                {reading.nao_claros.map((x, i) => (
+                  <li key={i} className="px-4 py-2.5 text-xs">
+                    <p className="font-medium text-gray-900">{x.ponto}</p>
+                    {x.por_que && <p className="mt-0.5 text-gray-600">{x.por_que}</p>}
+                    {x.sugestao && <p className="mt-0.5 text-gray-700"><span className="text-gray-500">Esclarecer:</span> {x.sugestao}</p>}
+                    {x.clausula && <p className="mt-0.5 text-[11px] text-brand-700">{x.clausula}</p>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <ListTable title="Serviços aplicáveis" head={['Serviço', 'Previsto', 'Detalhe', 'Periodicidade', 'Cláusula']}
+            rows={reading.servicos.map(x => [x.servico, SIMNAO(x.previsto, 'Sim', 'Não'), x.detalhe ?? '—', x.periodicidade ?? '—', x.clausula ?? '—'])} />
+          <ListTable title="Infraestrutura necessária" head={['Recurso', 'Quem fornece', 'Detalhe', 'Cláusula']}
+            rows={reading.infraestrutura.map(x => [x.item, RESP[x.responsavel], x.detalhe ?? '—', x.clausula ?? '—'])} />
+          <ListTable title="Normas a cumprir" head={['Norma', 'Exigência', 'Cláusula']}
+            rows={reading.normativas.map(x => [x.norma, x.exigencia ?? '—', x.clausula ?? '—'])} />
           <ListTable title="Equipe do projeto" head={['Função', 'Qtd.', 'Regime', 'Cláusula']}
             rows={reading.equipe.map(e => [e.funcao, e.quantidade ?? '—', e.regime ?? '—', e.clausula ?? '—'])} />
           <ListTable title="Quantitativos contratados" head={['Item', 'Quantidade', 'Cláusula']}
@@ -247,7 +270,7 @@ export function ContractReadingSection({
             </div>
           )}
           {reading.objeto && <p className="text-xs text-gray-500"><strong>Objeto:</strong> {reading.objeto}{reading.numero ? ` · Nº ${reading.numero}` : ''}{reading.contratante ? ` · Contratante: ${reading.contratante}` : ''}{reading.contratada ? ` · Contratada: ${reading.contratada}` : ''}</p>}
-          {reading.versao < 2 && <p className="text-[11px] text-warn-700">Esta leitura foi feita na versão anterior (sem equipe, SLA, prazos e multas). Clique em “Ler de novo” para a leitura completa.</p>}
+          {reading.versao < 3 && <p className="text-[11px] text-warn-700">Esta leitura foi feita numa versão anterior{reading.versao < 2 ? ' (sem equipe, SLA, prazos e multas)' : ''} e não traz infraestrutura, serviços aplicáveis, normas e pontos não claros. Clique em “Ler de novo” para a leitura completa.</p>}
         </>
       )}
     </div>

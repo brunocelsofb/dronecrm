@@ -50,6 +50,10 @@ export type ContractReading = {
   caminhos_renovacao: { caminho: string; quando: string; requisitos: string; clausula: string | null }[]
   obrigacoes_relevantes: string[]
   riscos: string[]
+  infraestrutura: { item: string; responsavel: 'contratada' | 'contratante' | 'nao_claro'; detalhe: string | null; clausula: string | null }[]
+  servicos: { servico: string; previsto: SimNao; detalhe: string | null; periodicidade: string | null; clausula: string | null }[]
+  normativas: { norma: string; exigencia: string | null; clausula: string | null }[]
+  nao_claros: { ponto: string; por_que: string | null; sugestao: string | null; clausula: string | null }[]
   proximos_passos: ReadingStep[]
   avisos: string[]                    // ex.: parte da leitura que falhou
 }
@@ -121,6 +125,26 @@ const SCHEMA = obj({
     requisitos: T('O que precisa (documentos, prazos, aprovações)'),
     clausula: CL,
   }), 'Possíveis caminhos para renovar, com base no contrato'),
+  infraestrutura: arr(obj({
+    item: T('Recurso: celular, tablet, notebook, veículo/deslocamento, ferramentas, instrumentos/padrões, software, EPI, uniforme, sala, internet etc.'),
+    responsavel: { type: 'string', enum: ['contratada', 'contratante', 'nao_claro'] },
+    detalhe: T('Quantidade/condição como escrita; "" se não constar'),
+    clausula: CL,
+  }), 'Infraestrutura e recursos necessários para executar o contrato e quem fornece'),
+  servicos: arr(obj({
+    servico: T('Nome do serviço'),
+    previsto: SNE('O contrato prevê este serviço?'),
+    detalhe: T('Escopo/condições; "" se não constar'),
+    periodicidade: T('Ex.: mensal, anual, conforme fabricante; "" se não constar'),
+    clausula: CL,
+  }), 'Serviços aplicáveis'),
+  normativas: arr(obj({ norma: T('Norma/lei/resolução (ex.: RDC, NBR, ABNT, NR)'), exigencia: T('O que a norma exige no contrato'), clausula: CL }), 'Normas e legislação que a contratada precisa cumprir'),
+  nao_claros: arr(obj({
+    ponto: T('O que está ambíguo, contraditório ou faltando'),
+    por_que: T('Por que não está claro'),
+    sugestao: T('O que perguntar/esclarecer com o cliente'),
+    clausula: CL,
+  }), 'Pontos do contrato que não estão claros'),
   obrigacoes_relevantes: arr(T(), 'Obrigações que impactam a renovação'),
   riscos: arr(T(), 'Pontos de atenção para a renovação, citando a cláusula'),
   proximos_passos: arr(obj({
@@ -145,22 +169,25 @@ function skeleton(node: Record<string, unknown>): unknown {
   return d ? `<texto: ${d}>` : '<texto>'
 }
 
-// A leitura é feita em DUAS chamadas em paralelo (metade dos campos cada):
+// A leitura é feita em TRÊS chamadas em paralelo (metade dos campos cada):
 // uma resposta única ficava longa demais (cortada) e lenta para o limite da tela.
 const PART_KEYS = {
   renovacao: ['objeto', 'contratante', 'contratada', 'numero', 'vigencia', 'renovacao', 'aviso_previo', 'reajuste', 'repactuacao',
     'reequilibrio', 'valor', 'rescisao', 'caminhos_renovacao', 'riscos', 'proximos_passos'],
   execucao: ['quantitativos', 'equipe', 'equipe_total', 'acoes_objeto', 'sla', 'prazos', 'multas', 'obrigacoes_relevantes'],
+  escopo: ['infraestrutura', 'servicos', 'normativas', 'nao_claros'],
 } as const
 type Part = keyof typeof PART_KEYS
 const fullSkeleton = skeleton(SCHEMA) as Record<string, unknown>
 const TEMPLATES: Record<Part, string> = {
   renovacao: JSON.stringify(Object.fromEntries(PART_KEYS.renovacao.map(k => [k, fullSkeleton[k]])), null, 1),
   execucao: JSON.stringify(Object.fromEntries(PART_KEYS.execucao.map(k => [k, fullSkeleton[k]])), null, 1),
+  escopo: JSON.stringify(Object.fromEntries(PART_KEYS.escopo.map(k => [k, fullSkeleton[k]])), null, 1),
 }
 const PART_LABEL: Record<Part, string> = {
   renovacao: 'vigência, renovação, reajuste, rescisão e próximos passos',
   execucao: 'equipe, quantitativos, ações do objeto, SLA, prazos e multas',
+  escopo: 'infraestrutura, serviços aplicáveis, normas e pontos não claros',
 }
 
 // Tira o JSON da resposta (aceita bloco ```json ou texto antes/depois)
@@ -221,6 +248,12 @@ export function normalizeReading(raw: unknown): ContractReading {
     rescisao: { hipoteses: strs(res.hipoteses), aviso_dias: n(res.aviso_dias), multa: s(res.multa), clausula: s(res.clausula), trecho: s(res.trecho) },
     multas: list(r.multas, x => (s(x.situacao) ? { situacao: s(x.situacao)!, penalidade: s(x.penalidade) ?? '—', clausula: s(x.clausula) } : null)),
     caminhos_renovacao: list(r.caminhos_renovacao, x => (s(x.caminho) ? { caminho: s(x.caminho)!, quando: s(x.quando) ?? '', requisitos: s(x.requisitos) ?? '', clausula: s(x.clausula) } : null)),
+    infraestrutura: list(r.infraestrutura, x => (s(x.item) ? {
+      item: s(x.item)!, responsavel: x.responsavel === 'contratada' || x.responsavel === 'contratante' ? x.responsavel : 'nao_claro',
+      detalhe: s(x.detalhe), clausula: s(x.clausula) } : null)),
+    servicos: list(r.servicos, x => (s(x.servico) ? { servico: s(x.servico)!, previsto: sn(x.previsto), detalhe: s(x.detalhe), periodicidade: s(x.periodicidade), clausula: s(x.clausula) } : null)),
+    normativas: list(r.normativas, x => (s(x.norma) ? { norma: s(x.norma)!, exigencia: s(x.exigencia), clausula: s(x.clausula) } : null)),
+    nao_claros: list(r.nao_claros, x => (s(x.ponto) ? { ponto: s(x.ponto)!, por_que: s(x.por_que), sugestao: s(x.sugestao), clausula: s(x.clausula) } : null)),
     obrigacoes_relevantes: strs(r.obrigacoes_relevantes),
     riscos: strs(r.riscos),
     avisos: strs(r.avisos),
@@ -295,12 +328,19 @@ export async function readContractPdf(opts: {
     execucao:
       `- Equipe: cargos/funções que o contrato exige, com quantidade e regime. Quantitativos: itens, equipamentos, postos ou horas contratados.\n` +
       `- SLA: indicadores, metas e prazos de atendimento/solução e a penalidade de cada um, se houver.\n`,
+    escopo:
+      `- Infraestrutura: tudo o que é preciso ter para executar o contrato (celular, tablet, notebook, veículo/deslocamento, hospedagem, ` +
+      `ferramentas, instrumentos e padrões, software, EPI, uniforme, sala, internet…) e quem fornece; se o contrato não deixar claro, use "nao_claro".\n` +
+      `- Serviços: inclua SEMPRE estes, marcando previsto sim/nao/nao_encontrado: manutenção corretiva, manutenção preventiva, calibração, ` +
+      `teste de segurança elétrica, qualificação, gestão (do parque/serviço). Depois acrescente outros serviços que o contrato preveja.\n` +
+      `- Normativas: normas, leis e resoluções citadas que a contratada precisa cumprir.\n` +
+      `- Não claros: pontos ambíguos, contraditórios ou ausentes que afetam execução, custo ou renovação, com o que esclarecer com o cliente.\n`,
   }
 
   async function runPart(part: Part) {
     const res = await client.messages.create({
       model: CONTRACT_READER_MODEL,
-      max_tokens: 8000,
+      max_tokens: 12000,
       messages: [{
         role: 'user',
         content: [
@@ -319,9 +359,9 @@ export async function readContractPdf(opts: {
     return { parsed: parsed as Record<string, unknown>, tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens }
   }
 
-  const parts: Part[] = ['renovacao', 'execucao']
+  const parts: Part[] = ['renovacao', 'execucao', 'escopo']
   const results = await Promise.allSettled(parts.map(runPart))
-  const merged: Record<string, unknown> = { versao: 2 }
+  const merged: Record<string, unknown> = { versao: 3 }
   const avisos: string[] = []
   let tokensIn = 0, tokensOut = 0
   results.forEach((r, i) => {
