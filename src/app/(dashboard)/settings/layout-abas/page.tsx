@@ -11,6 +11,8 @@ export const ALL_CONTRACT_TABS = [
   { id: 'implantacao', label: '🚀 Implantação' },
   { id: 'pesquisas', label: 'Pesquisas' },
   { id: 'carteira', label: 'Carteira' },
+  { id: 'leitura-contrato', label: '🌱 Leitura do contrato' },
+  { id: 'faturamento', label: 'Faturamento' },
 ]
 
 function getDefaultHidden(name: string): string[] {

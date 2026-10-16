@@ -1,6 +1,8 @@
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
+// Leitura de contrato pela IA (Farmer) pode levar até ~1 minuto
+export const maxDuration = 120
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { StageBar } from '@/components/contracts/stage-bar'
@@ -18,6 +20,10 @@ import { ContractTagSelect } from '@/components/tags/contract-tag-select'
 import { DepartmentSection } from '@/components/contracts/department-section'
 import { AccountOwnerBadge } from '@/components/contracts/account-owner-badge'
 import { BillingSection } from '@/components/contracts/billing-section'
+import { ContractReadingSection } from '@/components/contracts/contract-reading-section'
+import { checkReading, type ContractReading } from '@/lib/agent/contract-reader'
+import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
+import { resolveTenantId as resolveTenantForReading } from '@/lib/tenant/context'
 import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
@@ -230,6 +236,17 @@ export default async function ContractDetailPage({
   // "responsável agora" (current_assignee_id), que é só a tratativa
   // pontual do momento e NÃO dá poder de mudar etapa.
   const currentProfile = await getCurrentProfile()
+
+  // Farmer · leitura do contrato (última leitura + PDFs disponíveis)
+  const [{ data: lastReading }, aiKeyInfo] = await Promise.all([
+    supabase.from('contract_ai_readings').select('created_at, file_name, status, error, result').eq('contract_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    getAnthropicKeyForTenant(await resolveTenantForReading({ contractId: id })),
+  ])
+  const readingResult = lastReading?.status === 'ok' ? (lastReading.result as ContractReading) : null
+  const readingChecks = readingResult ? checkReading(readingResult, { valid_until: contract.valid_until ?? null, monthly_value: (contract as any).monthly_value ?? null }) : null
+  const pdfFiles = (contractFiles ?? [])
+    .filter((f: any) => (f.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(f.file_name ?? ''))
+    .map((f: any) => ({ id: f.id, file_name: f.file_name, created_at: f.created_at }))
   const canChangeStage =
     contract.owner_id === currentProfile?.id || currentProfile?.role === 'admin'
 
@@ -602,6 +619,11 @@ export default async function ContractDetailPage({
             label: 'Arquivos',
             content: <FilesSection contractId={contract.id} initialFiles={contractFiles ?? []} />,
           },
+          ...(isCurrentlyInContractsPipeline ? [{
+            id: 'leitura-contrato',
+            label: 'Leitura do contrato',
+            content: <ContractReadingSection contractId={contract.id} pdfFiles={pdfFiles} reading={readingResult} readingMeta={lastReading ? { created_at: lastReading.created_at, file_name: lastReading.file_name, status: lastReading.status, error: lastReading.error } : null} checks={readingChecks} hasAiKey={!!aiKeyInfo.key} />,
+          }] : []),
           ...(isCurrentlyInContractsPipeline ? [{
             id: 'faturamento',
             label: 'Faturamento',

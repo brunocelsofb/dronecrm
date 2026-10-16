@@ -232,13 +232,22 @@ async function processContract(
 
   // 90 dias: só tarefa interna de preparação
   if (level === 90) {
+    // Próximos passos da última leitura do contrato (aba Leitura do contrato), se houver
+    const { data: lastReading } = await supabase
+      .from('contract_ai_readings').select('result, created_at').eq('contract_id', c.id).eq('status', 'ok')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const steps = ((lastReading?.result as { proximos_passos?: { acao: string; prazo: string | null; clausula: string | null }[] } | null)?.proximos_passos ?? [])
+    const readingText = steps.length
+      ? `\n\nPróximos passos indicados na leitura do contrato:\n` + steps.map((st, i) =>
+          `${i + 1}. ${st.acao}${st.prazo ? ` (até ${formatDateBR(st.prazo)})` : ''}${st.clausula ? ` — ${st.clausula}` : ''}`).join('\n')
+      : `\n\nDica: anexe o contrato em PDF e use a aba "Leitura do contrato" — o Farmer indica aviso prévio, reajuste e os próximos passos.`
     const r = await createAgentActivity(supabase, {
       contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
       activityType: 'task',
       title: `Preparar renovação — ${c.client_name}`,
       content:
         `${header}\n\nPreparar a renovação: conferir cláusula de reajuste (índice e data-base), ` +
-        `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.`,
+        `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.` + readingText,
       metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until },
     })
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }

@@ -13,7 +13,7 @@ const RESET_TABLES = [
   'action_plan_items', 'assistant_action_log', 'automation_rule_triggers', 'contract_contacts', 'contract_custom_field_values', 'contract_emails', 'contract_files', 'contract_tags', 'dimensioning_reviews', 'transfer_requests', 'proposal_status', 'company_tags', 'lead_activities', 'stage_history', 'pipeline_field_configs', 'proposal_approvals', 'proposal_items', 'proposal_content_blocks', 'ticket_messages', 'task_comments', 'implementation_tasks', 'implementation_template_tasks',
   'activities', 'notifications', 'contract_whatsapp_messages', 'whatsapp_conversation_status',
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
-  'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_records', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
+  'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_records', 'contract_ai_readings', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
   'proposals', 'tickets', 'automation_rules', 'lead_routing_rules', 'leads', 'pipeline_runs', 'contracts',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals',
