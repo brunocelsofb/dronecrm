@@ -14,6 +14,11 @@ const BASE_URL = { producao: 'https://api.zapsign.com.br/api/v1', sandbox: 'http
 export type ZapAuth = { token: string; sandbox: boolean }
 
 function friendlyError(status: number, text: string): string {
+  if (status === 402) {
+    return 'A conta da ZapSign não tem Plano de API: em produção a ZapSign exige esse plano para o CRM criar documentos. ' +
+      'Contrate o Plano de API com a ZapSign (o token já está certo) ou use o ambiente "Teste" com uma conta sandbox para testar. ' +
+      'Enquanto isso, assine pela própria ZapSign e anexe o PDF na aba Contrato e aditivos marcando "já está assinado".'
+  }
   if (status === 401 || status === 403) {
     if (/token/i.test(text)) {
       return 'A ZapSign não reconheceu o token da API. Confira em Configurações → ZapSign: (1) o token foi copiado em Configurações → Integrações → API ZapSign da conta certa e não foi gerado de novo depois; ' +
