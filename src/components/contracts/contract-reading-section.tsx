@@ -121,6 +121,11 @@ export function ContractReadingSection({
 
       {reading && checks && (
         <>
+          {reading.avisos.length > 0 && (
+            <div role="alert" className="rounded-xl border border-warn-600/40 bg-warn-600/10 p-3 text-xs text-warn-700">
+              {reading.avisos.map((a, i) => <p key={i}>⚠ {a}</p>)}
+            </div>
+          )}
           {/* Datas calculadas pelo CRM */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl bg-brand-700 p-3 text-white">

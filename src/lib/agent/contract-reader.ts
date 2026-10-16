@@ -51,6 +51,7 @@ export type ContractReading = {
   obrigacoes_relevantes: string[]
   riscos: string[]
   proximos_passos: ReadingStep[]
+  avisos: string[]                    // ex.: parte da leitura que falhou
 }
 
 // Calculado pelo CRM (não pela IA)
@@ -143,7 +144,24 @@ function skeleton(node: Record<string, unknown>): unknown {
   if (node.type === 'number') return d ? `<número: ${d}>` : '<número>'
   return d ? `<texto: ${d}>` : '<texto>'
 }
-const TEMPLATE = JSON.stringify(skeleton(SCHEMA), null, 1)
+
+// A leitura é feita em DUAS chamadas em paralelo (metade dos campos cada):
+// uma resposta única ficava longa demais (cortada) e lenta para o limite da tela.
+const PART_KEYS = {
+  renovacao: ['objeto', 'contratante', 'contratada', 'numero', 'vigencia', 'renovacao', 'aviso_previo', 'reajuste', 'repactuacao',
+    'reequilibrio', 'valor', 'rescisao', 'caminhos_renovacao', 'riscos', 'proximos_passos'],
+  execucao: ['quantitativos', 'equipe', 'equipe_total', 'acoes_objeto', 'sla', 'prazos', 'multas', 'obrigacoes_relevantes'],
+} as const
+type Part = keyof typeof PART_KEYS
+const fullSkeleton = skeleton(SCHEMA) as Record<string, unknown>
+const TEMPLATES: Record<Part, string> = {
+  renovacao: JSON.stringify(Object.fromEntries(PART_KEYS.renovacao.map(k => [k, fullSkeleton[k]])), null, 1),
+  execucao: JSON.stringify(Object.fromEntries(PART_KEYS.execucao.map(k => [k, fullSkeleton[k]])), null, 1),
+}
+const PART_LABEL: Record<Part, string> = {
+  renovacao: 'vigência, renovação, reajuste, rescisão e próximos passos',
+  execucao: 'equipe, quantitativos, ações do objeto, SLA, prazos e multas',
+}
 
 // Tira o JSON da resposta (aceita bloco ```json ou texto antes/depois)
 export function extractJson(text: string): unknown {
@@ -205,6 +223,7 @@ export function normalizeReading(raw: unknown): ContractReading {
     caminhos_renovacao: list(r.caminhos_renovacao, x => (s(x.caminho) ? { caminho: s(x.caminho)!, quando: s(x.quando) ?? '', requisitos: s(x.requisitos) ?? '', clausula: s(x.clausula) } : null)),
     obrigacoes_relevantes: strs(r.obrigacoes_relevantes),
     riscos: strs(r.riscos),
+    avisos: strs(r.avisos),
     proximos_passos: list(r.proximos_passos, x => {
       const acao = s(x.acao)
       if (!acao) return null
@@ -251,47 +270,74 @@ export async function readContractPdf(opts: {
 }): Promise<{ reading: ContractReading; tokensIn: number; tokensOut: number; model: string }> {
   const client = new Anthropic({ apiKey: opts.apiKey })
   const today = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
-  const prompt =
+  const common =
     `Você é o Farmer, agente que cuida da carteira de contratos da ${opts.crm.company}. Leia o contrato anexo (${opts.fileName}) ` +
-    `por inteiro, incluindo anexos e termo de referência, e responda SOMENTE com um JSON no modelo abaixo (sem texto antes ou depois). ` +
-    `Onde o modelo diz <texto: ...> ou <número: ...>, troque pelo valor; nos campos "sim | nao | nao_encontrado" e na área, use exatamente uma das opções. ` +
-    `Listas podem ter quantos itens forem necessários.\n\n` +
+    `por inteiro, incluindo anexos e termo de referência, e responda SOMENTE com um JSON no modelo abaixo (sem texto antes ou depois, sem markdown). ` +
+    `Onde o modelo diz <texto: ...> ou <número: ...>, troque pelo valor; nos campos "sim | nao | nao_encontrado" e na área, use exatamente uma das opções.\n\n` +
     `Regras:\n` +
     `- Use SOMENTE o que está no documento. Nunca invente nem complete com o que é "comum" em contratos.\n` +
-    `- Quando a informação não estiver no documento: texto "" , número 0, sim/não "nao_encontrado", lista vazia [].\n` +
-    `- Para cada item, cite a cláusula (ex.: "Cláusula 5.2") e, onde pedido, um trecho literal curto.\n` +
+    `- Quando a informação não estiver no documento: texto "", número 0, sim/não "nao_encontrado", lista vazia [].\n` +
+    `- Seja objetivo: textos de até 25 palavras; trecho literal de até 30 palavras; no máximo 12 itens por lista (agrupe itens parecidos).\n` +
+    `- Cite a cláusula de cada item (ex.: "Cláusula 5.2").\n` +
     `- Datas no formato YYYY-MM-DD. Hoje é ${today}. Não calcule datas que o contrato não traz.\n` +
-    `- Reajuste x repactuação x reequilíbrio são coisas diferentes: reajuste = índice (IPCA, IGP-M…); repactuação = revisão por custos de mão de obra ` +
-    `(convenção coletiva); reequilíbrio = revisão econômico-financeira por fato imprevisível. Marque cada um só se o contrato prever.\n` +
-    `- Caminhos de renovação: liste as opções que o contrato permite (ex.: prorrogação por aditivo dentro do limite, renovação automática, ` +
-    `renegociação com reajuste) e, se o limite de prorrogação já estiver perto ou esgotado, diga que será preciso nova contratação.\n` +
-    `- Próximos passos: ações concretas para conduzir a RENOVAÇÃO (manifestar interesse dentro do aviso prévio, calcular o reajuste pelo índice, ` +
-    `preparar proposta/aditivo, reunir relatórios e comprovações de SLA), com prazo coerente com o aviso prévio e o fim da vigência.\n` +
-    `- Escreva em português do Brasil, frases curtas.\n\n` +
-    `Dados no CRM (só para comparação; se o contrato disser outra coisa, registre o que está no contrato): cliente ${opts.crm.client_name}` +
-    `${opts.crm.process_number ? `, nº ${opts.crm.process_number}` : ''}, início ${opts.crm.valid_from ?? 'não informado'}, ` +
-    `fim ${opts.crm.valid_until ?? 'não informado'}, valor mensal ${opts.crm.monthly_value ?? 'não informado'}.\n\n` +
-    `Modelo do JSON:\n${TEMPLATE}`
-
-  const res = await client.messages.create({
-    model: CONTRACT_READER_MODEL,
-    max_tokens: 12000,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: opts.pdfBase64 } },
-        { type: 'text', text: prompt },
-      ],
-    }],
-  })
-  if (res.stop_reason === 'max_tokens') throw new Error('A resposta da IA ficou grande demais e foi cortada. Tente de novo; se repetir, envie só o contrato (sem anexos extensos).')
-  if (res.stop_reason === 'refusal') throw new Error('A IA recusou a leitura deste documento.')
-  const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('')
-  let parsed: unknown
-  try {
-    parsed = extractJson(text)
-  } catch {
-    throw new Error('A IA não devolveu a leitura no formato esperado. Tente de novo.')
+    `- Escreva em português do Brasil.\n`
+  const specific: Record<Part, string> = {
+    renovacao:
+      `- Reajuste x repactuação x reequilíbrio são coisas diferentes: reajuste = índice (IPCA, IGP-M…); repactuação = revisão por custos de mão de obra ` +
+      `(convenção coletiva); reequilíbrio = revisão econômico-financeira por fato imprevisível. Marque cada um só se o contrato prever.\n` +
+      `- Caminhos de renovação: as opções que o contrato permite (ex.: prorrogação por aditivo dentro do limite, renovação automática, ` +
+      `renegociação com reajuste); se o limite de prorrogação estiver perto ou esgotado, diga que será preciso nova contratação.\n` +
+      `- Próximos passos (até 8): ações concretas para conduzir a RENOVAÇÃO (manifestar interesse dentro do aviso prévio, calcular o reajuste pelo índice, ` +
+      `preparar proposta/aditivo, reunir relatórios e comprovações de SLA), com prazo coerente com o aviso prévio e o fim da vigência.\n\n` +
+      `Dados no CRM (só para comparação; se o contrato disser outra coisa, registre o que está no contrato): cliente ${opts.crm.client_name}` +
+      `${opts.crm.process_number ? `, nº ${opts.crm.process_number}` : ''}, início ${opts.crm.valid_from ?? 'não informado'}, ` +
+      `fim ${opts.crm.valid_until ?? 'não informado'}, valor mensal ${opts.crm.monthly_value ?? 'não informado'}.\n`,
+    execucao:
+      `- Equipe: cargos/funções que o contrato exige, com quantidade e regime. Quantitativos: itens, equipamentos, postos ou horas contratados.\n` +
+      `- SLA: indicadores, metas e prazos de atendimento/solução e a penalidade de cada um, se houver.\n`,
   }
-  return { reading: normalizeReading(parsed), tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens, model: CONTRACT_READER_MODEL }
+
+  async function runPart(part: Part) {
+    const res = await client.messages.create({
+      model: CONTRACT_READER_MODEL,
+      max_tokens: 8000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: opts.pdfBase64 } },
+          { type: 'text', text: `${common}${specific[part]}\nModelo do JSON:\n${TEMPLATES[part]}` },
+        ],
+      }],
+    }, { timeout: 105_000, maxRetries: 0 })
+    const types = res.content.map(b => b.type).join(',')
+    console.log(`[leitura-contrato] parte ${part}: ${res.stop_reason} · ${res.usage.input_tokens}/${res.usage.output_tokens} tokens · blocos ${types}`)
+    if (res.stop_reason === 'max_tokens') throw new Error('resposta longa demais (cortada)')
+    if (res.stop_reason === 'refusal') throw new Error('a IA recusou a leitura')
+    const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('')
+    let parsed: unknown
+    try { parsed = extractJson(text) } catch { throw new Error('resposta fora do formato esperado') }
+    return { parsed: parsed as Record<string, unknown>, tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens }
+  }
+
+  const parts: Part[] = ['renovacao', 'execucao']
+  const results = await Promise.allSettled(parts.map(runPart))
+  const merged: Record<string, unknown> = { versao: 2 }
+  const avisos: string[] = []
+  let tokensIn = 0, tokensOut = 0
+  results.forEach((r, i) => {
+    const part = parts[i]
+    if (r.status === 'fulfilled') {
+      for (const k of PART_KEYS[part]) merged[k] = r.value.parsed[k]
+      tokensIn += r.value.tokensIn; tokensOut += r.value.tokensOut
+    } else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
+      avisos.push(`Não foi possível ler ${PART_LABEL[part]} (${msg}). Clique em "Ler de novo".`)
+    }
+  })
+  if (avisos.length === parts.length) {
+    const first = results[0] as PromiseRejectedResult
+    throw new Error(first.reason instanceof Error ? first.reason.message : String(first.reason))
+  }
+  merged.avisos = avisos
+  return { reading: normalizeReading(merged), tokensIn, tokensOut, model: CONTRACT_READER_MODEL }
 }
