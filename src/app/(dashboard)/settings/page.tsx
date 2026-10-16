@@ -84,6 +84,13 @@ const CONFIG_SECTIONS = [
     ],
   },
   {
+    title: 'Sistema',
+    adminOnly: true,
+    items: [
+      { href: '/settings/documentacao', label: '📘 Documentação do sistema', description: 'Produto, técnico, fluxos, design system, banco de dados e plano de implementação' },
+    ],
+  },
+  {
     title: 'Conta e Acesso',
     items: [
       { href: '/users', label: 'Usuários', description: 'Gerencie os membros da equipe e suas permissões' },

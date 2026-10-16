@@ -45,6 +45,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/copiloto\/relatorios/, help: { title: 'Relatórios de implantação', text: 'Consolidado mensal das fases de implantação, preparado pelo Farmer para revisar e enviar ao time técnico.' } },
   { test: /^\/briefing/, help: { title: 'Agentes IA', text: 'Tela dividida: à esquerda o Farmer (carteira), à direita o Hunter (novos negócios). Cada item é um cliente com os dados dele; clique para abrir.', tips: ['Farmer: renovações, medições pendentes, perdas no faturamento, rescisões, planos de ação, NPS baixo e chamados atrasados.', 'Hunter: oportunidades e propostas paradas, leads sem andamento, fechamentos do mês e avulsos.', 'O resumo do dia continua chegando por WhatsApp ao gestor, de segunda a sexta.'] } },
 
+  { test: /^\/settings\/documentacao/, help: { title: 'Documentação do sistema', text: 'Tudo o que o CRM é e como funciona, em 6 partes: produto (PRD), técnico (TRD), fluxos, design system, banco de dados e plano de implementação.', tips: ['As funcionalidades vêm das explicações de cada tela e o banco de dados é lido ao vivo — não ficam desatualizados.', 'Só administradores veem esta página.'] } },
   { test: /^\/settings\/metas/, help: { title: 'Metas de receita', text: 'Meta total da empresa cadastrada mês a mês; a meta anual é a soma dos meses.', tips: ['O Painel gerencial compara a meta do mês com o faturado (recorrente + medição + avulso faturados).', 'Prazo da medição: até esse dia do mês seguinte o relatório precisa estar validado, senão o Farmer avisa.'] } },
   { test: /^\/settings\/copiloto/, help: { title: 'Configurações dos agentes IA', text: 'Ativação (chave da Anthropic), gestor que recebe os resumos e os textos dos avisos ao cliente e dos e-mails internos.', tips: ['Externo: avisos de renovação ao cliente.', 'Interno: e-mails ao time, implantação e relatório mensal.'] } },
   { test: /^\/settings\/whatsapp-conexoes/, help: { title: 'Conexões de WhatsApp', text: 'Conecte os números da empresa lendo o QR Code e defina o consultor de cada número.', tips: ['A quantidade de números depende do plano.', 'Instância privada só envia (ex.: briefing) e não mostra conversas no CRM.'] } },
@@ -97,4 +98,10 @@ export const NAV_HELP: Record<string, string> = {
   '/briefing': 'Farmer (carteira) e Hunter (novos negócios)',
   '/settings': 'Dados, integrações e regras da empresa',
   '/super-admin': 'Licenças, planos e abas',
+}
+
+// Todas as explicações de tela (usadas na Documentação do sistema → Produto)
+export function listPageHelp(): PageHelp[] {
+  const seen = new Set<string>()
+  return RULES.map(r => r.help).filter(h => (seen.has(h.title) ? false : (seen.add(h.title), true)))
 }
