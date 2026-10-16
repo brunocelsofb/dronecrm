@@ -13,7 +13,7 @@ import { sendContractWhatsApp } from '@/lib/actions/whatsapp'
 import { sendEmailForUser, getEmailAccountInfo } from '@/lib/email/send'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
-import { renderRenewalTemplate, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
+import { renderRenewalTemplate, daysUntilBR, buildRenewalEmailHtml, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
 import { getContractTenantName } from '@/lib/agent/tenant-name'
 import { resolveInternalSettings, parseEmailList, invalidEmails } from '@/lib/agent/internal-settings'
 import { sendWhatsApp } from '@/lib/agent/briefing-core'
@@ -196,8 +196,22 @@ export async function sendRenewalAlert(
     }).eq('id', activityId)
   }
 
-  const finalMessage = renderRenewalTemplate(message.trim(), { consultor }).replace(/\n{3,}/g, '\n\n').trim()
-  const finalSubject = renderRenewalTemplate(subject.trim(), { consultor }).trim()
+  // Dias até o vencimento calculados AGORA (mesma conta no texto e no cabeçalho do e-mail)
+  const { data: vuRow } = await admin.from('contracts').select('valid_until').eq('id', activity.contract_id).maybeSingle()
+  const vuIso = vuRow?.valid_until ? String(vuRow.valid_until).slice(0, 10) : null
+  const daysNow = vuIso ? daysUntilBR(vuIso) : null
+  const dayVars = {
+    consultor,
+    dias: daysNow === null ? null : String(Math.abs(daysNow)),
+    vencimento: vuIso ? vuIso.split('-').reverse().join('/') : null,
+  }
+  const finalMessage = renderRenewalTemplate(message.trim(), dayVars).replace(/\n{3,}/g, '\n\n').trim()
+  const finalSubject = renderRenewalTemplate(subject.trim(), dayVars).trim()
+  if (/\{\{\s*dias\s*\}\}/.test(finalMessage + finalSubject)) {
+    const msg = 'O contrato está sem data de vencimento: não dá para calcular os dias. Preencha a vigência antes de enviar.'
+    await unlock({ last_error: msg })
+    return { error: msg }
+  }
 
   // 1. E-mail primeiro (é o canal que mais falha por conta/permissão).
   //    Se uma tentativa anterior já enviou o e-mail, não reenvia.
@@ -229,10 +243,7 @@ export async function sendRenewalAlert(
     const ccFiltered = ccList.filter(e => e.toLowerCase() !== account.fromEmail.toLowerCase() && e.toLowerCase() !== toEmail.toLowerCase())
     ccEmail = ccFiltered.length ? ccFiltered.join(', ') : null
     const validUntilIso = contractInfo?.valid_until ? String(contractInfo.valid_until).slice(0, 10) : null
-    const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
-    const daysLeft = validUntilIso
-      ? Math.round((new Date(`${validUntilIso}T12:00:00Z`).getTime() - new Date(`${todayBr}T12:00:00Z`).getTime()) / 86_400_000)
-      : 0
+    const daysLeft = validUntilIso ? daysUntilBR(validUntilIso) : 0
     const html = buildRenewalEmailHtml({
       kind: isConfirmation ? 'confirmation' : 'alert',
       validFrom: typeof meta.valid_from === 'string' ? meta.valid_from.slice(0, 10).split('-').reverse().join('/') : null,

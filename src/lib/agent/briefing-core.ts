@@ -10,6 +10,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { createAgentActivity } from './agent-activity'
 import { differenceInDays, format } from 'date-fns'
+import { daysUntilBR } from './renewal-templates'
 import { ptBR } from 'date-fns/locale'
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -248,7 +249,7 @@ export async function fetchRenewalCandidates(
       process_number:    c.process_number as string,
       client_name:       c.client_name as string,
       valid_until:       (c.valid_until as string | null) ?? null,
-      days_until_expiry: c.valid_until ? differenceInDays(new Date(c.valid_until as string), today) : null,
+      days_until_expiry: c.valid_until ? daysUntilBR(String(c.valid_until)) : null,
       stage_name:        stageName,
       run_status:        openRun?.status ?? null,
     }

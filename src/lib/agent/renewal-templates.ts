@@ -69,6 +69,20 @@ export function resolveRenewalTemplates(saved: unknown): Record<RenewalLevelKey,
 }
 
 /** Troca {{variavel}} pelos valores informados; variáveis sem valor ficam como estão. */
+// Dias até o vencimento, contados em dias de calendário no horário de Brasília.
+// É a ÚNICA conta de dias usada no texto, no e-mail e nos resumos — calculada no envio.
+export function daysUntilBR(validUntilIso: string, nowMs: number = Date.now()): number {
+  const today = new Date(nowMs - 3 * 3600 * 1000).toISOString().slice(0, 10)
+  const a = new Date(`${today}T12:00:00Z`).getTime()
+  const b = new Date(`${validUntilIso.slice(0, 10)}T12:00:00Z`).getTime()
+  return Math.round((b - a) / 86_400_000)
+}
+
+// Texto com número de dias escrito à mão (ex.: "15 dias") em vez de {{dias}}
+export function hasHardcodedDays(text: string): boolean {
+  return /\b\d+\s*\*?\s*dias?\b/i.test(text.replace(/\{\{\s*dias\s*\}\}\s*\*?\s*dias?/gi, ''))
+}
+
 export function renderRenewalTemplate(template: string, vars: Record<string, string | null | undefined>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key: string) => {
     const v = vars[key]

@@ -24,7 +24,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
-import { resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
+import { daysUntilBR, resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 import { getTenantNamesById } from './tenant-name'
 
 function getAdminClient() {
@@ -93,11 +93,6 @@ function addDays(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function daysBetween(fromIso: string, toIso: string): number {
-  const a = new Date(`${fromIso}T12:00:00Z`).getTime()
-  const b = new Date(`${toIso}T12:00:00Z`).getTime()
-  return Math.round((b - a) / 86_400_000)
-}
 
 function levelFor(daysLeft: number): AlertLevel | null {
   if (daysLeft < 0)   return 0
@@ -163,7 +158,7 @@ async function fetchCandidates(
       process_number:    c.process_number,
       client_name:       c.client_name,
       valid_until:       String(c.valid_until).slice(0, 10),
-      days_until_expiry: daysBetween(today, String(c.valid_until).slice(0, 10)),
+      days_until_expiry: daysUntilBR(String(c.valid_until).slice(0, 10)),
       monthly_value:     c.monthly_value ?? null,
       contact_name:      contact?.name ?? null,
       contact_phone:     phone && phone.length >= 10 ? phone : null,
@@ -195,13 +190,14 @@ async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>, tenan
 
 // Monta o rascunho a partir do modelo de Configurações → Copiloto IA.
 // {{consultor}} fica no texto e é preenchido no envio com o WhatsApp escolhido.
-function templateVars(c: RenewalCandidate, org: OrgConfig): Record<string, string> {
+function templateVars(c: RenewalCandidate, org: OrgConfig): Record<string, string | null> {
   return {
     contato:    c.contact_name?.split(' ')[0] ?? c.client_name,
     cliente:    c.client_name,
     contrato:   c.process_number ?? '',
     vencimento: formatDateBR(c.valid_until),
-    dias:       String(Math.abs(c.days_until_expiry)),
+    // {{dias}} fica no rascunho e é calculado NO ENVIO (o aviso pode ser enviado dias depois)
+    dias:       null,
     empresa:    c.tenant_name ?? org.companyName,
   }
 }
@@ -271,7 +267,7 @@ async function processContract(
     activityType: 'whatsapp',
     title: level === 0
       ? `Enviar aviso de contrato vencido — ${c.client_name}`
-      : `Enviar aviso de renovação (${level} dias) — ${c.client_name}`,
+      : `Enviar aviso de renovação (marco de ${level} dias · vence ${formatDateBR(c.valid_until)}) — ${c.client_name}`,
     content:
       `${header}\n\n` +
       `Aviso ao cliente (WhatsApp + e-mail) pronto para revisão — para ${c.contact_name ?? 'o contato'} ` +

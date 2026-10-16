@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSendableInstances, sendRenewalAlert, type SendableInstance } from '@/lib/actions/renewal-alerts'
-import { renderRenewalTemplate } from '@/lib/agent/renewal-templates'
+import { renderRenewalTemplate, daysUntilBR } from '@/lib/agent/renewal-templates'
 
 export function RenewalSendButton({
   activityId,
@@ -18,6 +18,7 @@ export function RenewalSendButton({
   phone,
   email,
   contactName,
+  validUntil,
   onSent,
   onFailed,
 }: {
@@ -28,6 +29,7 @@ export function RenewalSendButton({
   phone: string
   email?: string | null
   contactName?: string | null
+  validUntil?: string | null           // YYYY-MM-DD: {{dias}} é calculado na hora
   onSent?: (r: { title?: string; content?: string; metadata?: Record<string, unknown> }) => void
   onFailed?: (error: string) => void
 }) {
@@ -45,8 +47,14 @@ export function RenewalSendButton({
   const selected = instances.find(i => i.name === instance)
   // Mesmo critério do envio: consultor vinculado ao WhatsApp; sem vínculo, o rótulo
   const consultor = selected?.ownerName ?? selected?.label ?? ''
-  const preview = renderRenewalTemplate(message, { consultor }).replace(/\n{3,}/g, '\n\n').trim()
-  const previewSubject = renderRenewalTemplate(subject, { consultor }).trim()
+  const daysNow = validUntil ? daysUntilBR(validUntil) : null
+  const vars = {
+    consultor,
+    dias: daysNow === null ? null : String(Math.abs(daysNow)),
+    vencimento: validUntil ? validUntil.slice(0, 10).split('-').reverse().join('/') : null,
+  }
+  const preview = renderRenewalTemplate(message, vars).replace(/\n{3,}/g, '\n\n').trim()
+  const previewSubject = renderRenewalTemplate(subject, vars).trim()
 
   const blocker =
     !email ? 'O contato não tem e-mail cadastrado. Cadastre o e-mail do contato para enviar o aviso.'
@@ -141,7 +149,8 @@ export function RenewalSendButton({
               style={{ ...input, lineHeight: 1.5, resize: 'vertical' }}
             />
             <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>
-              <code>{'{{consultor}}'}</code> vira o nome do consultor vinculado ao WhatsApp escolhido. O e-mail vai no formato padrão (faixa, detalhes do contrato e contato).
+              <code>{'{{consultor}}'}</code> vira o nome do consultor vinculado ao WhatsApp escolhido. <code>{'{{dias}}'}</code> é calculado no momento do envio
+              {daysNow !== null && <> (hoje: <strong>{daysNow < 0 ? `vencido há ${-daysNow} dia(s)` : `${daysNow} dia(s)`}</strong> até {vars.vencimento})</>}. O e-mail vai no formato padrão (faixa, detalhes do contrato e contato).
             </p>
 
             {!loading && instance && (

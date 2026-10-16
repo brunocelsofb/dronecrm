@@ -139,6 +139,7 @@ export function ActivityFeed({
                         email={typeof meta.target_email === 'string' ? meta.target_email : null}
                         draftSubject={typeof meta.draft_subject === 'string' ? meta.draft_subject : null}
                         contactName={typeof meta.contact_name === 'string' ? meta.contact_name : null}
+                        validUntil={typeof meta.valid_until === 'string' ? meta.valid_until : null}
                       />
                     )}
                     {internalPending && isPlanned && (

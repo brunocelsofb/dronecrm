@@ -5,7 +5,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
-import { RENEWAL_LEVELS, type RenewalLevelKey } from '@/lib/agent/renewal-templates'
+import { hasHardcodedDays, RENEWAL_LEVELS, type RenewalLevelKey } from '@/lib/agent/renewal-templates'
 import { INTERNAL_LEVELS, invalidEmails, parseEmailList, type InternalKey } from '@/lib/agent/internal-settings'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -28,6 +28,10 @@ export async function saveRenewalTemplates(
     const t = v.trim()
     if (!t) return { error: `O texto de "${label}" está vazio.` }
     if (t.length > MAX_TEMPLATE_LENGTH) return { error: `O texto de "${label}" passou de ${MAX_TEMPLATE_LENGTH} caracteres.` }
+    // Número de dias escrito à mão desencontra do vencimento real: exige {{dias}}
+    if (key !== 'renovado' && hasHardcodedDays(t)) {
+      return { error: `O texto de "${label}" tem número de dias escrito à mão (ex.: "15 dias"). Use {{dias}}: o CRM calcula os dias exatos no momento do envio.` }
+    }
     clean[key] = t
   }
 

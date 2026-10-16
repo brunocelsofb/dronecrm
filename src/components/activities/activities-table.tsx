@@ -275,6 +275,7 @@ export function ActivitiesTable({
                             email={typeof md.target_email === 'string' ? md.target_email : null}
                             draftSubject={typeof md.draft_subject === 'string' ? md.draft_subject : null}
                             contactName={typeof md.contact_name === 'string' ? md.contact_name : null}
+                            validUntil={typeof md.valid_until === 'string' ? md.valid_until : null}
                             onSent={r => setLocalActivities(prev => prev.map(x => x.id === a.id
                               ? { ...x, status: 'done', completed: true, title: r.title ?? x.title, content: r.content ?? x.content,
                                   metadata: r.metadata ?? { ...(x.metadata ?? {}), approval: 'sent' } }
