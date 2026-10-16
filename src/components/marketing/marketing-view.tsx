@@ -9,13 +9,14 @@ import { useRouter } from 'next/navigation'
 import { fmtBRL, fmtPct, fmtNum1 } from '@/lib/format'
 import { CHANNELS, channelLabel, campaignCode } from '@/lib/marketing/tracking'
 import type { MkRow } from '@/lib/marketing/report'
+import { MarketingGuide } from './marketing-guide'
 import type { CampaignFull } from '@/lib/marketing/data'
 import { saveCampaign, deleteCampaign, saveCampaignCost, type CampaignInput } from '@/lib/actions/marketing'
 
 type Report = { campaignRows: MkRow[]; channelOnlyRows: MkRow[]; channels: MkRow[]; totals: MkRow; unattributedOpps: number }
 type Props = {
   year: number; month: number | null; nowYear: number; nowMonth: number
-  tab: 'resultados' | 'campanhas' | 'links'
+  tab: 'resultados' | 'campanhas' | 'links' | 'guia'
   campaigns: CampaignFull[]
   costs: { campaign_id: string; year: number; month: number; amount: number }[]
   report: Report
@@ -67,7 +68,7 @@ export function MarketingView(p: Props) {
       </div>
 
       <nav className="flex gap-1 border-b border-gray-200 text-sm" aria-label="Seções">
-        {([['resultados', 'Resultados'], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário']] as const).map(([id, label]) => (
+        {([['resultados', 'Resultados'], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário'], ['guia', 'Como funciona']] as const).map(([id, label]) => (
           <button key={id} onClick={() => go({ aba: id })}
             className={`-mb-px border-b-2 px-3 py-2 ${p.tab === id ? 'border-brand-700 font-medium text-brand-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
             {label}
@@ -78,6 +79,7 @@ export function MarketingView(p: Props) {
       {p.tab === 'resultados' && <Results report={p.report} periodLabel={periodLabel} hasCampaigns={p.campaigns.length > 0} onNew={() => go({ aba: 'campanhas' })} />}
       {p.tab === 'campanhas' && <Campaigns {...p} />}
       {p.tab === 'links' && <Links campaigns={p.campaigns} baseUrl={p.baseUrl} slug={p.slug} />}
+      {p.tab === 'guia' && <MarketingGuide />}
     </div>
   )
 }
@@ -101,6 +103,7 @@ function Results({ report, periodLabel, hasCampaigns, onNew }: { report: Report;
           <p className="text-sm font-medium text-gray-900">Nenhuma campanha cadastrada ainda</p>
           <p className="mt-1 text-xs text-gray-500">Cadastre a campanha, use o link dela no anúncio e os leads, oportunidades e o faturado aparecem aqui sozinhos.</p>
           <button onClick={onNew} className="mt-3 rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">+ Nova campanha</button>
+          <p className="mt-2 text-xs text-gray-500">Primeira vez? Veja a aba <strong>Como funciona</strong>.</p>
         </div>
       )}
 

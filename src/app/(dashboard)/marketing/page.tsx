@@ -36,7 +36,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <MarketingView
       year={year} month={month} nowYear={nowYear} nowMonth={nowMonth}
-      tab={sp.aba === 'campanhas' || sp.aba === 'links' ? sp.aba : 'resultados'}
+      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' ? sp.aba : 'resultados'}
       campaigns={data.campaigns}
       costs={data.costs}
       report={data.report}
