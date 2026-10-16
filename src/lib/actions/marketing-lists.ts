@@ -139,7 +139,8 @@ export async function startSync(listId: string, provider: 'mailchimp' | 'rd_stat
   return { ok: true, syncId: data.id, total: members.length }
 }
 
-const BATCH = 25
+// Lote pequeno: cabe com folga no tempo máximo de uma chamada no servidor
+const BATCH = 10
 export async function runSyncBatch(syncId: string, offset: number): Promise<Result<{ done: boolean; next: number; sent: number; failed: number; lastError: string | null }>> {
   const c = await ctx(); if (!c) return NO
   const { data: sync } = await c.db.from('marketing_list_syncs').select('id, list_id, provider, status, sent, failed, errors').eq('id', syncId).maybeSingle()
