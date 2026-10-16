@@ -8,9 +8,10 @@
 // mande a mensagem de erro exata que aparecer.
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Pencil, Check, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { registerContractFile, deleteContractFile, getFileDownloadUrl, renameContractFile } from '@/lib/actions/files'
+import { registerContractFile, deleteContractFile, getFileDownloadUrl, renameContractFile, setContractFileKind, type DocumentKind } from '@/lib/actions/files'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 
 type ContractFile = {
@@ -20,6 +21,7 @@ type ContractFile = {
   file_size: number | null
   mime_type: string | null
   created_at: string
+  document_kind?: DocumentKind | null
 }
 
 function fmtSize(bytes: number | null) {
@@ -29,8 +31,15 @@ function fmtSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function FilesSection({ contractId, initialFiles }: { contractId: string; initialFiles: ContractFile[] }) {
+const KIND_LABEL: Record<DocumentKind, string> = { arquivo: 'Arquivo', contrato: 'Contrato', aditivo: 'Aditivo' }
+
+// mode 'arquivos': aba Arquivos (qualquer arquivo). mode 'contrato': aba
+// Contrato e aditivos (só contrato e aditivos). O mesmo arquivo pode ser
+// movido de uma aba para a outra.
+export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { contractId: string; initialFiles: ContractFile[]; mode?: 'arquivos' | 'contrato' }) {
+  const router = useRouter()
   const [files, setFiles] = useState(initialFiles)
+  const [uploadKind, setUploadKind] = useState<DocumentKind>(mode === 'arquivos' ? 'arquivo' : (initialFiles.some(f => f.document_kind === 'contrato') ? 'aditivo' : 'contrato'))
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -75,7 +84,7 @@ export function FilesSection({ contractId, initialFiles }: { contractId: string;
       return
     }
 
-    const result = await registerContractFile(contractId, file.name, storagePath, file.size, file.type)
+    const result = await registerContractFile(contractId, file.name, storagePath, file.size, file.type, uploadKind)
 
     if ('error' in result) {
       setError(result.error ?? 'Falha ao registrar o arquivo.')
@@ -84,11 +93,20 @@ export function FilesSection({ contractId, initialFiles }: { contractId: string;
     }
 
     setFiles((prev) => [
-      { id: crypto.randomUUID(), file_name: file.name, storage_path: storagePath, file_size: file.size, mime_type: file.type, created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), file_name: file.name, storage_path: storagePath, file_size: file.size, mime_type: file.type, created_at: new Date().toISOString(), document_kind: uploadKind },
       ...prev,
     ])
     setUploading(false)
     if (inputRef.current) inputRef.current.value = ''
+    router.refresh()
+  }
+
+  async function changeKind(fileId: string, kind: DocumentKind) {
+    setError(null)
+    const r = await setContractFileKind(fileId, contractId, kind)
+    if ('error' in r) { setError(r.error ?? 'Falha ao mover o arquivo.'); return }
+    setFiles(prev => (mode === 'arquivos' ? (kind === 'arquivo' ? prev : prev.filter(f => f.id !== fileId)) : (kind === 'arquivo' ? prev.filter(f => f.id !== fileId) : prev.map(f => (f.id === fileId ? { ...f, document_kind: kind } : f)))))
+    router.refresh()
   }
 
   async function handleDownload(storagePath: string) {
@@ -109,17 +127,32 @@ export function FilesSection({ contractId, initialFiles }: { contractId: string;
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-900">Arquivos</h2>
-        <label className="cursor-pointer rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
-          {uploading ? 'Enviando...' : '+ Anexar arquivo'}
-          <input ref={inputRef} type="file" onChange={handleUpload} disabled={uploading} className="hidden" />
-        </label>
+        <div>
+          <h2 className="text-sm font-medium text-gray-900">{mode === 'arquivos' ? 'Arquivos' : 'Contrato e aditivos'}</h2>
+          <p className="text-xs text-gray-500">
+            {mode === 'arquivos'
+              ? 'Qualquer arquivo do cliente. Contrato e aditivos ficam na aba “Contrato e aditivos”.'
+              : 'Somente o contrato e os aditivos (de preferência em PDF — é o que o Farmer lê).'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {mode === 'contrato' && (
+            <select value={uploadKind} onChange={e => setUploadKind(e.target.value as DocumentKind)} aria-label="Tipo do documento" className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs">
+              <option value="contrato">Contrato</option>
+              <option value="aditivo">Aditivo</option>
+            </select>
+          )}
+          <label className="cursor-pointer rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">
+            {uploading ? 'Enviando...' : mode === 'arquivos' ? '+ Anexar arquivo' : `+ Anexar ${KIND_LABEL[uploadKind].toLowerCase()}`}
+            <input ref={inputRef} type="file" accept={mode === 'contrato' ? '.pdf,application/pdf,.doc,.docx' : undefined} onChange={handleUpload} disabled={uploading} className="hidden" />
+          </label>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {files.length === 0 ? (
-        <p className="text-sm text-gray-400">Nenhum arquivo anexado ainda.</p>
+        <p className="text-sm text-gray-400">{mode === 'arquivos' ? 'Nenhum arquivo anexado ainda.' : 'Nenhum contrato anexado ainda.'}</p>
       ) : (
         <div className="space-y-2">
           {files.map((f) => (
@@ -146,6 +179,11 @@ export function FilesSection({ contractId, initialFiles }: { contractId: string;
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5">
+                    {mode === 'contrato' && (
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${f.document_kind === 'contrato' ? 'bg-brand-700 text-white' : 'bg-brand-100 text-brand-800'}`}>
+                        {KIND_LABEL[(f.document_kind ?? 'contrato') as DocumentKind]}
+                      </span>
+                    )}
                     <button onClick={() => handleDownload(f.storage_path)} className="font-medium text-brand-700 hover:underline">
                       {f.file_name}
                     </button>
@@ -158,9 +196,31 @@ export function FilesSection({ contractId, initialFiles }: { contractId: string;
                   {fmtSize(f.file_size)} · {new Date(f.created_at).toLocaleDateString('pt-BR')}
                 </p>
               </div>
-              <button onClick={() => handleDelete(f.id, f.storage_path)} className="text-xs text-gray-400 hover:text-negative-600">
-                Remover
-              </button>
+              <div className="flex shrink-0 items-center gap-3">
+                <select
+                  value=""
+                  onChange={e => { if (e.target.value) changeKind(f.id, e.target.value as DocumentKind) }}
+                  aria-label="Mover arquivo"
+                  className="rounded-md border border-gray-200 bg-white px-1.5 py-1 text-xs text-gray-600"
+                >
+                  <option value="">{mode === 'arquivos' ? 'Mover para Contrato…' : 'Alterar…'}</option>
+                  {mode === 'arquivos' ? (
+                    <>
+                      <option value="contrato">É o contrato</option>
+                      <option value="aditivo">É um aditivo</option>
+                    </>
+                  ) : (
+                    <>
+                      {f.document_kind !== 'contrato' && <option value="contrato">Marcar como contrato</option>}
+                      {f.document_kind !== 'aditivo' && <option value="aditivo">Marcar como aditivo</option>}
+                      <option value="arquivo">Voltar para Arquivos</option>
+                    </>
+                  )}
+                </select>
+                <button onClick={() => handleDelete(f.id, f.storage_path)} className="text-xs text-gray-400 hover:text-negative-600">
+                  Remover
+                </button>
+              </div>
             </div>
           ))}
         </div>

@@ -53,6 +53,7 @@ export type ContractReading = {
   infraestrutura: { item: string; responsavel: 'contratada' | 'contratante' | 'nao_claro'; detalhe: string | null; clausula: string | null }[]
   servicos: { servico: string; previsto: SimNao; detalhe: string | null; periodicidade: string | null; clausula: string | null }[]
   normativas: { norma: string; exigencia: string | null; clausula: string | null }[]
+  alteracoes_aditivos: { documento: string; alteracao: string; clausula: string | null }[]
   nao_claros: { ponto: string; por_que: string | null; sugestao: string | null; clausula: string | null }[]
   proximos_passos: ReadingStep[]
   avisos: string[]                    // ex.: parte da leitura que falhou
@@ -139,6 +140,7 @@ const SCHEMA = obj({
     clausula: CL,
   }), 'Serviços aplicáveis'),
   normativas: arr(obj({ norma: T('Norma/lei/resolução (ex.: RDC, NBR, ABNT, NR)'), exigencia: T('O que a norma exige no contrato'), clausula: CL }), 'Normas e legislação que a contratada precisa cumprir'),
+  alteracoes_aditivos: arr(obj({ documento: T('Ex.: Aditivo 1'), alteracao: T('O que o aditivo mudou (prazo, valor, escopo, equipe…)'), clausula: CL }), 'Mudanças feitas por cada aditivo; [] se não houver aditivo'),
   nao_claros: arr(obj({
     ponto: T('O que está ambíguo, contraditório ou faltando'),
     por_que: T('Por que não está claro'),
@@ -175,7 +177,7 @@ const PART_KEYS = {
   renovacao: ['objeto', 'contratante', 'contratada', 'numero', 'vigencia', 'renovacao', 'aviso_previo', 'reajuste', 'repactuacao',
     'reequilibrio', 'valor', 'rescisao', 'caminhos_renovacao', 'riscos', 'proximos_passos'],
   execucao: ['quantitativos', 'equipe', 'equipe_total', 'acoes_objeto', 'sla', 'prazos', 'multas', 'obrigacoes_relevantes'],
-  escopo: ['infraestrutura', 'servicos', 'normativas', 'nao_claros'],
+  escopo: ['alteracoes_aditivos', 'infraestrutura', 'servicos', 'normativas', 'nao_claros'],
 } as const
 type Part = keyof typeof PART_KEYS
 const fullSkeleton = skeleton(SCHEMA) as Record<string, unknown>
@@ -187,7 +189,7 @@ const TEMPLATES: Record<Part, string> = {
 const PART_LABEL: Record<Part, string> = {
   renovacao: 'vigência, renovação, reajuste, rescisão e próximos passos',
   execucao: 'equipe, quantitativos, ações do objeto, SLA, prazos e multas',
-  escopo: 'infraestrutura, serviços aplicáveis, normas e pontos não claros',
+  escopo: 'aditivos, infraestrutura, serviços aplicáveis, normas e pontos não claros',
 }
 
 // Tira o JSON da resposta (aceita bloco ```json ou texto antes/depois)
@@ -253,6 +255,7 @@ export function normalizeReading(raw: unknown): ContractReading {
       detalhe: s(x.detalhe), clausula: s(x.clausula) } : null)),
     servicos: list(r.servicos, x => (s(x.servico) ? { servico: s(x.servico)!, previsto: sn(x.previsto), detalhe: s(x.detalhe), periodicidade: s(x.periodicidade), clausula: s(x.clausula) } : null)),
     normativas: list(r.normativas, x => (s(x.norma) ? { norma: s(x.norma)!, exigencia: s(x.exigencia), clausula: s(x.clausula) } : null)),
+    alteracoes_aditivos: list(r.alteracoes_aditivos, x => (s(x.alteracao) ? { documento: s(x.documento) ?? 'Aditivo', alteracao: s(x.alteracao)!, clausula: s(x.clausula) } : null)),
     nao_claros: list(r.nao_claros, x => (s(x.ponto) ? { ponto: s(x.ponto)!, por_que: s(x.por_que), sugestao: s(x.sugestao), clausula: s(x.clausula) } : null)),
     obrigacoes_relevantes: strs(r.obrigacoes_relevantes),
     riscos: strs(r.riscos),
@@ -295,72 +298,103 @@ export function checkReading(r: ContractReading, crm: { valid_from?: string | nu
   return { fimContrato: fim, diasAteFim, prazoAvisoPrevio, diasAtePrazoAviso: prazoAvisoPrevio ? daysUntilBR(prazoAvisoPrevio) : null, divergencias }
 }
 
+export type ReaderDoc = { name: string; kind: 'contrato' | 'aditivo'; base64: string }
+
 export async function readContractPdf(opts: {
   apiKey: string
-  pdfBase64: string
-  fileName: string
+  docs: ReaderDoc[]
   crm: { client_name: string; process_number: string | null; valid_from: string | null; valid_until: string | null; monthly_value: number | null; company: string }
 }): Promise<{ reading: ContractReading; tokensIn: number; tokensOut: number; model: string }> {
   const client = new Anthropic({ apiKey: opts.apiKey })
   const today = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+  let nAd = 0
+  const labels = opts.docs.map(d => (d.kind === 'contrato' ? `CONTRATO — ${d.name}` : `ADITIVO ${++nAd} — ${d.name}`))
+  const hasAditivo = nAd > 0
   const common =
-    `Você é o Farmer, agente que cuida da carteira de contratos da ${opts.crm.company}. Leia o contrato anexo (${opts.fileName}) ` +
-    `por inteiro, incluindo anexos e termo de referência, e responda SOMENTE com um JSON no modelo abaixo (sem texto antes ou depois, sem markdown). ` +
-    `Onde o modelo diz <texto: ...> ou <número: ...>, troque pelo valor; nos campos "sim | nao | nao_encontrado" e na área, use exatamente uma das opções.\n\n` +
+    `Você é o Farmer, agente que cuida da carteira de contratos da ${opts.crm.company}. ` +
+    `Documentos anexos, nesta ordem: ${labels.map((l, i) => `${i + 1}) ${l}`).join('; ')}. ` +
+    `Leia por inteiro, incluindo anexos e termo de referência, e responda SOMENTE com um JSON no modelo abaixo (sem texto antes ou depois, sem markdown). ` +
+    `Onde o modelo diz <texto: ...> ou <número: ...>, troque pelo valor; nos campos "sim | nao | nao_encontrado" e nas opções, use exatamente uma delas.\n\n` +
     `Regras:\n` +
-    `- Use SOMENTE o que está no documento. Nunca invente nem complete com o que é "comum" em contratos.\n` +
-    `- Quando a informação não estiver no documento: texto "", número 0, sim/não "nao_encontrado", lista vazia [].\n` +
+    `- Use SOMENTE o que está nos documentos. Nunca invente nem complete com o que é "comum" em contratos.\n` +
+    (hasAditivo
+      ? `- Os aditivos alteram o contrato: registre o que VALE HOJE (ex.: vigência prorrogada pelo último aditivo, valor reajustado) e, na cláusula, ` +
+        `diga de qual documento veio (ex.: "Aditivo 2, Cláusula 1ª"; "Contrato, Cláusula 5.2").\n`
+      : `- Cite a cláusula de cada item (ex.: "Cláusula 5.2").\n`) +
+    `- Quando a informação não estiver nos documentos: texto "", número 0, sim/não "nao_encontrado", lista vazia [].\n` +
     `- Seja objetivo: textos de até 25 palavras; trecho literal de até 30 palavras; no máximo 12 itens por lista (agrupe itens parecidos).\n` +
-    `- Cite a cláusula de cada item (ex.: "Cláusula 5.2").\n` +
-    `- Datas no formato YYYY-MM-DD. Hoje é ${today}. Não calcule datas que o contrato não traz.\n` +
+    `- Datas no formato YYYY-MM-DD. Hoje é ${today}. Não calcule datas que os documentos não trazem.\n` +
     `- Escreva em português do Brasil.\n`
   const specific: Record<Part, string> = {
     renovacao:
       `- Reajuste x repactuação x reequilíbrio são coisas diferentes: reajuste = índice (IPCA, IGP-M…); repactuação = revisão por custos de mão de obra ` +
       `(convenção coletiva); reequilíbrio = revisão econômico-financeira por fato imprevisível. Marque cada um só se o contrato prever.\n` +
       `- Caminhos de renovação: as opções que o contrato permite (ex.: prorrogação por aditivo dentro do limite, renovação automática, ` +
-      `renegociação com reajuste); se o limite de prorrogação estiver perto ou esgotado, diga que será preciso nova contratação.\n` +
+      `renegociação com reajuste); se o limite de prorrogação estiver perto ou esgotado (conte as prorrogações já feitas pelos aditivos), diga que será preciso nova contratação.\n` +
       `- Próximos passos (até 8): ações concretas para conduzir a RENOVAÇÃO (manifestar interesse dentro do aviso prévio, calcular o reajuste pelo índice, ` +
       `preparar proposta/aditivo, reunir relatórios e comprovações de SLA), com prazo coerente com o aviso prévio e o fim da vigência.\n\n` +
-      `Dados no CRM (só para comparação; se o contrato disser outra coisa, registre o que está no contrato): cliente ${opts.crm.client_name}` +
+      `Dados no CRM (só para comparação; se os documentos disserem outra coisa, registre o que está neles): cliente ${opts.crm.client_name}` +
       `${opts.crm.process_number ? `, nº ${opts.crm.process_number}` : ''}, início ${opts.crm.valid_from ?? 'não informado'}, ` +
       `fim ${opts.crm.valid_until ?? 'não informado'}, valor mensal ${opts.crm.monthly_value ?? 'não informado'}.\n`,
     execucao:
-      `- Equipe: cargos/funções que o contrato exige, com quantidade e regime. Quantitativos: itens, equipamentos, postos ou horas contratados.\n` +
+      `- Equipe: cargos/funções exigidos, com quantidade e regime. Quantitativos: itens, equipamentos, postos ou horas contratados.\n` +
       `- SLA: indicadores, metas e prazos de atendimento/solução e a penalidade de cada um, se houver.\n`,
     escopo:
+      `- Aditivos: o que cada aditivo mudou (prazo, valor, escopo, equipe). Sem aditivo: [].\n` +
       `- Infraestrutura: tudo o que é preciso ter para executar o contrato (celular, tablet, notebook, veículo/deslocamento, hospedagem, ` +
-      `ferramentas, instrumentos e padrões, software, EPI, uniforme, sala, internet…) e quem fornece; se o contrato não deixar claro, use "nao_claro".\n` +
+      `ferramentas, instrumentos e padrões, software, EPI, uniforme, sala, internet…) e quem fornece; se não estiver claro, use "nao_claro".\n` +
       `- Serviços: inclua SEMPRE estes, marcando previsto sim/nao/nao_encontrado: manutenção corretiva, manutenção preventiva, calibração, ` +
-      `teste de segurança elétrica, qualificação, gestão (do parque/serviço). Depois acrescente outros serviços que o contrato preveja.\n` +
+      `teste de segurança elétrica, qualificação, gestão (do parque/serviço). Depois acrescente outros serviços previstos.\n` +
       `- Normativas: normas, leis e resoluções citadas que a contratada precisa cumprir.\n` +
       `- Não claros: pontos ambíguos, contraditórios ou ausentes que afetam execução, custo ou renovação, com o que esclarecer com o cliente.\n`,
   }
 
-  async function runPart(part: Part) {
-    const res = await client.messages.create({
-      model: CONTRACT_READER_MODEL,
-      max_tokens: 12000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: opts.pdfBase64 } },
-          { type: 'text', text: `${common}${specific[part]}\nModelo do JSON:\n${TEMPLATES[part]}` },
-        ],
-      }],
-    }, { timeout: 105_000, maxRetries: 0 })
-    const types = res.content.map(b => b.type).join(',')
-    console.log(`[leitura-contrato] parte ${part}: ${res.stop_reason} · ${res.usage.input_tokens}/${res.usage.output_tokens} tokens · blocos ${types}`)
+  // Os documentos vêm primeiro e iguais nas três partes; o último leva
+  // cache_control, então a 1ª parte grava o cache e as outras leem dele
+  // (leitura de cache custa uma fração da entrada normal).
+  const docBlocks: Anthropic.DocumentBlockParam[] = opts.docs.map((d, i) => ({
+    type: 'document',
+    source: { type: 'base64', media_type: 'application/pdf', data: d.base64 },
+    title: labels[i],
+    ...(i === opts.docs.length - 1 ? { cache_control: { type: 'ephemeral' as const } } : {}),
+  }))
+  const params = (part: Part): Anthropic.MessageCreateParamsNonStreaming => ({
+    model: CONTRACT_READER_MODEL,
+    max_tokens: 12000,
+    messages: [{
+      role: 'user',
+      content: [...docBlocks, { type: 'text', text: `${common}${specific[part]}\nModelo do JSON:\n${TEMPLATES[part]}` }],
+    }],
+  })
+  const reqOpts = { timeout: 105_000, maxRetries: 0 }
+
+  function parse(part: Part, res: Anthropic.Message) {
+    const u = res.usage
+    console.log(`[leitura-contrato] parte ${part}: ${res.stop_reason} · entrada ${u.input_tokens} + cache gravado ${u.cache_creation_input_tokens ?? 0} + cache lido ${u.cache_read_input_tokens ?? 0} · saída ${u.output_tokens} · blocos ${res.content.map(b => b.type).join(',')}`)
     if (res.stop_reason === 'max_tokens') throw new Error('resposta longa demais (cortada)')
     if (res.stop_reason === 'refusal') throw new Error('a IA recusou a leitura')
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('')
     let parsed: unknown
     try { parsed = extractJson(text) } catch { throw new Error('resposta fora do formato esperado') }
-    return { parsed: parsed as Record<string, unknown>, tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens }
+    const tokensIn = u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0)
+    return { parsed: parsed as Record<string, unknown>, tokensIn, tokensOut: u.output_tokens }
   }
 
+  // 1ª parte em streaming: quando a resposta começa, o cache já existe e as outras saem.
+  const first = client.messages.stream(params('renovacao'), reqOpts)
+  const begun = new Promise<void>(resolve => {
+    first.on('streamEvent', () => resolve())
+    first.on('error', () => resolve())
+    first.on('end', () => resolve())
+    setTimeout(resolve, 30_000)
+  })
+  const firstResult = first.finalMessage().then(m => parse('renovacao', m))
+  firstResult.catch(() => {})
+  await begun
+  const rest = (['execucao', 'escopo'] as const).map(part => client.messages.create(params(part), reqOpts).then(m => parse(part, m)))
+
   const parts: Part[] = ['renovacao', 'execucao', 'escopo']
-  const results = await Promise.allSettled(parts.map(runPart))
+  const results = await Promise.allSettled([firstResult, ...rest])
   const merged: Record<string, unknown> = { versao: 3 }
   const avisos: string[] = []
   let tokensIn = 0, tokensOut = 0
@@ -375,8 +409,8 @@ export async function readContractPdf(opts: {
     }
   })
   if (avisos.length === parts.length) {
-    const first = results[0] as PromiseRejectedResult
-    throw new Error(first.reason instanceof Error ? first.reason.message : String(first.reason))
+    const firstErr = results[0] as PromiseRejectedResult
+    throw new Error(firstErr.reason instanceof Error ? firstErr.reason.message : String(firstErr.reason))
   }
   merged.avisos = avisos
   return { reading: normalizeReading(merged), tokensIn, tokensOut, model: CONTRACT_READER_MODEL }

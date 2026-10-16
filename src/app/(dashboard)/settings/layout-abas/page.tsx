@@ -11,7 +11,7 @@ export const ALL_CONTRACT_TABS = [
   { id: 'implantacao', label: '🚀 Implantação' },
   { id: 'pesquisas', label: 'Pesquisas' },
   { id: 'carteira', label: 'Carteira' },
-  { id: 'leitura-contrato', label: '🌱 Leitura do contrato' },
+  { id: 'leitura-contrato', label: '📑 Contrato e aditivos' },
   { id: 'faturamento', label: 'Faturamento' },
 ]
 

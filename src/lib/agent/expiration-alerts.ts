@@ -232,7 +232,7 @@ async function processContract(
 
   // 90 dias: só tarefa interna de preparação
   if (level === 90) {
-    // Próximos passos da última leitura do contrato (aba Leitura do contrato), se houver
+    // Próximos passos da última leitura do contrato (aba Contrato e aditivos), se houver
     const { data: lastReading } = await supabase
       .from('contract_ai_readings').select('result, created_at').eq('contract_id', c.id).eq('status', 'ok')
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -240,7 +240,7 @@ async function processContract(
     const readingText = steps.length
       ? `\n\nPróximos passos indicados na leitura do contrato:\n` + steps.map((st, i) =>
           `${i + 1}. ${st.acao}${st.prazo ? ` (até ${formatDateBR(st.prazo)})` : ''}${st.clausula ? ` — ${st.clausula}` : ''}`).join('\n')
-      : `\n\nDica: anexe o contrato em PDF e use a aba "Leitura do contrato" — o Farmer indica aviso prévio, reajuste e os próximos passos.`
+      : `\n\nDica: anexe o contrato e os aditivos em PDF na aba "Contrato e aditivos" e peça a leitura (Admin) — o Farmer indica aviso prévio, reajuste e os próximos passos.`
     const r = await createAgentActivity(supabase, {
       contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
       activityType: 'task',

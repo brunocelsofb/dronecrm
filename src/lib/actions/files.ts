@@ -3,12 +3,35 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
+export type DocumentKind = 'arquivo' | 'contrato' | 'aditivo'
+const KIND_LABEL: Record<DocumentKind, string> = { arquivo: 'Arquivo', contrato: 'Contrato', aditivo: 'Aditivo' }
+const KINDS = new Set<DocumentKind>(['arquivo', 'contrato', 'aditivo'])
+
+// Move o arquivo entre a aba Arquivos e a aba Contrato e aditivos
+export async function setContractFileKind(fileId: string, contractId: string, kind: DocumentKind) {
+  if (!KINDS.has(kind)) return { error: 'Tipo inválido.' }
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Usuário não autenticado.' }
+  const { data, error } = await supabase.from('contract_files').update({ document_kind: kind })
+    .eq('id', fileId).eq('contract_id', contractId).select('file_name').maybeSingle()
+  if (error) return { error: error.message }
+  if (!data) return { error: 'Arquivo não encontrado.' }
+  await supabase.from('activities').insert({
+    contract_id: contractId, user_id: user.id, type: 'system',
+    content: `"${data.file_name}" marcado como ${KIND_LABEL[kind].toLowerCase()}.`,
+  })
+  revalidatePath(`/contracts/${contractId}`)
+  return { success: true }
+}
+
 export async function registerContractFile(
   contractId: string,
   fileName: string,
   storagePath: string,
   fileSize: number,
-  mimeType: string
+  mimeType: string,
+  kind: DocumentKind = 'arquivo'
 ) {
   const supabase = await createClient()
   const {
@@ -24,6 +47,7 @@ export async function registerContractFile(
     file_size: fileSize,
     mime_type: mimeType,
     uploaded_by: user.id,
+    document_kind: kind,
   })
 
   if (error) return { error: error.message }
@@ -32,7 +56,7 @@ export async function registerContractFile(
     contract_id: contractId,
     user_id: user.id,
     type: 'system',
-    content: `Arquivo "${fileName}" anexado.`,
+    content: `${KIND_LABEL[kind]} "${fileName}" anexado.`,
   })
 
   revalidatePath(`/contracts/${contractId}`)

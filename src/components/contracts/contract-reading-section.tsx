@@ -47,31 +47,30 @@ function ListTable({ title, head, rows }: { title: string; head: string[]; rows:
 }
 
 export function ContractReadingSection({
-  contractId, pdfFiles, reading, readingMeta, checks, hasAiKey,
+  contractId, docs, isAdmin, reading, readingMeta, checks, hasAiKey,
 }: {
   contractId: string
-  pdfFiles: { id: string; file_name: string; created_at: string }[]
+  docs: { id: string; file_name: string; created_at: string; kind: 'contrato' | 'aditivo' }[]
+  isAdmin: boolean
   reading: ContractReading | null
   readingMeta: { created_at: string; file_name: string | null; status: string; error: string | null } | null
   checks: ReadingChecks | null
   hasAiKey: boolean
 }) {
   const router = useRouter()
-  const [fileId, setFileId] = useState(pdfFiles[0]?.id ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<Record<number, boolean>>({})
 
-  // A lista de PDFs pode mudar depois de anexar um arquivo (a tela não remonta):
-  // se a escolha guardada não existe mais, usa o primeiro PDF da lista.
-  const selectedId = pdfFiles.some(f => f.id === fileId) ? fileId : (pdfFiles[0]?.id ?? '')
+  const hasContract = docs.some(d => d.kind === 'contrato')
+  const nAd = docs.filter(d => d.kind === 'aditivo').length
 
   async function run() {
     setError(null)
-    if (!selectedId) { setError('Escolha o PDF do contrato.'); return }
+    if (!hasContract) { setError('Anexe o contrato em PDF acima, como "Contrato".'); return }
     setBusy(true)
     try {
-      const r = await readContractWithAI(contractId, selectedId)
+      const r = await readContractWithAI(contractId)
       if (!r.ok) { setError(r.error); router.refresh(); return }
       setCreated({})
       router.refresh()
@@ -95,21 +94,20 @@ export function ContractReadingSection({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">🌱 Farmer · leitura do contrato</p>
-            <p className="text-xs text-gray-600">A IA lê o PDF do contrato (vigência, renovação, reajuste, repactuação, equipe, serviços, infraestrutura, normas, SLA, prazos, rescisão, multas e pontos não claros) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
+            <p className="text-xs text-gray-600">A IA lê o contrato e os aditivos em PDF (vigência, renovação, reajuste, repactuação, equipe, serviços, infraestrutura, normas, SLA, prazos, rescisão, multas e pontos não claros) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
           </div>
-          {pdfFiles.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <select value={selectedId} onChange={e => setFileId(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs" aria-label="PDF do contrato">
-                {pdfFiles.map(f => <option key={f.id} value={f.id}>{f.file_name}</option>)}
-              </select>
-              <button onClick={run} disabled={busy || !hasAiKey} className="rounded-md bg-positive-700 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50">
+          {hasContract ? (
+            <div className="flex flex-col items-end gap-1">
+              <button onClick={run} disabled={busy || !hasAiKey || !isAdmin} className="rounded-md bg-positive-700 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50">
                 {busy ? 'Lendo o contrato… (pode levar até 2 min)' : reading ? 'Ler de novo' : 'Ler contrato'}
               </button>
+              <p className="text-[11px] text-gray-500">Lê o contrato{nAd ? ` + ${nAd} aditivo(s)` : ''} em PDF, juntos.</p>
             </div>
           ) : (
-            <p className="text-xs text-gray-600">Anexe o contrato em <strong>PDF</strong> na aba Arquivos para o Farmer ler.</p>
+            <p className="text-xs text-gray-600">Anexe o contrato em <strong>PDF</strong> acima, como “Contrato”, para o Farmer ler.</p>
           )}
         </div>
+        {!isAdmin && hasContract && <p className="mt-2 text-xs text-gray-600">🔒 Só o Admin do CRM pode pedir a leitura (cada leitura tem custo de IA). Você pode ver o resultado e criar atividades.</p>}
         {!hasAiKey && <p className="mt-2 text-xs text-warn-700">A empresa ainda não cadastrou a chave da IA (Configurações → Agentes IA).</p>}
         {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
         {readingMeta && (
@@ -117,6 +115,9 @@ export function ContractReadingSection({
             Última leitura: {new Date(readingMeta.created_at).toLocaleString('pt-BR')} · {readingMeta.file_name}
             {readingMeta.status === 'erro' && <span className="text-red-700"> · falhou: {readingMeta.error}</span>}
           </p>
+        )}
+        {readingMeta && docs.some(d => d.created_at > readingMeta.created_at) && (
+          <p className="mt-1 text-[11px] font-medium text-warn-700">Há documento anexado depois da última leitura — clique em “Ler de novo” para incluí-lo.</p>
         )}
       </div>
 
@@ -234,6 +235,8 @@ export function ContractReadingSection({
             </div>
           )}
 
+          <ListTable title="O que os aditivos mudaram" head={['Documento', 'Alteração', 'Cláusula']}
+            rows={reading.alteracoes_aditivos.map(x => [x.documento, x.alteracao, x.clausula ?? '—'])} />
           <ListTable title="Serviços aplicáveis" head={['Serviço', 'Previsto', 'Detalhe', 'Periodicidade', 'Cláusula']}
             rows={reading.servicos.map(x => [x.servico, SIMNAO(x.previsto, 'Sim', 'Não'), x.detalhe ?? '—', x.periodicidade ?? '—', x.clausula ?? '—'])} />
           <ListTable title="Infraestrutura necessária" head={['Recurso', 'Quem fornece', 'Detalhe', 'Cláusula']}

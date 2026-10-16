@@ -12,38 +12,49 @@ import { readContractPdf, type ReadingStep } from '@/lib/agent/contract-reader'
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024
 
-export async function readContractWithAI(contractId: string, fileId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { data: { user } } = await (await createClient()).auth.getUser()
+// Lê o contrato e TODOS os aditivos (aba "Contrato e aditivos") numa leitura só.
+// Só o Admin da empresa pode disparar: cada leitura tem custo de IA.
+export async function readContractWithAI(contractId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Usuário não autenticado.' }
+  const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (me?.role !== 'admin') return { ok: false, error: 'Só o Admin do CRM pode pedir a leitura do contrato (cada leitura tem custo de IA).' }
 
   const tenantId = await resolveTenantId({ contractId })
   const admin = await createScopedAdmin(tenantId)
-  const [{ data: contract }, { data: file }, { data: org }] = await Promise.all([
+  const [{ data: contract }, { data: files }, { data: org }] = await Promise.all([
     admin.from('contracts').select('id, client_name, process_number, valid_from, valid_until, monthly_value').eq('id', contractId).maybeSingle(),
-    admin.from('contract_files').select('id, file_name, storage_path, mime_type, file_size').eq('id', fileId).eq('contract_id', contractId).maybeSingle(),
+    admin.from('contract_files').select('id, file_name, storage_path, mime_type, file_size, document_kind, created_at')
+      .eq('contract_id', contractId).in('document_kind', ['contrato', 'aditivo']).order('created_at', { ascending: true }),
     admin.from('organization_settings').select('company_name').limit(1).maybeSingle(),
   ])
   if (!contract) return { ok: false, error: 'Contrato não encontrado.' }
-  if (!file) return { ok: false, error: 'Arquivo não encontrado neste contrato.' }
-  const isPdf = (file.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(file.file_name ?? '')
-  if (!isPdf) return { ok: false, error: 'A leitura funciona com arquivo PDF. Anexe o contrato em PDF na aba Arquivos.' }
-  if (file.file_size && file.file_size > MAX_PDF_BYTES) return { ok: false, error: 'O PDF passa de 20 MB. Envie uma versão menor (sem imagens desnecessárias).' }
+  const isPdf = (f: { mime_type: string | null; file_name: string | null }) => (f.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(f.file_name ?? '')
+  // contrato(s) primeiro, depois aditivos na ordem em que foram anexados
+  const docs = (files ?? []).filter(isPdf).sort((a, b) => (a.document_kind === b.document_kind ? 0 : a.document_kind === 'contrato' ? -1 : 1))
+  if (!docs.some(d => d.document_kind === 'contrato')) return { ok: false, error: 'Anexe o contrato em PDF nesta aba (como "Contrato") para o Farmer ler.' }
+  const totalSize = docs.reduce((a, d) => a + (d.file_size ?? 0), 0)
+  if (totalSize > MAX_PDF_BYTES) return { ok: false, error: 'Contrato + aditivos passam de 20 MB juntos. Envie versões menores (sem imagens desnecessárias).' }
 
   const key = await getAnthropicKeyForTenant(tenantId)
   if (!key.key) return { ok: false, error: NO_AI_KEY_MESSAGE }
 
-  const { data: blob, error: dlErr } = await admin.storage.from('contract-files').download(file.storage_path)
-  if (dlErr || !blob) return { ok: false, error: `Não foi possível abrir o arquivo: ${dlErr?.message ?? 'sem conteúdo'}` }
-  const buf = Buffer.from(await blob.arrayBuffer())
-  if (buf.byteLength > MAX_PDF_BYTES) return { ok: false, error: 'O PDF passa de 20 MB.' }
+  const loaded: { id: string; name: string; kind: 'contrato' | 'aditivo'; base64: string }[] = []
+  for (const d of docs) {
+    const { data: blob, error: dlErr } = await admin.storage.from('contract-files').download(d.storage_path)
+    if (dlErr || !blob) return { ok: false, error: `Não foi possível abrir "${d.file_name}": ${dlErr?.message ?? 'sem conteúdo'}` }
+    loaded.push({ id: d.id, name: d.file_name ?? 'documento.pdf', kind: d.document_kind as 'contrato' | 'aditivo', base64: Buffer.from(await blob.arrayBuffer()).toString('base64') })
+  }
+  const nAd = loaded.filter(d => d.kind === 'aditivo').length
+  const label = `${loaded.find(d => d.kind === 'contrato')!.name}${nAd ? ` + ${nAd} aditivo(s)` : ''}`
 
   const t0 = Date.now()
-  console.log(`[leitura-contrato] início · contrato ${contractId} · arquivo ${file.file_name} (${buf.byteLength} bytes) · chave ${key.source}`)
+  console.log(`[leitura-contrato] início · contrato ${contractId} · ${label} (${totalSize} bytes) · chave ${key.source}`)
   try {
     const r = await readContractPdf({
       apiKey: key.key,
-      pdfBase64: buf.toString('base64'),
-      fileName: file.file_name ?? 'contrato.pdf',
+      docs: loaded,
       crm: {
         client_name: contract.client_name ?? '',
         process_number: contract.process_number ?? null,
@@ -53,21 +64,21 @@ export async function readContractWithAI(contractId: string, fileId: string): Pr
         company: org?.company_name ?? 'empresa',
       },
     })
-    console.log(`[leitura-contrato] ok em ${Date.now() - t0} ms · ${r.tokensIn}/${r.tokensOut} tokens · ${r.reading.proximos_passos?.length ?? 0} passos`)
+    console.log(`[leitura-contrato] ok em ${Date.now() - t0} ms · ${r.tokensIn}/${r.tokensOut} tokens · ${r.reading.proximos_passos.length} passos`)
     await admin.from('contract_ai_readings').insert({
-      contract_id: contractId, file_id: file.id, file_name: file.file_name, model: r.model,
+      contract_id: contractId, file_id: loaded[0].id, file_ids: loaded.map(d => d.id), file_name: label, model: r.model,
       status: 'ok', result: r.reading, tokens_in: r.tokensIn, tokens_out: r.tokensOut, created_by: user.id,
     })
     await admin.from('activities').insert({
       contract_id: contractId, user_id: user.id, type: 'system',
-      content: `🌱 Farmer leu o contrato "${file.file_name}" e indicou ${r.reading.proximos_passos?.length ?? 0} próximo(s) passo(s) para a renovação.`,
+      content: `🌱 Farmer leu "${label}" e indicou ${r.reading.proximos_passos.length} próximo(s) passo(s) para a renovação.`,
       metadata: { kind: 'contract_reading', agent: 'farmer' },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error(`[leitura-contrato] erro em ${Date.now() - t0} ms:`, msg)
     await admin.from('contract_ai_readings').insert({
-      contract_id: contractId, file_id: file.id, file_name: file.file_name, status: 'erro', error: msg.slice(0, 500), created_by: user.id,
+      contract_id: contractId, file_id: loaded[0].id, file_ids: loaded.map(d => d.id), file_name: label, status: 'erro', error: msg.slice(0, 500), created_by: user.id,
     })
     return { ok: false, error: `A leitura falhou: ${msg}` }
   }

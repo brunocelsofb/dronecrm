@@ -98,7 +98,7 @@ export default async function ContractDetailPage({
       : Promise.resolve({ data: null }),
     supabase.from('pipeline_runs').select('*').eq('contract_id', id).order('started_at', { ascending: true }),
     supabase.from('activities').select('id, type, activity_type, title, content, status, activity_date, activity_time, duration_minutes, created_at, due_date, completed, user_id, assigned_to, metadata, is_pinned').eq('contract_id', id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }),
-    supabase.from('contract_files').select('id, file_name, storage_path, file_size, mime_type, created_at').eq('contract_id', id).order('created_at', { ascending: false }),
+    supabase.from('contract_files').select('id, file_name, storage_path, file_size, mime_type, created_at, document_kind').eq('contract_id', id).order('created_at', { ascending: false }),
     supabase.from('tags').select('id, name, color').order('name'),
     supabase.from('contract_tags').select('tag_id').eq('contract_id', id),
     supabase.from('nps_surveys').select('id, token, score, comment, status, sent_at, answered_at, respondent_name, respondent_email, respondent_phone').eq('contract_id', id).order('sent_at', { ascending: false }),
@@ -244,9 +244,13 @@ export default async function ContractDetailPage({
   ])
   const readingResult = lastReading?.status === 'ok' && lastReading.result ? normalizeReading(lastReading.result) : null
   const readingChecks = readingResult ? checkReading(readingResult, { valid_from: contract.valid_from ?? null, valid_until: contract.valid_until ?? null, monthly_value: (contract as any).monthly_value ?? null }) : null
-  const pdfFiles = (contractFiles ?? [])
+  // Aba "Contrato e aditivos": só arquivos marcados como contrato/aditivo
+  const contractDocs = (contractFiles ?? []).filter((f: any) => f.document_kind === 'contrato' || f.document_kind === 'aditivo')
+  const readableDocs = contractDocs
     .filter((f: any) => (f.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(f.file_name ?? ''))
-    .map((f: any) => ({ id: f.id, file_name: f.file_name, created_at: f.created_at }))
+    .map((f: any) => ({ id: f.id, file_name: f.file_name, created_at: f.created_at, kind: f.document_kind as 'contrato' | 'aditivo' }))
+  // remonta as listas quando um arquivo muda de aba
+  const fileKey = (k: string) => `${k}:${(contractFiles ?? []).map((f: any) => `${f.id}.${f.document_kind}`).join(',')}`
   const canChangeStage =
     contract.owner_id === currentProfile?.id || currentProfile?.role === 'admin'
 
@@ -617,12 +621,17 @@ export default async function ContractDetailPage({
           {
             id: 'arquivos',
             label: 'Arquivos',
-            content: <FilesSection contractId={contract.id} initialFiles={contractFiles ?? []} />,
+            content: <FilesSection key={fileKey('arquivo')} contractId={contract.id} initialFiles={(contractFiles ?? []).filter((f: any) => (f.document_kind ?? 'arquivo') === 'arquivo')} />,
           },
-          ...(isCurrentlyInContractsPipeline ? [{
+          ...(isCurrentlyInContractsPipeline || isCurrentlyInSalesPipeline ? [{
             id: 'leitura-contrato',
-            label: 'Leitura do contrato',
-            content: <ContractReadingSection contractId={contract.id} pdfFiles={pdfFiles} reading={readingResult} readingMeta={lastReading ? { created_at: lastReading.created_at, file_name: lastReading.file_name, status: lastReading.status, error: lastReading.error } : null} checks={readingChecks} hasAiKey={!!aiKeyInfo.key} />,
+            label: 'Contrato e aditivos',
+            content: (
+              <div className="space-y-6">
+                <FilesSection key={fileKey('contrato')} mode="contrato" contractId={contract.id} initialFiles={contractDocs} />
+                <ContractReadingSection contractId={contract.id} docs={readableDocs} isAdmin={currentProfile?.role === 'admin'} reading={readingResult} readingMeta={lastReading ? { created_at: lastReading.created_at, file_name: lastReading.file_name, status: lastReading.status, error: lastReading.error } : null} checks={readingChecks} hasAiKey={!!aiKeyInfo.key} />
+              </div>
+            ),
           }] : []),
           ...(isCurrentlyInContractsPipeline ? [{
             id: 'faturamento',
