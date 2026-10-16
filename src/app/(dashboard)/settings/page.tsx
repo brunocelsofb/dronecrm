@@ -172,6 +172,13 @@ export default async function SettingsPage() {
           hasSigningKey={!!settings?.mailgun_webhook_signing_key}
         />
 
+        <div className="space-y-2 rounded-lg border border-brand-100 bg-brand-100/40 p-4 text-xs text-gray-700">
+          <p className="text-sm font-semibold text-gray-900">✍️ ZapSign — como funciona</p>
+          <p>São dois sentidos:</p>
+          <p><strong className="text-positive-700">⬅ Volta: ZapSign → CRM (“todos assinaram”)</strong> — gratuito. O CRM gera o endereço no quadro <em>Avisos de assinatura sem Plano de API</em> e você cola na ZapSign em Configurações → Integrações → API ZapSign → Webhooks. Quando todos assinam, o PDF assinado volta para o contrato, o consultor recebe a tarefa de dar ganho e o gestor é avisado no WhatsApp.</p>
+          <p><strong className="text-brand-800">➡ Ida: CRM → ZapSign (criar o documento)</strong> — só com o <strong>Plano de API</strong> da ZapSign (token + Ambiente abaixo, e “Testar conexão”). Sem o plano, o consultor cria e envia o documento na própria ZapSign e registra o link no contrato (aba Contrato e aditivos).</p>
+        </div>
+
         <form method="POST" action="/api/zapsign/save-token" className="space-y-3 rounded-lg border border-gray-200 bg-white p-6">
           <div>
             <h3 className="text-sm font-medium text-gray-900">✍️ ZapSign — Assinatura Digital</h3>
