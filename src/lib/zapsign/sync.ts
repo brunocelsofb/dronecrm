@@ -7,7 +7,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
-import { getZapSignDocument, type ZapSignDocument } from './api'
+import { getZapSignDocument, type ZapSignDocument, type ZapAuth } from './api'
 import { onContractSigned } from '@/lib/contracts/signed-followup'
 
 const STATUS_MAP: Record<string, string> = { pending: 'enviado', awaiting: 'enviado', signed: 'assinado', refused: 'recusado', expired: 'expirado' }
@@ -24,13 +24,13 @@ export type ZapSignDocRow = {
   created_by: string | null
 }
 
-export async function getTenantZapSignToken(tenantId: string): Promise<string | null> {
+export async function getTenantZapSignToken(tenantId: string): Promise<ZapAuth | null> {
   const admin = createAdminClient()
-  const { data } = await admin.from('organization_settings').select('zapsign_api_token').eq('tenant_id', tenantId).maybeSingle()
-  return data?.zapsign_api_token ?? null
+  const { data } = await admin.from('organization_settings').select('zapsign_api_token, zapsign_env').eq('tenant_id', tenantId).maybeSingle()
+  return data?.zapsign_api_token ? { token: data.zapsign_api_token, sandbox: data.zapsign_env === 'sandbox' } : null
 }
 
-export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: string, appUrl: string | null = null): Promise<{ status: string; savedSignedFile: boolean }> {
+export async function syncZapSignDoc(doc: ZapSignDocRow, apiToken: ZapAuth, appUrl: string | null = null): Promise<{ status: string; savedSignedFile: boolean }> {
   const admin = createAdminClient()
   const api: ZapSignDocument = await getZapSignDocument(apiToken, doc.zapsign_doc_token)
   const status = STATUS_MAP[api.status] ?? 'enviado'

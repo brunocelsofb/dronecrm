@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ZapSignWebhookButton } from '@/components/zapsign/zapsign-webhook-button'
+import { ZapSignWebhookButton, ZapSignTestButton } from '@/components/zapsign/zapsign-webhook-button'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { OrganizationSettingsForm } from '@/components/settings/organization-settings-form'
@@ -100,7 +100,7 @@ export default async function SettingsPage() {
   const supabase = await createClient()
   const { data: settings } = await supabase
     .from('organization_settings')
-    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, ticket_number_prefix, proposal_number_prefix, inbound_email_domain, mailgun_webhook_signing_key, zapi_instance_id, evo_server_url, evo_api_key, evo_instance_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, whatsapp_daily_auto_limit, zapsign_api_token, zapsign_webhook_url')
+    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, ticket_number_prefix, proposal_number_prefix, inbound_email_domain, mailgun_webhook_signing_key, zapi_instance_id, evo_server_url, evo_api_key, evo_instance_name, whatsapp_is_online, whatsapp_welcome_message, whatsapp_welcome_message_online, whatsapp_reminder_message, whatsapp_daily_auto_limit, zapsign_api_token, zapsign_webhook_url, zapsign_env')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
@@ -183,11 +183,20 @@ export default async function SettingsPage() {
             : <p className="text-xs text-yellow-700">⚠️ Não configurado ainda.</p>
           }
           <div>
+            <label className="block text-xs text-gray-500">Ambiente</label>
+            <select name="zapsign_env" defaultValue={settings?.zapsign_env === 'sandbox' ? 'sandbox' : 'producao'} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm">
+              <option value="producao">Produção (validade jurídica — exige plano de API)</option>
+              <option value="sandbox">Teste / sandbox (sem validade jurídica)</option>
+            </select>
+            <p className="mt-1 text-[11px] text-gray-400">O token de teste vem da conta sandbox da ZapSign e só funciona em “Teste”.</p>
+          </div>
+          <div>
             <label className="block text-xs text-gray-500">API Token</label>
             <input name="zapsign_api_token" type="password" placeholder={settings?.zapsign_api_token ? '••••••••' : 'Cole o token aqui'} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-mono focus:border-brand-700 focus:outline-none" />
           </div>
           <button type="submit" className="rounded-md bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800">Salvar</button>
         </form>
+        <ZapSignTestButton hasToken={!!settings?.zapsign_api_token} />
         <ZapSignWebhookButton hasToken={!!settings?.zapsign_api_token} currentUrl={settings?.zapsign_webhook_url ?? null} />
       </div>
 

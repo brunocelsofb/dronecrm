@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { headers } from 'next/headers'
-import { createZapSignFromTemplate, createZapSignFromPdf, createZapSignWebhook } from '@/lib/zapsign/api'
+import { createZapSignFromTemplate, createZapSignFromPdf, createZapSignWebhook, testZapSignConnection } from '@/lib/zapsign/api'
 import { syncZapSignDoc, getTenantZapSignToken, type ZapSignDocRow } from '@/lib/zapsign/sync'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { fmtBRL } from '@/lib/format'
@@ -201,4 +201,17 @@ export async function deleteZapSignTemplate(templateId: string) {
   const supabase = (await createScopedAdmin())
   await supabase.from('zapsign_templates').delete().eq('id', templateId)
   revalidatePath('/zapsign')
+}
+
+// Configurações: confere se o token e o ambiente salvos são aceitos pela ZapSign
+export async function testZapSign(): Promise<{ ok: true; env: string } | { ok: false; error: string }> {
+  if (!(await isCurrentUserAdmin())) return { ok: false, error: 'Só administradores podem testar.' }
+  const auth = await getTenantZapSignToken(await resolveTenantId())
+  if (!auth) return { ok: false, error: 'Nenhum token salvo.' }
+  try {
+    await testZapSignConnection(auth)
+    return { ok: true, env: auth.sandbox ? 'Teste (sandbox)' : 'Produção' }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Falha ao falar com a ZapSign.' }
+  }
 }

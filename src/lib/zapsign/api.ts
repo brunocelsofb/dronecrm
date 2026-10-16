@@ -8,7 +8,21 @@
 // Os links original_file/signed_file da ZapSign valem só 60 minutos: o CRM
 // baixa o PDF assinado e guarda nos arquivos do contrato.
 
-const ZAPSIGN_BASE_URL = 'https://api.zapsign.com.br/api/v1'
+// Ambientes (docs.zapsign.com.br → ZapSign Environments): produção tem validade
+// jurídica e exige plano de API; sandbox (teste) tem conta e token próprios.
+const BASE_URL = { producao: 'https://api.zapsign.com.br/api/v1', sandbox: 'https://sandbox.api.zapsign.com.br/api/v1' }
+export type ZapAuth = { token: string; sandbox: boolean }
+
+function friendlyError(status: number, text: string): string {
+  if (status === 401 || status === 403) {
+    if (/token/i.test(text)) {
+      return 'A ZapSign não reconheceu o token da API. Confira em Configurações → ZapSign: (1) o token foi copiado em Configurações → Integrações → API ZapSign da conta certa e não foi gerado de novo depois; ' +
+        '(2) o Ambiente bate com a conta (token de teste/sandbox só funciona em "Teste"); (3) a conta de produção tem plano de API ativo.'
+    }
+    return `A ZapSign recusou o acesso (${status}). Verifique o plano de API e as permissões da conta.`
+  }
+  return `ZapSign respondeu ${status}: ${text.slice(0, 300)}`
+}
 
 export type ZapSignSignerInput = {
   name: string
@@ -36,15 +50,15 @@ export type ZapSignDocument = {
   signers: ZapSignSigner[]
 }
 
-async function call<T>(apiToken: string, path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  const res = await fetch(`${ZAPSIGN_BASE_URL}${path}`, {
+async function call<T>(auth: ZapAuth, path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const res = await fetch(`${auth.sandbox ? BASE_URL.sandbox : BASE_URL.producao}${path}`, {
     method: init?.method ?? 'GET',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token.trim()}` },
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
     cache: 'no-store',
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(`ZapSign respondeu ${res.status}: ${text.slice(0, 300)}`)
+  if (!res.ok) throw new Error(friendlyError(res.status, text))
   return (text ? JSON.parse(text) : {}) as T
 }
 
@@ -63,13 +77,13 @@ function signerBody(s: ZapSignSignerInput) {
   }
 }
 
-export async function addZapSignSigner(apiToken: string, docToken: string, s: ZapSignSignerInput): Promise<ZapSignSigner> {
+export async function addZapSignSigner(apiToken: ZapAuth, docToken: string, s: ZapSignSignerInput): Promise<ZapSignSigner> {
   return call<ZapSignSigner>(apiToken, `/docs/${docToken}/add-signer/`, { method: 'POST', body: signerBody(s) })
 }
 
 // Documento a partir de um modelo DOCX cadastrado na ZapSign ({{variáveis}} preenchidas pelo CRM)
 export async function createZapSignFromTemplate(opts: {
-  apiToken: string
+  apiToken: ZapAuth
   templateToken: string
   documentName: string
   data: Record<string, string>
@@ -100,7 +114,7 @@ export async function createZapSignFromTemplate(opts: {
 
 // Documento a partir de um PDF já anexado no CRM
 export async function createZapSignFromPdf(opts: {
-  apiToken: string
+  apiToken: ZapAuth
   documentName: string
   pdfBase64: string
   signers: ZapSignSignerInput[]
@@ -118,11 +132,16 @@ export async function createZapSignFromPdf(opts: {
   })
 }
 
-export async function getZapSignDocument(apiToken: string, docToken: string): Promise<ZapSignDocument> {
+export async function getZapSignDocument(apiToken: ZapAuth, docToken: string): Promise<ZapSignDocument> {
   return call<ZapSignDocument>(apiToken, `/docs/${docToken}/`)
 }
 
 // Cadastra o webhook da conta ZapSign da empresa (todos os eventos: type "")
-export async function createZapSignWebhook(apiToken: string, url: string): Promise<unknown> {
+// Teste de conexão: lista a 1ª página de documentos (não cria nada)
+export async function testZapSignConnection(apiToken: ZapAuth): Promise<void> {
+  await call(apiToken, '/docs/?page=1')
+}
+
+export async function createZapSignWebhook(apiToken: ZapAuth, url: string): Promise<unknown> {
   return call(apiToken, '/user/company/webhook/', { method: 'POST', body: { url, type: '' } })
 }
