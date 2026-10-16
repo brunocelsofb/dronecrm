@@ -65,6 +65,7 @@ export function ActivitiesTable({
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [viewingSent, setViewingSent] = useState<Activity | null>(null)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const profileById = new Map(profiles.map(p => [p.id, p.full_name]))
 
@@ -221,9 +222,15 @@ export function ActivitiesTable({
                           {a.title || meta.label}
                         </button>
                       ) : (
-                        <p style={{ margin: 0, fontWeight: 500, textDecoration: done ? 'line-through' : 'none', color: done ? '#b0b8c8' : '#1a1f36' }}>
+                        <button
+                          type="button"
+                          onClick={() => a.content && setExpanded(e => ({ ...e, [a.id]: !e[a.id] }))}
+                          aria-expanded={a.content ? !!expanded[a.id] : undefined}
+                          title={a.content ? (expanded[a.id] ? 'Recolher' : 'Ver a tarefa completa') : undefined}
+                          style={{ margin: 0, padding: 0, border: 'none', background: 'none', cursor: a.content ? 'pointer' : 'default', textAlign: 'left', fontSize: 'inherit', fontWeight: 500, lineHeight: 1.4, textDecoration: done ? 'line-through' : 'none', color: done ? '#b0b8c8' : '#1a1f36', whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                        >
                           {a.title || meta.label}
-                        </p>
+                        </button>
                       )}
                       {renewalPending && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#fff7ed', color: '#c2410c', fontWeight: 500 }}>Aguardando envio ao cliente</span>
@@ -251,11 +258,27 @@ export function ActivitiesTable({
                       {internalSent && (
                         <span style={{ display: 'inline-block', marginTop: 3, fontSize: 10, padding: '1px 7px', borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontWeight: 500 }}>Enviado ao time interno</span>
                       )}
-                      {a.content && (
-                        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#8892a4', lineHeight: 1.4 }}>
-                          {a.content.slice(0, 120)}{a.content.length > 120 ? '…' : ''}
-                        </p>
-                      )}
+                      {a.content && (() => {
+                        const long = a.content.length > 160 || a.content.includes('\n')
+                        const open = !!expanded[a.id]
+                        return (
+                          <div style={{ marginTop: 3 }}>
+                            <p style={{ margin: 0, fontSize: 12, color: '#4b5565', lineHeight: 1.5, whiteSpace: open ? 'pre-wrap' : 'normal', overflowWrap: 'anywhere' }}>
+                              {open || !long ? a.content : `${a.content.replace(/\s+/g, ' ').slice(0, 160).trimEnd()}…`}
+                            </p>
+                            {long && (
+                              <button
+                                type="button"
+                                onClick={() => setExpanded(e => ({ ...e, [a.id]: !open }))}
+                                aria-expanded={open}
+                                style={{ marginTop: 2, padding: 0, border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#1B556B' }}
+                              >
+                                {open ? 'Ver menos' : 'Ver tarefa completa'}
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </td>
 
                     {/* Responsável */}

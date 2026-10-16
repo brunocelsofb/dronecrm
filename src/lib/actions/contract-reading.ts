@@ -87,6 +87,10 @@ export async function readContractWithAI(contractId: string): Promise<{ ok: true
   return { ok: true }
 }
 
+// Textos da IA podem trazer datas ISO (2026-09-08); na tarefa ficam no padrão brasileiro
+const brDates = (s: string) => s.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1')
+const AREA_LABEL: Record<string, string> = { comercial: 'comercial', juridico: 'jurídico', tecnico: 'técnico', financeiro: 'financeiro', cliente: 'cliente' }
+
 // Cria uma atividade (Farmer) a partir de um próximo passo sugerido
 export async function createActivityFromStep(contractId: string, step: ReadingStep): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data: { user } } = await (await createClient()).auth.getUser()
@@ -102,8 +106,8 @@ export async function createActivityFromStep(contractId: string, step: ReadingSt
     assigned_to: contract.owner_id ?? user.id,
     type: 'task',
     activity_type: 'task',
-    title: `Farmer · ${step.acao}`.slice(0, 200),
-    content: `[Farmer] ${step.motivo}${step.clausula ? ` (${step.clausula})` : ''} — área: ${step.area}.`,
+    title: brDates(`Farmer · ${step.acao}`).slice(0, 200),
+    content: brDates(`[Farmer] ${step.motivo}${step.clausula ? ` (${step.clausula})` : ''} — área: ${AREA_LABEL[step.area] ?? step.area}.`),
     status: 'planned',
     completed: false,
     activity_date: date,

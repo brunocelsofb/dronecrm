@@ -323,7 +323,8 @@ export async function readContractPdf(opts: {
       : `- Cite a cláusula de cada item (ex.: "Cláusula 5.2").\n`) +
     `- Quando a informação não estiver nos documentos: texto "", número 0, sim/não "nao_encontrado", lista vazia [].\n` +
     `- Seja objetivo: textos de até 25 palavras; trecho literal de até 30 palavras; no máximo 12 itens por lista (agrupe itens parecidos).\n` +
-    `- Datas no formato YYYY-MM-DD. Hoje é ${today}. Não calcule datas que os documentos não trazem.\n` +
+    `- Campos de data (inicio, fim, prazo): YYYY-MM-DD. Dentro de textos (motivo, regra, detalhe…): datas como DD/MM/AAAA e valores como R$ 1.234,56. ` +
+    `Hoje é ${today}. Não calcule datas que os documentos não trazem.\n` +
     `- Escreva em português do Brasil.\n`
   const specific: Record<Part, string> = {
     renovacao:
