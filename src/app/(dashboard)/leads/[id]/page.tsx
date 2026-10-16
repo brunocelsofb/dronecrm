@@ -29,6 +29,9 @@ export default async function LeadDetailPage({
   ])
 
   if (!lead) notFound()
+  const { data: integration } = lead.integration_id
+    ? await supabase.from('lead_integrations').select('name').eq('id', lead.integration_id).maybeSingle()
+    : { data: null }
 
   const { breakdown } = calculateLeadScore({
     email: lead.email,
@@ -95,9 +98,10 @@ export default async function LeadDetailPage({
           <p className="text-xs text-gray-500">Canal</p>
           <p className="text-gray-900">{channelLabel(inferChannel(lead))}</p>
         </div>
-        {(lead.utm_source || lead.utm_campaign || lead.gclid || lead.fbclid || lead.landing_page) && (
+        {(lead.utm_source || lead.utm_campaign || lead.gclid || lead.fbclid || lead.landing_page || integration) && (
           <div className="col-span-2 rounded-md bg-gray-50 p-2 text-xs text-gray-600">
             <p className="font-medium text-gray-700">Veio de</p>
+            {integration?.name && <p>Integração: {integration.name}</p>}
             {[['utm_source', 'Fonte'], ['utm_medium', 'Meio'], ['utm_campaign', 'Campanha (link)'], ['utm_content', 'Variação'], ['utm_term', 'Palavra-chave']]
               .filter(([k]) => lead[k]).map(([k, l]) => <p key={k}>{l}: <code>{String(lead[k])}</code></p>)}
             {lead.gclid && <p>Clique de anúncio Google (gclid)</p>}

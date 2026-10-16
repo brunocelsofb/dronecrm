@@ -10,13 +10,15 @@ import { fmtBRL, fmtPct, fmtNum1 } from '@/lib/format'
 import { CHANNELS, channelLabel, campaignCode } from '@/lib/marketing/tracking'
 import type { MkRow } from '@/lib/marketing/report'
 import { MarketingGuide } from './marketing-guide'
+import { IntegrationsCenter, type IntegrationRow } from './integrations-center'
 import type { CampaignFull } from '@/lib/marketing/data'
 import { saveCampaign, deleteCampaign, saveCampaignCost, type CampaignInput } from '@/lib/actions/marketing'
 
 type Report = { campaignRows: MkRow[]; channelOnlyRows: MkRow[]; channels: MkRow[]; totals: MkRow; unattributedOpps: number }
 type Props = {
   year: number; month: number | null; nowYear: number; nowMonth: number
-  tab: 'resultados' | 'campanhas' | 'links' | 'guia'
+  tab: 'resultados' | 'campanhas' | 'links' | 'guia' | 'integracoes'
+  integrations: IntegrationRow[]
   campaigns: CampaignFull[]
   costs: { campaign_id: string; year: number; month: number; amount: number }[]
   report: Report
@@ -67,10 +69,10 @@ export function MarketingView(p: Props) {
         </div>
       </div>
 
-      <nav className="flex gap-1 border-b border-gray-200 text-sm" aria-label="Seções">
-        {([['resultados', 'Resultados'], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário'], ['guia', 'Como funciona']] as const).map(([id, label]) => (
+      <nav className="flex gap-1 overflow-x-auto border-b border-gray-200 text-sm" aria-label="Seções">
+        {([['resultados', 'Resultados'], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário'], ['integracoes', 'Integrações'], ['guia', 'Como funciona']] as const).map(([id, label]) => (
           <button key={id} onClick={() => go({ aba: id })}
-            className={`-mb-px border-b-2 px-3 py-2 ${p.tab === id ? 'border-brand-700 font-medium text-brand-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 ${p.tab === id ? 'border-brand-700 font-medium text-brand-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
             {label}
           </button>
         ))}
@@ -79,6 +81,7 @@ export function MarketingView(p: Props) {
       {p.tab === 'resultados' && <Results report={p.report} periodLabel={periodLabel} hasCampaigns={p.campaigns.length > 0} onNew={() => go({ aba: 'campanhas' })} />}
       {p.tab === 'campanhas' && <Campaigns {...p} />}
       {p.tab === 'links' && <Links campaigns={p.campaigns} baseUrl={p.baseUrl} slug={p.slug} />}
+      {p.tab === 'integracoes' && <IntegrationsCenter rows={p.integrations} campaigns={p.campaigns} baseUrl={p.baseUrl} />}
       {p.tab === 'guia' && <MarketingGuide />}
     </div>
   )

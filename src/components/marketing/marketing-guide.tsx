@@ -22,18 +22,20 @@ const STEPS: { title: string; text: string; where: string }[] = [
 
 const TOOLS: { name: string; what: string; status: Status; how: string }[] = [
   { name: 'Meta Ads (Facebook e Instagram)', what: 'Anúncios no feed, stories e reels.', status: 'pronto', how: 'Use o link da campanha como destino do anúncio. O CRM guarda a origem e o clique do Meta (fbclid).' },
-  { name: 'Meta Lead Ads (formulário dentro do anúncio)', what: 'A pessoa preenche sem sair do Facebook/Instagram.', status: 'ponte', how: 'Zapier ou Make leem o formulário e enviam para o endereço do CRM (Links e formulário → item 2). Ligação direta: em estudo — exige aprovação do Meta.' },
+  { name: 'Meta Lead Ads (formulário dentro do anúncio)', what: 'A pessoa preenche sem sair do Facebook/Instagram.', status: 'ponte', how: 'Marketing → Integrações → Anúncios → Facebook / Instagram Lead Ads: endereço próprio + passo a passo no Zapier/Make. Ligação direta depende de aprovação do Meta.' },
   { name: 'Google Ads (Pesquisa, Display, YouTube)', what: 'Anúncios no Google, em sites parceiros e no YouTube.', status: 'pronto', how: 'Use o link da campanha. Com a marcação automática do Google ligada, o CRM guarda também o clique do Google (gclid).' },
-  { name: 'Formulário de lead do Google Ads', what: 'Formulário dentro do anúncio do Google.', status: 'ponte', how: 'Envie para o endereço do CRM por Zapier/Make. Ligação direta: em estudo.' },
+  { name: 'Formulário de lead do Google Ads', what: 'Formulário dentro do anúncio do Google.', status: 'pronto', how: 'Marketing → Integrações → Anúncios: o Google Ads manda direto para o endereço do CRM (webhook). Teste com "Enviar dados de teste".' },
   { name: 'LinkedIn Ads', what: 'Anúncios para decisores por cargo, setor e empresa — forte no B2B.', status: 'pronto', how: 'Use o link da campanha (sai marcado como LinkedIn).' },
-  { name: 'LinkedIn Lead Gen Forms', what: 'Formulário dentro do anúncio do LinkedIn.', status: 'ponte', how: 'Envie para o endereço do CRM por Zapier/Make. Ligação direta depende de aprovação do LinkedIn.' },
-  { name: 'Anúncio que abre o WhatsApp', what: 'Clique no anúncio inicia conversa no WhatsApp da empresa.', status: 'manual', how: 'A conversa chega no WhatsApp do CRM; ao virar lead, escolha a campanha no lead. Identificação automática da campanha: ainda não.' },
-  { name: 'Site da empresa', what: 'Formulário de contato nas páginas do site.', status: 'pronto', how: 'Quem cuida do site cola o código do formulário (Links e formulário → item 2). A origem do link é levada junto.' },
-  { name: 'Zapier / Make', what: 'Ferramentas que ligam um sistema ao outro sem programar.', status: 'pronto', how: 'Ação "enviar webhook/HTTP" (POST JSON) para o endereço do CRM com nome, empresa, CNPJ e a origem.' },
-  { name: 'RD Station Marketing', what: 'Plataforma de e-mail, landing pages e automação.', status: 'ponte', how: 'Envie as conversões para o endereço do CRM por Zapier/Make. Ligação direta: em estudo.' },
+  { name: 'LinkedIn Lead Gen Forms', what: 'Formulário dentro do anúncio do LinkedIn.', status: 'ponte', how: 'Marketing → Integrações → Anúncios → LinkedIn Lead Gen Forms (via Zapier/Make). Ligação direta depende de aprovação do LinkedIn.' },
+  { name: 'RD Station Marketing', what: 'E-mail, landing pages e automação.', status: 'pronto', how: 'Marketing → Integrações → Automação: o webhook do RD manda cada conversão para o CRM, sem duplicar o lead. Envio de listas do CRM para o RD: próxima etapa.' },
+  { name: 'Mailchimp', what: 'E-mail marketing.', status: 'pronto', how: 'Marketing → Integrações → Automação: novos inscritos viram leads e descadastros ficam no histórico. Envio de listas do CRM: próxima etapa.' },
+  { name: 'Site, WordPress e Google Forms', what: 'Formulários do site e do Google.', status: 'pronto', how: 'Marketing → Integrações → Site e formulários: endereço, passo a passo e código pronto para cada um.' },
+  { name: 'Botão de WhatsApp no site', what: 'Botão flutuante: a pessoa deixa os dados e abre o WhatsApp.', status: 'pronto', how: 'Marketing → Integrações → Site e formulários → Botão de WhatsApp: informe o número e cole o código no site.' },
+  { name: 'Anúncio que abre o WhatsApp direto', what: 'Clique no anúncio inicia conversa no WhatsApp da empresa.', status: 'manual', how: 'A conversa chega no WhatsApp do CRM; ao virar lead, escolha a campanha no lead. Identificação automática da campanha: ainda não.' },
+  { name: 'Zapier / Make', what: 'Ligam ao CRM ferramentas que não estão na lista.', status: 'pronto', how: 'Marketing → Integrações → Zapier / Make: endereço próprio, envio em JSON.' },
   { name: 'Investimento das plataformas', what: 'Quanto foi gasto em cada campanha.', status: 'manual', how: 'Lançado mês a mês na campanha. Puxar sozinho das plataformas depende de aprovação de cada uma.' },
   { name: 'Devolver vendas às plataformas', what: 'Avisar Meta/Google/LinkedIn quais leads viraram cliente, para os anúncios mirarem em quem compra.', status: 'futuro', how: 'Próxima etapa. O CRM já guarda os cliques (gclid/fbclid) necessários.' },
-  { name: 'E-mail marketing em massa', what: 'Disparos para listas, com descadastro e medição.', status: 'futuro', how: 'Próxima etapa, por um serviço de envio ligado ao CRM (não pelo e-mail corporativo, para não cair no spam).' },
+  { name: 'E-mail marketing em massa', what: 'Disparos para listas, com descadastro e medição.', status: 'futuro', how: 'Próxima etapa: o CRM manda listas e segmentos para o RD Station ou o Mailchimp dispararem.' },
 ]
 
 const TERMS: [string, string][] = [

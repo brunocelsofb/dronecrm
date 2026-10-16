@@ -2,11 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { readTracking } from '@/lib/marketing/tracking'
+import { ingestLead } from '@/lib/leads/ingest'
 
 export type ActionState = { error?: string }
 
@@ -33,66 +33,13 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
   if (!cnpj) return { error: 'CNPJ é obrigatório.' }
 
   const tenantId = await resolvePublicTenantId((formData.get('empresa') as string) || null)
-  const db = await createScopedAdmin(tenantId)
-
-  // Origem: UTM / gclid / fbclid / página. Campanha pelo código do link (utm_campaign)
-  const tracking = readTracking(k => formData.get(k))
-  let campaignId: string | null = null
-  if (tracking.utm_campaign) {
-    const { data: camp } = await db.from('marketing_campaigns').select('id').eq('utm_campaign', tracking.utm_campaign).maybeSingle()
-    campaignId = camp?.id ?? null
-  }
-  const manualCampaign = (formData.get('campaign_id') as string) || null
-  if (!campaignId && manualCampaign) {
-    const { data: camp } = await db.from('marketing_campaigns').select('id').eq('id', manualCampaign).maybeSingle()
-    campaignId = camp?.id ?? null
-  }
-
-  // Busca regras dinâmicas do banco (obs.: hoje esta tabela não tem empresa — é a mesma para todas)
-  const { data: rules } = await db.from('lead_scoring_rules').select('criterion_key, label, points, is_active').eq('is_active', true)
-  const { score } = calculateLeadScore({ email, phone, company_name, message, source }, rules ?? undefined)
-
-  const { data, error } = await db
-    .from('leads')
-    .insert({ name, email, phone, company_name, cnpj, message, source, score, tenant_id: tenantId, campaign_id: campaignId, ...tracking })
-    .select('id')
-    .single()
-
-  if (error || !data) return { error: error?.message ?? 'Não foi possível registrar o contato.' }
-
-  // Tenta vincular automaticamente a uma empresa existente por CNPJ
-  if (cnpj) {
-    const cnpjDigits = cnpj.replace(/\D/g, '')
-    const { data: existingCompany } = await db
-      .from('companies').select('id')
-      .or(`cnpj.eq.${cnpjDigits},cnpj.eq.${cnpj.replace(/[^\d./-]/g, '')}`)
-      .limit(1).maybeSingle()
-    if (existingCompany) {
-      // Registra atividade na empresa sobre o novo lead
-      await db.from('activities').insert({
-        company_id: existingCompany.id,
-        type: 'note',
-        content: `📥 Novo lead recebido: "${name}" (${source ?? 'formulário'})`,
-      })
-    }
-  }
-
-  // Se essa pessoa tinha mandado mensagem de WhatsApp antes de
-  // preencher o formulário (fluxo de triagem), vincula a conversa a
-  // esse lead agora — fecha o ciclo, o histórico não fica solto.
-  const cleanPhone = (phone ?? '').replace(/\D/g, '')
-  if (cleanPhone.length >= 8) {
-    await db.from('contract_whatsapp_messages').update({ lead_id: data.id, unlinked_sender_name: null }).ilike('phone', `%${cleanPhone.slice(-8)}%`).is('contract_id', null)
-    await db.from('whatsapp_capture_prompts').update({ lead_id: data.id }).ilike('phone', `%${cleanPhone.slice(-8)}%`)
-  }
-
-  // Avisa o time comercial (e o marketing) de um lead novo
-  const { data: commercialProfiles } = await db.from('profiles').select('id').eq('tenant_id', tenantId).in('department', ['comercial', 'marketing'])
-  if (commercialProfiles && commercialProfiles.length > 0) {
-    await db.from('notifications').insert(
-      commercialProfiles.map((p) => ({ user_id: p.id, message: `Novo lead: ${name}${company_name ? ` (${company_name})` : ''}.` }))
-    )
-  }
+  const r = await ingestLead({
+    tenantId, name, email, phone, company_name, cnpj, message, source,
+    tracking: readTracking(k => formData.get(k)),
+    campaignId: (formData.get('campaign_id') as string) || null,
+  })
+  if (r.error || !r.leadId) return { error: r.error ?? 'Não foi possível registrar o contato.' }
+  const data = { id: r.leadId }
 
   revalidatePath('/leads')
   revalidatePath('/marketing')

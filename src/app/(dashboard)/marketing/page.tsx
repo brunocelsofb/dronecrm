@@ -10,6 +10,7 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { getUserAccess } from '@/lib/auth/access'
 import { loadMarketing } from '@/lib/marketing/data'
 import { MarketingView } from '@/components/marketing/marketing-view'
+import type { IntegrationRow } from '@/components/marketing/integrations-center'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,11 +24,12 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const tenantId = await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
-  const [access, data, { data: tenant }, { data: people }] = await Promise.all([
+  const [access, data, { data: tenant }, { data: people }, { data: integrations }] = await Promise.all([
     getUserAccess(),
     loadMarketing(tenantId, { year, month }, { year: nowYear, month: nowMonth }),
     db.from('tenants').select('slug').eq('id', tenantId).maybeSingle(),
     db.from('profiles').select('id, full_name').eq('tenant_id', tenantId).not('is_super_admin', 'is', true).order('full_name'),
+    db.from('lead_integrations').select('id, kind, name, key, active, settings, received_count, last_received_at, last_error').order('created_at'),
   ])
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
@@ -36,7 +38,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <MarketingView
       year={year} month={month} nowYear={nowYear} nowMonth={nowMonth}
-      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' ? sp.aba : 'resultados'}
+      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' ? sp.aba : 'resultados'}
+      integrations={(integrations ?? []) as IntegrationRow[]}
       campaigns={data.campaigns}
       costs={data.costs}
       report={data.report}
