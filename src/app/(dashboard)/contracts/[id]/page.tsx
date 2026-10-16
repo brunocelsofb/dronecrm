@@ -21,7 +21,7 @@ import { DepartmentSection } from '@/components/contracts/department-section'
 import { AccountOwnerBadge } from '@/components/contracts/account-owner-badge'
 import { BillingSection } from '@/components/contracts/billing-section'
 import { ContractReadingSection } from '@/components/contracts/contract-reading-section'
-import { checkReading, type ContractReading } from '@/lib/agent/contract-reader'
+import { checkReading, normalizeReading } from '@/lib/agent/contract-reader'
 import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
 import { resolveTenantId as resolveTenantForReading } from '@/lib/tenant/context'
 import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
@@ -242,8 +242,8 @@ export default async function ContractDetailPage({
     supabase.from('contract_ai_readings').select('created_at, file_name, status, error, result').eq('contract_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     getAnthropicKeyForTenant(await resolveTenantForReading({ contractId: id })),
   ])
-  const readingResult = lastReading?.status === 'ok' ? (lastReading.result as ContractReading) : null
-  const readingChecks = readingResult ? checkReading(readingResult, { valid_until: contract.valid_until ?? null, monthly_value: (contract as any).monthly_value ?? null }) : null
+  const readingResult = lastReading?.status === 'ok' && lastReading.result ? normalizeReading(lastReading.result) : null
+  const readingChecks = readingResult ? checkReading(readingResult, { valid_from: contract.valid_from ?? null, valid_until: contract.valid_until ?? null, monthly_value: (contract as any).monthly_value ?? null }) : null
   const pdfFiles = (contractFiles ?? [])
     .filter((f: any) => (f.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(f.file_name ?? ''))
     .map((f: any) => ({ id: f.id, file_name: f.file_name, created_at: f.created_at }))
