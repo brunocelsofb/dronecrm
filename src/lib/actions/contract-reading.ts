@@ -37,6 +37,8 @@ export async function readContractWithAI(contractId: string, fileId: string): Pr
   const buf = Buffer.from(await blob.arrayBuffer())
   if (buf.byteLength > MAX_PDF_BYTES) return { ok: false, error: 'O PDF passa de 20 MB.' }
 
+  const t0 = Date.now()
+  console.log(`[leitura-contrato] início · contrato ${contractId} · arquivo ${file.file_name} (${buf.byteLength} bytes) · chave ${key.source}`)
   try {
     const r = await readContractPdf({
       apiKey: key.key,
@@ -51,6 +53,7 @@ export async function readContractWithAI(contractId: string, fileId: string): Pr
         company: org?.company_name ?? 'empresa',
       },
     })
+    console.log(`[leitura-contrato] ok em ${Date.now() - t0} ms · ${r.tokensIn}/${r.tokensOut} tokens · ${r.reading.proximos_passos?.length ?? 0} passos`)
     await admin.from('contract_ai_readings').insert({
       contract_id: contractId, file_id: file.id, file_name: file.file_name, model: r.model,
       status: 'ok', result: r.reading, tokens_in: r.tokensIn, tokens_out: r.tokensOut, created_by: user.id,
@@ -62,6 +65,7 @@ export async function readContractWithAI(contractId: string, fileId: string): Pr
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[leitura-contrato] erro em ${Date.now() - t0} ms:`, msg)
     await admin.from('contract_ai_readings').insert({
       contract_id: contractId, file_id: file.id, file_name: file.file_name, status: 'erro', error: msg.slice(0, 500), created_by: user.id,
     })

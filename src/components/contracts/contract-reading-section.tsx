@@ -39,14 +39,24 @@ export function ContractReadingSection({
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<Record<number, boolean>>({})
 
+  // A lista de PDFs pode mudar depois de anexar um arquivo (a tela não remonta):
+  // se a escolha guardada não existe mais, usa o primeiro PDF da lista.
+  const selectedId = pdfFiles.some(f => f.id === fileId) ? fileId : (pdfFiles[0]?.id ?? '')
+
   async function run() {
-    if (!fileId) return
-    setBusy(true); setError(null)
-    const r = await readContractWithAI(contractId, fileId)
-    setBusy(false)
-    if (!r.ok) { setError(r.error); return }
-    setCreated({})
-    router.refresh()
+    setError(null)
+    if (!selectedId) { setError('Escolha o PDF do contrato.'); return }
+    setBusy(true)
+    try {
+      const r = await readContractWithAI(contractId, selectedId)
+      if (!r.ok) { setError(r.error); return }
+      setCreated({})
+      router.refresh()
+    } catch (e) {
+      setError(`Não foi possível concluir a leitura (${e instanceof Error ? e.message : 'falha de conexão ou tempo esgotado'}). Tente de novo.`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function addStep(i: number, s: ReadingStep) {
@@ -66,7 +76,7 @@ export function ContractReadingSection({
           </div>
           {pdfFiles.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <select value={fileId} onChange={e => setFileId(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs" aria-label="PDF do contrato">
+              <select value={selectedId} onChange={e => setFileId(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs" aria-label="PDF do contrato">
                 {pdfFiles.map(f => <option key={f.id} value={f.id}>{f.file_name}</option>)}
               </select>
               <button onClick={run} disabled={busy || !hasAiKey} className="rounded-md bg-positive-700 px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50">
