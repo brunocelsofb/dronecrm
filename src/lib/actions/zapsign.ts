@@ -2,19 +2,15 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
-import { createZapSignDocumentFromTemplate, getZapSignDocument } from '@/lib/zapsign/api'
+import { headers } from 'next/headers'
+import { createZapSignFromTemplate, createZapSignFromPdf, createZapSignWebhook } from '@/lib/zapsign/api'
+import { syncZapSignDoc, getTenantZapSignToken, type ZapSignDocRow } from '@/lib/zapsign/sync'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { fmtBRL } from '@/lib/format'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
-
-async function getZapSignToken(): Promise<string | null> {
-  const supabase = (await createScopedAdmin())
-  const { data } = await supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle()
-  return data?.zapsign_api_token ?? null
-}
 
 async function buildContractData(contractId: string): Promise<Record<string, string>> {
   const supabase = (await createScopedAdmin())
@@ -40,106 +36,138 @@ async function buildContractData(contractId: string): Promise<Record<string, str
     processo: contract.process_number ?? '',
     minha_empresa: orgSettings?.company_name ?? '',
     minha_cnpj: orgSettings?.company_cnpj ?? '',
-    data_hoje: new Date().toLocaleDateString('pt-BR'),
+    data_hoje: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+    valor_mensal: contract.monthly_value !== null && contract.monthly_value !== undefined ? fmtBRL(Number(contract.monthly_value)) : '',
+    inicio_vigencia: contract.valid_from ? String(contract.valid_from).slice(0, 10).split('-').reverse().join('/') : '',
+    fim_vigencia: contract.valid_until ? String(contract.valid_until).slice(0, 10).split('-').reverse().join('/') : '',
     ...customVars,
   }
 }
 
-export async function sendContractToZapSign(
-  contractId: string,
-  templateId: string,
-  documentName: string,
-  signers: Array<{ name: string; email: string; phone?: string; qualify?: string; sendWhatsApp?: boolean }>
-): Promise<ActionState & { documentId?: string }> {
+export type SignatureSigner = { name: string; email: string; phone?: string; qualify?: string; sendWhatsApp?: boolean }
+
+// Envia para assinatura a partir de um MODELO da ZapSign (contrato nosso, gerado
+// com os dados do CRM) ou de um PDF já anexado na aba Contrato e aditivos.
+export async function sendForSignature(input: {
+  contractId: string
+  source: 'modelo' | 'pdf'
+  templateId?: string
+  fileId?: string
+  kind: 'contrato' | 'aditivo'
+  documentName: string
+  signers: SignatureSigner[]
+}): Promise<ActionState & { documentId?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
+  const name = input.documentName.trim()
+  if (!name) return { error: 'Dê um nome ao documento.' }
+  const signers = input.signers.map(s => ({ ...s, name: s.name.trim(), email: s.email.trim() })).filter(s => s.name || s.email)
+  if (signers.length === 0) return { error: 'Inclua ao menos um signatário.' }
+  if (signers.some(s => !s.name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.email))) return { error: 'Cada signatário precisa de nome e e-mail válido.' }
 
-  const apiToken = await getZapSignToken()
+  const tenantId = await resolveTenantId({ contractId: input.contractId })
+  const admin = await createScopedAdmin(tenantId)
+  const { data: contract } = await admin.from('contracts').select('id').eq('id', input.contractId).maybeSingle()
+  if (!contract) return { error: 'Contrato não encontrado.' }
+  const apiToken = await getTenantZapSignToken(tenantId)
   if (!apiToken) return { error: 'Configure o token da ZapSign em Configurações antes de continuar.' }
 
-  const { data: template } = await supabase.from('zapsign_templates').select('*').eq('id', templateId).maybeSingle()
-  if (!template) return { error: 'Modelo não encontrado.' }
-
-  const data = await buildContractData(contractId)
-
+  const signerInputs = signers.map(s => ({ name: s.name, email: s.email, phone: s.phone, qualification: s.qualify, sendWhatsApp: s.sendWhatsApp }))
+  let result
+  let templateId: string | null = null
+  let fileId: string | null = null
   try {
-    const result = await createZapSignDocumentFromTemplate({
-      apiToken,
-      templateToken: template.zapsign_template_token,
-      documentName,
-      data,
-      signers: signers.map((s) => ({
-        name: s.name,
-        email: s.email,
-        phone_number: s.phone?.replace(/\D/g, '') ?? '',
-        send_automatic_email: true,
-        send_automatic_whatsapp: s.sendWhatsApp ?? false,
-        qualify: s.qualify ?? '',
-      })),
-    })
-
-    const { data: doc, error: docError } = await supabase.from('zapsign_documents').insert({
-      contract_id: contractId,
-      template_id: templateId,
-      name: documentName,
-      zapsign_doc_token: result.token,
-      pdf_url: result.original_file,
-      status: 'enviado',
-      sent_at: new Date().toISOString(),
-      created_by: user.id,
-    }).select('id').single()
-
-    if (docError) return { error: docError.message }
-
-    await supabase.from('activities').insert({
-      contract_id: contractId,
-      user_id: user.id,
-      type: 'system',
-      content: `Contrato "${documentName}" enviado pra ZapSign — aguardando assinatura de ${signers.map((s) => s.name).join(', ')}.`,
-      metadata: { zapsign_doc_token: result.token },
-    })
-
-    revalidatePath(`/contracts/${contractId}`)
-    return { documentId: doc.id }
+    if (input.source === 'modelo') {
+      const { data: template } = await admin.from('zapsign_templates').select('id, zapsign_template_token').eq('id', input.templateId ?? '').maybeSingle()
+      if (!template) return { error: 'Escolha um modelo (cadastre em Configurações → Modelos ZapSign).' }
+      templateId = template.id
+      result = await createZapSignFromTemplate({
+        apiToken, templateToken: template.zapsign_template_token, documentName: name,
+        data: await buildContractData(input.contractId), signers: signerInputs, externalId: input.contractId,
+      })
+    } else {
+      const { data: file } = await admin.from('contract_files').select('id, file_name, storage_path, mime_type, file_size')
+        .eq('id', input.fileId ?? '').eq('contract_id', input.contractId).maybeSingle()
+      if (!file) return { error: 'Escolha o PDF a assinar.' }
+      const isPdf = (file.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(file.file_name ?? '')
+      if (!isPdf) return { error: 'A ZapSign só recebe PDF. Converta o arquivo para PDF e anexe de novo.' }
+      if ((file.file_size ?? 0) > 10 * 1024 * 1024) return { error: 'O PDF passa de 10 MB.' }
+      const { data: blob, error: dlErr } = await admin.storage.from('contract-files').download(file.storage_path)
+      if (dlErr || !blob) return { error: `Não foi possível abrir o PDF: ${dlErr?.message ?? 'sem conteúdo'}` }
+      fileId = file.id
+      result = await createZapSignFromPdf({
+        apiToken, documentName: name, pdfBase64: Buffer.from(await blob.arrayBuffer()).toString('base64'),
+        signers: signerInputs, externalId: input.contractId,
+      })
+    }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Falha ao enviar pro ZapSign.' }
+    return { error: e instanceof Error ? e.message : 'Falha ao enviar para a ZapSign.' }
   }
+
+  const { data: doc, error: docError } = await admin.from('zapsign_documents').insert({
+    contract_id: input.contractId,
+    template_id: templateId,
+    file_id: fileId,
+    source: input.source,
+    document_kind: input.kind,
+    name,
+    zapsign_doc_token: result.token,
+    status: 'enviado',
+    sent_at: new Date().toISOString(),
+    created_by: user.id,
+    signers: (result.signers ?? []).map(s => ({ name: s.name, email: s.email, status: s.status, sign_url: s.sign_url, signed_at: s.signed_at ?? null })),
+  }).select('id').single()
+  if (docError) return { error: `Enviado à ZapSign, mas não foi possível registrar no CRM: ${docError.message}` }
+
+  await admin.from('activities').insert({
+    contract_id: input.contractId,
+    user_id: user.id,
+    type: 'system',
+    content: `✍️ "${name}" enviado para assinatura (ZapSign) — aguardando ${signers.map(s => s.name).join(', ')}.`,
+    metadata: { kind: 'zapsign', zapsign_doc_token: result.token },
+  })
+  revalidatePath(`/contracts/${input.contractId}`)
+  return { documentId: doc.id }
 }
 
 export async function syncZapSignDocumentStatus(zapsignDocId: string): Promise<ActionState> {
-  const supabase = (await createScopedAdmin())
-  const apiToken = await getZapSignToken()
-  if (!apiToken) return { error: 'Token da ZapSign não configurado.' }
-
-  const { data: doc } = await supabase.from('zapsign_documents').select('*').eq('id', zapsignDocId).maybeSingle()
+  const { data: { user } } = await (await createClient()).auth.getUser()
+  if (!user) return { error: 'Usuário não autenticado.' }
+  const admin = await createScopedAdmin()
+  const { data: doc } = await admin.from('zapsign_documents')
+    .select('id, tenant_id, contract_id, name, status, zapsign_doc_token, document_kind, signed_file_id, created_by').eq('id', zapsignDocId).maybeSingle()
   if (!doc?.zapsign_doc_token) return { error: 'Documento não encontrado.' }
-
+  const apiToken = await getTenantZapSignToken(doc.tenant_id)
+  if (!apiToken) return { error: 'Token da ZapSign não configurado.' }
   try {
-    const result = await getZapSignDocument(apiToken, doc.zapsign_doc_token)
-    const statusMap: Record<string, string> = { pending: 'enviado', awaiting: 'enviado', signed: 'assinado', refused: 'recusado', expired: 'expirado' }
-    const newStatus = statusMap[result.status] ?? 'enviado'
-
-    await supabase.from('zapsign_documents').update({
-      status: newStatus,
-      signed_pdf_url: result.signed_file ?? null,
-      signed_at: newStatus === 'assinado' ? new Date().toISOString() : null,
-    }).eq('id', zapsignDocId)
-
-    if (newStatus === 'assinado') {
-      await supabase.from('activities').insert({
-        contract_id: doc.contract_id,
-        type: 'system',
-        content: `Contrato "${doc.name}" assinado por todos os signatários. ✅`,
-        metadata: { zapsign_doc_token: doc.zapsign_doc_token, signed_pdf_url: result.signed_file },
-      })
-    }
-
-    revalidatePath(`/contracts/${doc.contract_id}`)
-    return {}
+    await syncZapSignDoc(doc as ZapSignDocRow, apiToken)
   } catch (e) {
-    return { error: e instanceof Error ? e.message : 'Falha ao sincronizar com ZapSign.' }
+    return { error: e instanceof Error ? e.message : 'Falha ao consultar a ZapSign.' }
   }
+  revalidatePath(`/contracts/${doc.contract_id}`)
+  return {}
+}
+
+// Cadastra na conta ZapSign da empresa o aviso automático (webhook) para este CRM
+export async function registerZapSignWebhook(): Promise<ActionState & { url?: string }> {
+  if (!(await isCurrentUserAdmin())) return { error: 'Só administradores podem configurar isso.' }
+  const tenantId = await resolveTenantId()
+  const apiToken = await getTenantZapSignToken(tenantId)
+  if (!apiToken) return { error: 'Salve o token da ZapSign primeiro.' }
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
+  if (!host || host.includes('localhost')) return { error: 'Abra o CRM pelo endereço oficial para ativar os avisos.' }
+  const url = `https://${host}/api/zapsign-webhook`
+  try {
+    await createZapSignWebhook(apiToken, url)
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Falha ao cadastrar o aviso na ZapSign.' }
+  }
+  const admin = await createScopedAdmin(tenantId)
+  await admin.from('organization_settings').update({ zapsign_webhook_url: url }).eq('tenant_id', tenantId)
+  revalidatePath('/settings')
+  return { url }
 }
 
 export async function saveZapSignSettings(formData: FormData): Promise<ActionState> {

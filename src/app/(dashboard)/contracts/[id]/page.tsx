@@ -337,7 +337,7 @@ export default async function ContractDetailPage({
       ? supabase.from('contacts').select('id, name, role').eq('company_id', contract.company_id).order('name')
       : Promise.resolve({ data: [] as { id: string; name: string; role: string | null }[] }),
     supabase.from('zapsign_templates').select('id, name, type').order('name'),
-    supabase.from('zapsign_documents').select('id, name, status, sent_at, signed_at, pdf_url, signed_pdf_url').eq('contract_id', contract.id).order('created_at', { ascending: false }),
+    supabase.from('zapsign_documents').select('id, name, status, sent_at, signed_at, source, document_kind, signers, signed_file_id').eq('contract_id', contract.id).order('created_at', { ascending: false }),
     supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle(),
     supabase.from('proposal_status').select('status, proposal_value, actor_name, actor_email, updated_at, technical_snapshot, technical_comment, technical_restrictions, review_token, submitted_at, submitted_by_name, technical_approved_at, technical_approved_by_name, technical_approved_by_role, commercial_approved_at, commercial_approved_by_name, commercial_approved_by_role, client_status, client_approved_at, client_approved_by_name, client_review_token, texto_objetivos, texto_atividades, texto_estrutura_apoio').eq('contract_id', contract.id).maybeSingle(),
   ])
@@ -629,6 +629,18 @@ export default async function ContractDetailPage({
             content: (
               <div className="space-y-6">
                 <FilesSection key={fileKey('contrato')} mode="contrato" contractId={contract.id} initialFiles={contractDocs} />
+                <ContractZapSignSection
+                  contractId={contract.id}
+                  clientName={contract.client_name ?? ''}
+                  templates={zapsignTemplates ?? []}
+                  documents={(zapsignDocuments ?? []) as any}
+                  pdfDocs={readableDocs}
+                  signedFilePaths={Object.fromEntries((contractFiles ?? []).map((f: any) => [f.id, f.storage_path]))}
+                  defaultContactName={linkedContact?.name ?? null}
+                  defaultContactEmail={linkedContact?.email ?? null}
+                  defaultContactPhone={linkedContact?.phone ?? null}
+                  isConnected={!!orgZapSignSettings?.zapsign_api_token}
+                />
                 <ContractReadingSection contractId={contract.id} docs={readableDocs} isAdmin={currentProfile?.role === 'admin'} reading={readingResult} readingMeta={lastReading ? { created_at: lastReading.created_at, file_name: lastReading.file_name, status: lastReading.status, error: lastReading.error } : null} checks={readingChecks} hasAiKey={!!aiKeyInfo.key} />
               </div>
             ),
@@ -683,21 +695,6 @@ export default async function ContractDetailPage({
                 templates={whatsappTemplates ?? []}
                 defaultPhone={linkedContact?.phone ?? null}
                 messageLog={(whatsappMessages ?? []).map((m: any) => ({ ...m, sent_by_name: m.profiles?.full_name ?? null }))}
-              />
-            ),
-          },
-          {
-            id: 'zapsign',
-            label: '✍️ Assinatura',
-            content: (
-              <ContractZapSignSection
-                contractId={contract.id}
-                templates={zapsignTemplates ?? []}
-                documents={zapsignDocuments ?? []}
-                defaultContactName={linkedContact?.name ?? null}
-                defaultContactEmail={linkedContact?.email ?? null}
-                defaultContactPhone={linkedContact?.phone ?? null}
-                isConnected={!!orgZapSignSettings?.zapsign_api_token}
               />
             ),
           },

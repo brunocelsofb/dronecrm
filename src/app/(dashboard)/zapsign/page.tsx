@@ -38,6 +38,20 @@ export default async function ZapSignTemplatesPage() {
           )}
         </div>
 
+        <div className="space-y-2 rounded-lg border border-brand-100 bg-brand-100/40 p-4 text-xs text-gray-700">
+          <p className="text-sm font-medium text-gray-900">Como montar o modelo</p>
+          <ol className="list-decimal space-y-1 pl-4">
+            <li>No Word, escreva o contrato e coloque as variáveis entre chaves duplas onde o CRM deve preencher.</li>
+            <li>Na ZapSign: Modelos → Criar modelo → envie o .docx. Copie o token do modelo.</li>
+            <li>Cadastre o modelo abaixo. No contrato do CRM, aba “Contrato e aditivos” → “Enviar para assinatura”.</li>
+          </ol>
+          <p className="pt-1 font-medium text-gray-900">Variáveis que o CRM preenche</p>
+          <p className="font-mono text-[11px] leading-5 text-gray-600">
+            {'{{cliente}} {{empresa}} {{cnpj}} {{contato}} {{email_contato}} {{telefone_contato}} {{processo}} {{valor_mensal}} {{inicio_vigencia}} {{fim_vigencia}} {{minha_empresa}} {{minha_cnpj}} {{data_hoje}}'}
+          </p>
+          <p className="text-[11px] text-gray-500">Campos personalizados do contrato também entram, pela chave do campo (ex.: {'{{chave_do_campo}}'}).</p>
+        </div>
+
         <form method="POST" action="/api/zapsign/templates/create" className="space-y-3 rounded-lg border border-dashed border-gray-300 bg-white p-4">
           <p className="text-sm font-medium text-gray-700">+ Novo modelo</p>
           <div className="grid grid-cols-2 gap-3">
