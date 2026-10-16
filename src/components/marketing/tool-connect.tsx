@@ -84,9 +84,9 @@ export function ToolConnect({ provider, status }: { provider: 'mailchimp' | 'rd_
       {provider === 'rd_station' && (
         <>
           <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-xs text-gray-600">
-            <li>No RD Station Marketing, entre no App Publisher (loja de apps do RD) com perfil Gestor ou Dono e clique em "Gerar chave de API".</li>
+            <li>No RD Station Marketing, entre no App Publisher (loja de apps do RD) com perfil Gestor ou Dono e clique em &quot;Gerar chave de API&quot;.</li>
             <li>Cole a chave abaixo e escolha a base legal (LGPD) que vale para os contatos enviados.</li>
-            <li>Cada envio registra no RD uma conversão "crm-lista-nome-da-lista" e a etiqueta da lista.</li>
+            <li>Cada envio registra no RD uma conversão &quot;crm-lista-nome-da-lista&quot; e a etiqueta da lista.</li>
           </ol>
           {rd && <p className="mt-2 text-xs text-positive-700">Conectado · chave terminando em {rd.last4}</p>}
           <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_200px_auto]">

@@ -16,7 +16,7 @@ export async function loadListMembers(tenantId: string, list: { audience: string
     fetchAll<{ email: string }>((a, b) => db.from('marketing_optouts').select('email').order('id').range(a, b)),
   ])
 
-  let contacts: SegContact[] = []
+  const contacts: SegContact[] = []
   let clients: SegClient[] = []
   if (audience !== 'leads') {
     const [pipelines, runs, contracts, companies, tags] = await Promise.all([
