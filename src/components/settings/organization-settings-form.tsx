@@ -23,6 +23,7 @@ export function OrganizationSettingsForm({
   currentNpsBgUrl,
   currentSurveyClinicaBgUrl,
   currentSurveyHospitalarBgUrl,
+  show = 'tudo',
 }: {
   currentName: string
   currentCompanyName: string
@@ -39,6 +40,7 @@ export function OrganizationSettingsForm({
   currentNpsBgUrl?: string | null
   currentSurveyClinicaBgUrl?: string | null
   currentSurveyHospitalarBgUrl?: string | null
+  show?: 'tudo' | 'empresa' | 'orcamento'   // cada quadro de Configurações mostra só a sua parte
 }) {
   const [state, formAction, pending] = useActionState(updateOrganizationSettings, initialState)
   const [logoPath, setLogoPath] = useState(currentLogoPath)
@@ -157,6 +159,7 @@ export function OrganizationSettingsForm({
 
   return (
     <div className="max-w-md space-y-6">
+      {show !== 'orcamento' && <>
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <label className="block text-sm font-medium text-gray-700">Logo da empresa (White Label)</label>
         <p className="mt-0.5 text-xs text-gray-400">Aparece no login, formulários públicos e propostas. Sem logo configurada, usa a logo DRONE como padrão.</p>
@@ -253,13 +256,9 @@ export function OrganizationSettingsForm({
           {pending ? 'Salvando...' : 'Salvar'}
         </button>
       </form>
+      </>}
 
-      <form action={formAction} className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-        <input type="hidden" name="name" value={currentName} />
-        <input type="hidden" name="company_name" value={currentCompanyName} />
-        <input type="hidden" name="proposal_header_text" value={currentHeaderText} />
-        <input type="hidden" name="proposal_footer_text" value={currentFooterText} />
-        <input type="hidden" name="proposal_brand_color" value={currentBrandColor} />
+      {show !== 'empresa' && <form action={formAction} className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
         <div>
           <label className="block text-sm font-medium text-gray-700">🤖 Orçamento mensal do Théo (US$)</label>
           <input
@@ -282,7 +281,8 @@ export function OrganizationSettingsForm({
         >
           {pending ? 'Salvando...' : 'Salvar orçamento'}
         </button>
-      </form>
+        {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      </form>}
     </div>
   )
 }

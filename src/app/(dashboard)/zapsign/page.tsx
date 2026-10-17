@@ -32,7 +32,7 @@ export default async function ZapSignTemplatesPage() {
             </p>
           </div>
           {!isConnected && (
-            <Link href="/settings" className="rounded-md border border-yellow-400 bg-yellow-50 px-3 py-1.5 text-xs text-yellow-800 hover:bg-yellow-100">
+            <Link href="/settings/zapsign" className="rounded-md border border-yellow-400 bg-yellow-50 px-3 py-1.5 text-xs text-yellow-800 hover:bg-yellow-100">
               ⚠️ Configure o token da ZapSign
             </Link>
           )}

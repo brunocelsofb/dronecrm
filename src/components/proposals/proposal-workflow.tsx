@@ -685,7 +685,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
       {/* ── Dados técnicos para aprovador analisar ───────────────── */}
       {['em_aprovacao_tecnica', 'aprovado_tecnico', 'reprovado_tecnico', 'em_aprovacao_comercial', 'aprovado_comercial'].includes(data.status) && data.technical_snapshot && card(
         <div>
-          {sectionLabel('Dimensionamento Técnico — ORBIS Price')}
+          {sectionLabel('Dimensionamento Técnico — Price')}
           <SnapshotViewer snapshot={data.technical_snapshot} />
         </div>
       )}

@@ -168,7 +168,7 @@ export async function registerZapSignWebhook(): Promise<ActionState & { url?: st
   }
   const admin = await createScopedAdmin(tenantId)
   await admin.from('organization_settings').update({ zapsign_webhook_url: url }).eq('tenant_id', tenantId)
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return { url }
 }
 
@@ -179,7 +179,7 @@ export async function saveZapSignSettings(formData: FormData): Promise<ActionSta
   const supabase = await createClient()
   const { error } = await supabase.from('organization_settings').update({ zapsign_api_token: token }).eq('tenant_id', await resolveTenantId())
   if (error) return { error: error.message }
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return {}
 }
 
@@ -261,6 +261,6 @@ export async function generateZapSignHookUrl(): Promise<{ ok: true; url: string 
   if (error) return { ok: false, error: error.message }
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return { ok: true, url: `https://${host}/api/zapsign-webhook?k=${key}` }
 }

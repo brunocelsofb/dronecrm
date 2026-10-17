@@ -69,7 +69,7 @@ export default function PriceUsersPage() {
   }
 
   async function handleDelete(id: string, email: string) {
-    if (!confirm(`Excluir o usuário ${email} do ORBIS Price permanentemente?`)) return
+    if (!confirm(`Excluir o usuário ${email} do Price permanentemente?`)) return
     await fetch('/api/price-users', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +84,7 @@ export default function PriceUsersPage() {
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Usuários do ORBIS Price</h1>
+          <h1 style={{ fontSize: 18, fontWeight: 500, color: '#1a1f36', margin: 0 }}>Usuários do Price</h1>
           <p style={{ fontSize: 12, color: '#8892a4', margin: '4px 0 0' }}>Gerencie quem tem acesso ao sistema de precificação</p>
         </div>
         <button onClick={() => setShowForm(true)}

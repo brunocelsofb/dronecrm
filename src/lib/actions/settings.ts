@@ -32,31 +32,30 @@ export async function updateOrganizationSettings(
     return { error: 'Só administradores podem alterar as configurações gerais.' }
   }
 
-  const name = (formData.get('name') as string)?.trim()
-  const company_name = (formData.get('company_name') as string)?.trim() || null
-  const company_cnpj = (formData.get('company_cnpj') as string)?.trim() || null
-  const proposal_header_text = (formData.get('proposal_header_text') as string)?.trim() || null
-  const proposal_footer_text = (formData.get('proposal_footer_text') as string)?.trim() || null
-  const proposal_brand_color = (formData.get('proposal_brand_color') as string)?.trim() || '#1B556B'
-  const assistantBudgetRaw = formData.get('assistant_monthly_budget_usd') as string
-  const assistant_monthly_budget_usd = assistantBudgetRaw ? Number(assistantBudgetRaw) : 10
-  const support_bg_url = (formData.get('support_bg_url') as string)?.trim() || null
-  if (!name) return { error: 'Nome é obrigatório.' }
+  // Grava só o que veio no formulário: cada quadro de Configurações salva a sua
+  // parte sem apagar as outras (antes, salvar o orçamento apagava o CNPJ e salvar
+  // os dados da empresa voltava o orçamento para US$ 10).
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  const text = (k: string) => (formData.get(k) as string | null)?.trim() || null
+  if (formData.has('name')) {
+    const name = text('name')
+    if (!name) return { error: 'Nome é obrigatório.' }
+    patch.name = name
+  }
+  for (const k of ['company_name', 'company_cnpj', 'proposal_header_text', 'proposal_footer_text', 'support_bg_url']) {
+    if (formData.has(k)) patch[k] = text(k)
+  }
+  if (formData.has('proposal_brand_color')) patch.proposal_brand_color = text('proposal_brand_color') ?? '#1B556B'
+  if (formData.has('assistant_monthly_budget_usd')) {
+    const v = Number(formData.get('assistant_monthly_budget_usd'))
+    if (!Number.isFinite(v) || v < 0) return { error: 'Orçamento inválido.' }
+    patch.assistant_monthly_budget_usd = v
+  }
 
   const supabase = await createClient()
   const { error } = await supabase
     .from('organization_settings')
-    .update({
-      name,
-      company_name,
-      company_cnpj,
-      proposal_header_text,
-      proposal_footer_text,
-      proposal_brand_color,
-      assistant_monthly_budget_usd,
-      support_bg_url,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
@@ -88,7 +87,7 @@ export async function updateInboundEmailSettings(formData: FormData): Promise<Ac
     .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return {}
 }
 
@@ -105,7 +104,7 @@ export async function updateNumberingPrefixes(formData: FormData): Promise<Actio
     .eq('tenant_id', await resolveTenantId())
 
   if (error) return { error: error.message }
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return {}
 }
 
@@ -115,7 +114,7 @@ export async function setNextTicketNumber(nextNumber: number): Promise<ActionSta
   const year = new Date().getFullYear()
   const { error } = await supabase.rpc('set_next_ticket_number_for_year', { p_year: year, new_start: nextNumber })
   if (error) return { error: error.message }
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return {}
 }
 
@@ -125,6 +124,6 @@ export async function setNextProposalNumber(nextNumber: number): Promise<ActionS
   const year = new Date().getFullYear()
   const { error } = await supabase.rpc('set_next_proposal_number_for_year', { p_year: year, new_start: nextNumber })
   if (error) return { error: error.message }
-  revalidatePath('/settings')
+  revalidatePath('/settings', 'layout')
   return {}
 }
