@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClientForTenant } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { DeleteLeadButton } from '@/components/leads/delete-lead-button'
+import { LeadImport } from '@/components/leads/lead-import'
 
 const STATUS_LABELS: Record<string, string> = { novo: 'Novo', em_qualificacao: 'Em Qualificação', qualificado: 'Qualificado', descartado: 'Descartado', convertido: 'Convertido' }
 const STATUS_ORDER = ['novo', 'em_qualificacao', 'qualificado', 'convertido', 'descartado']
@@ -12,7 +13,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   convertido:      { bg: '#f0eeff', color: '#5f38c9' },
   descartado:      { bg: '#f1f3f8', color: '#8892a4' },
 }
-const SOURCE_LABELS: Record<string, string> = { indicacao: 'Indicação', evento: 'Evento', formulario_site: 'Site', ligacao: 'Ligação', anuncio: 'Anúncio', manual: 'Manual', whatsapp: 'WhatsApp', outro: 'Outro' }
+const SOURCE_LABELS: Record<string, string> = { indicacao: 'Indicação', evento: 'Evento', formulario_site: 'Site', ligacao: 'Ligação', anuncio: 'Anúncio', manual: 'Manual', whatsapp: 'WhatsApp', prospeccao: 'Prospecção', outro: 'Outro' }
 
 function scoreBar(score: number) {
   const colorClass = score >= 60 ? '#1f8c7d' : score >= 30 ? '#f59e0b' : '#d1d8e8'
@@ -32,7 +33,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
 
-  let leadsQ = supabase.from('leads').select('id, name, email, phone, company_name, status, score, source, created_at').order('score', { ascending: false })
+  // Aba do comercial: outbound (prospecção) + inbound que o marketing já passou.
+  // Inbound ainda em qualificação fica em Marketing → Leads.
+  let leadsQ = supabase.from('leads').select('id, name, email, phone, company_name, status, score, source, created_at, entry_type, handed_off_at')
+    .or('entry_type.is.null,entry_type.eq.outbound,handed_off_at.not.is.null')
+    .order('score', { ascending: false })
   if (tenantId) leadsQ = leadsQ.eq('tenant_id', tenantId)
   const { data: leads } = await leadsQ
 
@@ -49,15 +54,13 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Leads & Captação</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Qualifique e converta quando fizer sentido.</p>
+          <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Leads do comercial</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Prospecção do comercial (outbound) e leads que o marketing já qualificou e passou (inbound). Qualifique e converta em oportunidade.</p>
         </div>
         <div className="flex gap-2">
-          <a href="/captura" target="_blank" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline">
-            🔗 Formulário público
-          </a>
+          <LeadImport />
           <Link href="/leads/new" className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline">
-            + Novo Lead
+            + Novo lead (prospecção)
           </Link>
         </div>
       </div>
@@ -94,8 +97,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-gray-100">
-              {['Nome / contato', 'Empresa', 'Origem', 'Status', 'Pontuação', 'Recebido', ''].map((h, i) => (
-                <th key={h + i} className={`text-xs font-medium uppercase tracking-wider text-gray-400 py-3 px-4 ${i >= 4 && i < 6 ? 'text-right' : 'text-left'}`}>{h}</th>
+              {['Nome / contato', 'Empresa', 'Entrada', 'Origem', 'Status', 'Pontuação', 'Recebido', ''].map((h, i) => (
+                <th key={h + i} className={`text-xs font-medium uppercase tracking-wider text-gray-400 py-3 px-4 ${i >= 5 && i < 7 ? 'text-right' : 'text-left'}`}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -111,6 +114,11 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                     </Link>
                   </td>
                   <td className="py-3 px-4 text-xs text-gray-600">{lead.company_name ?? '—'}</td>
+                  <td className="py-3 px-4 text-xs">
+                    <span className={`inline-flex px-2 py-0.5 rounded-lg ${lead.entry_type === 'outbound' ? 'bg-gray-100 text-gray-600' : 'bg-[#e3f5f1] text-[#1f8c7d]'}`}>
+                      {lead.entry_type === 'outbound' ? 'Outbound' : 'Inbound'}
+                    </span>
+                  </td>
                   <td className="py-3 px-4 text-xs text-gray-400">{SOURCE_LABELS[lead.source ?? ''] ?? lead.source ?? 'Manual'}</td>
                   <td className="py-3 px-4">
                     <span className="inline-flex px-2.5 py-1 rounded-xl text-xs font-medium" style={{ background: st.bg, color: st.color }}>
@@ -126,7 +134,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               )
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="py-12 px-4 text-center text-sm text-gray-400">Nenhum lead nessa categoria ainda.</td></tr>
+              <tr><td colSpan={8} className="py-12 px-4 text-center text-sm text-gray-400">Nenhum lead nessa categoria ainda.</td></tr>
             )}
           </tbody>
         </table>

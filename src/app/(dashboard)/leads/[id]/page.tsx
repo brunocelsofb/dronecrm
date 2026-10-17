@@ -7,6 +7,8 @@ import { calculateLeadScore } from '@/lib/utils/lead-score'
 import { LeadWhatsAppSection } from '@/components/whatsapp/lead-whatsapp-section'
 import { getWhatsAppMessagesByLead } from '@/lib/actions/whatsapp'
 import { CampaignPicker } from '@/components/marketing/campaign-picker'
+import { LeadHandoff } from '@/components/leads/lead-handoff'
+import { getUserAccess } from '@/lib/auth/access'
 import { channelLabel, inferChannel } from '@/lib/marketing/tracking'
 
 export default async function LeadDetailPage({
@@ -29,6 +31,8 @@ export default async function LeadDetailPage({
   ])
 
   if (!lead) notFound()
+  const access = await getUserAccess()
+  const withMarketing = lead.entry_type !== 'outbound' && !lead.handed_off_at
   const { data: integration } = lead.integration_id
     ? await supabase.from('lead_integrations').select('name').eq('id', lead.integration_id).maybeSingle()
     : { data: null }
@@ -122,6 +126,9 @@ export default async function LeadDetailPage({
         )}
       </div>
 
+      <LeadHandoff leadId={lead.id} entryType={lead.entry_type ?? null} handedOffAt={lead.handed_off_at ?? null} status={lead.status}
+        canPass={!!access && (access.isAdmin || access.features.includes('marketing'))} users={allProfiles ?? []} />
+
       <LeadWhatsAppSection phone={lead.phone} leadName={lead.name} messages={whatsappMessages} />
 
       <LeadActionsPanel
@@ -134,6 +141,7 @@ export default async function LeadDetailPage({
         stages={stages ?? []}
         isConverted={lead.status === 'convertido'}
         isAdmin={isAdmin}
+        canConvert={!withMarketing}
       />
 
       <div className="space-y-2">

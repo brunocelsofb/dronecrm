@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
-import { resolvePublicTenantId } from '@/lib/tenant/context'
+import { resolvePublicTenantId, resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { readTracking } from '@/lib/marketing/tracking'
 import { ingestLead } from '@/lib/leads/ingest'
@@ -32,11 +32,18 @@ export async function createLead(formData: FormData): Promise<ActionState & { le
   if (!company_name) return { error: 'Empresa é obrigatória.' }
   if (!cnpj) return { error: 'CNPJ é obrigatório.' }
 
-  const tenantId = await resolvePublicTenantId((formData.get('empresa') as string) || null)
+  // Cadastro pela equipe (Leads → + Novo lead): é prospecção do comercial (outbound)
+  let internalUser: string | null = null
+  if (formData.get('interno') === '1') {
+    const { data: { user } } = await (await createClient()).auth.getUser()
+    internalUser = user?.id ?? null
+  }
+  const tenantId = internalUser ? await resolveTenantId() : await resolvePublicTenantId((formData.get('empresa') as string) || null)
   const r = await ingestLead({
     tenantId, name, email, phone, company_name, cnpj, message, source,
     tracking: readTracking(k => formData.get(k)),
     campaignId: (formData.get('campaign_id') as string) || null,
+    ...(internalUser ? { entryType: 'outbound' as const, handedOffBy: internalUser, assignedTo: internalUser } : { entryType: 'inbound' as const }),
   })
   if (r.error || !r.leadId) return { error: r.error ?? 'Não foi possível registrar o contato.' }
   const data = { id: r.leadId }
@@ -371,4 +378,56 @@ export async function convertLeadWithOptions(
   revalidatePath(`/leads/${leadId}`)
   revalidatePath('/pipeline')
   return { contractId: contract.id }
+}
+
+// ── Inbound: o marketing qualifica e passa ao comercial ──────────────────────
+// O lead sai da fila do marketing e aparece na aba Leads do comercial, com o
+// responsável escolhido avisado. "Devolver ao marketing": ainda não está pronto
+// (volta para nutrição, com o motivo no histórico).
+export async function passLeadToCommercial(leadId: string, assignTo: string | null, note: string): Promise<ActionState> {
+  const { getUserAccess } = await import('@/lib/auth/access')
+  const me = await getUserAccess()
+  if (!me || !(me.features.includes('marketing') || me.isAdmin)) return { error: 'Só o marketing (ou o Admin) passa leads ao comercial.' }
+  const db = await createScopedAdmin()
+  const { data: lead } = await db.from('leads').select('id, name, company_name, entry_type, handed_off_at, status').eq('id', leadId).maybeSingle()
+  if (!lead) return { error: 'Lead não encontrado.' }
+  if (lead.handed_off_at) return { error: 'Este lead já está com o comercial.' }
+  if (lead.status === 'descartado') return { error: 'Lead descartado: mude a situação antes de passar.' }
+  if (assignTo) {
+    const { data: p } = await db.from('profiles').select('id').eq('id', assignTo).maybeSingle()
+    if (!p) return { error: 'Responsável inválido.' }
+  }
+  const now = new Date().toISOString()
+  const { error } = await db.from('leads').update({
+    handed_off_at: now, handed_off_by: me.userId, updated_at: now,
+    ...(assignTo ? { assigned_to: assignTo } : {}),
+    ...(lead.status === 'novo' || lead.status === 'em_qualificacao' ? { status: 'qualificado' } : {}),
+  }).eq('id', leadId)
+  if (error) return { error: error.message }
+  await db.from('lead_activities').insert({ lead_id: leadId, user_id: me.userId, type: 'system', content: `➡️ Passado ao comercial pelo marketing.${note.trim() ? ` Observação: ${note.trim().slice(0, 500)}` : ''}` })
+  // Aviso: responsável escolhido; senão, o time comercial
+  let to: { id: string }[] = assignTo ? [{ id: assignTo }] : []
+  if (!to.length) to = (await db.from('profiles').select('id').or('department.eq.comercial,access_profile.in.(hunter,gestor)')).data ?? []
+  if (to.length) await db.from('notifications').insert(to.map(p => ({ user_id: p.id, message: `Lead qualificado pelo marketing: ${lead.name}${lead.company_name ? ` (${lead.company_name})` : ''}. Abra em Leads e faça o primeiro contato.` })))
+  revalidatePath('/leads'); revalidatePath('/marketing'); revalidatePath(`/leads/${leadId}`)
+  return {}
+}
+
+export async function returnLeadToMarketing(leadId: string, reason: string): Promise<ActionState> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Usuário não autenticado.' }
+  if (!reason.trim()) return { error: 'Diga o motivo (ajuda o marketing a nutrir o lead).' }
+  const db = await createScopedAdmin()
+  const { data: lead } = await db.from('leads').select('id, name, entry_type, status').eq('id', leadId).maybeSingle()
+  if (!lead) return { error: 'Lead não encontrado.' }
+  if (lead.entry_type !== 'inbound') return { error: 'Só lead inbound volta para o marketing.' }
+  if (lead.status === 'convertido') return { error: 'Lead já convertido.' }
+  const { error } = await db.from('leads').update({ handed_off_at: null, handed_off_by: null, status: 'em_qualificacao', updated_at: new Date().toISOString() }).eq('id', leadId)
+  if (error) return { error: error.message }
+  await db.from('lead_activities').insert({ lead_id: leadId, user_id: user.id, type: 'system', content: `↩️ Devolvido ao marketing: ${reason.trim().slice(0, 500)}` })
+  const { data: mk } = await db.from('profiles').select('id').or('department.eq.marketing,access_profile.eq.marketing')
+  if (mk?.length) await db.from('notifications').insert(mk.map(p => ({ user_id: p.id, message: `Lead devolvido pelo comercial: ${lead.name}. Motivo: ${reason.trim().slice(0, 120)}` })))
+  revalidatePath('/leads'); revalidatePath('/marketing'); revalidatePath(`/leads/${leadId}`)
+  return {}
 }

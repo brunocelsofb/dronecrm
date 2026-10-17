@@ -12,6 +12,7 @@ import { loadMarketing } from '@/lib/marketing/data'
 import { MarketingView } from '@/components/marketing/marketing-view'
 import type { IntegrationRow } from '@/components/marketing/integrations-center'
 import type { ListRow, SyncRow, OptoutRow } from '@/components/marketing/lists-view'
+import type { InboundLead } from '@/components/marketing/marketing-leads'
 import { loadListFilterOptions } from '@/lib/marketing/list-data'
 import { readTools } from '@/lib/marketing/tools'
 
@@ -27,7 +28,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const tenantId = await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
-  const [access, data, { data: tenant }, { data: people }, { data: integrations }, { data: lists }, { data: syncs }, { data: optouts, count: optoutCount }, { data: org }, options] = await Promise.all([
+  const [access, data, { data: tenant }, { data: people }, { data: integrations }, { data: lists }, { data: syncs }, { data: optouts, count: optoutCount }, { data: org }, options, { data: inbound }] = await Promise.all([
     getUserAccess(),
     loadMarketing(tenantId, { year, month }, { year: nowYear, month: nowMonth }),
     db.from('tenants').select('slug').eq('id', tenantId).maybeSingle(),
@@ -38,6 +39,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
     db.from('marketing_optouts').select('id, email, source, created_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(30),
     db.from('organization_settings').select('marketing_tools').eq('tenant_id', tenantId).maybeSingle(),
     loadListFilterOptions(tenantId),
+    db.from('leads').select('id, name, email, phone, company_name, status, score, source, created_at, campaign_id, handed_off_at, utm_source, utm_medium, gclid, fbclid')
+      .eq('entry_type', 'inbound').order('created_at', { ascending: false }).limit(500),
   ])
   // Ferramentas de e-mail: só o que a tela precisa (a chave nunca vai para o navegador)
   const t = readTools(org?.marketing_tools)
@@ -52,7 +55,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <MarketingView
       year={year} month={month} nowYear={nowYear} nowMonth={nowMonth}
-      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' || sp.aba === 'listas' ? sp.aba : 'resultados'}
+      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' || sp.aba === 'listas' || sp.aba === 'leads' ? sp.aba : 'resultados'}
+      inbound={(inbound ?? []) as InboundLead[]}
       tools={tools}
       lists={(lists ?? []) as ListRow[]}
       syncs={(syncs ?? []) as SyncRow[]}

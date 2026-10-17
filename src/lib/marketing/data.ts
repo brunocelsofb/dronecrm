@@ -21,7 +21,8 @@ export async function loadMarketing(tenantId: string, period: MkPeriod, now: { y
       .order('created_at', { ascending: false }).range(a, b)),
     fetchAll<MkCost>((a, b) => db.from('marketing_campaign_costs').select('campaign_id, year, month, amount').order('id').range(a, b)),
     fetchAll<MkLead>((a, b) => db.from('leads')
-      .select('id, campaign_id, created_at, status, source, utm_source, utm_medium, gclid, fbclid').order('id').range(a, b)),
+      .select('id, campaign_id, created_at, status, source, utm_source, utm_medium, gclid, fbclid')
+      .or('entry_type.is.null,entry_type.eq.inbound').order('id').range(a, b)),  // marketing mede só o inbound
     fetchAll<MkOpp>((a, b) => db.from('contracts').select('id, campaign_id, lead_id, created_at').order('id').range(a, b)),
     loadDashboardInput(period.year, tenantId),
   ])

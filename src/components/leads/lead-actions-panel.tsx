@@ -26,6 +26,7 @@ export function LeadActionsPanel({
   stages = [],
   isConverted,
   isAdmin,
+  canConvert = true,
 }: {
   leadId: string
   leadName: string
@@ -36,6 +37,7 @@ export function LeadActionsPanel({
   stages?: StageOption[]
   isConverted: boolean
   isAdmin: boolean
+  canConvert?: boolean   // inbound ainda com o marketing: só converte depois de passado ao comercial
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -112,13 +114,13 @@ export function LeadActionsPanel({
               ))}
             </select>
           </div>
-          <button
+          {canConvert ? <button
             onClick={() => setShowConvertModal(true)}
             disabled={isPending}
             className="rounded-md bg-positive-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-positive-700 disabled:opacity-50"
           >
             ✅ Converter em Oportunidade
-          </button>
+          </button> : <span className="text-xs text-gray-500">Converte em oportunidade depois que o marketing passar ao comercial.</span>}
           {showConvertModal && (
             <ConvertLeadModal leadId={leadId} leadName={leadName} pipelines={pipelines} stages={stages} users={users} onClose={() => setShowConvertModal(false)} />
           )}

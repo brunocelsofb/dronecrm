@@ -13,13 +13,15 @@ import { MarketingGuide } from './marketing-guide'
 import { IntegrationsCenter, type IntegrationRow } from './integrations-center'
 import { ListsView, type ListRow, type SyncRow, type OptoutRow } from './lists-view'
 import type { ToolsStatus } from './tool-connect'
+import { MarketingLeads, type InboundLead } from './marketing-leads'
 import type { CampaignFull } from '@/lib/marketing/data'
 import { saveCampaign, deleteCampaign, saveCampaignCost, type CampaignInput } from '@/lib/actions/marketing'
 
 type Report = { campaignRows: MkRow[]; channelOnlyRows: MkRow[]; channels: MkRow[]; totals: MkRow; unattributedOpps: number }
 type Props = {
   year: number; month: number | null; nowYear: number; nowMonth: number
-  tab: 'resultados' | 'campanhas' | 'links' | 'guia' | 'integracoes' | 'listas'
+  tab: 'resultados' | 'campanhas' | 'links' | 'guia' | 'integracoes' | 'listas' | 'leads'
+  inbound: InboundLead[]
   integrations: IntegrationRow[]
   tools: ToolsStatus
   lists: ListRow[]
@@ -77,7 +79,7 @@ export function MarketingView(p: Props) {
       </div>
 
       <nav className="flex gap-1 overflow-x-auto border-b border-gray-200 text-sm" aria-label="Seções">
-        {([['resultados', 'Resultados'], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário'], ['listas', 'Listas e e-mail'], ['integracoes', 'Integrações'], ['guia', 'Como funciona']] as const).map(([id, label]) => (
+        {([['resultados', 'Resultados'], ['leads', `Leads inbound (${p.inbound.filter(l => !l.handed_off_at && l.status !== 'descartado').length})`], ['campanhas', `Campanhas (${p.campaigns.length})`], ['links', 'Links e formulário'], ['listas', 'Listas e e-mail'], ['integracoes', 'Integrações'], ['guia', 'Como funciona']] as const).map(([id, label]) => (
           <button key={id} onClick={() => go({ aba: id })}
             className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 ${p.tab === id ? 'border-brand-700 font-medium text-brand-800' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
             {label}
@@ -88,6 +90,7 @@ export function MarketingView(p: Props) {
       {p.tab === 'resultados' && <Results report={p.report} periodLabel={periodLabel} hasCampaigns={p.campaigns.length > 0} onNew={() => go({ aba: 'campanhas' })} />}
       {p.tab === 'campanhas' && <Campaigns {...p} />}
       {p.tab === 'links' && <Links campaigns={p.campaigns} baseUrl={p.baseUrl} slug={p.slug} />}
+      {p.tab === 'leads' && <MarketingLeads leads={p.inbound} campaigns={p.campaigns} people={p.people} />}
       {p.tab === 'listas' && <ListsView lists={p.lists} syncs={p.syncs} optouts={p.optouts} tools={p.tools} options={p.listOptions} campaigns={p.campaigns} onGoIntegrations={() => go({ aba: 'integracoes' })} />}
       {p.tab === 'integracoes' && <IntegrationsCenter rows={p.integrations} campaigns={p.campaigns} baseUrl={p.baseUrl} tools={p.tools} />}
       {p.tab === 'guia' && <MarketingGuide />}

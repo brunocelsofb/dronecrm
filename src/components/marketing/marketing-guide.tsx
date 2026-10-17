@@ -14,8 +14,8 @@ const STEPS: { title: string; text: string; where: string }[] = [
   { title: 'Cadastre a campanha', text: 'Nome, canal (Meta, Google, LinkedIn…), público (novos clientes ou carteira), período, verba e objetivo. O CRM cria um código para o link.', where: 'Marketing → Campanhas → + Nova campanha' },
   { title: 'Pegue o link da campanha', text: 'Escolha a campanha e copie o link. Se o anúncio levar para uma página do site, cole o endereço da página e copie a versão com a origem.', where: 'Marketing → Links e formulário' },
   { title: 'Cole o link no anúncio', text: 'No gerenciador de anúncios (Meta, Google, LinkedIn), no e-mail, no post ou no QR Code do evento, use o link copiado como destino.', where: 'Fora do CRM — na plataforma do anúncio' },
-  { title: 'O lead entra sozinho', text: 'Quem preenche vira lead já ligado à campanha, com canal, variação do anúncio e página de onde veio. O time comercial recebe o aviso.', where: 'Leads → abrir o lead → Campanha / Veio de' },
-  { title: 'O Hunter qualifica e converte', text: 'Ao converter o lead em oportunidade, a campanha vai junto. Se a oportunidade nasceu fora do lead, ajuste a campanha no campo Origem.', where: 'Lead → Converter · Oportunidade → Origem' },
+  { title: 'O lead entra sozinho (inbound)', text: 'Quem preenche vira lead já ligado à campanha, com canal e página de onde veio. Ele chega para o marketing qualificar.', where: 'Marketing → Leads inbound' },
+  { title: 'Marketing passa ao comercial', text: 'Lead qualificado: "Passar para o comercial", escolhendo o Hunter. Ele aparece na aba Leads do comercial, que converte em oportunidade; a campanha vai junto.', where: 'Marketing → Leads inbound → Passar · Leads → Converter' },
   { title: 'Lance o investimento do mês', text: 'Todo mês, informe quanto foi gasto em cada campanha (o valor da fatura da plataforma de anúncios).', where: 'Marketing → Campanhas → Investimento por mês' },
   { title: 'Acompanhe até o faturado', text: 'Veja leads, oportunidades, ganhos e o faturado de cada campanha, com custo por lead, CAC e retorno (ROAS). Pause o que não dá retorno, reforce o que dá.', where: 'Marketing → Resultados' },
 ]

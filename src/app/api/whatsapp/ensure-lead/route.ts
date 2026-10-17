@@ -31,6 +31,12 @@ export async function POST(req: Request) {
       .insert({
         name: (name || phone).slice(0, 255),
         phone: cleanPhone,
+        source: 'whatsapp',
+        // Mensagem que chegou no WhatsApp da empresa: inbound, mas já está sendo atendido pelo comercial
+        entry_type: 'inbound',
+        handed_off_at: new Date().toISOString(),
+        handed_off_by: user.id,
+        assigned_to: user.id,
       })
       .select('id')
       .single()

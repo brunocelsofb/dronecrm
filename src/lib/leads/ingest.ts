@@ -24,6 +24,11 @@ export type IngestInput = {
   integrationId?: string | null
   conversion?: string | null       // nome da conversão/formulário na origem
   dedupe?: boolean
+  // Inbound (veio até a empresa: formulário, anúncio, integração) fica com o
+  // marketing até ser passado ao comercial; outbound (prospecção) já nasce no comercial.
+  entryType?: 'inbound' | 'outbound'
+  handedOffBy?: string | null      // já entra no comercial (outbound, ou inbound atendido direto)
+  assignedTo?: string | null
 }
 
 export type IngestResult = { leadId?: string; duplicate?: boolean; error?: string }
@@ -75,6 +80,10 @@ export async function ingestLead(input: IngestInput): Promise<IngestResult> {
     .insert({
       name, email, phone, company_name, cnpj, message, source, score, tenant_id: tenantId,
       campaign_id: campaignId, integration_id: input.integrationId ?? null, ...tracking,
+      entry_type: input.entryType ?? 'inbound',
+      ...((input.entryType ?? 'inbound') === 'outbound' || input.handedOffBy
+        ? { handed_off_at: new Date().toISOString(), handed_off_by: input.handedOffBy ?? null } : {}),
+      ...(input.assignedTo ? { assigned_to: input.assignedTo } : {}),
     })
     .select('id')
     .single()
@@ -102,8 +111,17 @@ export async function ingestLead(input: IngestInput): Promise<IngestResult> {
     await db.from('whatsapp_capture_prompts').update({ lead_id: data.id }).ilike('phone', `%${cleanPhone.slice(-8)}%`)
   }
 
-  // Aviso ao time comercial e ao marketing
-  const { data: team } = await db.from('profiles').select('id').eq('tenant_id', tenantId).in('department', ['comercial', 'marketing'])
+  // Aviso: inbound ainda com o marketing → marketing; senão → comercial (ou o responsável)
+  const withMarketing = (input.entryType ?? 'inbound') === 'inbound' && !input.handedOffBy
+  let team: { id: string }[] | null = input.assignedTo ? [{ id: input.assignedTo }] : null
+  if (!team) {
+    const area = withMarketing ? 'marketing' : 'comercial'
+    const { data } = await db.from('profiles').select('id').eq('tenant_id', tenantId)
+      .or(withMarketing ? `department.eq.${area},access_profile.eq.marketing` : `department.eq.${area},access_profile.in.(hunter,gestor)`)
+    team = data ?? []
+    // Ninguém nessa área ainda: avisa os administradores da empresa
+    if (!team.length) team = (await db.from('profiles').select('id').eq('tenant_id', tenantId).eq('role', 'admin')).data ?? []
+  }
   if (team?.length) {
     await db.from('notifications').insert(team.map(p => ({ user_id: p.id, message: `Novo lead: ${name}${company_name ? ` (${company_name})` : ''}.` })))
   }
