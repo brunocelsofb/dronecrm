@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
 import { signOut } from '@/lib/actions/auth'
 import { RefreshButton } from '@/components/layout/refresh-button'
@@ -118,39 +119,48 @@ export default async function DashboardLayout({
         </div>
       )}
 
-      <aside className={`flex w-56 shrink-0 flex-col bg-brand-800 p-4${impersonation.active ? ' mt-9' : ''}`}>
-        <div className="mb-6 flex justify-center py-4">
+      {/* Barra fina de ícones (fixa na lateral); cada grupo abre a continuação ao lado */}
+      <aside className={`sticky z-40 flex w-[88px] shrink-0 flex-col bg-brand-800 px-2 py-3 ${impersonation.active ? 'top-9 mt-9 h-[calc(100vh-2.25rem)]' : 'top-0 h-screen'}`}>
+        <div className="mb-3 flex justify-center py-2">
           {/\.(jpe?g)(\?|$)/i.test(sidebarLogoUrl) ? (
-            // JPG tem fundo: mostra com as cores originais, no mesmo tamanho de antes
-            <img src={sidebarLogoUrl} alt={orgName} className="h-8 w-auto rounded object-contain" />
+            // JPG tem fundo: mostra com as cores originais
+            <img src={sidebarLogoUrl} alt={orgName} className="h-7 w-auto max-w-[68px] rounded object-contain" />
           ) : (
-            // PNG/SVG transparente: fica branco no fundo escuro (como sempre foi)
-            <img src={sidebarLogoUrl} alt={orgName} className="h-8 w-auto object-contain brightness-0 invert" />
+            // PNG/SVG transparente: fica branco no fundo escuro
+            <img src={sidebarLogoUrl} alt={orgName} className="h-7 w-auto max-w-[68px] object-contain brightness-0 invert" />
           )}
         </div>
-        <div className="flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
           <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} features={enabledFeatures} />
         </div>
-        <div className="mt-4 border-t border-white/10 pt-3">
-          <div className="flex items-center gap-1.5 px-2.5 pb-2">
-            <div className="flex-1">
-              <RefreshButton variant="dark" />
-            </div>
+        <div className="mt-2 border-t border-white/10 pt-2">
+          <div className="flex items-center justify-center gap-1 pb-1.5">
+            <RefreshButton variant="rail" />
             <NotificationBell userId={user.id} />
           </div>
-          <p className="truncate px-2.5 text-xs text-brand-100/70">{profile?.full_name ?? user.email}</p>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="mt-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-brand-100/70 hover:bg-white/5 hover:text-white"
+          <div className="flex items-center justify-center gap-1">
+            <Link
+              href="/minha-conta"
+              title={`${profile?.full_name ?? user.email} — Minha conta`}
+              aria-label="Minha conta"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold text-white hover:bg-white/20"
             >
-              <LogOut size={16} strokeWidth={1.75} />
-              Sair
-            </button>
-          </form>
+              {initials(profile?.full_name ?? user.email ?? '')}
+            </Link>
+            <form action={signOut}>
+              <button
+                type="submit"
+                title="Sair"
+                aria-label="Sair"
+                className="flex items-center justify-center rounded-md p-1.5 text-brand-100/70 hover:bg-white/5 hover:text-white"
+              >
+                <LogOut size={16} strokeWidth={1.75} />
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
-      <main className={`flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
+      <main className={`min-w-0 flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
         {/* Bloqueio no navegador (trocar de tela pelo menu); pelo endereço, o redirect acima */}
         <PageFrame enabledFeatures={enabledFeatures} planFeatures={planFeatures}>{children}</PageFrame>
       </main>
@@ -158,4 +168,10 @@ export default async function DashboardLayout({
       {profile?.role === 'admin' && <AssistantPanel />}
     </div>
   )
+}
+
+// Iniciais do usuário para o atalho "Minha conta" na barra
+function initials(name: string) {
+  const parts = name.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
 }

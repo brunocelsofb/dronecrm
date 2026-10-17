@@ -126,7 +126,7 @@ export function CustomSurveysSection({
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-gray-900">Formulários de Pesquisa</h2>
         <p className="text-sm text-gray-400">
-          Nenhum formulário disponível para este contrato — crie um em &quot;Formulários&quot; no menu lateral (ou confira se a tag do contrato bate com a do formulário).
+          Nenhum formulário disponível para este contrato — crie um em Configurações → Formulários (ou confira se a tag do contrato bate com a do formulário).
         </p>
       </div>
     )
