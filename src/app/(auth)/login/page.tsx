@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
   const { empresa } = await searchParams
   const tenantId = empresa ? await tenantIdForSlug(empresa) : null
-  const { wallpaperUrl, loginBgUrl, bgColor, logoUrl, companyName } = tenantId ? await getPublicBranding(tenantId) : getPlatformBranding()
+  const { wallpaperUrl, loginBgUrl, bgColor, logoUrl, companyName } = tenantId ? await getPublicBranding(tenantId) : await getPlatformBranding()
 
   const bgStyle = {
     backgroundColor: bgColor,
@@ -30,12 +30,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                   <img
                     src={logoUrl || PLATFORM_BRAND.logoUrl}
                     alt={companyName}
-                    className="h-8 md:h-10 w-auto object-contain"
+                    className="h-10 md:h-12 w-auto object-contain"
                   />
                 </div>
                 <div className="text-right flex-1">
                   <h1 className="text-xl font-bold text-[#1B556B]">Entrar</h1>
-                  <p className="whitespace-nowrap text-xs font-medium text-[#32AF9D] mt-0.5">Acesse o CRM de Contratos</p>
+                  <p className="text-xs font-medium text-[#32AF9D] mt-0.5">Acesse o CRM de Contratos</p>
                 </div>
               </div>
             </div>

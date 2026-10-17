@@ -50,7 +50,13 @@ export async function getPublicBranding(tenantId?: string | null): Promise<Publi
   }
 }
 
-// Login comum (ainda não se sabe a empresa): marca do produto, sem foto de fundo
-export function getPlatformBranding(): PublicBranding {
-  return { wallpaperUrl: null, loginBgUrl: null, bgColor: PLATFORM_BRAND.bgColor, logoUrl: PLATFORM_BRAND.logoUrl, companyName: PLATFORM_BRAND.name }
+// Login comum (ainda não se sabe a empresa): logo e nome do produto; fundo e cor
+// da conta da plataforma (empresa do Super Admin), editáveis nas Configurações dela.
+export async function getPlatformBranding(): Promise<PublicBranding> {
+  const admin = createAdminClient()
+  const { data: sa } = await admin.from('profiles').select('tenant_id').eq('is_super_admin', true).not('tenant_id', 'is', null).limit(1).maybeSingle()
+  const base: PublicBranding = { wallpaperUrl: null, loginBgUrl: null, bgColor: PLATFORM_BRAND.bgColor, logoUrl: PLATFORM_BRAND.logoUrl, companyName: PLATFORM_BRAND.name }
+  if (!sa?.tenant_id) return base
+  const b = await getPublicBranding(sa.tenant_id as string)
+  return { ...base, wallpaperUrl: b.wallpaperUrl, loginBgUrl: b.loginBgUrl, bgColor: b.bgColor }
 }
