@@ -1,4 +1,4 @@
-// ─── Catálogo da Central de integrações (Marketing → Integrações) ───────────
+// ─── Catálogo da Central de integrações (Configurações → Integrações) ───────────
 // Cada integração recebe leads num endereço próprio (com chave). O passo a
 // passo aparece na tela. Texto neutro: vale para qualquer empresa.
 // Sem dependências de servidor.

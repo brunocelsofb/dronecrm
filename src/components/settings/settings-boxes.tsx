@@ -89,10 +89,9 @@ const BOXES: Box[] = [
     ],
   },
   {
-    title: 'Integrações', icon: Plug, description: 'Sistemas que conversam com o CRM.',
+    title: 'Integrações', icon: Plug, description: 'Escolha e configure as ferramentas que conversam com o CRM.',
     items: [
-      { href: '/financeiro', label: 'Faturamento (ERP)', description: 'Sankhya, TOTVS ou outro — quadro Integração no Financeiro' },
-      { href: '/marketing?aba=integracoes', label: 'Marketing', description: 'Meta, Google, LinkedIn, RD Station, Mailchimp, site' },
+      { href: '/settings/integracoes', label: 'Integrações', description: 'Faturamento (Sankhya, TOTVS…), anúncios, RD Station, Mailchimp, site' },
     ],
   },
   {

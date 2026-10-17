@@ -10,7 +10,6 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { getUserAccess } from '@/lib/auth/access'
 import { loadMarketing } from '@/lib/marketing/data'
 import { MarketingView } from '@/components/marketing/marketing-view'
-import type { IntegrationRow } from '@/components/marketing/integrations-center'
 import type { ListRow, SyncRow, OptoutRow } from '@/components/marketing/lists-view'
 import type { InboundLead } from '@/components/marketing/marketing-leads'
 import { loadListFilterOptions } from '@/lib/marketing/list-data'
@@ -28,12 +27,11 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const tenantId = await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
-  const [access, data, { data: tenant }, { data: people }, { data: integrations }, { data: lists }, { data: syncs }, { data: optouts, count: optoutCount }, { data: org }, options, { data: inbound }] = await Promise.all([
+  const [access, data, { data: tenant }, { data: people }, { data: lists }, { data: syncs }, { data: optouts, count: optoutCount }, { data: org }, options, { data: inbound }] = await Promise.all([
     getUserAccess(),
     loadMarketing(tenantId, { year, month }, { year: nowYear, month: nowMonth }),
     db.from('tenants').select('slug').eq('id', tenantId).maybeSingle(),
     db.from('profiles').select('id, full_name').eq('tenant_id', tenantId).not('is_super_admin', 'is', true).order('full_name'),
-    db.from('lead_integrations').select('id, kind, name, key, active, settings, received_count, last_received_at, last_error').order('created_at'),
     db.from('marketing_lists').select('id, name, audience, filters, updated_at').order('created_at', { ascending: false }),
     db.from('marketing_list_syncs').select('id, list_id, provider, target, status, total, sent, failed, errors, started_at').order('started_at', { ascending: false }).limit(30),
     db.from('marketing_optouts').select('id, email, source, created_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(30),
@@ -55,14 +53,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <MarketingView
       year={year} month={month} nowYear={nowYear} nowMonth={nowMonth}
-      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'integracoes' || sp.aba === 'listas' || sp.aba === 'leads' ? sp.aba : 'resultados'}
+      tab={sp.aba === 'campanhas' || sp.aba === 'links' || sp.aba === 'guia' || sp.aba === 'listas' || sp.aba === 'leads' ? sp.aba : 'resultados'}
       inbound={(inbound ?? []) as InboundLead[]}
       tools={tools}
       lists={(lists ?? []) as ListRow[]}
       syncs={(syncs ?? []) as SyncRow[]}
       optouts={{ count: optoutCount ?? 0, recent: (optouts ?? []) as OptoutRow[] }}
       listOptions={options}
-      integrations={(integrations ?? []) as IntegrationRow[]}
+      isAdmin={!!access?.isAdmin}
       campaigns={data.campaigns}
       costs={data.costs}
       report={data.report}

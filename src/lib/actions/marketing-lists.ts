@@ -19,6 +19,7 @@ async function ctx() {
   return { me: a, tenantId, db: await createScopedAdmin(tenantId) }
 }
 const NO = { ok: false as const, error: 'Sem acesso à aba Marketing.' }
+const NO_ADMIN = { ok: false as const, error: 'Só o Admin conecta ferramentas (Configurações → Integrações).' }
 const LEGAL = ['pre_existent_contract', 'consent', 'legitimate_interest']
 
 async function getTools(db: Awaited<ReturnType<typeof createScopedAdmin>>, tenantId: string): Promise<{ raw: Record<string, unknown>; tools: ToolsConfig }> {
@@ -69,6 +70,7 @@ export async function previewList(input: { audience: string; filters: ListFilter
 // ── Ferramentas (chaves criptografadas) ─────────────────────────────────────
 export async function saveMailchimpKey(input: { key: string; dc?: string | null }): Promise<Result<{ audiences: { id: string; name: string; members: number }[] }>> {
   const c = await ctx(); if (!c) return NO
+  if (!c.me.isAdmin) return NO_ADMIN
   const key = (input.key ?? '').trim()
   if (key.length < 10) return { ok: false, error: 'Cole a chave de API do Mailchimp.' }
   const dc = (input.dc ?? '').trim().toLowerCase() || mailchimpDc(key)
@@ -84,6 +86,7 @@ export async function saveMailchimpKey(input: { key: string; dc?: string | null 
 
 export async function listMailchimpAudiences(): Promise<Result<{ audiences: { id: string; name: string; members: number }[] }>> {
   const c = await ctx(); if (!c) return NO
+  if (!c.me.isAdmin) return NO_ADMIN
   const { tools } = await getTools(c.db, c.tenantId)
   if (!tools.mailchimp) return { ok: false, error: 'Conecte o Mailchimp primeiro.' }
   try { return { ok: true, audiences: await mailchimpAudiences(openKey(tools.mailchimp.key_enc), tools.mailchimp.dc) } }
@@ -92,6 +95,7 @@ export async function listMailchimpAudiences(): Promise<Result<{ audiences: { id
 
 export async function saveMailchimpOptions(input: { listId: string; listName: string; doubleOptin: boolean }): Promise<Result> {
   const c = await ctx(); if (!c) return NO
+  if (!c.me.isAdmin) return NO_ADMIN
   const { raw, tools } = await getTools(c.db, c.tenantId)
   if (!tools.mailchimp) return { ok: false, error: 'Conecte o Mailchimp primeiro.' }
   raw.mailchimp = { ...(raw.mailchimp as object), list_id: input.listId || null, list_name: input.listName || null, double_optin: !!input.doubleOptin }
@@ -101,6 +105,7 @@ export async function saveMailchimpOptions(input: { listId: string; listName: st
 
 export async function saveRdKey(input: { key: string; legalBasis: string }): Promise<Result> {
   const c = await ctx(); if (!c) return NO
+  if (!c.me.isAdmin) return NO_ADMIN
   const key = (input.key ?? '').trim()
   const { raw } = await getTools(c.db, c.tenantId)
   if (!LEGAL.includes(input.legalBasis)) return { ok: false, error: 'Base legal inválida.' }
@@ -117,6 +122,7 @@ export async function saveRdKey(input: { key: string; legalBasis: string }): Pro
 
 export async function disconnectTool(provider: 'mailchimp' | 'rd_station'): Promise<Result> {
   const c = await ctx(); if (!c) return NO
+  if (!c.me.isAdmin) return NO_ADMIN
   const { raw } = await getTools(c.db, c.tenantId)
   delete raw[provider]
   await putTools(c.db, c.tenantId, raw)
@@ -127,8 +133,8 @@ export async function disconnectTool(provider: 'mailchimp' | 'rd_station'): Prom
 export async function startSync(listId: string, provider: 'mailchimp' | 'rd_station'): Promise<Result<{ syncId: string; total: number }>> {
   const c = await ctx(); if (!c) return NO
   const { tools } = await getTools(c.db, c.tenantId)
-  if (provider === 'mailchimp' && !tools.mailchimp?.list_id) return { ok: false, error: 'Conecte o Mailchimp e escolha o público (Integrações → Mailchimp).' }
-  if (provider === 'rd_station' && !tools.rd_station) return { ok: false, error: 'Conecte o RD Station (Integrações → RD Station).' }
+  if (provider === 'mailchimp' && !tools.mailchimp?.list_id) return { ok: false, error: 'Conecte o Mailchimp e escolha o público (Configurações → Integrações → Mailchimp).' }
+  if (provider === 'rd_station' && !tools.rd_station) return { ok: false, error: 'Conecte o RD Station (Configurações → Integrações → RD Station).' }
   const { data: list } = await c.db.from('marketing_lists').select('id, audience, filters').eq('id', listId).maybeSingle()
   if (!list) return { ok: false, error: 'Lista não encontrada.' }
   const { members } = await loadListMembers(c.tenantId, list)

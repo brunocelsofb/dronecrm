@@ -1,6 +1,6 @@
 'use client'
 
-// Central de integrações (Marketing → Integrações): por categoria, cada
+// Central de integrações (Configurações → Integrações, só Admin): por categoria, cada
 // ferramenta com o endereço próprio, o passo a passo e o código pronto.
 
 import { useState, useTransition } from 'react'
@@ -20,8 +20,18 @@ const ICON: Record<string, string> = {
 }
 const brDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
 
-export function IntegrationsCenter({ rows, campaigns, baseUrl, tools }: { rows: IntegrationRow[]; campaigns: { id: string; name: string; status: string }[]; baseUrl: string; tools: ToolsStatus }) {
-  const [cat, setCat] = useState<IntegrationCategory>('ads')
+type Cat = IntegrationCategory | 'erp'
+
+export function IntegrationsCenter({ rows, campaigns, baseUrl, tools, erp, initialCat }: {
+  rows: IntegrationRow[]; campaigns: { id: string; name: string; status: string }[]; baseUrl: string; tools: ToolsStatus
+  erp?: React.ReactNode          // quadro da integração do faturamento (categoria Faturamento)
+  initialCat?: string
+}) {
+  const cats: { id: Cat; label: string }[] = [
+    ...(erp ? [{ id: 'erp' as Cat, label: 'Faturamento (ERP)' }] : []),
+    ...(Object.keys(CATEGORY_LABEL) as IntegrationCategory[]).map(c => ({ id: c as Cat, label: CATEGORY_LABEL[c] })),
+  ]
+  const [cat, setCat] = useState<Cat>(cats.some(c => c.id === initialCat) ? initialCat as Cat : cats[0].id)
   const [open, setOpen] = useState<string | null>(null)
   const byKind = new Map(rows.map(r => [r.kind, r]))
   const list = INTEGRATIONS.filter(i => i.category === cat)
@@ -30,19 +40,19 @@ export function IntegrationsCenter({ rows, campaigns, baseUrl, tools }: { rows: 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-gray-500">
-        Cada ferramenta ganha um <strong>endereço próprio</strong> para mandar leads ao CRM. O lead entra com a origem, a campanha e o histórico.
-        Se a mesma pessoa converter de novo, o CRM não duplica: registra a nova conversão no lead.
+        Escolha a categoria e a ferramenta que a empresa usa. Nas ferramentas de leads, cada uma ganha um <strong>endereço próprio</strong> para mandar leads ao CRM
+        (com origem, campanha e histórico; a mesma pessoa convertendo de novo não duplica).
       </p>
       <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <nav className="flex gap-1 overflow-x-auto lg:flex-col" aria-label="Categorias">
-          {(Object.keys(CATEGORY_LABEL) as IntegrationCategory[]).map(c => (
-            <button key={c} onClick={() => { setCat(c); setOpen(null) }}
-              className={`whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${cat === c ? 'bg-positive-100 font-medium text-positive-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-              {CATEGORY_LABEL[c]}
+          {cats.map(c => (
+            <button key={c.id} onClick={() => { setCat(c.id); setOpen(null) }}
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${cat === c.id ? 'bg-positive-100 font-medium text-positive-700' : 'text-gray-600 hover:bg-gray-100'}`}>
+              {c.label}
             </button>
           ))}
         </nav>
-        <div className="flex min-w-0 flex-col gap-4">
+        {cat === 'erp' ? <div className="min-w-0">{erp}</div> : <div className="flex min-w-0 flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {list.map(i => {
               const row = byKind.get(i.kind)
@@ -66,7 +76,7 @@ export function IntegrationsCenter({ rows, campaigns, baseUrl, tools }: { rows: 
             })}
           </div>
           {def && <Detail key={def.kind} def={def} row={byKind.get(def.kind) ?? null} campaigns={campaigns} baseUrl={baseUrl} tools={tools} />}
-        </div>
+        </div>}
       </div>
     </div>
   )

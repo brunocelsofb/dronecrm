@@ -1,5 +1,5 @@
 // /api/integracoes/<chave>
-// Endereço de cada integração da Central de integrações (Marketing → Integrações).
+// Endereço de cada integração da Central de integrações (Configurações → Integrações).
 // A chave identifica a empresa e a ferramenta; trocar a chave desliga o endereço antigo.
 // GET: confirma que o endereço existe (o Mailchimp testa assim ao salvar o webhook).
 // POST: recebe o lead (JSON, formulário comum ou multipart) e grava no CRM.

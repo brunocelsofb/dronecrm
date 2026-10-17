@@ -24,7 +24,7 @@ type Props = {
   lists: ListRow[]; syncs: SyncRow[]; optouts: { count: number; recent: OptoutRow[] }
   tools: ToolsStatus; options: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[] }
   campaigns: { id: string; name: string; status: string }[]
-  onGoIntegrations: () => void
+  isAdmin: boolean
 }
 
 export function ListsView(p: Props) {
@@ -103,7 +103,7 @@ export function ListsView(p: Props) {
         <p className="mt-1 text-xs">
           Mailchimp: {mcReady ? <span className="text-positive-700">conectado ({p.tools.mailchimp?.list_name ?? 'público escolhido'})</span> : <span>não conectado</span>} ·
           RD Station: {rdReady ? <span className="text-positive-700">conectado</span> : <span>não conectado</span>}
-          {(!mcReady || !rdReady) && <> — <button onClick={p.onGoIntegrations} className="text-brand-700 hover:underline">conectar em Integrações → Automação de marketing</button></>}
+          {(!mcReady || !rdReady) && (p.isAdmin ? <> — <a href="/settings/integracoes?cat=automacao" className="text-brand-700 hover:underline">conectar em Integrações → Automação de marketing</a></> : <> — peça ao Admin para conectar em Configurações → Integrações</>)}
         </p>
       </div>
 

@@ -9,17 +9,17 @@ import { integrationDef } from '@/lib/marketing/integrations'
 
 type Result = { ok: true } | { ok: false; error: string }
 
-// Quem vê a aba Marketing gerencia as integrações
+// Integrações são configuradas só pelo Admin (Configurações → Integrações)
 async function allowed() {
   const a = await getUserAccess()
-  return a && a.features.includes('marketing') ? a : null
+  return a && a.isAdmin ? a : null
 }
 
 const newKey = () => randomBytes(24).toString('hex')
 
 export async function activateIntegration(kind: string): Promise<Result> {
   const me = await allowed()
-  if (!me) return { ok: false, error: 'Sem acesso à aba Marketing.' }
+  if (!me) return { ok: false, error: 'Só o Admin configura integrações.' }
   const def = integrationDef(kind)
   if (!def) return { ok: false, error: 'Integração desconhecida.' }
   const tenantId = await resolveTenantId()
@@ -37,7 +37,7 @@ export async function activateIntegration(kind: string): Promise<Result> {
 }
 
 export async function setIntegrationActive(id: string, active: boolean): Promise<Result> {
-  if (!(await allowed())) return { ok: false, error: 'Sem acesso à aba Marketing.' }
+  if (!(await allowed())) return { ok: false, error: 'Só o Admin configura integrações.' }
   const db = await createScopedAdmin()
   const { data, error } = await db.from('lead_integrations').update({ active, updated_at: new Date().toISOString() }).eq('id', id).select('id')
   if (error) return { ok: false, error: error.message }
@@ -48,7 +48,7 @@ export async function setIntegrationActive(id: string, active: boolean): Promise
 
 // Nova chave: o endereço antigo para de funcionar (use se o endereço vazou)
 export async function rotateIntegrationKey(id: string): Promise<Result> {
-  if (!(await allowed())) return { ok: false, error: 'Sem acesso à aba Marketing.' }
+  if (!(await allowed())) return { ok: false, error: 'Só o Admin configura integrações.' }
   const db = await createScopedAdmin()
   const { data, error } = await db.from('lead_integrations').update({ key: newKey(), updated_at: new Date().toISOString() }).eq('id', id).select('id')
   if (error) return { ok: false, error: error.message }
@@ -59,7 +59,7 @@ export async function rotateIntegrationKey(id: string): Promise<Result> {
 
 // Campanha padrão (leads sem código de campanha) e, no botão de WhatsApp, número e mensagem
 export async function saveIntegrationSettings(id: string, input: { campaign_id?: string | null; phone?: string | null; message?: string | null }): Promise<Result> {
-  if (!(await allowed())) return { ok: false, error: 'Sem acesso à aba Marketing.' }
+  if (!(await allowed())) return { ok: false, error: 'Só o Admin configura integrações.' }
   const db = await createScopedAdmin()
   const { data: it } = await db.from('lead_integrations').select('id, kind, settings').eq('id', id).maybeSingle()
   if (!it) return { ok: false, error: 'Integração não encontrada.' }
