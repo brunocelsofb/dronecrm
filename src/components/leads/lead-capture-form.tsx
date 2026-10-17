@@ -7,14 +7,14 @@ import type { Tracking } from '@/lib/marketing/tracking'
 
 export function LeadCaptureForm({
   onSuccess,
-  redirectAfter,
+  redirectBase,
   defaultPhone,
   empresa,
   tracking,
   internal,
 }: {
   onSuccess?: () => void
-  redirectAfter?: (leadId: string) => string
+  redirectBase?: string   // ex.: "/leads/" → abre o lead criado (texto, porque a página é do servidor)
   defaultPhone?: string
   empresa?: string   // slug da empresa (formulário público)
   tracking?: Tracking // origem do link (UTM, gclid, fbclid) — formulário público
@@ -41,8 +41,8 @@ export function LeadCaptureForm({
       return
     }
 
-    if (redirectAfter && result.leadId) {
-      router.push(redirectAfter(result.leadId))
+    if (redirectBase && result.leadId) {
+      router.push(`${redirectBase}${result.leadId}`)
       return
     }
 
