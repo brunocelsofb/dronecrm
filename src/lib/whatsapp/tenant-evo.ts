@@ -15,8 +15,16 @@ import { getDefaultTenantId } from '@/lib/tenant/context'
 
 export type EvoServerCreds = { serverUrl: string; apiKey: string }
 
+// Endereço do servidor limpo: tira espaços, aspas e formatação de link colada
+// junto ("[https://x](https://x)") — já derrubou envios com "Failed to parse URL".
+export function normalizeBaseUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const m = String(raw).match(/https?:\/\/[^\s\]\)"'<>]+/i)
+  return m ? m[0].replace(/\/+$/, '') : null
+}
+
 function platformCreds(): EvoServerCreds | null {
-  const url = process.env.EVOLUTION_API_URL?.trim().replace(/\/$/, '')
+  const url = normalizeBaseUrl(process.env.EVOLUTION_API_URL)
   const key = process.env.EVOLUTION_API_KEY?.trim()
   return url && key ? { serverUrl: url, apiKey: key } : null
 }
@@ -25,7 +33,8 @@ export async function getTenantEvoCreds(tenantId: string): Promise<EvoServerCred
   const { data } = await createAdminClient()
     .from('organization_settings').select('evo_server_url, evo_api_key').eq('tenant_id', tenantId).maybeSingle()
   if (data?.evo_server_url && data?.evo_api_key) {
-    return { serverUrl: String(data.evo_server_url).trim().replace(/\/$/, ''), apiKey: String(data.evo_api_key).trim() }
+    const serverUrl = normalizeBaseUrl(String(data.evo_server_url))
+    if (serverUrl) return { serverUrl, apiKey: String(data.evo_api_key).trim() }
   }
   return platformCreds()
 }

@@ -12,6 +12,7 @@
 //   AGENT_FROM_EMAIL            — ex.: comercial@orbisengenharia.com.br
 //   AGENT_ALERT_EMAIL           — ex.: bruno.barbosa@orbisengenharia.com.br
 
+import { normalizeBaseUrl } from '@/lib/whatsapp/tenant-evo'
 import { getValidAccessToken, sendGmailMessage } from '@/lib/email/gmail'
 import { sendSmtpMessage } from '@/lib/email/smtp'
 import { createClient } from '@supabase/supabase-js'
@@ -58,7 +59,7 @@ export async function sendEvolutionWhatsApp(
   number: string,
   text: string,
 ): Promise<WhatsAppSendResult> {
-  const baseUrl = process.env.EVOLUTION_API_URL
+  const baseUrl = normalizeBaseUrl(process.env.EVOLUTION_API_URL)
   const apiKey  = process.env.EVOLUTION_API_KEY
 
   const instanceName =
@@ -77,7 +78,7 @@ export async function sendEvolutionWhatsApp(
   }
 
   const cleanNumber = number.replace(/\D/g, '')
-  const url = `${baseUrl.replace(/\/$/, '')}/message/sendText/${instanceName}`
+  const url = `${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`
 
   console.log(`[notifications/wa] instância="${instanceName}" → ${cleanNumber.slice(0, 4)}****`)
 
@@ -116,7 +117,7 @@ export async function sendEvolutionWhatsAppGroup(
   groupJid: string,
   text: string,
 ): Promise<WhatsAppSendResult> {
-  const baseUrl = process.env.EVOLUTION_API_URL
+  const baseUrl = normalizeBaseUrl(process.env.EVOLUTION_API_URL)
   const apiKey  = process.env.EVOLUTION_API_KEY
 
   const instanceName =
@@ -128,7 +129,7 @@ export async function sendEvolutionWhatsAppGroup(
     return { sent: false, error: 'Variáveis de ambiente Evolution API em falta' }
   }
 
-  const url = `${baseUrl.replace(/\/$/, '')}/message/sendText/${instanceName}`
+  const url = `${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`
 
   console.log(`[notifications/wa-group] instância="${instanceName}" → grupo ${groupJid.slice(0, 8)}****`)
 

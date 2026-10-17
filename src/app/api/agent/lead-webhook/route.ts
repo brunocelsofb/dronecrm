@@ -27,6 +27,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendEvolutionWhatsAppGroup } from '@/lib/agent/notifications'
+import { sendWhatsApp } from '@/lib/agent/briefing-core'
+import { getDefaultTenantId } from '@/lib/tenant/context'
 
 export const maxDuration = 30
 
@@ -119,7 +121,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.log(`[lead-webhook] ✓ lead_activity criada`)
   }
 
-  // 4. Monta e envia mensagem no WhatsApp do Dream Team Comercial
+  // 4. Monta e envia mensagem no WhatsApp do grupo comercial.
+  // O grupo e a instância das variáveis do servidor são da empresa padrão: lead de
+  // outra empresa NUNCA vai para esse grupo — vai para o gestor da própria empresa.
+  const leadTenant = (payload.record as { tenant_id?: string | null }).tenant_id ?? null
+  const defaultTenant = await getDefaultTenantId()
+  if (leadTenant && leadTenant !== defaultTenant) {
+    const r = await sendWhatsApp(buildLeadNotificationMessage(lead), leadTenant)
+    return NextResponse.json({ ok: true, activity: !activityError, whatsapp: r.sent, whatsappError: r.sent ? undefined : r.error })
+  }
   const groupJid = process.env.DREAM_TEAM_GROUP_JID
 
   let waResult: { sent: boolean; error?: string } = { sent: false, error: 'DREAM_TEAM_GROUP_JID não configurado' }

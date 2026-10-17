@@ -21,6 +21,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendEvolutionWhatsApp, createCrmActivity } from '@/lib/agent/notifications'
+import { sendWhatsApp } from '@/lib/agent/briefing-core'
+import { getDefaultTenantId } from '@/lib/tenant/context'
 
 export const maxDuration = 30
 
@@ -135,8 +137,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let waResult: { sent: boolean; error?: string } = { sent: false, error: 'WhatsApp só para detratores' }
 
   if (category === 'detrator') {
-    const internalNumber = process.env.AGENT_INTERNAL_WHATSAPP ?? process.env.WHATSAPP_NUMBER
-    if (internalNumber) {
+    // Empresa do contrato: o alerta vai para o gestor DESSA empresa (Configurações →
+    // Agentes IA → Gestor). Só a empresa padrão usa ainda o número das variáveis do servidor.
+    const { data: ct } = await supabase.from('contracts').select('tenant_id').eq('id', survey.contract_id).maybeSingle()
+    const contractTenant = (ct?.tenant_id as string | undefined) ?? null
+    const defaultTenant = await getDefaultTenantId()
+    const internalNumber = contractTenant && contractTenant !== defaultTenant ? null : (process.env.AGENT_INTERNAL_WHATSAPP ?? process.env.WHATSAPP_NUMBER)
+    if (contractTenant && contractTenant !== defaultTenant) {
+      waResult = await sendWhatsApp(buildDetractorWhatsAppAlert(survey, score, contractCtx), contractTenant)
+    } else if (internalNumber) {
       const waMsg = buildDetractorWhatsAppAlert(survey, score, contractCtx)
       waResult    = await sendEvolutionWhatsApp('retencao', internalNumber, waMsg)
 

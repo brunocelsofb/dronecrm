@@ -700,7 +700,8 @@ export async function getManagerChannel(tenantId: string): Promise<{
 }
 
 export async function sendWhatsApp(text: string, tenantId?: string | null): Promise<WhatsAppResult> {
-  let baseUrl: string | null | undefined = process.env.EVOLUTION_API_URL
+  const { normalizeBaseUrl } = await import('@/lib/whatsapp/tenant-evo')
+  let baseUrl: string | null | undefined = normalizeBaseUrl(process.env.EVOLUTION_API_URL)
   let apiKey: string | null | undefined  = process.env.EVOLUTION_API_KEY
   // Instância do briefing; se não definida, usa a de "novos negócios" (Matheus)
   let instance: string | null | undefined = process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS
