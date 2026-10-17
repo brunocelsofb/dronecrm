@@ -31,7 +31,6 @@ export default async function PerfisAcessoPage() {
   return (
     <div className="space-y-5">
       <div>
-        <Link href="/settings" className="text-xs text-gray-500 hover:underline">← Configurações</Link>
         <h1 className="mt-1 text-lg font-semibold text-gray-900">Perfis de acesso</h1>
         <p className="mt-0.5 max-w-3xl text-sm text-gray-500">
           Marque as abas que cada perfil vê no menu. O <strong>Admin</strong> vê sempre todas as abas do plano.

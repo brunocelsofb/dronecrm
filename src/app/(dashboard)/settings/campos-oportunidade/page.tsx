@@ -33,7 +33,6 @@ export default async function CamposOportunidadePage({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <Link href="/settings" style={{ fontSize: 12, color: '#8892a4', textDecoration: 'none' }}>← Configurações</Link>
           <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: '4px 0 0' }}>Campos por Funil</h1>
           <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>
             Defina quais campos aparecem no formulário de nova oportunidade de cada funil, e se são obrigatórios.

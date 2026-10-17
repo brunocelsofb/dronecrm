@@ -9,6 +9,8 @@ import { usePathname } from 'next/navigation'
 import { FEATURES, featureForPath } from '@/lib/config/plans'
 import { getPageHelp } from '@/lib/help/page-help'
 import { HelpTip } from '@/components/ui/help-tip'
+import Link from 'next/link'
+import { isSettingsChild } from '@/lib/config/settings-nav'
 
 export function PageFrame({ enabledFeatures, planFeatures, children }: { enabledFeatures: string[]; planFeatures?: string[]; children: React.ReactNode }) {
   const pathname = usePathname() ?? '/'
@@ -42,10 +44,17 @@ export function PageFrame({ enabledFeatures, planFeatures, children }: { enabled
           A aba “{FEATURES.find(f => f.key === blockedFrom.key)?.label ?? blockedFrom.key}” não está liberada {blockedFrom.profile ? 'para o seu perfil de acesso' : 'no seu plano'}.
         </p>
       )}
-      {help && (
-        <div key={pathname} className="-mt-2 mb-2 flex items-center justify-end gap-1.5 text-[11px] text-gray-400">
-          <span>Como funciona esta tela</span>
-          <HelpTip title={help.title} text={help.text} tips={help.tips} />
+      {(help || isSettingsChild(pathname)) && (
+        <div key={pathname} className="-mt-2 mb-2 flex items-center justify-between gap-3 text-[11px] text-gray-400">
+          {isSettingsChild(pathname)
+            ? <Link href="/settings" className="rounded-md px-1 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-100">← Configurações</Link>
+            : <span />}
+          {help && (
+            <span className="flex items-center gap-1.5">
+              <span>Como funciona esta tela</span>
+              <HelpTip title={help.title} text={help.text} tips={help.tips} />
+            </span>
+          )}
         </div>
       )}
       {children}
