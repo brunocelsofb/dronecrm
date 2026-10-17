@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 48" role="img" aria-label="Comercial Drone">
+  <g fill="none" stroke="#1B556B" stroke-width="3" stroke-linecap="round">
+    <line x1="12" y1="12" x2="36" y2="36"/>
+    <line x1="36" y1="12" x2="12" y2="36"/>
+    <ellipse cx="12" cy="12" rx="9" ry="3.5"/>
+    <ellipse cx="36" cy="12" rx="9" ry="3.5"/>
+    <ellipse cx="12" cy="36" rx="9" ry="3.5"/>
+    <ellipse cx="36" cy="36" rx="9" ry="3.5"/>
+  </g>
+  <rect x="18" y="18" width="12" height="12" rx="3" fill="#E98C5F"/>
+  <text x="56" y="22" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="13" font-weight="600" letter-spacing="2" fill="#32AF9D">COMERCIAL</text>
+  <text x="55" y="42" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="22" font-weight="800" letter-spacing="1" fill="#1B556B">DRONE</text>
+</svg>

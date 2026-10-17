@@ -1,10 +1,16 @@
-import { getPublicBranding } from '@/lib/utils/public-branding'
+import { getPublicBranding, getPlatformBranding } from '@/lib/utils/public-branding'
+import { tenantIdForSlug } from '@/lib/tenant/context'
+import { PLATFORM_BRAND } from '@/lib/config/platform'
 import { LoginForm } from './login-form'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LoginPage() {
-  const { wallpaperUrl, loginBgUrl, bgColor, logoUrl, companyName } = await getPublicBranding()
+// Login comum mostra a marca do produto; ?empresa=<slug> mostra a marca daquela empresa.
+// Depois de entrar, o CRM usa sempre a empresa do usuário (não depende deste link).
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
+  const { empresa } = await searchParams
+  const tenantId = empresa ? await tenantIdForSlug(empresa) : null
+  const { wallpaperUrl, loginBgUrl, bgColor, logoUrl, companyName } = tenantId ? await getPublicBranding(tenantId) : getPlatformBranding()
 
   const bgStyle = {
     backgroundColor: bgColor,
@@ -22,14 +28,14 @@ export default async function LoginPage() {
               <div className="w-full border-b-4 border-[#E98C5F] pb-4 mb-6 flex flex-row items-center justify-between gap-4">
                 <div className="flex-shrink-0">
                   <img
-                    src={logoUrl || '/drone.png'}
-                    alt="Logo"
+                    src={logoUrl || PLATFORM_BRAND.logoUrl}
+                    alt={companyName}
                     className="h-8 md:h-10 w-auto object-contain"
                   />
                 </div>
                 <div className="text-right flex-1">
                   <h1 className="text-xl font-bold text-[#1B556B]">Entrar</h1>
-                  <p className="text-xs font-medium text-[#32AF9D] mt-0.5">Acesse o CRM de Contratos</p>
+                  <p className="whitespace-nowrap text-xs font-medium text-[#32AF9D] mt-0.5">Acesse o CRM de Contratos</p>
                 </div>
               </div>
             </div>

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { PLATFORM_BRAND } from '@/lib/config/platform'
 
 export function LogoBadge({ src }: { src?: string }) {
-  const fallback = '/drone.png'
+  const fallback = PLATFORM_BRAND.logoUrl
   const [imgSrc, setImgSrc] = useState(src || fallback)
   const [failed, setFailed] = useState(false)
 

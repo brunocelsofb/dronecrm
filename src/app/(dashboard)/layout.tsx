@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { PLATFORM_BRAND } from '@/lib/config/platform'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
 import { signOut } from '@/lib/actions/auth'
 import { RefreshButton } from '@/components/layout/refresh-button'
@@ -45,7 +46,7 @@ export default async function DashboardLayout({
 
   const isAdmin = profile?.role === 'admin'
   const isSuperAdmin = (profile as any)?.is_super_admin === true
-  const orgName = orgSettings?.name ?? 'DRONE'
+  const orgName = orgSettings?.name ?? PLATFORM_BRAND.name
 
   // Le estado de impersonation ANTES de buscar tenantData
   const impersonation = await getImpersonationState()
@@ -74,7 +75,7 @@ export default async function DashboardLayout({
 
   // Logo dinamica
   const rawLogo = (orgSettings as any)?.logo_storage_path
-  let sidebarLogoUrl = '/drone.png'
+  let sidebarLogoUrl: string = PLATFORM_BRAND.logoUrl
   if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
     if (rawLogo.startsWith('http')) { sidebarLogoUrl = rawLogo }
     else {

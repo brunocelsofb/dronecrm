@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { PLATFORM_BRAND } from '@/lib/config/platform'
 
 export type PublicBranding = {
   wallpaperUrl: string | null
@@ -17,8 +18,8 @@ export async function getPublicBranding(tenantId?: string | null): Promise<Publi
     .eq('tenant_id', tenantId ?? await resolveTenantId())
     .maybeSingle()
 
-  // Logo: prioridade logo_url (URL direta) > logo_storage_path (bucket) > /drone.png (fallback)
-  let logoUrl: string | null = '/drone.png'
+  // Logo: prioridade logo_url (URL direta) > logo_storage_path (bucket) > logo do produto (reserva)
+  let logoUrl: string | null = PLATFORM_BRAND.logoUrl
 
   const directUrl = (s as any)?.logo_url
   if (directUrl && directUrl.startsWith('http')) {
@@ -45,6 +46,11 @@ export async function getPublicBranding(tenantId?: string | null): Promise<Publi
     loginBgUrl,
     bgColor: (s as any)?.public_bg_color || '#1B556B',
     logoUrl,
-    companyName: s?.company_name ?? 'DRONE',
+    companyName: s?.company_name ?? PLATFORM_BRAND.name,
   }
+}
+
+// Login comum (ainda não se sabe a empresa): marca do produto, sem foto de fundo
+export function getPlatformBranding(): PublicBranding {
+  return { wallpaperUrl: null, loginBgUrl: null, bgColor: PLATFORM_BRAND.bgColor, logoUrl: PLATFORM_BRAND.logoUrl, companyName: PLATFORM_BRAND.name }
 }
