@@ -121,11 +121,11 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
 
         <Box title="O que a IA sabe" text="É a base para a IA responder. Ela não inventa: o que não estiver aqui, ela diz que um especialista vai confirmar.">
           <Field label="Sobre a empresa, serviços e diferenciais (obrigatório)">
-            <textarea className={area} value={s.about} maxLength={6000} onChange={e => set('about', e.target.value)}
+            <textarea className={area} value={s.about} maxLength={12000} onChange={e => set('about', e.target.value)}
               placeholder={`O que a ${companyName || 'empresa'} faz, para quem, regiões atendidas, diferenciais...`} />
           </Field>
           <Field label="Perguntas frequentes" hint="Uma pergunta e a resposta por linha ou parágrafo.">
-            <textarea className={area} value={s.faq} maxLength={6000} onChange={e => set('faq', e.target.value)} />
+            <textarea className={area} value={s.faq} maxLength={12000} onChange={e => set('faq', e.target.value)} />
           </Field>
           <Field label="Tom de voz">
             <input className={input} value={s.tone} maxLength={500} onChange={e => set('tone', e.target.value)} />
