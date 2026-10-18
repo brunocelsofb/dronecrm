@@ -112,7 +112,7 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-800">
             <input type="checkbox" checked={s.skip_known_contacts} onChange={e => set('skip_known_contacts', e.target.checked)} />
-            Não atender quem já é contato cadastrado (clientes)
+            Contato já cadastrado (cliente) não conversa com a IA: vai para o consultor de clientes
           </label>
           <Field label="Máximo de respostas da IA por conversa" hint="Ao chegar no limite, passa para o comercial com o que tiver.">
             <input type="number" min={3} max={60} className={`${input} max-w-[120px]`} value={s.max_replies} onChange={e => set('max_replies', Number(e.target.value))} />
@@ -144,7 +144,7 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
           </Field>
         </Box>
 
-        <Box title="Para quem a IA passa" text="Os leads passados entram em Leads (inbound, já passado ao comercial), com o resumo no histórico. Com mais de um vendedor, é rodízio.">
+        <Box title="Potenciais clientes (hunter)" text="Para quem a IA passa os novos negócios qualificados. Entram em Leads (inbound, já passado ao comercial), com o resumo no histórico. Com mais de um vendedor, é rodízio.">
           <div className="space-y-2">
             {people.map(p => (
               <div key={p.id} className="grid items-center gap-2 sm:grid-cols-[200px_1fr]">
@@ -164,6 +164,21 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
           </Field>
           <Field label="Setor da conversa ao passar" hint="Como a conversa aparece no WhatsApp do CRM.">
             <input className={`${input} max-w-[240px]`} value={s.handoff_department} onChange={e => set('handoff_department', e.target.value)} />
+          </Field>
+        </Box>
+
+        <Box title="Clientes atuais (farmer)" text="Quem atende quem já é cliente. Cliente cadastrado que escrever no número da IA vai direto para essa pessoa (a IA não conversa); se a IA descobrir na conversa que é cliente, também encaminha.">
+          <Field label="Consultor de clientes">
+            <select className={`${input} max-w-[320px]`} value={s.client_owner} onChange={e => set('client_owner', e.target.value)}>
+              <option value="">— ninguém (vai para o time no WhatsApp do CRM) —</option>
+              {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+          <Field label="WhatsApp do consultor (opcional)" hint="A IA informa ao cliente o número em que ele vai ser atendido.">
+            <input className={`${input} max-w-[240px]`} placeholder="(62) 99999-9999" value={s.client_owner_phone} onChange={e => set('client_owner_phone', e.target.value)} />
+          </Field>
+          <Field label="Resposta automática para cliente cadastrado (opcional)" hint="Enviada quando um cliente cadastrado escreve no número da IA. Em branco: não responde, só avisa o consultor.">
+            <textarea className={`${input} min-h-[64px]`} maxLength={600} value={s.client_auto_reply} onChange={e => set('client_auto_reply', e.target.value)} />
           </Field>
         </Box>
 

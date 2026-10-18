@@ -23,7 +23,10 @@ export type SdrSettings = {
   questions: string[]          // perguntas de qualificação
   disqualify: string           // quando não é cliente / descartar
   tone: string
-  sellers: string[]            // quem recebe os leads qualificados (rodízio)
+  sellers: string[]            // quem recebe os potenciais clientes qualificados (hunter, rodízio)
+  client_owner: string         // consultor dos clientes atuais (farmer)
+  client_owner_phone: string   // WhatsApp desse consultor (a IA pode informar ao cliente)
+  client_auto_reply: string    // resposta automática quando um cliente cadastrado escreve no número da IA
   booking_url: string          // link de agenda padrão
   booking_links: Record<string, string> // link de agenda por vendedor
   max_replies: number
@@ -54,6 +57,9 @@ export const DEFAULT_SDR_SETTINGS: SdrSettings = {
   disqualify: '',
   tone: 'Cordial, profissional e direto. Mensagens curtas.',
   sellers: [],
+  client_owner: '',
+  client_owner_phone: '',
+  client_auto_reply: '',
   booking_url: '',
   booking_links: {},
   max_replies: 20,
@@ -93,6 +99,9 @@ export function readSdrSettings(raw: unknown): SdrSettings {
     disqualify: str(r.disqualify, 2000),
     tone: str(r.tone, 500) || d.tone,
     sellers: strList(r.sellers, 50, 40),
+    client_owner: str(r.client_owner, 40).trim(),
+    client_owner_phone: str(r.client_owner_phone, 20).replace(/\D/g, ''),
+    client_auto_reply: str(r.client_auto_reply, 600).trim(),
     booking_url: /^https?:\/\//i.test(str(r.booking_url, 500).trim()) ? str(r.booking_url, 500).trim() : '',
     booking_links: links,
     max_replies: Number.isInteger(maxReplies) && maxReplies >= 3 && maxReplies <= 60 ? maxReplies : d.max_replies,

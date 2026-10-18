@@ -47,12 +47,12 @@ async function activeConversation(tenantId: string, phone: string, instance: str
   return (data as Conv | null) ?? null
 }
 
-// Pode a IA começar a atender este contato?
-async function canStart(tenantId: string, s: SdrSettings, phone: string, instance: string): Promise<boolean> {
+// Pode a IA começar a atender este contato? 'client' = cliente cadastrado (vai para o consultor de clientes)
+async function canStart(tenantId: string, s: SdrSettings, phone: string, instance: string): Promise<'ok' | 'client' | 'no'> {
   const db = createAdminClient()
   const since = new Date(Date.now() - QUIET_DAYS * 86400_000).toISOString()
   const tail = last8(phone)
-  if (tail.length < 8) return false
+  if (tail.length < 8) return 'no'
 
   const [{ data: recentSdr }, { data: humanMsg }, { data: status }, { data: openLead }] = await Promise.all([
     db.from('sdr_conversations').select('id').eq('tenant_id', tenantId).eq('phone', phone).gte('started_at', since).limit(1),
@@ -62,13 +62,44 @@ async function canStart(tenantId: string, s: SdrSettings, phone: string, instanc
     db.from('leads').select('id').eq('tenant_id', tenantId).ilike('phone', `%${tail}`).not('handed_off_at', 'is', null)
       .not('status', 'in', '(convertido,descartado)').limit(1),
   ])
-  if (recentSdr?.length || humanMsg?.length || openLead?.length) return false
+  if (recentSdr?.length || humanMsg?.length || openLead?.length) return 'no'
   // Conversa já em andamento com o time (não arquivada)
-  if (status && status.is_archived !== true && ['active', 'awaiting_selection'].includes(String(status.triage_state))) return false
+  if (status && status.is_archived !== true && ['active', 'awaiting_selection'].includes(String(status.triage_state))) return 'no'
   if (s.skip_known_contacts) {
     const { data: contact } = await db.from('contacts').select('id').eq('tenant_id', tenantId).ilike('phone', `%${tail}`).limit(1)
-    if (contact?.length) return false
+    if (contact?.length) return 'client'
   }
+  return 'ok'
+}
+
+// Conversa fica com uma pessoa do time (WhatsApp do CRM) e ela é avisada
+async function assignConversation(tenantId: string, phone: string, instance: string, userId: string, notice: string) {
+  const db = createAdminClient()
+  await db.from('whatsapp_conversation_assignments').upsert({
+    phone, instance_name: instance, tenant_id: tenantId, assigned_to: userId, assigned_at: nowIso(),
+  }, { onConflict: 'tenant_id,phone' })
+  await db.from('notifications').insert({ user_id: userId, message: notice.slice(0, 300) })
+}
+
+async function personName(userId: string): Promise<string | null> {
+  const { data } = await createAdminClient().from('profiles').select('full_name').eq('id', userId).maybeSingle()
+  return (data?.full_name as string | null)?.split(' ')[0] ?? null
+}
+
+const fmtPhone = (d: string) => (d.length === 13 && d.startsWith('55') ? d.slice(2) : d).replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3')
+
+// Cliente cadastrado escreveu no número da IA: sem IA, vai direto para o consultor de clientes
+async function routeKnownClient(tenantId: string, s: SdrSettings, phone: string, instance: string, pushName: string | null,
+  schedule: (fn: () => Promise<void>) => void): Promise<boolean> {
+  if (!s.client_owner) return false
+  const db = createAdminClient()
+  const { data: owner } = await db.from('profiles').select('id').eq('id', s.client_owner).eq('tenant_id', tenantId).maybeSingle()
+  if (!owner) return false
+  const conv = await createConversation(tenantId, phone, instance, pushName, nowIso())
+  if (!conv) return false
+  await endConversation(conv, 'routed', { end_reason: 'Cliente cadastrado: encaminhado ao consultor de clientes.', assigned_to: s.client_owner })
+  await assignConversation(tenantId, phone, instance, s.client_owner, `Cliente ${pushName ?? fmtPhone(phone)} escreveu no número ${instance} e foi encaminhado a você.`)
+  if (s.client_auto_reply) schedule(async () => { await sendAndRecord(conv, s, s.client_auto_reply) })
   return true
 }
 
@@ -94,7 +125,7 @@ async function createConversation(tenantId: string, phone: string, instance: str
 export async function routeInboundToSdr(opts: {
   tenantId: string; phone: string; instanceName: string | null; messageRowId: string; messageAt: string
   pushName: string | null; schedule: (fn: () => Promise<void>) => void
-}): Promise<'continued' | 'started' | null> {
+}): Promise<'continued' | 'started' | 'client' | null> {
   if (!opts.instanceName) return null // a IA só atende números identificados
   const instance = opts.instanceName
   const { settings } = await loadConfig(opts.tenantId)
@@ -106,8 +137,10 @@ export async function routeInboundToSdr(opts: {
     return 'continued'
   }
   if (!settings.instances.includes(instance)) return null
+  const can = await canStart(opts.tenantId, settings, opts.phone, instance)
+  if (can === 'client') return (await routeKnownClient(opts.tenantId, settings, opts.phone, instance, opts.pushName, opts.schedule)) ? 'client' : null
+  if (can !== 'ok') return null
   if (!(await aiReady(opts.tenantId, settings))) return null
-  if (!(await canStart(opts.tenantId, settings, opts.phone, instance))) return null
 
   // Começa um pouco antes da mensagem, para ela entrar na conversa
   const startedAt = new Date(new Date(opts.messageAt).getTime() - 1000).toISOString()
@@ -220,7 +253,16 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
     }
     if (call.name === 'encaminhar_para_equipe') {
       const setor = typeof call.input.setor === 'string' ? call.input.setor.slice(0, 60) : null
-      await endConversation({ ...conv, answers }, 'routed', { end_reason: String(call.input.motivo ?? '').slice(0, 300) || 'Assunto para o time', department: setor })
+      const motivo = String(call.input.motivo ?? '').slice(0, 300) || 'Assunto para o time'
+      // Cliente atual: vai para o consultor de clientes (farmer)
+      if (call.input.cliente_atual === true && settings.client_owner) {
+        await endConversation({ ...conv, answers }, 'routed', { end_reason: `Cliente atual: ${motivo}`, department: setor, assigned_to: settings.client_owner })
+        const who = (typeof answers.nome === 'string' && answers.nome) || conv.contact_name || fmtPhone(conv.phone)
+        await assignConversation(conv.tenant_id, conv.phone, conv.instance_name, settings.client_owner, `Cliente ${who} pediu atendimento (${motivo}) pelo número ${conv.instance_name}.`)
+        const name = await personName(settings.client_owner)
+        return `Encaminhado ao consultor de clientes${name ? ` ${name}` : ''}.${settings.client_owner_phone ? ` WhatsApp dele: ${fmtPhone(settings.client_owner_phone)}.` : ''} Avise que ele vai dar sequência.`
+      }
+      await endConversation({ ...conv, answers }, 'routed', { end_reason: motivo, department: setor })
       return 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.'
     }
     await endConversation({ ...conv, answers }, 'disqualified', { end_reason: String(call.input.motivo ?? '').slice(0, 300) || 'Descartado' })

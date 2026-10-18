@@ -32,6 +32,13 @@ export async function saveSdrSettings(input: SdrSettings & { meta_token?: string
     s.sellers = s.sellers.filter(id => valid.has(id))
     for (const k of Object.keys(s.booking_links)) if (!valid.has(k)) delete s.booking_links[k]
   }
+  if (s.client_owner) {
+    const { data: owner } = await db.from('profiles').select('id').eq('tenant_id', tenantId).eq('id', s.client_owner).maybeSingle()
+    if (!owner) s.client_owner = ''
+  }
+  if (s.client_owner_phone && (s.client_owner_phone.length < 10 || s.client_owner_phone.length > 13)) {
+    return { ok: false, error: 'WhatsApp do consultor de clientes inválido: use DDD + número.' }
+  }
   if (s.enabled) {
     if (s.channel === 'evolution' && !s.instances.length && !s.departments.length) {
       return { ok: false, error: 'Escolha ao menos um número ou um setor da triagem para a IA atender.' }
@@ -102,6 +109,11 @@ export async function simulateSdr(settingsInput: SdrSettings, history: ChatTurn[
           return link ? `Passado para ${sellerName ?? 'o time comercial'}. Link de agenda para enviar: ${link}` : `Passado para ${sellerName ?? 'o time comercial'}. Sem link de agenda: diga que o consultor vai entrar em contato.`
         }
         if (call.name === 'encaminhar_para_equipe') {
+          if (call.input.cliente_atual === true && s.client_owner) {
+            const owner = ((await db.from('profiles').select('full_name').eq('id', s.client_owner).maybeSingle()).data?.full_name as string | null) ?? null
+            events.push({ tool: 'Encaminharia ao consultor de clientes', detail: `${owner ?? '—'} · ${String(call.input.motivo ?? '')}` })
+            return `Encaminhado ao consultor de clientes${owner ? ` ${owner.split(' ')[0]}` : ''}.${s.client_owner_phone ? ` WhatsApp dele: ${s.client_owner_phone}.` : ''} Avise que ele vai dar sequência.`
+          }
           events.push({ tool: 'Encaminharia ao time', detail: String(call.input.motivo ?? '') })
           return 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.'
         }

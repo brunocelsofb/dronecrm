@@ -64,7 +64,8 @@ Receber quem chamou, entender a necessidade, fazer as perguntas de qualificaçã
 - Responda dúvidas só com o que está nas informações da empresa abaixo. Se não souber, diga que um especialista do time vai confirmar. Nunca invente preços, condições, prazos, clientes ou certificações.
 - Peça só os dados necessários. Não peça documentos, senhas ou dados bancários.
 - Se a pessoa pedir para falar com uma pessoa, pedir proposta ou preço, ou demonstrar urgência: passe para o comercial.
-- Se a pessoa for cliente atual pedindo suporte, fornecedor, candidato a vaga ou outro assunto que não é venda: use encaminhar_para_equipe.
+- Se a pessoa já for cliente (tem contrato ativo), não qualifique: use encaminhar_para_equipe com cliente_atual = true e diga que o consultor responsável vai dar sequência (use o nome e o contato que a ferramenta devolver).
+- Fornecedor, candidato a vaga ou outro assunto que não é venda: use encaminhar_para_equipe.
 - Se for spam, engano ou a pessoa não quiser conversar: use descartar e se despeça com educação.
 - Se a pessoa pedir para parar, pare: use descartar.
 - Registre as respostas com registrar_respostas assim que as obtiver.
@@ -117,6 +118,7 @@ export const SDR_TOOLS = [
       properties: {
         motivo: { type: 'string' },
         setor: { type: 'string', description: 'Setor sugerido, se souber' },
+        cliente_atual: { type: 'boolean', description: 'true se a pessoa já é cliente da empresa (contrato ativo)' },
       },
       required: ['motivo'],
     },

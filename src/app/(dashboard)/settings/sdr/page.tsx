@@ -24,8 +24,9 @@ export default async function SdrSettingsPage() {
   ])
   const settings = readSdrSettings(org?.sdr_settings)
   if (!org?.sdr_meta_token_enc) settings.meta.last4 = null
-  const aliases = (org?.evo_instance_aliases ?? {}) as Record<string, { alias?: string } | undefined>
-  const instances = instanceNames.map(n => ({ name: n, label: aliases[n]?.alias || n }))
+  // Números da empresa (sem os privados), com o nome dado em Conexões
+  const aliases = (org?.evo_instance_aliases ?? {}) as Record<string, { label?: string; alias?: string; private?: boolean } | undefined>
+  const instances = instanceNames.filter(n => aliases[n]?.private !== true).map(n => ({ name: n, label: aliases[n]?.label || aliases[n]?.alias || n }))
   const menu = ((org?.triage_menu_options ?? []) as { label: string; department: string }[])
     .filter(o => o?.department).map(o => ({ department: o.department, label: o.label }))
 
