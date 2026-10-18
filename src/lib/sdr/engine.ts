@@ -361,7 +361,7 @@ async function handoff(conv: Conv, s: SdrSettings, input: Record<string, unknown
   if (sellerId) {
     await db.from('whatsapp_conversation_assignments').upsert({
       phone: conv.phone, instance_name: conv.instance_name, tenant_id: conv.tenant_id, assigned_to: sellerId, assigned_at: now,
-    }, { onConflict: 'phone,instance_name' })
+    }, { onConflict: 'tenant_id,phone' })
   }
   await endConversation({ ...conv, lead_id: leadId ?? null }, 'handed_off', {
     summary: resumo, lead_id: leadId ?? null, assigned_to: sellerId,

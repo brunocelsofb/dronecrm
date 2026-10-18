@@ -862,7 +862,7 @@ export async function getWhatsAppAssignments(phones: string[]): Promise<Record<s
 // ── PONTO 2: assignWhatsAppConversation agora atualiza department pelo alias da instância ──
 export async function assignWhatsAppConversation(phone: string, userId: string): Promise<ActionState> {
   const supabase = await createClient()
-  const { error } = await supabase.from('whatsapp_conversation_assignments').upsert({ phone, assigned_to: userId, assigned_at: new Date().toISOString() })
+  const { error } = await supabase.from('whatsapp_conversation_assignments').upsert({ phone, assigned_to: userId, assigned_at: new Date().toISOString() }, { onConflict: 'tenant_id,phone' })
   if (error) return { error: error.message }
 
   try {
