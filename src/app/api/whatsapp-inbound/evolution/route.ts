@@ -1,9 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
+import { routeInboundToSdr, startSdrFromTriage } from '@/lib/sdr/engine'
+
+// O SDR de IA responde depois de devolver o 200 (after); espera a sequência de mensagens
+export const maxDuration = 60
+
+// Roda depois da resposta ao webhook, sem derrubar nada se falhar
+const runLater = (fn: () => Promise<void>) => after(() => fn().catch(e => console.error('[sdr] after:', e)))
 
 function toCanonicalPhone(rawPhone: string): string {
   let cleaned = rawPhone.replace(/\D/g, '')
@@ -438,6 +445,18 @@ export async function POST(request: Request) {
 
     if (insertError) return NextResponse.json({ ok: false, error: insertError.message })
 
+    // ── SDR de IA: conversa já com a IA, ou número atendido por ela ───────────
+    try {
+      const sdr = await routeInboundToSdr({
+        tenantId, phone, instanceName, messageRowId: inserted.id,
+        messageAt: messageTimestamp ? new Date(Number(messageTimestamp) * 1000).toISOString() : new Date().toISOString(),
+        pushName, schedule: runLater,
+      })
+      if (sdr) return NextResponse.json({ ok: true, id: inserted?.id, sdr })
+    } catch (e) {
+      console.error('[evo-webhook] SDR de IA:', e)
+    }
+
     // ================================================================
     // MÁQUINA DE TRIAGEM + PROCESSAMENTO DE NPS + CRIAÇÃO DE HISTÓRICO
     // ================================================================
@@ -584,6 +603,16 @@ export async function POST(request: Request) {
         )
 
         if (chosen) {
+          // Setor passado para o SDR de IA: a IA responde em vez da confirmação
+          const toSdr = await startSdrFromTriage({
+            tenantId, phone, instanceName, department: chosen.department, pushName, schedule: runLater,
+          }).catch(() => false)
+          if (toSdr) {
+            await supabase.from('whatsapp_conversation_status')
+              .update({ department: chosen.department, triage_state: 'active', updated_at: new Date().toISOString() })
+              .eq('phone', statusPhone).eq('instance_name', statusInstance)
+            return NextResponse.json({ ok: true, status: 'triage_to_sdr' })
+          }
           await supabase
             .from('whatsapp_conversation_status')
             .update({
@@ -697,7 +726,10 @@ async function sendAndRecordTriageMenu(
 ) {
   const optionsText = menuOptions.map(opt => `${opt.key}. ${opt.label}`).join('\n')
   const protoLine = protocolNumber ? `*Protocolo: ${protocolNumber}*\n\n` : ''
-  const menuText = `${protoLine}Olá! Seja bem-vindo(a) à Orbis Engenharia Clínica e Hospitalar! 🚀\n\nEnquanto direciono o seu atendimento, aproveite para conhecer as nossas soluções:\n🌐 Site: https://orbisengenhariaclinica.com.br/\n📸 Instagram: https://instagram.com/orbisengenhariaclinica\n💼 LinkedIn: https://www.linkedin.com/company/orbis-engenharia-cl-nica/\n\nPara agilizar, digite a opção desejada:\n${optionsText}`
+  // Nome da empresa vem da configuração (vale para qualquer empresa)
+  const { data: org } = await supabase.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
+  const company = (org?.company_name as string | null) || (org?.name as string | null) || ''
+  const menuText = `${protoLine}Olá! Seja bem-vindo(a)${company ? ` à *${company}*` : ''}! 🚀\n\nPara agilizar, digite a opção desejada:\n${optionsText}`
 
   await sendAndRecordBotMessage(supabase, tenantId, orgSettings, instanceName, rawPhone, phone, menuText)
 }

@@ -82,10 +82,11 @@ const BOXES: Box[] = [
     ],
   },
   {
-    title: 'Inteligência artificial', icon: BrainCircuit, description: 'Agentes Farmer e Hunter e o assistente.',
+    title: 'Inteligência artificial', icon: BrainCircuit, description: 'Agentes Farmer e Hunter, o assistente e o SDR de IA.',
     items: [
       { href: '/settings/copiloto', label: 'Agentes IA (Farmer e Hunter)', description: 'Chave da IA, gestor e avisos de renovação' },
       { href: '/settings/assistente', label: 'Assistente Théo', description: 'Limite de gasto mensal' },
+      { href: '/settings/sdr', label: 'SDR de IA', description: 'Assistente no WhatsApp que qualifica e passa leads' },
     ],
   },
   {

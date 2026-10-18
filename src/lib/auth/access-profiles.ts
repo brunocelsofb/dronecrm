@@ -33,7 +33,7 @@ export const DEFAULT_PROFILE_FEATURES: Record<AccessProfile, string[]> = {
   gestor: [...FEATURE_KEYS],
   hunter: ['dashboard', 'pipeline', 'leads', 'contracts', 'propostas', 'companies', 'whatsapp', 'copiloto'],
   farmer: ['dashboard', 'pipeline', 'contracts', 'propostas', 'carteira', 'companies', 'tickets', 'whatsapp', 'surveys', 'copiloto'],
-  marketing: ['marketing', 'leads', 'companies', 'surveys'],
+  marketing: ['marketing', 'sdr', 'leads', 'companies', 'surveys'],
   financeiro: ['financeiro', 'painel', 'contracts', 'companies'],
   tecnico: ['dashboard', 'contracts', 'propostas', 'carteira', 'companies', 'tickets', 'surveys'],
 }

@@ -14,7 +14,7 @@ import { NAV_HELP } from '@/lib/help/page-help'
 import { isSettingsChild } from '@/lib/config/settings-nav'
 import {
   LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3,
-  Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset,
+  Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset, Bot,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
@@ -39,6 +39,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     key: 'marketing', label: 'Marketing', icon: Megaphone, items: [
       { href: '/marketing', label: 'Marketing', icon: Megaphone, feature: 'marketing' },
+      { href: '/sdr', label: 'SDR de IA', icon: Bot, feature: 'sdr' },
     ],
   },
   {
