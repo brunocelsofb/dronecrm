@@ -11,7 +11,7 @@ import { encryptSecret, getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } from '@/li
 import { readSdrSettings, bookingLinkFor, SDR_LIMITS, SDR_LIMIT_LABEL, type SdrSettings } from '@/lib/sdr/settings'
 import { mergeAnswers, type ChatTurn } from '@/lib/sdr/prompt'
 import { runSdrTurn } from '@/lib/sdr/turn'
-import { takeOverConversation } from '@/lib/sdr/engine'
+import { takeOverConversation, handoffClosing } from '@/lib/sdr/engine'
 
 type Result = { ok: true } | { ok: false; error: string }
 const NO_ADMIN = 'Só o Admin configura o SDR de IA.'
@@ -113,19 +113,25 @@ export async function simulateSdr(settingsInput: SdrSettings, history: ChatTurn[
           if (seller) sellerName = ((await db.from('profiles').select('full_name').eq('id', seller).maybeSingle()).data?.full_name as string | null)?.split(' ')[0] ?? null
           const link = bookingLinkFor(s, seller)
           events.push({ tool: 'Passaria ao comercial', detail: `${String(call.input.resumo ?? '')} · ${call.input.qualificado ? 'qualificado' : 'não qualificado'} · ${String(call.input.temperatura ?? '')}` })
-          return link ? `Passado para ${sellerName ?? 'o time comercial'}. Link de agenda para enviar: ${link}` : `Passado para ${sellerName ?? 'o time comercial'}. Sem link de agenda: diga que o consultor vai entrar em contato.`
+          return {
+            result: link ? `Passado para ${sellerName ?? 'o time comercial'}. Link de agenda para enviar: ${link}` : `Passado para ${sellerName ?? 'o time comercial'}. Sem link de agenda: diga que o consultor vai entrar em contato.`,
+            closing: handoffClosing(sellerName, link),
+          }
         }
         if (call.name === 'encaminhar_para_equipe') {
           if (call.input.cliente_atual === true && s.client_owner) {
             const owner = ((await db.from('profiles').select('full_name').eq('id', s.client_owner).maybeSingle()).data?.full_name as string | null) ?? null
             events.push({ tool: 'Encaminharia ao consultor de clientes', detail: `${owner ?? '—'} · ${String(call.input.motivo ?? '')}` })
-            return `Encaminhado ao consultor de clientes${owner ? ` ${owner.split(' ')[0]}` : ''}.${s.client_owner_phone ? ` WhatsApp dele: ${s.client_owner_phone}.` : ''} Avise que ele vai dar sequência.`
+            return {
+              result: `Encaminhado ao consultor de clientes${owner ? ` ${owner.split(' ')[0]}` : ''}.${s.client_owner_phone ? ` WhatsApp dele: ${s.client_owner_phone}.` : ''} Avise que ele vai dar sequência.`,
+              closing: `Obrigado! Vou encaminhar para ${owner?.split(' ')[0] ?? 'o consultor responsável pelos clientes'}, que dá sequência ao seu atendimento.`,
+            }
           }
           events.push({ tool: 'Encaminharia ao time', detail: String(call.input.motivo ?? '') })
-          return 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.'
+          return { result: 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.', closing: 'Obrigado! Vou encaminhar sua mensagem para o nosso time, que responde por aqui em breve.' }
         }
         events.push({ tool: 'Descartaria', detail: String(call.input.motivo ?? '') })
-        return 'Encerrado.'
+        return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Qualquer coisa, estamos à disposição.' }
       },
     })
     return { ok: true, reply: res.text, events, ended: !!res.terminal, tokens: res.usage.input + res.usage.output }

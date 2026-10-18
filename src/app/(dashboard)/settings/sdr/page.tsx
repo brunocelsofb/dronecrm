@@ -9,6 +9,8 @@ import { SettingsSubpage } from '@/components/settings/settings-subpage'
 import { SdrSettingsForm } from '@/components/sdr/sdr-settings-form'
 
 export const dynamic = 'force-dynamic'
+// O Testar conversa chama a IA (até algumas voltas): dá tempo de sobra
+export const maxDuration = 60
 
 export default async function SdrSettingsPage() {
   const access = await getUserAccess()

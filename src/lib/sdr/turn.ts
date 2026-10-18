@@ -23,7 +23,8 @@ export async function runSdrTurn(opts: {
   turns: ChatTurn[]
   repliesLeft: number
   contactName: string | null
-  onTool: (call: ToolCall) => Promise<string>
+  // result volta para a IA; closing é a mensagem de encerramento se a IA não escrever nada depois
+  onTool: (call: ToolCall) => Promise<string | { result: string; closing?: string }>
   now?: Date
 }): Promise<TurnResult> {
   const system = buildSystemPrompt(opts.settings, {
@@ -33,9 +34,11 @@ export async function runSdrTurn(opts: {
   const calls: ToolCall[] = []
   let terminal: SdrToolName | null = null
   const usage = { input: 0, output: 0 }
-  let text = ''
+  let finalText = ''   // o que a IA escreveu ao terminar a vez
+  let preText = ''     // o que escreveu junto com uma ferramenta
+  let closing: string | null = null
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const res = await opts.client.create({
       model: opts.settings.model,
       max_tokens: 700,
@@ -47,7 +50,7 @@ export async function runSdrTurn(opts: {
     usage.output += res.usage?.output_tokens ?? 0
     const blockText = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('\n').trim()
     const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-    if (res.stop_reason !== 'tool_use' || !toolUses.length) { text = blockText; break }
+    if (res.stop_reason !== 'tool_use' || !toolUses.length) { finalText = blockText; break }
 
     messages.push({ role: 'assistant', content: res.content })
     const results: Anthropic.ToolResultBlockParam[] = []
@@ -58,15 +61,21 @@ export async function runSdrTurn(opts: {
       if (terminal && TERMINAL_TOOLS.has(name)) out = 'Já encerrado nesta conversa.'
       else {
         calls.push({ name, input })
-        try { out = await opts.onTool({ name, input }) } catch (e) { out = `Falhou: ${e instanceof Error ? e.message : 'erro'}` }
+        try {
+          const r = await opts.onTool({ name, input })
+          if (typeof r === 'string') out = r
+          else { out = r.result; if (TERMINAL_TOOLS.has(name) && r.closing) closing = r.closing }
+        } catch (e) { out = `Falhou: ${e instanceof Error ? e.message : 'erro'}` }
         if (TERMINAL_TOOLS.has(name)) terminal = name
       }
       results.push({ type: 'tool_result', tool_use_id: tu.id, content: out })
     }
     messages.push({ role: 'user', content: results })
-    // Texto já escrito junto com a ferramenta vale como resposta se a próxima volta vier vazia
-    if (blockText) text = blockText
+    if (blockText) preText = blockText
   }
+  // A IA às vezes encerra a vez sem escrever depois da ferramenta: nunca deixar o contato sem resposta
+  // Ordem: resposta final da IA > mensagem de encerramento (tem vendedor e link) > texto escrito junto da ferramenta
+  const text = finalText || (terminal && closing) || preText || closing || 'Certo! Pode me contar um pouco mais para eu entender melhor?'
   return { text: cleanReply(text), calls, terminal, usage }
 }
 

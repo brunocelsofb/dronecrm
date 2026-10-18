@@ -255,7 +255,9 @@ function SdrSimulator({ settings, aiReady }: { settings: () => SdrSettings; aiRe
     const next: ChatTurn[] = [...turns, { role: 'user', content: t }]
     setTurns(next); setText(''); setError(null)
     start(async () => {
-      const r = await simulateSdr(settings(), next)
+      let r: Awaited<ReturnType<typeof simulateSdr>>
+      try { r = await simulateSdr(settings(), next) }
+      catch { setError('A IA demorou demais ou a conexão caiu. Tente de novo.'); return }
       if (!r.ok) { setError(r.error); return }
       setTokens(x => x + r.tokens)
       if (r.reply) setTurns([...next, { role: 'assistant', content: r.reply }])
@@ -288,12 +290,12 @@ function SdrSimulator({ settings, aiReady }: { settings: () => SdrSettings; aiRe
           ))}
         </ul>
       )}
-      {ended && <p className="mt-2 text-xs text-gray-500">A IA encerrou a parte dela. No WhatsApp, a conversa iria para o time.</p>}
+      {ended && <p className="mt-2 text-xs text-gray-500">A IA encerrou a parte dela. No WhatsApp, a conversa iria para o time. Use Recomeçar para outro teste.</p>}
       {error && <p className="mt-2 text-xs text-negative-700">{error}</p>}
       <div className="mt-2 flex gap-2">
-        <input className={input} value={text} disabled={!aiReady || pending} onChange={e => setText(e.target.value)}
+        <input className={input} value={text} disabled={!aiReady || pending || ended} onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') send() }} placeholder={aiReady ? 'Escreva como cliente...' : 'Cadastre a chave da IA primeiro'} />
-        <button type="button" onClick={send} disabled={!aiReady || pending || !text.trim()} aria-label="Enviar"
+        <button type="button" onClick={send} disabled={!aiReady || pending || ended || !text.trim()} aria-label="Enviar"
           className="rounded-md bg-brand-700 px-3 text-white hover:bg-brand-800 disabled:opacity-50"><Send size={14} /></button>
       </div>
       {tokens > 0 && <p className="mt-1 text-[11px] text-gray-400">Consumo deste teste: {tokens.toLocaleString('pt-BR')} tokens</p>}

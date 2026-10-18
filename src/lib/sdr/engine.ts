@@ -230,7 +230,7 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
   const repliesLeft = settings.max_replies - conv.ai_replies
   if (repliesLeft <= 0) {
     const r = await handoff(conv, settings, { resumo: answersText(conv.answers) || 'Limite de respostas da IA atingido.', qualificado: false, temperatura: 'morno', motivo: 'limite de respostas' })
-    await sendAndRecord(conv, settings, `Obrigado pelas informações! Vou passar sua conversa para ${r.seller ?? 'um consultor do nosso time'}, que continua o atendimento por aqui.${r.booking ? `\n\nSe preferir, já escolha um horário: ${r.booking}` : ''}`)
+    await sendAndRecord(conv, settings, handoffClosing(r.seller, r.booking))
     return
   }
 
@@ -241,7 +241,7 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
   }
 
   let answers = conv.answers ?? {}
-  const onTool = async (call: ToolCall): Promise<string> => {
+  const onTool = async (call: ToolCall): Promise<string | { result: string; closing?: string }> => {
     if (call.name === 'registrar_respostas') {
       answers = mergeAnswers(answers, call.input)
       await db.from('sdr_conversations').update({ answers, updated_at: nowIso() }).eq('id', conv.id)
@@ -249,7 +249,10 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
     }
     if (call.name === 'passar_para_comercial') {
       const r = await handoff({ ...conv, answers }, settings, call.input)
-      return r.booking ? `Passado para ${r.seller ?? 'o time comercial'}. Link de agenda para enviar: ${r.booking}` : `Passado para ${r.seller ?? 'o time comercial'}. Sem link de agenda: diga que o consultor vai entrar em contato.`
+      return {
+        result: r.booking ? `Passado para ${r.seller ?? 'o time comercial'}. Link de agenda para enviar: ${r.booking}` : `Passado para ${r.seller ?? 'o time comercial'}. Sem link de agenda: diga que o consultor vai entrar em contato.`,
+        closing: handoffClosing(r.seller, r.booking),
+      }
     }
     if (call.name === 'encaminhar_para_equipe') {
       const setor = typeof call.input.setor === 'string' ? call.input.setor.slice(0, 60) : null
@@ -260,13 +263,16 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
         const who = (typeof answers.nome === 'string' && answers.nome) || conv.contact_name || fmtPhone(conv.phone)
         await assignConversation(conv.tenant_id, conv.phone, conv.instance_name, settings.client_owner, `Cliente ${who} pediu atendimento (${motivo}) pelo número ${conv.instance_name}.`)
         const name = await personName(settings.client_owner)
-        return `Encaminhado ao consultor de clientes${name ? ` ${name}` : ''}.${settings.client_owner_phone ? ` WhatsApp dele: ${fmtPhone(settings.client_owner_phone)}.` : ''} Avise que ele vai dar sequência.`
+        return {
+          result: `Encaminhado ao consultor de clientes${name ? ` ${name}` : ''}.${settings.client_owner_phone ? ` WhatsApp dele: ${fmtPhone(settings.client_owner_phone)}.` : ''} Avise que ele vai dar sequência.`,
+          closing: `Obrigado! Vou encaminhar para ${name ?? 'o consultor responsável pelos clientes'}, que dá sequência ao seu atendimento${settings.client_owner_phone ? ` pelo WhatsApp ${fmtPhone(settings.client_owner_phone)}` : ''}.`,
+        }
       }
       await endConversation({ ...conv, answers }, 'routed', { end_reason: motivo, department: setor })
-      return 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.'
+      return { result: 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.', closing: 'Obrigado! Vou encaminhar sua mensagem para o nosso time, que responde por aqui em breve.' }
     }
     await endConversation({ ...conv, answers }, 'disqualified', { end_reason: String(call.input.motivo ?? '').slice(0, 300) || 'Descartado' })
-    return 'Encerrado.'
+    return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Qualquer coisa, estamos à disposição.' }
   }
 
   const result = await runSdrTurn({
@@ -416,6 +422,11 @@ async function handoff(conv: Conv, s: SdrSettings, input: Record<string, unknown
     sellerName = (p?.full_name as string | null)?.split(' ')[0] ?? null
   }
   return { seller: sellerName, booking: bookingLinkFor(s, sellerId) }
+}
+
+// Mensagem padrão ao passar para o comercial (usada se a IA não escrever a dela)
+export function handoffClosing(seller: string | null, booking: string | null): string {
+  return `Perfeito, obrigado pelas informações! Vou passar seu atendimento para ${seller ?? 'um consultor do nosso time comercial'}, que continua com você por aqui.${booking ? `\n\nSe preferir, já escolha um horário para conversarem: ${booking}` : ''}`
 }
 
 /** Pessoa do time assume pela tela do SDR. */
