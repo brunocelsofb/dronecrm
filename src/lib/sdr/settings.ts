@@ -11,6 +11,13 @@ export type SdrModel = typeof SDR_MODELS[number]['id']
 
 export type SdrChannel = 'evolution' | 'meta'
 
+// Limites dos textos (caracteres) — a tela mostra o contador e o servidor recusa o que passar
+export const SDR_LIMITS = { about: 12000, faq: 12000, icp: 4000, disqualify: 4000, tone: 1000, client_auto_reply: 600 } as const
+export const SDR_LIMIT_LABEL: Record<keyof typeof SDR_LIMITS, string> = {
+  about: 'Sobre a empresa', faq: 'Perguntas frequentes', icp: 'Perfil de cliente ideal',
+  disqualify: 'Quando não é cliente', tone: 'Tom de voz', client_auto_reply: 'Resposta automática para cliente',
+}
+
 export type SdrSettings = {
   enabled: boolean
   agent_name: string
@@ -92,16 +99,16 @@ export function readSdrSettings(raw: unknown): SdrSettings {
     model,
     instances: strList(r.instances, 20, 120),
     departments: strList(r.departments, 20, 60),
-    about: str(r.about, 12000),
-    faq: str(r.faq, 12000),
-    icp: str(r.icp, 2000),
+    about: str(r.about, SDR_LIMITS.about),
+    faq: str(r.faq, SDR_LIMITS.faq),
+    icp: str(r.icp, SDR_LIMITS.icp),
     questions: Array.isArray(r.questions) ? questions : d.questions,
-    disqualify: str(r.disqualify, 2000),
-    tone: str(r.tone, 500) || d.tone,
+    disqualify: str(r.disqualify, SDR_LIMITS.disqualify),
+    tone: str(r.tone, SDR_LIMITS.tone) || d.tone,
     sellers: strList(r.sellers, 50, 40),
     client_owner: str(r.client_owner, 40).trim(),
     client_owner_phone: str(r.client_owner_phone, 20).replace(/\D/g, ''),
-    client_auto_reply: str(r.client_auto_reply, 600).trim(),
+    client_auto_reply: str(r.client_auto_reply, SDR_LIMITS.client_auto_reply).trim(),
     booking_url: /^https?:\/\//i.test(str(r.booking_url, 500).trim()) ? str(r.booking_url, 500).trim() : '',
     booking_links: links,
     max_replies: Number.isInteger(maxReplies) && maxReplies >= 3 && maxReplies <= 60 ? maxReplies : d.max_replies,

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useTransition, type ReactNode } from 'react'
 import { Bot, Send, RotateCcw } from 'lucide-react'
-import { SDR_MODELS, type SdrSettings } from '@/lib/sdr/settings'
+import { SDR_MODELS, SDR_LIMITS, type SdrSettings } from '@/lib/sdr/settings'
 import { saveSdrSettings, simulateSdr, type SimEvent } from '@/lib/actions/sdr'
 import type { ChatTurn } from '@/lib/sdr/prompt'
 
@@ -18,7 +18,17 @@ type Props = {
 }
 
 const input = 'w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm'
-const area = `${input} min-h-[96px]`
+// Caixa cresce com o texto (até um máximo, depois rola)
+const area = `${input} min-h-[120px] max-h-[520px] [field-sizing:content] resize-y`
+
+function Count({ value, max }: { value: string; max: number }) {
+  const over = value.length > max
+  return (
+    <span className={`mt-0.5 block text-right text-[11px] ${over ? 'font-medium text-negative-700' : 'text-gray-400'}`}>
+      {value.length.toLocaleString('pt-BR')} / {max.toLocaleString('pt-BR')}{over ? ' — acima do limite, encurte antes de salvar' : ''}
+    </span>
+  )
+}
 
 function Box({ title, text, children }: { title: string; text?: string; children: ReactNode }) {
   return (
@@ -121,14 +131,17 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
 
         <Box title="O que a IA sabe" text="É a base para a IA responder. Ela não inventa: o que não estiver aqui, ela diz que um especialista vai confirmar.">
           <Field label="Sobre a empresa, serviços e diferenciais (obrigatório)">
-            <textarea className={area} value={s.about} maxLength={12000} onChange={e => set('about', e.target.value)}
+            <textarea className={area} value={s.about} onChange={e => set('about', e.target.value)}
               placeholder={`O que a ${companyName || 'empresa'} faz, para quem, regiões atendidas, diferenciais...`} />
+            <Count value={s.about} max={SDR_LIMITS.about} />
           </Field>
           <Field label="Perguntas frequentes" hint="Uma pergunta e a resposta por linha ou parágrafo.">
-            <textarea className={area} value={s.faq} maxLength={12000} onChange={e => set('faq', e.target.value)} />
+            <textarea className={area} value={s.faq} onChange={e => set('faq', e.target.value)} />
+            <Count value={s.faq} max={SDR_LIMITS.faq} />
           </Field>
           <Field label="Tom de voz">
-            <input className={input} value={s.tone} maxLength={500} onChange={e => set('tone', e.target.value)} />
+            <textarea className={`${input} min-h-[64px] [field-sizing:content]`} value={s.tone} onChange={e => set('tone', e.target.value)} />
+            <Count value={s.tone} max={SDR_LIMITS.tone} />
           </Field>
         </Box>
 
@@ -137,10 +150,12 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
             <textarea className={area} value={questions} onChange={e => setQuestions(e.target.value)} />
           </Field>
           <Field label="Perfil de cliente ideal" hint="Ex.: porte, segmento, região, volume.">
-            <textarea className={area} value={s.icp} maxLength={2000} onChange={e => set('icp', e.target.value)} />
+            <textarea className={area} value={s.icp} onChange={e => set('icp', e.target.value)} />
+            <Count value={s.icp} max={SDR_LIMITS.icp} />
           </Field>
           <Field label="Quando não é cliente" hint="Ex.: pessoa física, fora da região, só quer emprego. A IA descarta ou encaminha ao time.">
-            <textarea className={area} value={s.disqualify} maxLength={2000} onChange={e => set('disqualify', e.target.value)} />
+            <textarea className={area} value={s.disqualify} onChange={e => set('disqualify', e.target.value)} />
+            <Count value={s.disqualify} max={SDR_LIMITS.disqualify} />
           </Field>
         </Box>
 
@@ -178,7 +193,8 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
             <input className={`${input} max-w-[240px]`} placeholder="(62) 99999-9999" value={s.client_owner_phone} onChange={e => set('client_owner_phone', e.target.value)} />
           </Field>
           <Field label="Resposta automática para cliente cadastrado (opcional)" hint="Enviada quando um cliente cadastrado escreve no número da IA. Em branco: não responde, só avisa o consultor.">
-            <textarea className={`${input} min-h-[64px]`} maxLength={600} value={s.client_auto_reply} onChange={e => set('client_auto_reply', e.target.value)} />
+            <textarea className={`${input} min-h-[64px] [field-sizing:content]`} value={s.client_auto_reply} onChange={e => set('client_auto_reply', e.target.value)} />
+            <Count value={s.client_auto_reply} max={SDR_LIMITS.client_auto_reply} />
           </Field>
         </Box>
 

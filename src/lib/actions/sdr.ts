@@ -8,7 +8,7 @@ import { getUserAccess } from '@/lib/auth/access'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { encryptSecret, getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } from '@/lib/ai/tenant-key'
-import { readSdrSettings, bookingLinkFor, type SdrSettings } from '@/lib/sdr/settings'
+import { readSdrSettings, bookingLinkFor, SDR_LIMITS, SDR_LIMIT_LABEL, type SdrSettings } from '@/lib/sdr/settings'
 import { mergeAnswers, type ChatTurn } from '@/lib/sdr/prompt'
 import { runSdrTurn } from '@/lib/sdr/turn'
 import { takeOverConversation } from '@/lib/sdr/engine'
@@ -24,6 +24,13 @@ export async function saveSdrSettings(input: SdrSettings & { meta_token?: string
   const { data: cur } = await db.from('organization_settings').select('sdr_settings, sdr_meta_token_enc').eq('tenant_id', tenantId).maybeSingle()
   const prev = readSdrSettings(cur?.sdr_settings)
 
+  // Texto acima do limite: avisa em vez de cortar sem aviso
+  for (const k of Object.keys(SDR_LIMITS) as (keyof typeof SDR_LIMITS)[]) {
+    const v = (input as Record<string, unknown>)[k]
+    if (typeof v === 'string' && v.length > SDR_LIMITS[k]) {
+      return { ok: false, error: `"${SDR_LIMIT_LABEL[k]}" tem ${v.length.toLocaleString('pt-BR')} caracteres; o limite é ${SDR_LIMITS[k].toLocaleString('pt-BR')}.` }
+    }
+  }
   const s = readSdrSettings(input)
   // Vendedores: só pessoas desta empresa
   if (s.sellers.length) {
