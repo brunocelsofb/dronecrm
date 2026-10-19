@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import {
   createActionPlan, updateActionPlan, addPlanAction, setPlanActionStatus, deletePlanAction,
-  advancePlan, checkPlanEfficacy, cancelActionPlan,
+  advancePlan, checkPlanEfficacy, cancelActionPlan, reopenActionPlan, deleteActionPlan,
 } from '@/lib/actions/action-plans'
 import { updateActionPlanItemStatus, deleteActionPlanItem } from '@/lib/actions/workflow'
 import {
@@ -24,7 +24,7 @@ export type PlanRow = {
   gut_g: number | null; gut_u: number | null; gut_t: number | null
   five_whys: string[] | null; ishikawa: Record<string, string[]> | null; root_cause: string | null; cause_method: CauseMethod | null
   efficacy_result: 'eficaz' | 'nao_eficaz' | null; efficacy_note: string | null; efficacy_checked_at: string | null
-  standardization: string | null; created_at: string; closed_at: string | null
+  standardization: string | null; created_at: string; closed_at: string | null; cancel_reason: string | null
 }
 export type ItemRow = {
   id: string; plan_id: string | null; description: string; responsible_department: string | null; status: string
@@ -34,6 +34,7 @@ export type ItemRow = {
 
 type Res = { ok: true } | { ok: false; error: string }
 const STATUS_LABELS: Record<string, string> = { pending: 'Pendente', in_progress: 'Em andamento', done: 'Concluído' }
+const STATUS_LABEL_ALL: Record<string, string> = { ...STATUS_LABELS, cancelled: 'Cancelada' }
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600', in_progress: 'bg-accent-cream text-warn-700', done: 'bg-positive-100 text-positive-700',
 }
@@ -71,8 +72,8 @@ function GutSelect({ label, value, onChange, help, disabled }: { label: string; 
   )
 }
 
-export function ActionPlanSection({ contractId, plans, items, settings, people }: {
-  contractId: string; plans: PlanRow[]; items: ItemRow[]; settings: ActionPlanSettings; people: { id: string; name: string }[]
+export function ActionPlanSection({ contractId, plans, items, settings, people, isAdmin = false }: {
+  contractId: string; plans: PlanRow[]; items: ItemRow[]; settings: ActionPlanSettings; people: { id: string; name: string }[]; isAdmin?: boolean
 }) {
   const sorted = useMemo(() => sortPlans(plans), [plans])
   const [openId, setOpenId] = useState<string | null>(sorted.find(p => p.phase !== 'closed' && p.phase !== 'cancelled')?.id ?? null)
@@ -105,7 +106,7 @@ export function ActionPlanSection({ contractId, plans, items, settings, people }
       )}
 
       {sorted.map(p => (
-        <PlanCard key={p.id} contractId={contractId} plan={p} items={items.filter(i => i.plan_id === p.id)} settings={settings} people={people}
+        <PlanCard key={p.id} contractId={contractId} plan={p} items={items.filter(i => i.plan_id === p.id)} settings={settings} people={people} isAdmin={isAdmin}
           open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} />
       ))}
 
@@ -181,8 +182,8 @@ function PhaseBar({ phase }: { phase: PlanPhase }) {
   )
 }
 
-function PlanCard({ contractId, plan, items, settings, people, open, onToggle }: {
-  contractId: string; plan: PlanRow; items: ItemRow[]; settings: ActionPlanSettings; people: { id: string; name: string }[]; open: boolean; onToggle: () => void
+function PlanCard({ contractId, plan, items, settings, people, isAdmin, open, onToggle }: {
+  contractId: string; plan: PlanRow; items: ItemRow[]; settings: ActionPlanSettings; people: { id: string; name: string }[]; isAdmin: boolean; open: boolean; onToggle: () => void
 }) {
   const score = gutScore(plan.gut_g, plan.gut_u, plan.gut_t)
   const band = gutBand(score, settings.gut_bands)
@@ -191,6 +192,7 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
   const a = useAct()
   const [cancelling, setCancelling] = useState(false)
   const [reason, setReason] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const next = nextPhaseCheck(plan.phase, items, settings.require_efficacy)
 
   return (
@@ -199,7 +201,11 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
         {open ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
         <PhaseBar phase={plan.phase} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-900">{plan.title}</p>
+          <p className="truncate text-sm font-semibold text-gray-900">
+            {plan.title}
+            {plan.phase === 'cancelled' && <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-gray-500">Cancelada</span>}
+            {plan.phase === 'closed' && <span className="ml-2 rounded-full bg-positive-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-positive-700">Encerrada</span>}
+          </p>
           <p className="text-[11px] text-gray-500">
             {ORIGIN_LABEL[plan.origin]} · {PHASE_LABEL[plan.phase]}{plan.cycle > 1 ? ` · ciclo ${plan.cycle}` : ''} · {doneCount}/{items.length} ações · aberta em {br(plan.created_at)}
           </p>
@@ -209,6 +215,15 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
 
       {open && (
         <div className="space-y-4 border-t border-gray-100 px-4 py-4">
+          {plan.phase === 'cancelled' && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-700">
+              <span className="flex-1">
+                <b>Tratativa cancelada</b> em {br(plan.closed_at)}{plan.cancel_reason ? `: ${plan.cancel_reason}` : ''}. Os campos ficam só para consulta.
+              </span>
+              <button type="button" disabled={a.pending} onClick={() => a.run(() => reopenActionPlan(contractId, plan.id))}
+                className="rounded-lg border border-brand-700 bg-white px-3 py-1 font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">Reabrir</button>
+            </div>
+          )}
           <ProblemBlock contractId={contractId} plan={plan} settings={settings} disabled={ended} />
           <CauseBlock contractId={contractId} plan={plan} settings={settings} disabled={ended} />
           <ActionsBlock contractId={contractId} planId={plan.id} items={items} settings={settings} people={people} disabled={ended} />
@@ -237,8 +252,24 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
               )}
             </div>
           )}
-          {a.error && <p className="text-xs text-negative-700">{a.error}</p>}
           {plan.phase === 'closed' && <p className="text-[11px] text-positive-700">Encerrada em {br(plan.closed_at)}.</p>}
+          {isAdmin && (
+            <div className="flex items-center justify-end gap-2 text-xs">
+              {deleting ? (
+                <>
+                  <span className="text-negative-700">Excluir a tratativa e as {items.length} ação(ões)? Não dá para desfazer.</span>
+                  <button type="button" disabled={a.pending} onClick={() => a.run(() => deleteActionPlan(contractId, plan.id))}
+                    className="rounded-lg bg-negative-600 px-3 py-1 font-medium text-white hover:bg-negative-700 disabled:opacity-50">Excluir</button>
+                  <button type="button" onClick={() => setDeleting(false)} className="text-gray-500">Voltar</button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setDeleting(true)} className="inline-flex items-center gap-1 text-gray-400 hover:text-negative-700">
+                  <Trash2 className="h-3.5 w-3.5" /> Excluir tratativa (admin)
+                </button>
+              )}
+            </div>
+          )}
+          {a.error && <p className="text-xs text-negative-700">{a.error}</p>}
         </div>
       )}
     </div>
@@ -397,10 +428,14 @@ function ActionsBlock({ contractId, planId, items, settings, people, disabled }:
                     {w && <td className="px-2 py-1.5 text-gray-600">{i.how ?? '—'}</td>}
                     {w && <td className="whitespace-nowrap px-2 py-1.5 text-gray-600">{i.how_much !== null ? fmtBRL(Number(i.how_much)) : '—'}</td>}
                     <td className="px-2 py-1.5">
-                      <select value={i.status} disabled={a.pending} onChange={e => a.run(() => setPlanActionStatus(contractId, i.id, e.target.value as 'pending'))}
-                        className={`rounded-md border-0 px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLES[i.status] ?? ''}`}>
-                        {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
+                      {disabled ? (
+                        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLES[i.status] ?? ''}`}>{STATUS_LABEL_ALL[i.status] ?? i.status}</span>
+                      ) : (
+                        <select value={i.status} disabled={a.pending} onChange={e => a.run(() => setPlanActionStatus(contractId, i.id, e.target.value as 'pending'))}
+                          className={`rounded-md border-0 px-1.5 py-0.5 text-[11px] font-medium ${STATUS_STYLES[i.status] ?? ''}`}>
+                          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="px-1 py-1.5">
                       {!disabled && <button type="button" onClick={() => a.run(() => deletePlanAction(contractId, i.id))} className="text-gray-300 hover:text-negative-700" title="Excluir ação"><Trash2 className="h-3.5 w-3.5" /></button>}

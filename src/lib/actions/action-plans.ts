@@ -212,10 +212,40 @@ export async function cancelActionPlan(contractId: string, planId: string, reaso
   const r = txt(reason, 500)
   if (!r) return { ok: false, error: 'Diga o motivo do cancelamento.' }
   const now = new Date().toISOString()
-  await c.db.from('action_plans').update({ phase: 'cancelled', closed_at: now, updated_at: now }).eq('id', planId)
-  // Ações abertas da tratativa saem das pendências
-  await c.db.from('action_plan_items').update({ status: 'done', resolved_at: now }).eq('plan_id', planId).neq('status', 'done')
+  await c.db.from('action_plans').update({ phase: 'cancelled', cancel_reason: r, closed_at: now, updated_at: now }).eq('id', planId)
+  // Ações abertas saem das pendências (e voltam se a tratativa for reaberta)
+  await c.db.from('action_plan_items').update({ status: 'cancelled' }).eq('plan_id', planId).in('status', ['pending', 'in_progress'])
   await log(c.db, contractId, c.userId, `⛔ Tratativa "${plan.title}" cancelada: ${r}`)
+  done(contractId)
+  return { ok: true }
+}
+
+// Reabre uma tratativa cancelada: volta a Planejar e as ações canceladas voltam a pendentes
+export async function reopenActionPlan(contractId: string, planId: string): Promise<Result> {
+  const c = await ctx(contractId)
+  if ('error' in c) return { ok: false, error: c.error }
+  const plan = await loadPlan(c.db, planId, contractId)
+  if (!plan) return { ok: false, error: 'Tratativa não encontrada.' }
+  if (plan.phase !== 'cancelled') return { ok: false, error: 'Só tratativas canceladas podem ser reabertas.' }
+  const now = new Date().toISOString()
+  await c.db.from('action_plans').update({ phase: 'plan', cancel_reason: null, closed_at: null, updated_at: now }).eq('id', planId).eq('phase', 'cancelled')
+  await c.db.from('action_plan_items').update({ status: 'pending' }).eq('plan_id', planId).eq('status', 'cancelled')
+  await log(c.db, contractId, c.userId, `↩️ Tratativa "${plan.title}" reaberta.`)
+  done(contractId)
+  return { ok: true }
+}
+
+// Admin: exclui a tratativa e as ações dela
+export async function deleteActionPlan(contractId: string, planId: string): Promise<Result> {
+  const me = await getUserAccess()
+  if (!me?.isAdmin) return { ok: false, error: 'Só administradores excluem tratativas.' }
+  const c = await ctx(contractId)
+  if ('error' in c) return { ok: false, error: c.error }
+  const plan = await loadPlan(c.db, planId, contractId)
+  if (!plan) return { ok: false, error: 'Tratativa não encontrada.' }
+  const { error } = await c.db.from('action_plans').delete().eq('id', planId).eq('contract_id', contractId)
+  if (error) return { ok: false, error: error.message }
+  await log(c.db, contractId, c.userId, `🗑️ Tratativa "${plan.title}" excluída por um administrador.`)
   done(contractId)
   return { ok: true }
 }
