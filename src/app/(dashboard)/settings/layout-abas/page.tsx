@@ -3,22 +3,27 @@ import { TabOrderEditorByPipeline } from '@/components/settings/tab-order-editor
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
+// Todas as abas da oportunidade (mesmos ids de contracts/[id]/page.tsx)
 export const ALL_CONTRACT_TABS = [
   { id: 'visao-geral', label: 'Visão Geral' },
   { id: 'atividades', label: 'Atividades' },
-  { id: 'emails', label: 'E-mails' },
+  { id: 'responsavel', label: 'Responsável & Transferências' },
+  { id: 'plano-de-acao', label: 'Plano de Ação' },
   { id: 'arquivos', label: 'Arquivos' },
-  { id: 'implantacao', label: '🚀 Implantação' },
-  { id: 'pesquisas', label: 'Pesquisas' },
-  { id: 'carteira', label: 'Carteira' },
   { id: 'leitura-contrato', label: '📑 Contrato e aditivos' },
   { id: 'faturamento', label: 'Faturamento' },
+  { id: 'pesquisas', label: 'Pesquisas' },
+  { id: 'atendimento', label: 'Atendimento' },
+  { id: 'email', label: 'E-mail' },
+  { id: 'proposta', label: '📄 Proposta' },
+  { id: 'carteira', label: '📋 Dados da Carteira' },
+  { id: 'implantacao', label: '🚀 Implantação' },
 ]
 
 function getDefaultHidden(name: string): string[] {
   const n = name.toLowerCase()
   if (n.includes('contrato') || n.includes('gestão')) return []
-  if (n.includes('avulso')) return ['implantacao', 'pesquisas', 'carteira', 'emails']
+  if (n.includes('avulso')) return ['implantacao', 'pesquisas', 'carteira']
   return ['implantacao', 'carteira', 'pesquisas']
 }
 

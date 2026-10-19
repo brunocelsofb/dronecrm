@@ -306,7 +306,7 @@ export default async function ContractDetailPage({
         const hidden = pname.includes('contrato') || pname.includes('gestão')
           ? []
           : pname.includes('avulso')
-          ? ['implantacao', 'pesquisas', 'carteira', 'emails']
+          ? ['implantacao', 'pesquisas', 'carteira']
           : ['implantacao', 'carteira', 'pesquisas']
         pipelineTabConfig = { order: null, hidden }
       }
