@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Trash2 } from 'lucide-react'
 import { WhatsAppNoteTranscript, isWhatsAppNote } from '@/components/whatsapp/whatsapp-note-transcript'
 
 type Event = {
@@ -97,10 +98,13 @@ export function TimelineFeed({
     setPinningId(null)
   }
 
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   async function handleDelete(id: string) {
-    if (!isAdmin || !confirm('Excluir esta nota permanentemente?')) return
-    setDeletingId(id)
-    await fetch(`/api/activities/${id}`, { method: 'DELETE' })
+    if (!isAdmin) return
+    setConfirmId(null); setDeletingId(id); setDeleteError(null)
+    const res = await fetch(`/api/activities/${id}`, { method: 'DELETE' })
+    if (!res.ok) setDeleteError('Não foi possível excluir. Tente de novo.')
     router.refresh()
     setDeletingId(null)
   }
@@ -164,7 +168,7 @@ export function TimelineFeed({
               : e.type
             const cfg = TYPE_CONFIG[cfgKey] ?? TYPE_CONFIG['note']
             const isPinned = !!localPins[e.id]
-            const isNote = e.type === 'note'
+            const isNote = e.type === 'note' || (e.type === 'task' && (e as { activity_type?: string | null }).activity_type === 'note')
 
             return (
               <div key={e.id} style={{ display: 'flex', gap: 14, paddingBottom: 20, position: 'relative', zIndex: 1 }}>
@@ -229,34 +233,36 @@ export function TimelineFeed({
                       </div>
                     </div>
 
-                    {/* Ações — só em notas */}
-                    {isNote && (
+                    {/* Ações: fixar (notas) e excluir (admin, qualquer registro) */}
+                    {(isNote || isAdmin) && (
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleTogglePin(e.id)}
-                          disabled={pinningId === e.id}
-                          title={isPinned ? 'Desfixar nota' : 'Fixar nota no topo'}
-                          style={{
-                            fontSize: 14, background: 'none', border: 'none',
-                            cursor: 'pointer', padding: 2,
-                            opacity: pinningId === e.id ? 0.4 : isPinned ? 1 : 0.35,
-                            filter: isPinned ? 'none' : 'grayscale(1)',
-                          }}
-                        >
-                          📌
-                        </button>
-                        {isAdmin && (
+                        {isNote && (
                           <button
-                            onClick={() => handleDelete(e.id)}
-                            disabled={deletingId === e.id}
-                            title="Excluir nota"
+                            onClick={() => handleTogglePin(e.id)}
+                            disabled={pinningId === e.id}
+                            title={isPinned ? 'Desfixar nota' : 'Fixar nota no topo'}
                             style={{
-                              fontSize: 12, background: 'none', border: 'none',
-                              cursor: 'pointer', color: '#dcadb3', padding: 2,
-                              opacity: deletingId === e.id ? 0.4 : 0.6,
+                              fontSize: 14, background: 'none', border: 'none',
+                              cursor: 'pointer', padding: 2,
+                              opacity: pinningId === e.id ? 0.4 : isPinned ? 1 : 0.35,
+                              filter: isPinned ? 'none' : 'grayscale(1)',
                             }}
                           >
-                            🗑️
+                            📌
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => setConfirmId(e.id)}
+                            disabled={deletingId === e.id}
+                            title="Excluir do histórico (admin)"
+                            aria-label="Excluir do histórico"
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 0,
+                              color: '#AF5B65', opacity: deletingId === e.id ? 0.3 : 0.55,
+                            }}
+                          >
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
@@ -268,6 +274,25 @@ export function TimelineFeed({
           })}
         </div>
       )}
+      {deleteError && <p style={{ fontSize: 12, color: '#8e4550', marginTop: 8 }}>{deleteError}</p>}
+      {confirmId && (() => {
+        const ev = events.find(x => x.id === confirmId)
+        const preview = (ev?.content ?? '').replace(/\s+/g, ' ').slice(0, 140)
+        return (
+          <div role="dialog" aria-modal="true" onClick={() => setConfirmId(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(26,31,54,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={(x) => x.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 440, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}>
+              <p style={{ fontSize: 15, fontWeight: 600, color: '#1a1f36', margin: 0 }}>Tem certeza que quer excluir?</p>
+              <p style={{ fontSize: 13, color: '#52514e', margin: '10px 0 0', lineHeight: 1.5 }}>Este registro sai do histórico para sempre. Não dá para desfazer.</p>
+              {preview && <p style={{ fontSize: 12, color: '#8892a4', margin: '8px 0 0', fontStyle: 'italic' }}>“{preview}{(ev?.content ?? '').length > 140 ? '…' : ''}”</p>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+                <button type="button" autoFocus onClick={() => setConfirmId(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d8e8', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+                <button type="button" onClick={() => handleDelete(confirmId)} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#AF5B65', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Sim, excluir</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
