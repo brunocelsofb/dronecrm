@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { WhatsAppClientShell } from '@/components/whatsapp/whatsapp-client-shell'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { identifyPhones } from '@/lib/whatsapp/contact-identity'
 import { classifyPhones, phoneKey } from '@/lib/whatsapp/contact-kind'
 
 export default async function WhatsAppInboxPage({
@@ -105,7 +106,18 @@ export default async function WhatsAppInboxPage({
 
   // Selo Cliente / Lead / Visitante (automático + correção manual)
   const kinds = await classifyPhones(tenantId, [...openConversations, ...archivedList].map(c => c.phone))
-  const withKind = <T extends { phone: string }>(c: T) => ({ ...c, kind: kinds[phoneKey(c.phone)]?.kind ?? 'visitante', kind_manual: kinds[phoneKey(c.phone)]?.manual ?? false })
+  // Nome (Central ou cadastro de contatos) e conta vinculada
+  const ids = await identifyPhones(tenantId, [...openConversations, ...archivedList].map(c => c.phone))
+  const withKind = <T extends { phone: string }>(c: T) => {
+    const k = phoneKey(c.phone)
+    const who = ids[k]
+    const link = who?.links[0]
+    return {
+      ...c, kind: kinds[k]?.kind ?? 'visitante', kind_manual: kinds[k]?.manual ?? false,
+      contact_name: who?.name ?? null,
+      linked_label: link ? `${link.label}${who.links.length > 1 ? ` +${who.links.length - 1}` : ''}` : who?.companyName ?? null,
+    }
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">

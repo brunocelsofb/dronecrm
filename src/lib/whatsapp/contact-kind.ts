@@ -1,8 +1,10 @@
 // ─── Selo do contato na Central: Cliente / Lead / Visitante ───────────────────
 // Automático:
 //   Cliente   = telefone de contato (ou da própria empresa) com contrato ativo na
-//               carteira (funil de gestão de contratos com execução aberta);
-//   Lead      = telefone de lead aberto (não convertido nem descartado);
+//               carteira (funil de gestão de contratos com execução aberta), ou
+//               conversa vinculada a um contrato ativo da carteira;
+//   Lead      = telefone de lead aberto (não convertido nem descartado), ou
+//               conversa vinculada a uma oportunidade de vendas aberta;
 //   Visitante = nenhum dos dois.
 // A pessoa pode corrigir na Central; a correção vale para a empresa toda e para
 // o SDR de IA. Chave = 8 últimos dígitos (o mesmo número aparece com ou sem 55/9).
@@ -30,9 +32,11 @@ export async function classifyPhones(tenantId: string, phones: string[]): Promis
   const { data: pipes } = await db.from('pipelines').select('id').eq('tenant_id', tenantId).eq('type', 'gestao_contratos')
   const pipeIds = (pipes ?? []).map(p => p.id as string)
   let companyIds: string[] = []
+  let carteiraContractIds: string[] = []
   if (pipeIds.length) {
     const { data: runs } = await db.from('pipeline_runs').select('contract_id').in('pipeline_id', pipeIds).eq('status', 'open').limit(5000)
     const contractIds = [...new Set((runs ?? []).map(r => r.contract_id as string).filter(Boolean))]
+    carteiraContractIds = contractIds
     for (let i = 0; i < contractIds.length; i += 300) {
       const { data: cs } = await db.from('contracts').select('company_id').eq('tenant_id', tenantId).in('id', contractIds.slice(i, i + 300))
       companyIds.push(...(cs ?? []).map(c => c.company_id as string).filter(Boolean))
@@ -52,8 +56,25 @@ export async function classifyPhones(tenantId: string, phones: string[]): Promis
     }
   }
 
-  // Leads abertos
+  // Conversas vinculadas a contrato da carteira (cliente) ou a oportunidade de vendas aberta (lead)
   const leadKeys = new Set<string>()
+  const { data: salesPipes } = await db.from('pipelines').select('id').eq('tenant_id', tenantId).eq('type', 'vendas')
+  const salesIds = (salesPipes ?? []).map(p => p.id as string)
+  const { data: salesRuns } = salesIds.length
+    ? await db.from('pipeline_runs').select('contract_id').in('pipeline_id', salesIds).eq('status', 'open').limit(5000)
+    : { data: [] as { contract_id: string }[] }
+  const salesContractIds = new Set((salesRuns ?? []).map(r => r.contract_id as string))
+  const carteiraSet = new Set(carteiraContractIds)
+  const { data: linked } = await db.from('contract_whatsapp_messages').select('phone, contract_id').eq('tenant_id', tenantId)
+    .not('contract_id', 'is', null).order('created_at', { ascending: false }).limit(5000)
+  for (const m of linked ?? []) {
+    const k = phoneKey(m.phone)
+    if (!pending.has(k)) continue
+    if (carteiraSet.has(m.contract_id as string)) clientKeys.add(k)
+    else if (salesContractIds.has(m.contract_id as string)) leadKeys.add(k)
+  }
+
+  // Leads abertos
   const { data: leads } = await db.from('leads').select('phone').eq('tenant_id', tenantId).not('phone', 'is', null)
     .not('status', 'in', '(convertido,descartado)').limit(5000)
   for (const r of leads ?? []) { const k = phoneKey(r.phone); if (k.length === 8) leadKeys.add(k) }

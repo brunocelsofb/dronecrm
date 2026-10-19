@@ -41,6 +41,7 @@ export function WhatsAppClientShell({
   const [selectedPhone, setSelectedPhone] = useState(initialPhone)
   const [selectedInstance, setSelectedInstance] = useState(initialInstance ?? null)
   const [convData, setConvData] = useState<any>(null)
+  const [reloadKey, setReloadKey] = useState(0)
   const [loadingConv, setLoadingConv] = useState(false)
   const [showNewConv, setShowNewConv] = useState(false)
 
@@ -83,15 +84,14 @@ export function WhatsAppClientShell({
 
   useEffect(() => {
     if (!selectedPhone) { setConvData(null); return }
-    setLoadingConv(true)
-    setConvData(null)
+    if (reloadKey === 0) { setLoadingConv(true); setConvData(null) }
     const params = new URLSearchParams({ phone: selectedPhone })
     if (selectedInstance) params.set('instance', selectedInstance)
     fetch(`/api/whatsapp/conversation?${params}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { setConvData(d); setLoadingConv(false) })
       .catch(() => setLoadingConv(false))
-  }, [selectedPhone, selectedInstance])
+  }, [selectedPhone, selectedInstance, reloadKey])
 
   function handleSelectConv(phone: string, instance: string) {
     setSelectedPhone(phone)
@@ -179,6 +179,8 @@ export function WhatsAppClientShell({
                 return it?.kind ? { kind: it.kind, manual: !!it.kind_manual } : null
               })()}
               onKindChange={() => router.refresh()}
+              links={convData.links ?? []}
+              onLinked={() => { setReloadKey(k => k + 1); router.refresh() }}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

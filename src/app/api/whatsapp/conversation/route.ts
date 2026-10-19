@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { identifyPhones } from '@/lib/whatsapp/contact-identity'
 
 export async function GET(req: Request) {
   try {
@@ -84,8 +85,13 @@ export async function GET(req: Request) {
       assigned_to_name: (assignment as any).profiles?.full_name ?? '',
     } : null
 
+    // Nome do cadastro de contatos e contas às quais a conversa foi vinculada
+    const ident = (await identifyPhones(await resolveTenantId(), [cleanPhone]))[last8]
+    if (!displayName && ident?.name) displayName = ident.name
+
     return NextResponse.json({
       messages, leadId, displayName, instanceName, assignment: assignmentData,
+      links: ident?.links ?? [], companyName: ident?.companyName ?? null,
     })
   } catch (e: any) {
     console.error('[api/whatsapp/conversation]', e?.message)

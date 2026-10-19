@@ -574,7 +574,7 @@ export async function linkUnlinkedWhatsAppConversation(phone: string, contractId
     .select('id')
 
   if (error) return { error: error.message }
-  if (!data || data.length === 0) return { error: 'Nenhuma mensagem atualizada. O vínculo pode já ter sido feito.' }
+  if (!data || data.length === 0) return { error: 'Todas as mensagens desta conversa já estão vinculadas a uma conta (veja o selo 🔗 no topo). As próximas mensagens sem vínculo podem ser vinculadas aqui.' }
 
   await supabase.from('activities').insert({
     contract_id: contractId,

@@ -116,6 +116,8 @@ export function WhatsAppConversationPanel({
   onArchiveSuccess,
   contactKind,
   onKindChange,
+  links = [],
+  onLinked,
 }: {
   phone: string
   displayName: string | null
@@ -130,6 +132,8 @@ export function WhatsAppConversationPanel({
   onArchiveSuccess?: (phone: string) => void
   contactKind?: { kind: ContactKind; manual: boolean } | null
   onKindChange?: () => void
+  links?: { contractId: string; label: string; number: string | null; companyName: string | null }[]
+  onLinked?: () => void
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -360,7 +364,7 @@ export function WhatsAppConversationPanel({
     const result = await linkUnlinkedWhatsAppConversation(phone, contractId)
     setBusy(false)
     if (result.error) setError(result.error)
-    else router.refresh()
+    else { setShowLinkSearch(false); setQuery(''); onLinked?.(); router.refresh() }
   }
 
   async function handleDeleteMessage(id: string) {
@@ -446,6 +450,16 @@ export function WhatsAppConversationPanel({
                 </button>
               )}
               <p className="text-[10px] text-gray-400">{phone}</p>
+              {links.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {links.map(l => (
+                    <Link key={l.contractId} href={`/contracts/${l.contractId}`} title="Abrir a oportunidade"
+                      className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-medium text-brand-700 hover:underline">
+                      🔗 {l.label}{l.number ? ` · ${l.number}` : ''}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 justify-end">

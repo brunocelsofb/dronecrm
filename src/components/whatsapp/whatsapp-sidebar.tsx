@@ -69,7 +69,7 @@ export function WhatsAppSidebar({
   const matches = (item: any) => {
     if (!q) return true
     const latest = item.latest ?? item
-    const fields = [item.contact_name, item.name, latest.unlinked_sender_name, item.last_message, item.lastMessage, latest.message,
+    const fields = [item.contact_name, item.name, item.linked_label, latest.unlinked_sender_name, item.last_message, item.lastMessage, latest.message,
       item.department ?? item.triage_department, item.protocol_number ?? item.protocolNumber]
     if (fields.some(f => norm(f).includes(q))) return true
     return qDigits.length >= 3 && String(item.phone ?? '').replace(/\D/g, '').includes(qDigits)
@@ -221,6 +221,9 @@ export function WhatsAppSidebar({
                 <span className="text-[10px] text-gray-400 shrink-0">{lastTime}</span>
               </div>
 
+              {item.linked_label && (
+                <p className="mt-0.5 truncate text-[11px] font-medium text-brand-700">🔗 {item.linked_label}</p>
+              )}
               <p className="mt-0.5 text-xs text-gray-500 truncate">
                 {lastMsg}
               </p>
