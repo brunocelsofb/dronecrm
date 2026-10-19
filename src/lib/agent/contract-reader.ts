@@ -25,6 +25,7 @@ export type ReadingStep = {
 }
 
 type Ref = { clausula: string | null; trecho: string | null }
+export type Resp = 'contratada' | 'contratante' | 'compartilhado' | 'nao_claro'
 
 export type ContractReading = {
   versao: number
@@ -55,6 +56,12 @@ export type ContractReading = {
   normativas: { norma: string; exigencia: string | null; clausula: string | null }[]
   alteracoes_aditivos: { documento: string; alteracao: string; clausula: string | null }[]
   nao_claros: { ponto: string; por_que: string | null; sugestao: string | null; clausula: string | null }[]
+  // versão 4: operação
+  atendimento: { atendimento_24h: SimNao; sobreaviso: SimNao; horario: string | null; regra: string | null } & Ref
+  equipamentos: { possui_lista: SimNao; onde: string | null; total: string | null; itens: { equipamento: string; quantidade: string | null; observacao: string | null; clausula: string | null }[] }
+  tabela_aplicabilidade: { possui: SimNao; onde: string | null; resumo: string | null; clausula: string | null }
+  responsabilidades_manutencao: { item: string; responsavel: Resp; detalhe: string | null; clausula: string | null }[]
+  servicos_terceiros: { servico: string; responsavel: Resp; detalhe: string | null; clausula: string | null }[]
   proximos_passos: ReadingStep[]
   avisos: string[]                    // ex.: parte da leitura que falhou
 }
@@ -147,6 +154,38 @@ const SCHEMA = obj({
     sugestao: T('O que perguntar/esclarecer com o cliente'),
     clausula: CL,
   }), 'Pontos do contrato que não estão claros'),
+  atendimento: obj({
+    atendimento_24h: SNE('O contrato exige atendimento 24 horas (24x7)?'),
+    sobreaviso: SNE('O contrato prevê regime de sobreaviso/plantão à distância? nao_encontrado se o contrato não fala de sobreaviso'),
+    horario: T('Horário/dias do atendimento presencial como escrito (ex.: seg a sex, 7h às 17h)'),
+    regra: T('Como funciona o atendimento fora do horário, acionamento e prazo de chegada'),
+    clausula: CL, trecho: TR,
+  }),
+  equipamentos: obj({
+    possui_lista: SNE('Os documentos trazem lista/inventário dos equipamentos do contrato?'),
+    onde: T('Onde está a lista (ex.: Anexo II do termo de referência)'),
+    total: T('Total de equipamentos como escrito; "" se não constar'),
+    itens: arr(obj({ equipamento: T('Tipo/família de equipamento'), quantidade: T('Quantidade como escrita'), observacao: T('Setor, criticidade, garantia ou exclusão; "" se não constar'), clausula: CL }),
+      'Principais tipos de equipamento cobertos (agrupe por família)'),
+  }),
+  tabela_aplicabilidade: obj({
+    possui: SNE('Existe tabela/matriz de aplicabilidade (quais serviços — preventiva, calibração, TSE, qualificação… — valem para quais equipamentos)?'),
+    onde: T('Onde está (anexo, item)'),
+    resumo: T('O que ela define, em uma frase'),
+    clausula: CL,
+  }),
+  responsabilidades_manutencao: arr(obj({
+    item: T('Ex.: peças de reposição, acessórios, consumíveis, manutenção de alto custo, equipamentos em garantia, contratos com fabricante, mão de obra, deslocamento'),
+    responsavel: { type: 'string', enum: ['contratada', 'contratante', 'compartilhado', 'nao_claro'] },
+    detalhe: T('Limite de valor, condição ou exceção como escrito; "" se não constar'),
+    clausula: CL,
+  }), 'Quem responde por cada parte da manutenção'),
+  servicos_terceiros: arr(obj({
+    servico: T('Serviço feito por terceiro (ex.: assistência do fabricante, laboratório de calibração, empresa especializada, subcontratação)'),
+    responsavel: { type: 'string', enum: ['contratada', 'contratante', 'compartilhado', 'nao_claro'] },
+    detalhe: T('Quem contrata/paga, se a subcontratação é permitida, limites; "" se não constar'),
+    clausula: CL,
+  }), 'Serviços de terceiros e subcontratação'),
   obrigacoes_relevantes: arr(T(), 'Obrigações que impactam a renovação'),
   riscos: arr(T(), 'Pontos de atenção para a renovação, citando a cláusula'),
   proximos_passos: arr(obj({
@@ -171,25 +210,25 @@ function skeleton(node: Record<string, unknown>): unknown {
   return d ? `<texto: ${d}>` : '<texto>'
 }
 
-// A leitura é feita em TRÊS chamadas em paralelo (metade dos campos cada):
+// A leitura é feita em QUATRO chamadas em paralelo (um grupo de campos cada):
 // uma resposta única ficava longa demais (cortada) e lenta para o limite da tela.
 const PART_KEYS = {
   renovacao: ['objeto', 'contratante', 'contratada', 'numero', 'vigencia', 'renovacao', 'aviso_previo', 'reajuste', 'repactuacao',
     'reequilibrio', 'valor', 'rescisao', 'caminhos_renovacao', 'riscos', 'proximos_passos'],
   execucao: ['quantitativos', 'equipe', 'equipe_total', 'acoes_objeto', 'sla', 'prazos', 'multas', 'obrigacoes_relevantes'],
   escopo: ['alteracoes_aditivos', 'infraestrutura', 'servicos', 'normativas', 'nao_claros'],
+  operacao: ['atendimento', 'equipamentos', 'tabela_aplicabilidade', 'responsabilidades_manutencao', 'servicos_terceiros'],
 } as const
 type Part = keyof typeof PART_KEYS
 const fullSkeleton = skeleton(SCHEMA) as Record<string, unknown>
-const TEMPLATES: Record<Part, string> = {
-  renovacao: JSON.stringify(Object.fromEntries(PART_KEYS.renovacao.map(k => [k, fullSkeleton[k]])), null, 1),
-  execucao: JSON.stringify(Object.fromEntries(PART_KEYS.execucao.map(k => [k, fullSkeleton[k]])), null, 1),
-  escopo: JSON.stringify(Object.fromEntries(PART_KEYS.escopo.map(k => [k, fullSkeleton[k]])), null, 1),
-}
+const PARTS = Object.keys(PART_KEYS) as Part[]
+const TEMPLATES = Object.fromEntries(PARTS.map(p => [p,
+  JSON.stringify(Object.fromEntries((PART_KEYS[p] as readonly string[]).map(k => [k, fullSkeleton[k]])), null, 1)])) as Record<Part, string>
 const PART_LABEL: Record<Part, string> = {
   renovacao: 'vigência, renovação, reajuste, rescisão e próximos passos',
   execucao: 'equipe, quantitativos, ações do objeto, SLA, prazos e multas',
   escopo: 'aditivos, infraestrutura, serviços aplicáveis, normas e pontos não claros',
+  operacao: 'atendimento 24h/sobreaviso, equipamentos, tabela de aplicabilidade, responsabilidades de manutenção e serviços de terceiros',
 }
 
 // Tira o JSON da resposta (aceita bloco ```json ou texto antes/depois)
@@ -218,6 +257,7 @@ const list = <T,>(v: unknown, map: (x: Record<string, unknown>) => T | null): T[
   Array.isArray(v) ? v.map(x => (x && typeof x === 'object' ? map(x as Record<string, unknown>) : null)).filter((x): x is T => x !== null) : []
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.map(s).filter((x): x is string => !!x) : [])
 const o = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {})
+const resp = (v: unknown): Resp => (v === 'contratada' || v === 'contratante' || v === 'compartilhado' ? v : 'nao_claro')
 const AREAS = ['comercial', 'juridico', 'tecnico', 'financeiro', 'cliente'] as const
 
 // Aceita a resposta da API e também leituras antigas (versão 1) gravadas no banco.
@@ -225,6 +265,7 @@ export function normalizeReading(raw: unknown): ContractReading {
   const r = o(raw)
   const vig = o(r.vigencia), ren = o(r.renovacao), av = o(r.aviso_previo), rj = o(r.reajuste)
   const rp = o(r.repactuacao), re = o(r.reequilibrio), val = o(r.valor), res = o(r.rescisao)
+  const at = o(r.atendimento), eq = o(r.equipamentos), ta = o(r.tabela_aplicabilidade)
   // versão 1: renovacao.tipo = automatica | por_aditivo | nao_prevista | nao_encontrado
   const tipoV1 = typeof ren.tipo === 'string' ? ren.tipo : null
   return {
@@ -257,6 +298,17 @@ export function normalizeReading(raw: unknown): ContractReading {
     normativas: list(r.normativas, x => (s(x.norma) ? { norma: s(x.norma)!, exigencia: s(x.exigencia), clausula: s(x.clausula) } : null)),
     alteracoes_aditivos: list(r.alteracoes_aditivos, x => (s(x.alteracao) ? { documento: s(x.documento) ?? 'Aditivo', alteracao: s(x.alteracao)!, clausula: s(x.clausula) } : null)),
     nao_claros: list(r.nao_claros, x => (s(x.ponto) ? { ponto: s(x.ponto)!, por_que: s(x.por_que), sugestao: s(x.sugestao), clausula: s(x.clausula) } : null)),
+    atendimento: {
+      atendimento_24h: sn(at.atendimento_24h), sobreaviso: sn(at.sobreaviso), horario: s(at.horario), regra: s(at.regra),
+      clausula: s(at.clausula), trecho: s(at.trecho),
+    },
+    equipamentos: {
+      possui_lista: sn(eq.possui_lista), onde: s(eq.onde), total: s(eq.total),
+      itens: list(eq.itens, x => (s(x.equipamento) ? { equipamento: s(x.equipamento)!, quantidade: s(x.quantidade), observacao: s(x.observacao), clausula: s(x.clausula) } : null)),
+    },
+    tabela_aplicabilidade: { possui: sn(ta.possui), onde: s(ta.onde), resumo: s(ta.resumo), clausula: s(ta.clausula) },
+    responsabilidades_manutencao: list(r.responsabilidades_manutencao, x => (s(x.item) ? { item: s(x.item)!, responsavel: resp(x.responsavel), detalhe: s(x.detalhe), clausula: s(x.clausula) } : null)),
+    servicos_terceiros: list(r.servicos_terceiros, x => (s(x.servico) ? { servico: s(x.servico)!, responsavel: resp(x.responsavel), detalhe: s(x.detalhe), clausula: s(x.clausula) } : null)),
     obrigacoes_relevantes: strs(r.obrigacoes_relevantes),
     riscos: strs(r.riscos),
     avisos: strs(r.avisos),
@@ -348,9 +400,19 @@ export async function readContractPdf(opts: {
       `teste de segurança elétrica, qualificação, gestão (do parque/serviço). Depois acrescente outros serviços previstos.\n` +
       `- Normativas: normas, leis e resoluções citadas que a contratada precisa cumprir.\n` +
       `- Não claros: pontos ambíguos, contraditórios ou ausentes que afetam execução, custo ou renovação, com o que esclarecer com o cliente.\n`,
+    operacao:
+      `- Atendimento: diga se exige 24h (24x7) e se há sobreaviso/plantão. Se o contrato não fala de sobreaviso, use "nao_encontrado" ` +
+      `(não presuma que existe nem que não existe). Registre horário presencial e como é o acionamento fora dele.\n` +
+      `- Equipamentos: se há lista/inventário e onde está; os principais tipos com quantidade (agrupe por família, até 12).\n` +
+      `- Tabela de aplicabilidade: matriz que diz quais serviços (preventiva, calibração, teste de segurança elétrica, qualificação…) ` +
+      `valem para quais equipamentos. Se não existir, "nao_encontrado".\n` +
+      `- Responsabilidades de manutenção: inclua SEMPRE peças de reposição, acessórios, consumíveis, manutenção de alto custo, ` +
+      `equipamentos em garantia e contratos com fabricante, dizendo quem responde (contratada, contratante, compartilhado ou nao_claro) e limites de valor.\n` +
+      `- Serviços de terceiros: assistência do fabricante, laboratório de calibração, empresas especializadas, subcontratação (se é permitida, ` +
+      `quem contrata e quem paga).\n`,
   }
 
-  // Os documentos vêm primeiro e iguais nas três partes; o último leva
+  // Os documentos vêm primeiro e iguais em todas as partes; o último leva
   // cache_control, então a 1ª parte grava o cache e as outras leem dele
   // (leitura de cache custa uma fração da entrada normal).
   const docBlocks: Anthropic.DocumentBlockParam[] = opts.docs.map((d, i) => ({
@@ -392,11 +454,11 @@ export async function readContractPdf(opts: {
   const firstResult = first.finalMessage().then(m => parse('renovacao', m))
   firstResult.catch(() => {})
   await begun
-  const rest = (['execucao', 'escopo'] as const).map(part => client.messages.create(params(part), reqOpts).then(m => parse(part, m)))
+  const rest = PARTS.filter(p => p !== 'renovacao').map(part => client.messages.create(params(part), reqOpts).then(m => parse(part, m)))
 
-  const parts: Part[] = ['renovacao', 'execucao', 'escopo']
+  const parts: Part[] = ['renovacao', ...PARTS.filter(p => p !== 'renovacao')]
   const results = await Promise.allSettled([firstResult, ...rest])
-  const merged: Record<string, unknown> = { versao: 3 }
+  const merged: Record<string, unknown> = { versao: 4 }
   const avisos: string[] = []
   let tokensIn = 0, tokensOut = 0
   results.forEach((r, i) => {

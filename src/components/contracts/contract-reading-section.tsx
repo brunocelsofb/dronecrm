@@ -10,7 +10,7 @@ import type { ContractReading, ReadingChecks, ReadingStep, SimNao } from '@/lib/
 import { fmtBRL } from '@/lib/format'
 
 const br = (iso: string | null | undefined) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso || '—')
-const RESP: Record<string, string> = { contratada: 'Contratada', contratante: 'Contratante', nao_claro: 'Não está claro' }
+const RESP: Record<string, string> = { contratada: 'Contratada', contratante: 'Contratante', compartilhado: 'Compartilhado', nao_claro: 'Não está claro' }
 const SIMNAO = (v: SimNao, sim = 'Sim', nao = 'Não') => (v === 'sim' ? sim : v === 'nao' ? nao : 'Não encontrado no contrato')
 const AREA: Record<string, string> = { comercial: 'Comercial', juridico: 'Jurídico', tecnico: 'Técnico', financeiro: 'Financeiro', cliente: 'Cliente' }
 
@@ -94,7 +94,7 @@ export function ContractReadingSection({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-gray-900">🌱 Farmer · leitura do contrato</p>
-            <p className="text-xs text-gray-600">A IA lê o contrato e os aditivos em PDF (vigência, renovação, reajuste, repactuação, equipe, serviços, infraestrutura, normas, SLA, prazos, rescisão, multas e pontos não claros) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
+            <p className="text-xs text-gray-600">A IA lê o contrato e os aditivos em PDF (vigência, renovação, reajuste, repactuação, equipe, atendimento 24h/sobreaviso, equipamentos, tabela de aplicabilidade, responsabilidades de manutenção, serviços de terceiros, serviços, infraestrutura, normas, SLA, prazos, rescisão, multas e pontos não claros) e indica os caminhos e próximos passos da renovação, citando a cláusula. Confira sempre o trecho citado.</p>
           </div>
           {hasContract ? (
             <div className="flex flex-col items-end gap-1">
@@ -235,6 +235,36 @@ export function ContractReadingSection({
             </div>
           )}
 
+          {reading.versao >= 4 && (
+            <>
+              <p className="pt-2 text-sm font-semibold text-gray-900">Operação e manutenção</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Fact label="Atendimento" value={<>
+                  <span className="block">24 horas: {SIMNAO(reading.atendimento.atendimento_24h, 'Sim', 'Não')}</span>
+                  <span className="block">Sobreaviso: {reading.atendimento.sobreaviso === 'sim' ? 'Sim' : reading.atendimento.sobreaviso === 'nao' ? 'Não' : 'O contrato não fala de sobreaviso'}</span>
+                  {reading.atendimento.horario && <span className="block text-xs font-normal text-gray-600">Horário: {reading.atendimento.horario}</span>}
+                  {reading.atendimento.regra && <span className="block text-xs font-normal text-gray-600">{reading.atendimento.regra}</span>}
+                </>} clause={reading.atendimento.clausula} quote={reading.atendimento.trecho} />
+                <Fact label="Equipamentos" value={<>
+                  <span className="block">Lista no contrato: {SIMNAO(reading.equipamentos.possui_lista, 'Sim', 'Não')}</span>
+                  {reading.equipamentos.total && <span className="block text-xs font-normal text-gray-600">Total: {reading.equipamentos.total}</span>}
+                  {reading.equipamentos.onde && <span className="block text-xs font-normal text-gray-600">Onde: {reading.equipamentos.onde}</span>}
+                </>} />
+                <Fact label="Tabela de aplicabilidade" value={<>
+                  <span className="block">{SIMNAO(reading.tabela_aplicabilidade.possui, 'Possui', 'Não possui')}</span>
+                  {reading.tabela_aplicabilidade.onde && <span className="block text-xs font-normal text-gray-600">Onde: {reading.tabela_aplicabilidade.onde}</span>}
+                  {reading.tabela_aplicabilidade.resumo && <span className="block text-xs font-normal text-gray-600">{reading.tabela_aplicabilidade.resumo}</span>}
+                </>} clause={reading.tabela_aplicabilidade.clausula} />
+              </div>
+              <ListTable title="Equipamentos cobertos" head={['Equipamento', 'Qtd.', 'Observação', 'Cláusula']}
+                rows={reading.equipamentos.itens.map(x => [x.equipamento, x.quantidade ?? '—', x.observacao ?? '—', x.clausula ?? '—'])} />
+              <ListTable title="Responsabilidades de manutenção" head={['Item', 'Quem responde', 'Detalhe', 'Cláusula']}
+                rows={reading.responsabilidades_manutencao.map(x => [x.item, RESP[x.responsavel], x.detalhe ?? '—', x.clausula ?? '—'])} />
+              <ListTable title="Serviços de terceiros" head={['Serviço', 'Responsável', 'Detalhe', 'Cláusula']}
+                rows={reading.servicos_terceiros.map(x => [x.servico, RESP[x.responsavel], x.detalhe ?? '—', x.clausula ?? '—'])} />
+            </>
+          )}
+
           <ListTable title="O que os aditivos mudaram" head={['Documento', 'Alteração', 'Cláusula']}
             rows={reading.alteracoes_aditivos.map(x => [x.documento, x.alteracao, x.clausula ?? '—'])} />
           <ListTable title="Serviços aplicáveis" head={['Serviço', 'Previsto', 'Detalhe', 'Periodicidade', 'Cláusula']}
@@ -273,7 +303,7 @@ export function ContractReadingSection({
             </div>
           )}
           {reading.objeto && <p className="text-xs text-gray-500"><strong>Objeto:</strong> {reading.objeto}{reading.numero ? ` · Nº ${reading.numero}` : ''}{reading.contratante ? ` · Contratante: ${reading.contratante}` : ''}{reading.contratada ? ` · Contratada: ${reading.contratada}` : ''}</p>}
-          {reading.versao < 3 && <p className="text-[11px] text-warn-700">Esta leitura foi feita numa versão anterior{reading.versao < 2 ? ' (sem equipe, SLA, prazos e multas)' : ''} e não traz infraestrutura, serviços aplicáveis, normas e pontos não claros. Clique em “Ler de novo” para a leitura completa.</p>}
+          {reading.versao < 4 && <p className="text-[11px] text-warn-700">Esta leitura foi feita numa versão anterior e não traz {reading.versao < 3 ? 'infraestrutura, serviços aplicáveis, normas, pontos não claros, ' : ''}atendimento 24h/sobreaviso, equipamentos, tabela de aplicabilidade, responsabilidades de manutenção e serviços de terceiros. Clique em “Ler de novo” para a leitura completa.</p>}
         </>
       )}
     </div>
