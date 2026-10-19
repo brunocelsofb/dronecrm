@@ -134,6 +134,10 @@ export async function simulateSdr(settingsInput: SdrSettings, history: ChatTurn[
         return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Esse pedido não é algo que atendemos, mas ficamos à disposição se precisar de outra coisa.' }
       },
     })
+    if (res.empty && !res.terminal) {
+      events.push({ tool: 'Passaria a uma pessoa', detail: 'A IA ficou sem resposta nesta vez; no WhatsApp a conversa iria para o comercial.' })
+      return { ok: true, reply: handoffClosing(null, bookingLinkFor(s, s.sellers[0] ?? null)), events, ended: true, tokens: res.usage.input + res.usage.output }
+    }
     return { ok: true, reply: res.text, events, ended: !!res.terminal, tokens: res.usage.input + res.usage.output }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message.slice(0, 300) : 'Falha ao chamar a IA.' }

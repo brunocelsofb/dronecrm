@@ -285,6 +285,15 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
     updated_at: nowIso(),
   }).eq('id', conv.id)
 
+  // A IA ficou sem resposta: em vez de insistir com pergunta genérica, passa para uma pessoa
+  if (result.empty && !result.terminal) {
+    const r = await handoff({ ...conv, answers }, settings, {
+      resumo: answersText(answers) || 'Conversa iniciada com a IA; ela não conseguiu dar sequência.',
+      qualificado: false, temperatura: 'morno', motivo: 'IA sem resposta: passou para uma pessoa',
+    })
+    await sendAndRecord(conv, settings, handoffClosing(r.seller, r.booking))
+    return
+  }
   if (result.text) {
     await sendAndRecord(conv, settings, result.text)
     await db.from('sdr_conversations').update({ ai_replies: conv.ai_replies + 1 }).eq('id', conv.id)

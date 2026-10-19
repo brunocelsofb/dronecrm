@@ -12,6 +12,7 @@ export type TurnResult = {
   calls: ToolCall[]
   terminal: SdrToolName | null
   usage: { input: number; output: number }
+  empty: boolean   // a IA não escreveu nada (nem com nem depois da ferramenta)
 }
 
 export type ModelClient = Pick<Anthropic['messages'], 'create'>
@@ -70,15 +71,22 @@ export async function runSdrTurn(opts: {
       }
       results.push({ type: 'tool_result', tool_use_id: tu.id, content: out })
     }
-    messages.push({ role: 'user', content: results })
+    // Lembra a IA de responder ao contato depois das ferramentas (sem isso ela às vezes encerra a vez em branco)
+    messages.push({ role: 'user', content: [...results, {
+      type: 'text',
+      text: terminal
+        ? '(Ferramenta executada. Agora escreva a sua última mensagem para o contato, em texto.)'
+        : '(Registrado. Agora escreva a sua resposta para o contato, em texto, seguindo a conversa. Não repita perguntas já respondidas.)',
+    }] })
     if (blockText) preText = blockText
   }
   // A IA às vezes encerra a vez sem escrever depois da ferramenta: nunca deixar o contato sem resposta
   // Ordem: resposta final da IA > (ao passar ao comercial) mensagem com vendedor e link >
   // o que a IA escreveu junto da ferramenta (explica o motivo) > mensagem padrão
   const handoffClosing = terminal === 'passar_para_comercial' ? closing : null
-  const text = finalText || handoffClosing || preText || closing || 'Certo! Pode me contar um pouco mais para eu entender melhor?'
-  return { text: cleanReply(text), calls, terminal, usage }
+  const text = finalText || handoffClosing || preText || closing || ''
+  // Sem texto e sem encerrar: quem chamou decide (no WhatsApp, passa para uma pessoa em vez de insistir)
+  return { text: cleanReply(text), calls, terminal, usage, empty: !finalText && !preText }
 }
 
 // Limpa o que não deve ir para o WhatsApp (marcações de raciocínio, espaços)
