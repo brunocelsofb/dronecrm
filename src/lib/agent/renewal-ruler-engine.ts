@@ -8,7 +8,7 @@ import { sendAgentEmail } from './notifications'
 import { buildInternalEmailHtml } from './internal-settings'
 import { getContractTenantName } from './tenant-name'
 import {
-  resolveRulerSettings, buildRunSteps, stepRecipients, renderRuler, brDate, isOverdue,
+  resolveRulerSettings, buildRunSteps, stepRecipients, renderRuler, brDate, shouldNotifyOverdue, daysBetween,
   type RunStep, type RulerSettings,
 } from './renewal-ruler'
 
@@ -72,6 +72,7 @@ async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' |
     consultor: info.consultor,
     empresa: info.tenantName || companyName || 'Equipe',
     link: `${appUrl()}/contracts/${run.contract_id}`,
+    atraso: step?.due_date ? String(Math.max(0, daysBetween(step.due_date, todayBr()))) : '—',
   }
   const t = settings.templates
   const [subjectT, bodyT, badge] = kind === 'step' ? [t.step_subject, t.step_body, 'RÉGUA DE RENOVAÇÃO']
@@ -217,18 +218,23 @@ export async function renewalLockMessage(tenantId: string, contractId: string): 
 export async function runRulerOverdue(tenantId: string): Promise<{ checked: number; notified: number }> {
   const admin = createAdminClient()
   const { data } = await admin.from('renewal_ruler_runs').select('*').eq('tenant_id', tenantId).eq('status', 'active').limit(500)
+  if (!data?.length) return { checked: 0, notified: 0 }
+  const { settings } = await loadSettings(tenantId)
   const today = todayBr()
   let notified = 0
-  for (const run of (data ?? []) as RulerRun[]) {
+  for (const run of data as RulerRun[]) {
     const idx = run.steps.findIndex(s => !s.done_at)
     if (idx < 0) continue
     const step = run.steps[idx]
-    if (!isOverdue(step, today) || step.overdue_notified_at) continue
+    if (!shouldNotifyOverdue(step, today, settings.overdue_repeat_days)) continue
     const r = await notifyStep(run, idx, 'overdue')
-    const steps = run.steps.map((s, i) => (i === idx ? { ...s, overdue_notified_at: nowIso() } : s))
+    const count = (step.overdue_count ?? 0) + 1
+    const steps = run.steps.map((s, i) => (i === idx ? { ...s, overdue_notified_at: nowIso(), overdue_count: count } : s))
     await save(run, { steps })
-    await logActivity(run, `⏰ Régua de renovação: "${step.label}" passou do prazo (${brDate(step.due_date)}).${r.sent ? ' Áreas avisadas.' : ''}`)
+    const late = step.due_date ? daysBetween(step.due_date, today) : 0
+    await logActivity(run, `⏰ Régua de renovação: "${step.label}" atrasado há ${late} dia(s) (prazo ${brDate(step.due_date)})` +
+      `${count > 1 ? ` · ${count}º aviso de atraso` : ''}.${r.sent ? ' Áreas avisadas.' : ` E-mail não enviado (${r.detail}).`}`)
     if (r.sent) notified++
   }
-  return { checked: data?.length ?? 0, notified }
+  return { checked: data.length, notified }
 }

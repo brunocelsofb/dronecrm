@@ -14,7 +14,7 @@ const SAMPLE_END = '2027-03-31'
 
 const MAILS: { key: 'step' | 'overdue' | 'ready'; label: string; hint: string }[] = [
   { key: 'step', label: 'Chegou um passo', hint: 'Vai para as áreas do passo quando ele passa a ser o atual.' },
-  { key: 'overdue', label: 'Passo atrasado', hint: 'Vai uma vez, no dia seguinte ao prazo, se o passo não foi marcado.' },
+  { key: 'overdue', label: 'Passo atrasado', hint: 'Vai no dia seguinte ao prazo se o passo não foi marcado, e se repete a cada N dias (definido acima) até ser marcado.' },
   { key: 'ready', label: 'Pronto para renovar', hint: 'Vai para todas as áreas da régua quando o último passo é concluído.' },
 ]
 
@@ -22,6 +22,7 @@ const newId = () => `passo-${Math.random().toString(36).slice(2, 8)}`
 export function RenewalRulerForm({ initial, companyName }: { initial: RulerSettings; companyName: string }) {
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
+  const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
   const [areas, setAreas] = useState<(RulerArea & { emailsText: string })[]>(
     initial.areas.map(a => ({ ...a, emailsText: a.emails.join(', ') })),
   )
@@ -51,7 +52,7 @@ export function RenewalRulerForm({ initial, companyName }: { initial: RulerSetti
   async function save() {
     setSaving(true); setMsg(null)
     const res = await saveRulerSettings({
-      enabled, lock_renewed: lock, templates,
+      enabled, lock_renewed: lock, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
       areas: areas.map(a => ({ key: a.key, label: a.label.trim(), emails: a.emailsText.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean) })),
       steps: steps.map(s => ({ ...s, label: s.label.trim() })),
     })
@@ -78,7 +79,7 @@ export function RenewalRulerForm({ initial, companyName }: { initial: RulerSetti
         <h2 className="text-sm font-semibold text-gray-900">Funcionamento</h2>
         <p className="text-xs text-gray-500">
           A régua começa sozinha quando o consultor envia ao cliente o aviso de renovação (o 1º passo já fica feito).
-          Também dá para iniciar manualmente na oportunidade. Dali em diante tudo é interno: o cliente não recebe nada da régua.
+          Também dá para iniciar manualmente na oportunidade. Dali em diante a régua é interna: o cliente não recebe nada dela. Os avisos de renovação ao cliente (60, 30, 15 dias e vencido) continuam aparecendo para o consultor revisar até o contrato ser renovado.
         </p>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-0.5" checked={enabled} onChange={e => { touch(); setEnabled(e.target.checked) }} />
@@ -89,6 +90,13 @@ export function RenewalRulerForm({ initial, companyName }: { initial: RulerSetti
           <span><b>Só marcar &quot;Renovado&quot; depois de concluir todos os passos</b><br />
             <span className="text-xs text-gray-500">Ao concluir o último passo, a IA cria para o consultor a tarefa de revisar e marcar Renovado.</span></span>
         </label>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span><b>Passo atrasado:</b> repetir o aviso às áreas a cada</span>
+          <input type="number" min={0} max={30} value={repeat} onChange={e => { touch(); setRepeat(e.target.value) }}
+            className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none" />
+          <span>dias, até o passo ser marcado ou o contrato ser renovado.</span>
+          <span className="w-full text-xs text-gray-500">Use 0 para avisar só uma vez.</span>
+        </div>
       </section>
 
       <section className={box}>

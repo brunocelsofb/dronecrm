@@ -22,6 +22,9 @@ export async function saveRulerSettings(input: RulerSettings): Promise<Result> {
     const bad = (a.emails ?? []).map(e => e.trim()).filter(e => e && !EMAIL_RE.test(e))
     if (bad.length) return { ok: false, error: `E-mail inválido em "${a.label}": ${bad.join(', ')}` }
   }
+  if (!Number.isInteger(input.overdue_repeat_days) || input.overdue_repeat_days < 0 || input.overdue_repeat_days > 30) {
+    return { ok: false, error: 'A repetição do aviso de atraso deve ser de 0 a 30 dias (0 = avisa só uma vez).' }
+  }
   if (!input.steps?.length) return { ok: false, error: 'Cadastre ao menos um passo.' }
   for (const s of input.steps) {
     if (!s.label?.trim()) return { ok: false, error: 'Todo passo precisa de um nome.' }

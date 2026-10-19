@@ -17,6 +17,7 @@ export type RulerTemplates = {
 export type RulerSettings = {
   enabled: boolean
   lock_renewed: boolean
+  overdue_repeat_days: number   // passo atrasado: repete o aviso a cada N dias (0 = só uma vez)
   areas: RulerArea[]
   steps: RulerStep[]
   templates: RulerTemplates
@@ -30,7 +31,8 @@ export type RunStep = RulerStep & {
   done_by_name?: string | null
   note?: string | null
   notified_at: string | null
-  overdue_notified_at: string | null
+  overdue_notified_at: string | null   // último aviso de atraso
+  overdue_count?: number
 }
 
 export const RULER_VARIABLES: { key: string; description: string }[] = [
@@ -41,6 +43,7 @@ export const RULER_VARIABLES: { key: string; description: string }[] = [
   { key: 'numero',     description: 'Número do passo (ex.: 2 de 5)' },
   { key: 'prazo',      description: 'Prazo do passo (dd/mm/aaaa)' },
   { key: 'anterior',   description: 'Passo concluído antes deste' },
+  { key: 'atraso',     description: 'Dias de atraso do passo (e-mail de atraso)' },
   { key: 'consultor',  description: 'Consultor responsável pela conta' },
   { key: 'empresa',    description: 'Nome da sua empresa' },
   { key: 'link',       description: 'Endereço da oportunidade no CRM' },
@@ -76,6 +79,7 @@ export const DEFAULT_RULER_TEMPLATES: RulerTemplates = {
   overdue_body:
     'Olá, equipe!\n\n' +
     'O passo *{{passo}}* da renovação do contrato *{{contrato}}* ({{cliente}}) passou do prazo (*{{prazo}}*).\n\n' +
+    '• Dias de atraso: *{{atraso}}*\n' +
     '• Vencimento do contrato: {{vencimento}}\n' +
     '• Consultor responsável: {{consultor}}\n\n' +
     'Atualize no CRM: {{link}}\n\n' +
@@ -88,6 +92,8 @@ export const DEFAULT_RULER_TEMPLATES: RulerTemplates = {
     '{{link}}\n\n' +
     'Equipe {{empresa}}.',
 }
+
+export const DEFAULT_OVERDUE_REPEAT_DAYS = 3
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
@@ -130,6 +136,10 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
   return {
     enabled: r.enabled !== false,
     lock_renewed: r.lock_renewed !== false,
+    overdue_repeat_days: (() => {
+      const n = Math.round(Number(r.overdue_repeat_days))
+      return r.overdue_repeat_days === undefined || r.overdue_repeat_days === null || !Number.isFinite(n) ? DEFAULT_OVERDUE_REPEAT_DAYS : Math.max(0, Math.min(30, n))
+    })(),
     areas,
     steps,
     templates: {
@@ -160,6 +170,20 @@ export const brDate = (iso: string | null | undefined) =>
 
 export function isOverdue(step: RunStep, todayIso: string): boolean {
   return !step.done_at && !!step.due_date && step.due_date < todayIso
+}
+
+// Dias entre duas datas aaaa-mm-dd (b − a)
+export function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b.slice(0, 10)}T12:00:00Z`) - Date.parse(`${a.slice(0, 10)}T12:00:00Z`)) / 86_400_000)
+}
+
+// Passo atrasado: avisa a 1ª vez e depois a cada N dias (N = 0: só uma vez)
+export function shouldNotifyOverdue(step: RunStep, todayIso: string, repeatDays: number): boolean {
+  if (!isOverdue(step, todayIso)) return false
+  if (!step.overdue_notified_at) return true
+  if (repeatDays <= 0) return false
+  const last = new Date(new Date(step.overdue_notified_at).getTime() - 3 * 3600_000).toISOString().slice(0, 10)
+  return daysBetween(last, todayIso) >= repeatDays
 }
 
 // E-mails das áreas de um passo (sem repetição)
