@@ -8,7 +8,6 @@ import { revalidatePath } from 'next/cache'
 import { getUserAccess } from '@/lib/auth/access'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
-import { createActivity } from '@/lib/actions/activities'
 import { phoneKey } from '@/lib/whatsapp/contact-kind'
 
 export type NoteTargets = {
@@ -82,7 +81,7 @@ export async function saveWhatsAppNote(input: {
   const db = await createScopedAdmin(tenantId)
 
   const { data: msgs } = await db.from('contract_whatsapp_messages')
-    .select('id, message, direction, media_type, media_url, media_filename, created_at, unlinked_sender_name, phone')
+    .select('id, message, direction, media_type, media_url, media_filename, created_at, unlinked_sender_name, phone, instance_name, sent_by, triggered_automatically')
     .in('id', ids).order('created_at', { ascending: true })
   const key = phoneKey(input.phone)
   const list = (msgs ?? []).filter(m => phoneKey(m.phone) === key)
@@ -95,23 +94,55 @@ export async function saveWhatsAppNote(input: {
     return { ok: false, error: 'Destino da nota não encontrado.' }
   }
 
+  // Quem falou: contato (nome salvo na Central ou do perfil) e, do nosso lado, a pessoa ou o número da empresa
+  const { data: org } = await db.from('organization_settings').select('whatsapp_contact_names, evo_instance_aliases').eq('tenant_id', tenantId).maybeSingle()
+  const names = ((org as any)?.whatsapp_contact_names ?? {}) as Record<string, string>
+  const aliases = ((org as any)?.evo_instance_aliases ?? {}) as Record<string, any>
+  const digits = String(input.phone).replace(/\D/g, '')
+  const last10 = digits.slice(-10)
+  const contactName = names[digits] ?? names[last10] ?? names[`55${last10}`]
+    ?? list.find(m => m.direction === 'recebido' && m.unlinked_sender_name)?.unlinked_sender_name ?? null
+  const phoneFmt = fmtPhone(digits)
+  const senderIds = [...new Set(list.map(m => m.sent_by).filter(Boolean))] as string[]
+  const { data: senders } = senderIds.length ? await db.from('profiles').select('id, full_name').in('id', senderIds) : { data: [] as any[] }
+  const senderName = new Map((senders ?? []).map((p: any) => [p.id, p.full_name as string]))
+  const aliasOf = (inst: string | null) => {
+    if (!inst) return null
+    const a = aliases[inst]
+    return (typeof a === 'string' ? a : a?.label) || inst
+  }
+  const whoOf = (m: any) => m.direction === 'recebido'
+    ? (contactName ?? 'Contato')
+    : m.triggered_automatically ? 'Assistente automático' : (senderName.get(m.sent_by) ?? aliasOf(m.instance_name) ?? 'Empresa')
+
+  const MEDIA: Record<string, string> = { audio: '🎤 Áudio', image: '🖼️ Imagem', video: '🎬 Vídeo', document: '📄 Documento', sticker: 'Figurinha' }
   const when = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const lines = list.map(m => {
-    const who = m.direction === 'enviado' ? 'Empresa' : (m.unlinked_sender_name || 'Contato')
-    const media = m.media_type ? ` [${m.media_filename || m.media_type}]${m.media_url ? ` ${m.media_url}` : ''}` : ''
-    const text = m.media_type && /^\[.*\]$/.test(String(m.message ?? '').trim()) ? '' : String(m.message ?? '').trim()
-    return `${when(m.created_at)} · ${who}: ${text}${media}`.trim()
+  const items = list.map(m => {
+    const raw = String(m.message ?? '').trim()
+    const text = m.media_type && /^\[.*\]$/.test(raw) ? '' : raw
+    return {
+      id: m.id as string, at: m.created_at as string, side: m.direction === 'recebido' ? 'contato' : 'empresa',
+      who: whoOf(m), text, media_type: (m.media_type as string | null) ?? null,
+      media_url: (m.media_url as string | null) ?? null, media_filename: (m.media_filename as string | null) ?? null,
+    }
+  })
+  const lines = items.map(it => {
+    const media = it.media_type ? `${MEDIA[it.media_type] ?? '📎 Arquivo'}${it.media_filename ? ` (${it.media_filename})` : ''}` : ''
+    return `${when(it.at)} · ${it.who}${it.side === 'contato' ? ' (contato)' : ''}: ${[media, it.text].filter(Boolean).join(' — ')}`
   })
   const comment = input.comment.trim().slice(0, 2000)
-  const content = `💬 Via WhatsApp (${input.phone})${comment ? `\n${comment}` : ''}\n\n${lines.join('\n')}`.slice(0, 8000)
+  const contactLabel = contactName ? `${contactName} · ${phoneFmt}` : phoneFmt
+  const content = `💬 WhatsApp com ${contactLabel}${comment ? `\n${comment}` : ''}\n\n${lines.join('\n')}`.slice(0, 8000)
+  const metadata = { kind: 'whatsapp_note', phone: digits, contact_name: contactName, comment: comment || null, messages: items }
 
   const saved: string[] = []
   if (input.contractId || input.companyId) {
-    const r = await createActivity({
-      contractId: input.contractId ?? null, companyId: input.companyId ?? null,
-      content, title: 'Nota do WhatsApp', activityType: 'note', status: 'done',
-    } as Parameters<typeof createActivity>[0])
-    if (r.error) return { ok: false, error: r.error }
+    const { error } = await db.from('activities').insert({
+      contract_id: input.contractId ?? null, company_id: input.companyId ?? null, user_id: me.userId,
+      type: 'task', activity_type: 'note', title: 'Nota do WhatsApp', status: 'done', completed: true,
+      assigned_to: me.userId, content, metadata,
+    })
+    if (error) return { ok: false, error: error.message }
     if (input.contractId) { saved.push('oportunidade'); revalidatePath(`/contracts/${input.contractId}`) }
     if (input.companyId) { saved.push('empresa'); revalidatePath(`/companies/${input.companyId}`) }
   }
@@ -122,4 +153,12 @@ export async function saveWhatsAppNote(input: {
     revalidatePath(`/leads/${input.leadId}`)
   }
   return { ok: true, saved }
+}
+
+// (62) 98631-1129
+function fmtPhone(d: string): string {
+  const l = d.length > 11 && d.startsWith('55') ? d.slice(2) : d
+  if (l.length === 11) return `(${l.slice(0, 2)}) ${l.slice(2, 7)}-${l.slice(7)}`
+  if (l.length === 10) return `(${l.slice(0, 2)}) ${l.slice(2, 6)}-${l.slice(6)}`
+  return d
 }

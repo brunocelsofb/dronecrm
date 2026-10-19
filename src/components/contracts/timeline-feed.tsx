@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { WhatsAppNoteTranscript, isWhatsAppNote } from '@/components/whatsapp/whatsapp-note-transcript'
 
 type Event = {
   id: string
@@ -210,7 +211,9 @@ export function TimelineFeed({
                           🔗 {e.opportunity_badge}
                         </span>
                       )}
-                      {e.content && (
+                      {isWhatsAppNote(e.metadata) ? (
+                        <WhatsAppNoteTranscript meta={e.metadata} />
+                      ) : e.content && (
                         <p style={{
                           fontSize: 13, color: '#1a1f36', margin: '4px 0 0',
                           lineHeight: 1.55, whiteSpace: 'pre-wrap',

@@ -48,7 +48,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     supabase.from('companies').select('*').eq('id', id).single(),
     supabase.from('contacts').select('id, name, role, email, phone, is_primary').eq('company_id', id).order('is_primary', { ascending: false }),
     supabase.from('contracts').select('id, process_number, title, created_at, company_id').eq('company_id', id).order('created_at', { ascending: false }),
-    supabase.from('activities').select('id, type, activity_type, title, content, status, activity_date, activity_time, duration_minutes, created_at, user_id, assigned_to, is_pinned, contract_id').eq('company_id', id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50),
+    supabase.from('activities').select('id, type, activity_type, title, content, status, activity_date, activity_time, duration_minutes, created_at, user_id, assigned_to, is_pinned, contract_id, metadata').eq('company_id', id).order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50),
     supabase.from('profiles').select('id, full_name').order('full_name'),
     supabase.from('pipelines').select('id, name, is_default').eq('type', 'vendas').order('name'),
     supabase.from('tags').select('id, name, color, context').order('name'),
@@ -113,7 +113,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
   const { data: contractActivities } = contractIds.length
     ? await supabase
         .from('activities')
-        .select('id, type, activity_type, title, content, status, activity_date, activity_time, duration_minutes, created_at, user_id, assigned_to, is_pinned, contract_id')
+        .select('id, type, activity_type, title, content, status, activity_date, activity_time, duration_minutes, created_at, user_id, assigned_to, is_pinned, contract_id, metadata')
         .in('contract_id', contractIds)
         .order('created_at', { ascending: false })
         .limit(50)
@@ -207,7 +207,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                   .map(a => ({
                     ...a,
                     profiles: null,
-                    metadata: null,
+                    metadata: (a as { metadata?: unknown }).metadata ?? null,
                     // Badge da oportunidade como campo separado — não muta o content
                     opportunity_badge: (a as any).contract_id && contractNameById.has((a as any).contract_id)
                       ? contractNameById.get((a as any).contract_id)
