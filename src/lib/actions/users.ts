@@ -17,6 +17,19 @@ async function canManage(targetUserId: string): Promise<boolean> {
 
 export type ActionState = { error?: string }
 
+// Procura o login (auth) pelo e-mail. Só usado quando o e-mail já existe e não tem perfil.
+async function findAuthUserByEmail(admin: ReturnType<typeof createAdminClient>, email: string): Promise<string | null> {
+  const target = email.toLowerCase()
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+    if (error) return null
+    const hit = data.users.find(u => u.email?.toLowerCase() === target)
+    if (hit) return hit.id
+    if (data.users.length < 200) return null
+  }
+  return null
+}
+
 export async function createUserByAdmin(
   _prevState: ActionState,
   formData: FormData
@@ -53,6 +66,18 @@ export async function createUserByAdmin(
     return { error: `Sua licença permite ${tenant.max_users} usuário(s). Fale com o administrador da licença para ampliar.` }
   }
 
+  // E-mail já cadastrado no CRM? (perfil existe nesta ou em outra empresa)
+  const { data: existingProfile } = await adminClient
+    .from('profiles').select('id, tenant_id').ilike('email', email.replace(/[\\%_]/g, m => `\\${m}`)).limit(1).maybeSingle()
+  if (existingProfile) {
+    return {
+      error: existingProfile.tenant_id === tenantId
+        ? 'Esse e-mail já é de um usuário desta empresa. Procure-o na lista de usuários.'
+        : 'Esse e-mail já é usado por outra empresa no CRM. Use outro e-mail.',
+    }
+  }
+
+  let userId: string
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
     password,
@@ -61,12 +86,29 @@ export async function createUserByAdmin(
     app_metadata: { tenant_id: tenantId },
   })
 
-  if (createError || !created?.user) {
-    return { error: `Falha ao criar usuário: ${createError?.message ?? 'erro desconhecido'}` }
+  if (created?.user) {
+    userId = created.user.id
+  } else {
+    // Login que ficou sem perfil (ex.: usuário excluído antes só pela metade): reaproveita
+    const orphan = createError && /already.*registered|already exists/i.test(createError.message)
+      ? await findAuthUserByEmail(adminClient, email)
+      : null
+    if (!orphan) {
+      return { error: `Falha ao criar usuário: ${createError?.message ?? 'erro desconhecido'}` }
+    }
+    const { error: updErr } = await adminClient.auth.admin.updateUserById(orphan, {
+      password,
+      email_confirm: true,
+      ban_duration: 'none',
+      user_metadata: { full_name: fullName },
+      app_metadata: { tenant_id: tenantId },
+    })
+    if (updErr) return { error: `Falha ao reativar o login existente: ${updErr.message}` }
+    userId = orphan
   }
 
   const { error: profileError } = await adminClient.from('profiles').insert({
-    id: created.user.id,
+    id: userId,
     full_name: fullName,
     email,
     role,
