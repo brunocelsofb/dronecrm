@@ -24,6 +24,7 @@ interface WhatsAppChatViewProps {
   contactName?: string | null
   contactPhone?: string | null
   onDeleteMessage?: (messageId: string) => void
+  onSaveNote?: (messageId: string) => void
 }
 
 // Labels automáticos que não devem aparecer como texto debaixo da mídia
@@ -277,7 +278,7 @@ function TrashIcon() {
   )
 }
 
-export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatViewProps) {
+export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: WhatsAppChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -351,6 +352,17 @@ export function WhatsAppChatView({ messages, onDeleteMessage }: WhatsAppChatView
                       {formatTime(msg.created_at)}
                     </span>
                     <DeliveryTick status={msg.status} direction={msg.direction} />
+
+                    {onSaveNote && (
+                      <button
+                        onClick={() => onSaveNote(msg.id)}
+                        className="ml-1 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-brand-100 hover:text-brand-700 group-hover:opacity-100 focus:opacity-100"
+                        title="Salvar como nota na oportunidade / empresa"
+                        aria-label="Salvar como nota"
+                      >
+                        📌
+                      </button>
+                    )}
 
                     {onDeleteMessage && (
                       <button

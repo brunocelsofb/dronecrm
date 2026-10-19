@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { WhatsAppClientShell } from '@/components/whatsapp/whatsapp-client-shell'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { classifyPhones, phoneKey } from '@/lib/whatsapp/contact-kind'
 
 export default async function WhatsAppInboxPage({
   searchParams,
@@ -96,10 +97,15 @@ export default async function WhatsAppInboxPage({
     })
     .sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime())
 
+  const tenantId = await resolveTenantId()
   const { data: orgData } = await admin
     .from('organization_settings')
     .select('evo_instance_aliases')
-    .eq('tenant_id', await resolveTenantId()).maybeSingle()
+    .eq('tenant_id', tenantId).maybeSingle()
+
+  // Selo Cliente / Lead / Visitante (automático + correção manual)
+  const kinds = await classifyPhones(tenantId, [...openConversations, ...archivedList].map(c => c.phone))
+  const withKind = <T extends { phone: string }>(c: T) => ({ ...c, kind: kinds[phoneKey(c.phone)]?.kind ?? 'visitante', kind_manual: kinds[phoneKey(c.phone)]?.manual ?? false })
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
@@ -115,8 +121,8 @@ export default async function WhatsAppInboxPage({
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         <WhatsAppClientShell
-          open={openConversations as any}
-          archived={archivedList as any}
+          open={openConversations.map(withKind) as any}
+          archived={archivedList.map(withKind) as any}
           initialPhone={selectedPhone ?? null}
           initialInstance={selectedInstance ?? null}
           currentUserId={user?.id ?? ''}

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { searchWhatsAppConversations, type WhatsAppSearchHit } from '@/lib/actions/whatsapp-search'
+import { ContactKindBadge } from './contact-kind-badge'
 
 // Sem acento e minúsculo, para comparar textos
 const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -29,6 +30,7 @@ export function WhatsAppSidebar({
 }: WhatsAppSidebarProps) {
   const [tab, setTab] = useState<'open' | 'archived'>('open')
   const [filterDept, setFilterDept] = useState<string>('all')
+  const [filterKind, setFilterKind] = useState<string>('all')
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<WhatsAppSearchHit[]>([])
   const [searching, setSearching] = useState(false)
@@ -74,6 +76,7 @@ export function WhatsAppSidebar({
   }
   const filteredList = list.filter((item) => {
     if (!matches(item)) return false
+    if (filterKind !== 'all' && (item.kind ?? 'visitante') !== filterKind) return false
     if (filterDept === 'all') return true
     const dept = item.department ?? item.triage_department
     return dept?.toLowerCase() === filterDept.toLowerCase()
@@ -140,21 +143,33 @@ export function WhatsAppSidebar({
         </button>
       </div>
 
-      {/* Filtro por Setor — opções geradas dinamicamente */}
-      <div className="border-b border-gray-200 p-2.5 bg-gray-50/50">
-        <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Filtrar Setor:</label>
+      {/* Filtros: tipo do contato e setor */}
+      <div className="grid grid-cols-2 gap-2 border-b border-gray-200 p-2.5 bg-gray-50/50">
+        <label className="block min-w-0">
+          <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Tipo:</span>
+          <select value={filterKind} onChange={(e) => setFilterKind(e.target.value)}
+            className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs focus:border-brand-700 focus:outline-none">
+            <option value="all">Todos</option>
+            <option value="cliente">Clientes</option>
+            <option value="lead">Leads</option>
+            <option value="visitante">Visitantes</option>
+          </select>
+        </label>
+        <label className="block min-w-0">
+        <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Setor:</span>
         <select
           value={filterDept}
           onChange={(e) => setFilterDept(e.target.value)}
           className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs focus:border-brand-700 focus:outline-none"
         >
-          <option value="all">Todos os setores</option>
+          <option value="all">Todos</option>
           {uniqueDepts.map((dept) => (
             <option key={dept} value={dept}>
               {dept.charAt(0).toUpperCase() + dept.slice(1)}
             </option>
           ))}
         </select>
+        </label>
       </div>
 
       {/* Lista de Conversas */}
@@ -212,6 +227,7 @@ export function WhatsAppSidebar({
 
               {/* Badges de Setor, Protocolo e Estado da Triagem */}
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                {item.kind && <ContactKindBadge kind={item.kind} manual={item.kind_manual} />}
                 {dept ? (
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                     isArchived

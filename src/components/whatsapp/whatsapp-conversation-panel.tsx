@@ -18,6 +18,9 @@ import {
 } from '@/lib/actions/whatsapp'
 import { WhatsAppChatView } from '@/components/whatsapp/whatsapp-chat-view'
 import { ConvertLeadModal } from '@/components/whatsapp/convert-lead-modal'
+import { ContactKindPicker } from '@/components/whatsapp/contact-kind-badge'
+import { SaveNoteModal } from '@/components/whatsapp/save-note-modal'
+import type { ContactKind } from '@/lib/whatsapp/contact-kind'
 
 type Message = {
   id: string
@@ -111,6 +114,8 @@ export function WhatsAppConversationPanel({
   instanceName,
   initialIsArchived,
   onArchiveSuccess,
+  contactKind,
+  onKindChange,
 }: {
   phone: string
   displayName: string | null
@@ -123,6 +128,8 @@ export function WhatsAppConversationPanel({
   instanceName?: string | null
   initialIsArchived?: boolean
   onArchiveSuccess?: (phone: string) => void
+  contactKind?: { kind: ContactKind; manual: boolean } | null
+  onKindChange?: () => void
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -130,6 +137,7 @@ export function WhatsAppConversationPanel({
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
 
   const [isArchived, setIsArchived] = useState(initialIsArchived ?? false)
+  const [noteFor, setNoteFor] = useState<string | null>(null)
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null)
   const [localMessages, setLocalMessages] = useState<Message[]>(messages)
   const processedIds = useRef(new Set<string>(messages.map(m => m.id)))
@@ -436,10 +444,8 @@ export function WhatsAppConversationPanel({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 justify-end">
-            {leadId && (
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700">
-                🎯 Lead
-              </span>
+            {contactKind && (
+              <ContactKindPicker key={phone} phone={phone} kind={contactKind.kind} manual={contactKind.manual} onChange={() => onKindChange?.()} />
             )}
             {availableInstances.length > 0 && (
               <select value={selectedInstance} onChange={e => setSelectedInstance(e.target.value)}
@@ -538,10 +544,11 @@ export function WhatsAppConversationPanel({
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ phone, instanceName: instanceName ?? undefined }),
                 })
-                const data = await res.json()
+                const data = await res.json().catch(() => ({ error: 'Resposta inválida do servidor.' }))
                 setBusy(false)
                 if (data.error) alert(`Erro: ${data.error}`)
-                else { alert(`✅ ${data.imported} mensagens importadas!`); router.refresh() }
+                else if (!data.found) alert(data.message ?? 'Nenhuma mensagem encontrada.')
+                else { alert(`Encontradas ${data.found} mensagens: ${data.imported} novas importadas, ${data.existing} já estavam no CRM.`); router.refresh() }
               }}
               disabled={busy}
               className="rounded-md border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
@@ -634,6 +641,7 @@ export function WhatsAppConversationPanel({
             contactName={displayName}
             contactPhone={phone}
             onDeleteMessage={handleDeleteMessage}
+            onSaveNote={(id: string) => setNoteFor(id)}
           />
         </div>
       </div>
@@ -747,6 +755,9 @@ export function WhatsAppConversationPanel({
       )}
       {showConvertModal && (
         <ConvertLeadModal phone={phone} leadId={leadId} displayName={localDisplayName} onClose={() => setShowConvertModal(false)} />
+      )}
+      {noteFor && (
+        <SaveNoteModal phone={phone} messages={localMessages as any} initialId={noteFor} onClose={() => setNoteFor(null)} />
       )}
     </div>
   )

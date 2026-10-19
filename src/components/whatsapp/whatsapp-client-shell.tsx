@@ -173,6 +173,12 @@ export function WhatsAppClientShell({
               instanceName={selectedInstance ?? convData.instanceName ?? null}
               initialIsArchived={isArchived}
               onArchiveSuccess={handleArchived}
+              contactKind={(() => {
+                const it = [...open, ...archived].find((c: any) => c.phone === selectedPhone && (c.instance ?? '') === (selectedInstance ?? ''))
+                  ?? [...open, ...archived].find((c: any) => c.phone === selectedPhone)
+                return it?.kind ? { kind: it.kind, manual: !!it.kind_manual } : null
+              })()}
+              onKindChange={() => router.refresh()}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

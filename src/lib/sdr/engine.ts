@@ -16,6 +16,7 @@ import { readSdrSettings, bookingLinkFor, type SdrSettings } from './settings'
 import { buildTranscript, needsReply, mergeAnswers, answersText, type MsgRow } from './prompt'
 import { runSdrTurn, type ToolCall } from './turn'
 import { sendSdrText } from './channel'
+import { kindOf } from '@/lib/whatsapp/contact-kind'
 
 const DEBOUNCE_MS = 5000          // espera mensagens em sequência ("oi" + "tudo bem?" + ...)
 const LOCK_MS = 90_000
@@ -65,10 +66,8 @@ async function canStart(tenantId: string, s: SdrSettings, phone: string, instanc
   if (recentSdr?.length || humanMsg?.length || openLead?.length) return 'no'
   // Conversa já em andamento com o time (não arquivada)
   if (status && status.is_archived !== true && ['active', 'awaiting_selection'].includes(String(status.triage_state))) return 'no'
-  if (s.skip_known_contacts) {
-    const { data: contact } = await db.from('contacts').select('id').eq('tenant_id', tenantId).ilike('phone', `%${tail}`).limit(1)
-    if (contact?.length) return 'client'
-  }
+  // Mesmo selo da Central (contrato ativo na carteira, ou marcado como cliente)
+  if (s.skip_known_contacts && (await kindOf(tenantId, phone)).kind === 'cliente') return 'client'
   return 'ok'
 }
 

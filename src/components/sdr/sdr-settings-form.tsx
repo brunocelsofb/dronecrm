@@ -122,7 +122,7 @@ export function SdrSettingsForm({ initial, instances, departments, triageOn, peo
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-800">
             <input type="checkbox" checked={s.skip_known_contacts} onChange={e => set('skip_known_contacts', e.target.checked)} />
-            Contato já cadastrado (cliente) não conversa com a IA: vai para o consultor de clientes
+            Cliente (selo da Central: contrato ativo ou marcado como cliente) não conversa com a IA: vai para o consultor de clientes
           </label>
           <Field label="Máximo de respostas da IA por conversa" hint="Ao chegar no limite, passa para o comercial com o que tiver.">
             <input type="number" min={3} max={60} className={`${input} max-w-[120px]`} value={s.max_replies} onChange={e => set('max_replies', Number(e.target.value))} />
