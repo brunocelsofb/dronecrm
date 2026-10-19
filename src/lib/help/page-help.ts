@@ -74,7 +74,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/settings\/forms/, help: { title: 'Formulários', text: 'Formulários públicos de captura e pesquisa.' } },
   { test: /^\/settings\/wallpapers/, help: { title: 'Fundos de tela', text: 'Imagens de fundo das páginas públicas (login, suporte, pesquisas).' } },
   { test: /^\/settings\/price-users/, help: { title: 'Usuários do Price', text: 'Quem acessa a precificação integrada.' } },
-  { test: /^\/settings/, help: { title: 'Configurações', text: 'Tudo o que é da sua empresa, organizado em quadros por assunto: empresa, equipe, funis, leads, contratos, propostas, assinatura, e-mail, WhatsApp, IA, integrações, pesquisas e sistema.', tips: ['Só administradores da conta alteram.', 'Cada quadro é um assunto; clique no item para abrir a tela dele.', 'Resetar CRM fica em Sistema → Zona de risco.'] } },
+  { test: /^\/settings/, help: { title: 'Configurações', text: 'Tudo o que é da sua empresa, organizado em quadros por assunto: empresa, equipe, funis, leads, contratos, propostas, assinatura, e-mail, WhatsApp, IA, integrações, pesquisas e sistema.', tips: ['Só administradores da conta alteram.', 'Cada quadro é um assunto; clique no item para abrir a tela dele.', 'Use a pesquisa no topo (ex.: renovação): os quadros e itens que batem ficam destacados; Enter abre o primeiro.', 'Resetar CRM fica em Sistema → Zona de risco.'] } },
 
   { test: /^\/pipelines/, help: { title: 'Funis e etapas', text: 'Crie os funis e as etapas do seu processo. Defina onde é possível marcar ganho e perda e para onde o contrato vai no ganho.' } },
   { test: /^\/custom-fields/, help: { title: 'Campos personalizados', text: 'Campos extras para guardar informações específicas do seu negócio.' } },
