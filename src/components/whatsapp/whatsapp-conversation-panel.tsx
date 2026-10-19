@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -141,6 +141,11 @@ export function WhatsAppConversationPanel({
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null)
   const [localMessages, setLocalMessages] = useState<Message[]>(messages)
   const processedIds = useRef(new Set<string>(messages.map(m => m.id)))
+  // Sempre do passado para o presente (mensagens importadas ou atrasadas chegam fora de ordem)
+  const orderedMessages = useMemo(
+    () => [...localMessages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    [localMessages],
+  )
 
   // ── Estado do modal NPS ────────────────────────────────────────────────────
   const [showNPSModal, setShowNPSModal] = useState(false)
@@ -637,7 +642,7 @@ export function WhatsAppConversationPanel({
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative bg-gray-50 p-2 lg:p-3">
         <div className="w-full h-full relative rounded-xl overflow-hidden border border-gray-200 shadow-inner">
           <WhatsAppChatView
-            messages={localMessages}
+            messages={orderedMessages}
             contactName={displayName}
             contactPhone={phone}
             onDeleteMessage={handleDeleteMessage}
@@ -757,7 +762,7 @@ export function WhatsAppConversationPanel({
         <ConvertLeadModal phone={phone} leadId={leadId} displayName={localDisplayName} onClose={() => setShowConvertModal(false)} />
       )}
       {noteFor && (
-        <SaveNoteModal phone={phone} messages={localMessages as any} initialId={noteFor} onClose={() => setNoteFor(null)} />
+        <SaveNoteModal phone={phone} messages={orderedMessages as any} initialId={noteFor} onClose={() => setNoteFor(null)} />
       )}
     </div>
   )

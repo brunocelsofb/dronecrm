@@ -27,7 +27,8 @@ export async function GET(req: Request) {
       let q = phoneFilter(
         admin.from('contract_whatsapp_messages')
           .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name')
-          .order('created_at', { ascending: true })
+          // As 500 mais recentes (antes pegava as 500 mais antigas e escondia as novas)
+          .order('created_at', { ascending: false })
           .limit(500)
       )
       if (instance) q = q.eq('instance_name', instance)
@@ -35,7 +36,8 @@ export async function GET(req: Request) {
       const { data } = await q
       if (data?.length) {
         const seen = new Set<string>()
-        messages = data.filter((m: any) => {
+        // Passado → presente
+        messages = [...data].reverse().filter((m: any) => {
           const key = `${m.direction}:${m.message}:${m.created_at?.slice(0, 19)}`
           if (seen.has(key)) return false
           seen.add(key)
