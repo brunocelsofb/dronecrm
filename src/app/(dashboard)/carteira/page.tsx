@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClientForTenant } from '@/lib/supabase/server'
 import { CarteiraSelectFilters } from '@/components/carteira/carteira-select-filters'
+import { brDate, daysBetween, type RunStep } from '@/lib/agent/renewal-ruler'
 
 const TYPE_LABEL: Record<string, string> = { fixo: 'Fixo', medicao: 'Por Medição' }
 const TYPE_STYLE: Record<string, { bg: string; color: string }> = {
@@ -29,6 +30,11 @@ function alertaStyle(dias: number | null): { bg: string; color: string; label: s
   if (dias <= 60)  return { bg: '#fbeee5', color: '#c2683d', label: `${dias}d` }
   if (dias <= 90)  return { bg: '#fbeee5', color: '#c2683d', label: `${dias}d` }
   return { bg: '#e3f5f1', color: '#1f8c7d', label: `${dias}d` }
+}
+
+// Hoje em Brasília (aaaa-mm-dd)
+function todayBrIso(): string {
+  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
 }
 
 export default async function CarteiraPage({
@@ -73,6 +79,18 @@ export default async function CarteiraPage({
     const tag = Array.isArray((row as any).tags) ? (row as any).tags[0] : (row as any).tags
     if (tag) tagByContract.set((row as any).contract_id, tag)
   }
+
+  // Régua de renovação em andamento (processo interno da renovação)
+  const { data: rulerRows } = contractIds.length
+    ? await supabase.from('renewal_ruler_runs').select('contract_id, status, period_end, steps').in('contract_id', contractIds).in('status', ['active', 'ready'])
+    : { data: [] as { contract_id: string; status: string; period_end: string | null; steps: RunStep[] }[] }
+  const todayIso = todayBrIso()
+  const rulerList = (rulerRows ?? []).map(r => {
+    const steps = (r.steps ?? []) as RunStep[]
+    const cur = steps.find(st => !st.done_at) ?? null
+    const late = cur?.due_date && cur.due_date < todayIso ? daysBetween(cur.due_date, todayIso) : 0
+    return { contractId: r.contract_id as string, status: r.status as string, periodEnd: r.period_end as string | null, cur, late, done: steps.filter(st => st.done_at).length, total: steps.length }
+  }).sort((a, b) => (b.status === 'ready' ? 1 : 0) - (a.status === 'ready' ? 1 : 0) || b.late - a.late)
 
   const valueByContract = new Map((activeRuns ?? []).map((r: any) => [r.contract_id, Number(r.value || 0)]))
 
@@ -193,6 +211,44 @@ export default async function CarteiraPage({
           </div>
         ))}
       </div>
+
+      {rulerList.length > 0 && (
+        <div className="rounded-3xl bg-white p-5 shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold text-[#1B556B]">Régua de renovação em andamento</p>
+            <p className="text-xs text-gray-400">
+              {rulerList.filter(r => r.late > 0).length} com passo atrasado · {rulerList.filter(r => r.status === 'ready').length} prontos para marcar Renovado
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead className="text-left text-gray-500">
+                <tr><th className="py-1.5 pr-3 font-medium">Cliente</th><th className="py-1.5 pr-3 font-medium">Passo atual</th><th className="py-1.5 pr-3 font-medium">Prazo</th><th className="py-1.5 pr-3 font-medium">Situação</th><th className="py-1.5 font-medium">Vencimento</th></tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rulerList.map(r => {
+                  const c = (contracts ?? []).find((x: { id: string }) => x.id === r.contractId) as { client_name?: string | null } | undefined
+                  return (
+                    <tr key={r.contractId}>
+                      <td className="py-2 pr-3"><Link href={`/contracts/${r.contractId}`} className="font-medium text-[#1B556B] hover:underline">{c?.client_name ?? 'Contrato'}</Link></td>
+                      <td className="py-2 pr-3 text-gray-700">{r.status === 'ready' ? 'Todos concluídos' : `${r.cur?.label ?? '—'} (${r.done + 1} de ${r.total})`}</td>
+                      <td className="py-2 pr-3 text-gray-600">{r.status === 'ready' ? '—' : brDate(r.cur?.due_date)}</td>
+                      <td className="py-2 pr-3">
+                        {r.status === 'ready'
+                          ? <span className="rounded-full bg-positive-100 px-2 py-0.5 font-medium text-positive-700">Pronto para marcar Renovado</span>
+                          : r.late > 0
+                            ? <span className="rounded-full bg-negative-100 px-2 py-0.5 font-medium text-negative-700">Atrasado há {r.late} dia(s)</span>
+                            : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">Em dia</span>}
+                      </td>
+                      <td className="py-2 text-gray-600">{brDate(r.periodEnd)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ABC + Rankings */}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'auto 1fr 1fr' }}>

@@ -13,7 +13,7 @@ export default async function MotivosPerda() {
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 500, color: '#1a1f36', margin: '4px 0 0' }}>Motivos de Perda</h1>
         <p style={{ fontSize: 12, color: '#8892a4', marginTop: 3 }}>
-          Aparecem ao marcar uma oportunidade como Perdida — usados no dashboard de gestão à vista.
+          Aparecem ao marcar uma oportunidade como Perdida e entram no Painel gerencial (Novos negócios → Motivos de perda).
         </p>
       </div>
       <LostReasonsManager initialReasons={reasons ?? []} />

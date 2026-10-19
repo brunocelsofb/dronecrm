@@ -90,7 +90,7 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
     disabled: isClosed,
   })
   const days = daysSince(card.stageEnteredAt)
-  const overdue = sla !== null && days > sla
+  const overdue = sla !== null && sla > 0 && days > sla   // prazo 0 = etapa sem prazo
 
   function openAccount(e: React.MouseEvent) {
     e.stopPropagation()

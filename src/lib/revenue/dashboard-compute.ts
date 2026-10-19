@@ -18,6 +18,7 @@ export type RunRow = {
   status: string; value: number | null
   started_at: string | null; ended_at: string | null; stage_entered_at: string | null
   tag_id: string | null; report_file_name: string | null
+  lost_reason_id?: string | null
 }
 export type ContractRow = {
   id: string; client_name: string | null; process_number: string | null
@@ -40,7 +41,9 @@ export type RenewalRow = {
 }
 export type GoalRow = { year: number; month: number; target_value: number }
 export type TagRow = { id: string; name: string; color: string | null }
-export type StageRow = { id: string; name: string; sla_days: number | null }
+export type StageRow = { id: string; name: string; sla_days: number | null; pipeline_id?: string | null; order_index?: number | null; is_won?: boolean | null }
+export type LostReasonRow = { id: string; name: string }
+export type StageHistoryRow = { pipeline_run_id: string; stage_id: string }
 export type NpsRow = { score: number | null; answered_at: string | null }
 export type TicketRow = { status: string; sla_due_at: string | null }
 export type LeadRow = { created_at: string; status: string | null }
@@ -60,6 +63,8 @@ export type DashboardInput = {
   leads: LeadRow[]
   measurementDueDay: number
   submissions?: SubmissionRow[]
+  lostReasons?: LostReasonRow[]
+  stageHistory?: StageHistoryRow[]
   // Mês em que começa o fluxo "confirmar → enviar ao faturamento → faturado".
   // Antes dele vale a regra antiga (recorrente automático; apurado = faturado).
   billingFlowStart?: { year: number; month: number } | null
@@ -467,9 +472,70 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     const entered = ts(r.stage_entered_at) ?? ts(r.started_at)
     if (entered === null) return false
     const sla = (r.stage_id ? stageById.get(r.stage_id)?.sla_days : null) ?? DEFAULT_SLA
+    if (sla <= 0) return false   // prazo 0 = etapa sem prazo
     return (nowMs - entered) / 86_400_000 > sla
   })
   const openAvulso = input.runs.filter(r => typeOf.get(r.pipeline_id) === 'servico_avulso' && r.status === 'open')
+
+  // Motivos de perda das vendas perdidas no período
+  const reasonName = new Map((input.lostReasons ?? []).map(r => [r.id, r.name]))
+  function lossReasons(lost: RunRow[]) {
+    const map = new Map<string, { name: string; count: number; value: number; lines: ContractLine[] }>()
+    for (const r of lost) {
+      const name = (r.lost_reason_id && reasonName.get(r.lost_reason_id)) || 'Motivo não informado'
+      const agg = map.get(name) ?? { name, count: 0, value: 0, lines: [] }
+      agg.count++; agg.value += Number(r.value) || 0; agg.lines.push(line(r.contract_id, Number(r.value) || 0))
+      map.set(name, agg)
+    }
+    return [...map.values()].map(a => ({ ...a, value: r2(a.value), share: pct(a.count, lost.length) })).sort((a, b) => b.count - a.count)
+  }
+
+  // Ciclo de venda: dias da abertura ao ganho (vendas ganhas no período)
+  function salesCycle(won: RunRow[]) {
+    const days = won.map(r => {
+      const a = ts(r.started_at), b = ts(r.ended_at)
+      return a !== null && b !== null && b >= a ? (b - a) / 86_400_000 : null
+    }).filter((d): d is number => d !== null)
+    if (!days.length) return null
+    const sorted = [...days].sort((x, y) => x - y)
+    return {
+      avg: Math.round((days.reduce((x, y) => x + y, 0) / days.length) * 10) / 10,
+      median: Math.round(sorted[Math.floor((sorted.length - 1) / 2)] * 10) / 10,
+      n: days.length,
+    }
+  }
+
+  // Conversão entre etapas (últimos 12 meses, pelo histórico): das oportunidades que chegaram
+  // a uma etapa, quantas chegaram à seguinte. Ganha conta como tendo passado por todas.
+  function stageConversion() {
+    const since = nowMs - 365 * 86_400_000
+    const histByRun = new Map<string, Set<string>>()
+    for (const h of input.stageHistory ?? []) {
+      const set = histByRun.get(h.pipeline_run_id) ?? new Set<string>()
+      set.add(h.stage_id); histByRun.set(h.pipeline_run_id, set)
+    }
+    return input.pipelines.filter(p => p.type === 'vendas').map(p => {
+      const stages = input.stages.filter(s => s.pipeline_id === p.id).sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+      const idx = new Map(stages.map((s, i) => [s.id, i]))
+      const runs = input.runs.filter(r => r.pipeline_id === p.id && (ts(r.started_at) ?? 0) >= since)
+      const reachedAtLeast = stages.map(() => 0)
+      for (const r of runs) {
+        const seen = new Set(histByRun.get(r.id) ?? [])
+        if (r.stage_id) seen.add(r.stage_id)
+        let max = -1
+        for (const sid of seen) { const i = idx.get(sid); if (i !== undefined && i > max) max = i }
+        if (r.status === 'won') max = stages.length - 1
+        for (let i = 0; i <= max; i++) reachedAtLeast[i]++
+      }
+      return {
+        pipelineId: p.id, pipelineName: p.name, total: runs.length,
+        steps: stages.map((s, i) => ({
+          name: s.name, reached: reachedAtLeast[i],
+          toNext: i < stages.length - 1 ? pct(reachedAtLeast[i + 1], reachedAtLeast[i]) : null,
+        })),
+      }
+    }).filter(x => x.steps.length > 0)
+  }
 
   const hunter = {
     closed: salesClosed.length,
@@ -494,6 +560,9 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
       const days = Math.floor((nowMs - entered) / 86_400_000)
       return line(r.contract_id, Number(r.value) || 0, `${days} dias em "${(r.stage_id && stageById.get(r.stage_id)?.name) || 'etapa'}"`)
     }),
+    lossReasons: lossReasons(salesLost),
+    cycle: salesCycle(salesWon),
+    stageConversion: stageConversion(),
     leadsNew: input.leads.filter(l => inMonth(l.created_at)).length,
     leadsConverted: input.leads.filter(l => inMonth(l.created_at) && l.status === 'convertido').length,
   }

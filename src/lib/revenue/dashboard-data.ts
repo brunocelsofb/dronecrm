@@ -37,10 +37,10 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
   const tenantId = tenantIdArg ?? await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
 
-  const [pipelines, runs, contracts, billing, renewals, goals, tags, stages, nps, tickets, leads, org, submissions] = await Promise.all([
+  const [pipelines, runs, contracts, billing, renewals, goals, tags, stages, nps, tickets, leads, org, submissions, lostReasons, stageHistory] = await Promise.all([
     fetchAll<DashboardInput['pipelines'][number]>((a, b) => db.from('pipelines').select('id, name, type').order('id').range(a, b)),
     fetchAll<DashboardInput['runs'][number]>((a, b) => db.from('pipeline_runs')
-      .select('id, contract_id, pipeline_id, stage_id, status, value, started_at, ended_at, stage_entered_at, tag_id, report_file_name')
+      .select('id, contract_id, pipeline_id, stage_id, status, value, started_at, ended_at, stage_entered_at, tag_id, report_file_name, lost_reason_id')
       .order('id').range(a, b)),
     fetchAll<DashboardInput['contracts'][number]>((a, b) => db.from('contracts')
       .select('id, client_name, process_number, billing_type, monthly_value, valid_from').order('id').range(a, b)),
@@ -50,7 +50,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
       .select('contract_id, renewed_at, previous_value, new_value').order('id').range(a, b)),
     fetchAll<DashboardInput['goals'][number]>((a, b) => db.from('monthly_goals').select('year, month, target_value').eq('year', year).order('month').range(a, b)),
     fetchAll<DashboardInput['tags'][number]>((a, b) => db.from('tags').select('id, name, color').order('id').range(a, b)),
-    fetchAll<DashboardInput['stages'][number]>((a, b) => db.from('stages').select('id, name, sla_days').order('id').range(a, b)),
+    fetchAll<DashboardInput['stages'][number]>((a, b) => db.from('stages').select('id, name, sla_days, pipeline_id, order_index').order('id').range(a, b)),
     fetchAll<DashboardInput['nps'][number]>((a, b) => db.from('nps_surveys').select('score, answered_at').not('score', 'is', null).order('id').range(a, b)),
     fetchAll<DashboardInput['tickets'][number]>((a, b) => db.from('tickets').select('status, sla_due_at').order('id').range(a, b)),
     fetchAll<DashboardInput['leads'][number]>((a, b) => db.from('leads').select('created_at, status').order('id').range(a, b)),
@@ -58,6 +58,8 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     fetchAll<NonNullable<DashboardInput['submissions']>[number]>((a, b) => db.from('billing_submissions')
       .select('id, contract_id, source_type, year, month, amount_sent, status, invoiced_amount, invoice_number, invoiced_at, sent_at')
       .in('status', ['enviado', 'faturado']).order('id').range(a, b)),
+    fetchAll<NonNullable<DashboardInput['lostReasons']>[number]>((a, b) => db.from('lost_reasons').select('id, name').order('id').range(a, b)),
+    fetchAll<NonNullable<DashboardInput['stageHistory']>[number]>((a, b) => db.from('stage_history').select('pipeline_run_id, stage_id').order('id').range(a, b)),
   ])
 
   // Tags por contrato (tabela sem tenant_id: filtra pelos contratos da empresa)
@@ -85,6 +87,8 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     leads,
     measurementDueDay: Number(org.data?.measurement_due_day ?? 5),
     submissions: submissions.map(s => ({ ...s, amount_sent: Number(s.amount_sent) || 0, invoiced_amount: num(s.invoiced_amount) })),
+    lostReasons,
+    stageHistory,
     billingFlowStart: parseFlowStart((org.data?.billing_erp as { flow_start?: unknown } | null)?.flow_start),
     now: new Date(),
   }

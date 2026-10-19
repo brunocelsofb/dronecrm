@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { createClientForTenant } from '@/lib/supabase/server'
 import { KanbanBoard, type RunCard } from '@/components/pipeline/kanban-board'
 import { PipelineSelect } from '@/components/pipeline/pipeline-select'
-import { PipelineDashboard } from '@/components/pipeline/pipeline-dashboard'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { checkAndTriggerRenewals } from '@/lib/actions/pipeline'
 import { pendingReference, todayBrasilia } from '@/lib/revenue/measurement'
@@ -12,10 +11,9 @@ const DEFAULT_SLA_DAYS = 7 // usado quando a etapa não tem SLA configurado
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ pipeline?: string; dash?: string; tag?: string }>
+  searchParams: Promise<{ pipeline?: string; tag?: string }>
 }) {
-  const { pipeline: pipelineIdParam, dash, tag: tagFilter } = await searchParams
-  const showDash = dash === '1'
+  const { pipeline: pipelineIdParam, tag: tagFilter } = await searchParams
   const { client: supabase, tenantId } = await createClientForTenant()
   const isAdmin = await isCurrentUserAdmin()
 
@@ -67,23 +65,15 @@ export default async function PipelinePage({
       ? supabase.from('stages').select('id, name, order_index, sla_days').eq('pipeline_id', selectedPipeline).order('order_index')
       : Promise.resolve({ data: [] as { id: string; name: string; order_index: number; sla_days: number | null }[] }),
     selectedPipeline
-      ? supabase.from('pipeline_runs').select('id, contract_id, stage_id, stage_entered_at, value, status').eq('pipeline_id', selectedPipeline).in('status', ['open', 'won', 'lost'])
+      ? supabase.from('pipeline_runs').select('id, contract_id, stage_id, stage_entered_at, value, status, lost_reason_id').eq('pipeline_id', selectedPipeline).in('status', ['open', 'won', 'lost'])
       : Promise.resolve({ data: [] as any[] }),
   ])
 
-  // Para o Dashboard: busca TODOS os runs de todos os funis de vendas
+  // Motivos de perda (nome no cartão de perdido; inclui inativos para não perder o histórico)
   const salesPipelineIds = (pipelines ?? []).filter(p => p.type === 'vendas').map(p => p.id)
-  const [{ data: allSalesRuns }, { data: lostReasons }] = await Promise.all([
-    salesPipelineIds.length
-      ? supabase.from('pipeline_runs').select('id, contract_id, stage_id, stage_entered_at, value, status, pipeline_id').in('pipeline_id', salesPipelineIds).in('status', ['open', 'won', 'lost'])
-      : Promise.resolve({ data: [] as any[] }),
-    (() => { let lrQ = supabase.from('lost_reasons').select('id, name').eq('active', true).order('display_order'); if (tenantId) lrQ = lrQ.eq('tenant_id', tenantId); return lrQ })(),
-  ])
+  const { data: lostReasons } = await (() => { let lrQ = supabase.from('lost_reasons').select('id, name'); if (tenantId) lrQ = lrQ.eq('tenant_id', tenantId); return lrQ })()
 
-  const allContractIds = [...new Set([
-    ...(runs ?? []).map((r: any) => r.contract_id),
-    ...(allSalesRuns ?? []).map((r: any) => r.contract_id),
-  ])]
+  const allContractIds = [...new Set((runs ?? []).map((r: any) => r.contract_id))]
 
   const [{ data: contractsData }, { data: latestActivityRows }, { data: contractTagRows }, { data: allStagesData }, { data: allPipelineStages }, { data: proposalAgg }] = await Promise.all([
     allContractIds.length
@@ -179,8 +169,9 @@ export default async function PipelinePage({
   function computeFreshness(contractId: string, stageEnteredAt: string, stageId: string): 'fresh' | 'warning' | 'stale' {
     const lastInteraction = lastActivityByContract.get(contractId) ?? stageEnteredAt
     const daysSince = (Date.now() - new Date(lastInteraction).getTime()) / 86_400_000
-    const sla = stageById.get(stageId)?.sla_days ?? allStagesById.get(stageId)?.sla_days ?? DEFAULT_SLA_DAYS
-    const ratio = daysSince / sla
+    const raw = stageById.get(stageId)?.sla_days ?? allStagesById.get(stageId)?.sla_days ?? DEFAULT_SLA_DAYS
+    if (raw <= 0) return 'fresh'   // prazo 0 = etapa sem prazo
+    const ratio = daysSince / raw
     if (ratio < 0.5) return 'fresh'
     if (ratio < 1) return 'warning'
     return 'stale'
@@ -209,7 +200,6 @@ export default async function PipelinePage({
   }
 
   const cards: RunCard[] = (runs ?? []).map(makeCard)
-  const allSalesCards: RunCard[] = (allSalesRuns ?? []).map(makeCard)
 
   // Filtro por tag — aplica nos cards do Kanban atual
   const filteredCards = tagFilter
@@ -294,41 +284,16 @@ export default async function PipelinePage({
           )}
         </div>
         <div className="flex gap-2">
-          {showDash ? (
-            <Link href={`/pipeline${selectedPipeline ? `?pipeline=${selectedPipeline}` : ''}`}
-              className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline whitespace-nowrap">
-              ← Kanban
-            </Link>
-          ) : (
-            <Link href={`/pipeline?${selectedPipeline ? `pipeline=${selectedPipeline}&` : ''}dash=1`}
-              className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline whitespace-nowrap flex items-center gap-1.5">
-              <span className="text-sm">📊</span> Gestão à vista
-            </Link>
-          )}
-          {!showDash && (
-            <Link
-              href={`/contracts/new${selectedPipeline ? `?pipeline=${selectedPipeline}` : ''}`}
-              className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline whitespace-nowrap"
-            >
-              + {pipelineType === 'vendas' ? 'Nova Oportunidade' : 'Novo Contrato'}
-            </Link>
-          )}
+          <Link
+            href={`/contracts/new${selectedPipeline ? `?pipeline=${selectedPipeline}` : ''}`}
+            className="px-4 py-2 text-xs font-medium rounded-xl bg-[#1B556B] text-white no-underline whitespace-nowrap"
+          >
+            + {pipelineType === 'vendas' ? 'Nova Oportunidade' : 'Novo Contrato'}
+          </Link>
         </div>
       </div>
 
-      {showDash ? (
-        <PipelineDashboard
-          pipelineId={selectedPipeline as string}
-          pipelineName={pipelineName}
-          stages={stages ?? []}
-          cards={cards}
-          allSalesCards={allSalesCards}
-          allStages={allStagesData ?? []}
-          salesPipelines={(pipelines ?? []).filter(p => p.type === 'vendas')}
-          lostReasons={lostReasons ?? []}
-          selectedPipeline={selectedPipeline as string}
-        />
-      ) : stages && stages.length > 0 ? (
+      {stages && stages.length > 0 ? (
         <KanbanBoard
           pipelineId={selectedPipeline as string}
           stages={stages}

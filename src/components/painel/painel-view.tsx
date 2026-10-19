@@ -161,6 +161,17 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
           <Kpi label="Avulsos em andamento" value={String(h.avulso.open.length)} lines={h.avulso.open} />
           <Kpi label={`Leads ${noPeriodo}`} value={String(h.leadsNew)} hint={`${h.leadsConverted} já convertido(s)`} />
         </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Kpi
+            label="Ciclo de venda"
+            value={h.cycle ? `${fmtNum1(h.cycle.avg)} dias` : '—'}
+            hint={h.cycle
+              ? `Da abertura ao ganho · mediana ${fmtNum1(h.cycle.median)} dias · ${h.cycle.n} venda(s) ganha(s) ${noPeriodo}`
+              : `Nenhuma venda ganha ${noPeriodo}.`}
+          />
+          <LossReasons rows={h.lossReasons} noPeriodo={noPeriodo} />
+          <StageConversion rows={h.stageConversion} />
+        </div>
       </Section>
 
       {/* ── Farmer ────────────────────────────────────────────────── */}
@@ -335,6 +346,67 @@ function YearTable({ year, series, selected }: {
           </tfoot>
         </table>
       </div>
+    </div>
+  )
+}
+
+function LossReasons({ rows, noPeriodo }: { rows: DashboardResult['hunter']['lossReasons']; noPeriodo: string }) {
+  const max = Math.max(1, ...rows.map(r => r.count))
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Motivos de perda</p>
+      <p className="mb-2 text-xs text-gray-500">Vendas perdidas {noPeriodo}</p>
+      {rows.length === 0 ? <p className="text-xs text-gray-400">Nenhuma perda {noPeriodo}.</p> : (
+        <ul className="space-y-2">
+          {rows.map(r => (
+            <li key={r.name}>
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className={r.name === 'Motivo não informado' ? 'italic text-gray-400' : 'text-gray-800'}>{r.name}</span>
+                <span className="shrink-0 tabular-nums text-gray-600">{r.count} · {pctTxt(r.share)}</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full rounded-full bg-negative-600" style={{ width: `${(r.count / max) * 100}%` }} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function StageConversion({ rows }: { rows: DashboardResult['hunter']['stageConversion'] }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Conversão entre etapas</p>
+      <p className="mb-2 text-xs text-gray-500">Das oportunidades que chegaram a uma etapa, quantas passaram para a seguinte (abertas nos últimos 12 meses)</p>
+      {rows.every(p => p.total === 0) ? <p className="text-xs text-gray-400">Sem oportunidades nos últimos 12 meses.</p> : (
+        <div className="space-y-3">
+          {rows.filter(p => p.total > 0).map(p => {
+            const top = Math.max(1, p.steps[0]?.reached ?? 1)
+            return (
+              <div key={p.pipelineId}>
+                {rows.length > 1 && <p className="mb-1 text-xs font-semibold text-gray-700">{p.pipelineName} <span className="font-normal text-gray-400">· {p.total}</span></p>}
+                <ul className="space-y-1.5">
+                  {p.steps.map(st => (
+                    <li key={st.name} className="text-xs">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-gray-800">{st.name}</span>
+                        <span className="shrink-0 tabular-nums text-gray-600">
+                          {st.reached}{st.toNext !== null ? <span className="ml-1.5 text-brand-700">→ {pctTxt(st.toNext)}</span> : null}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-brand-700" style={{ width: `${(st.reached / top) * 100}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
