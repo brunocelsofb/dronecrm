@@ -78,9 +78,10 @@ const FRESHNESS_STYLES = {
   stale:   { border: '0.5px solid #dcadb3', background: '#fff5f5', borderLeft: '3px solid #ef4444' },
 } as const
 
-function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
+function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer, onDelete }: {
   card: RunCard; sla: number | null; showValidity: boolean; wonLabel: string; lostLabel: string
   onTransfer?: (card: RunCard) => void
+  onDelete?: (card: RunCard) => void
 }) {
   const router = useRouter()
   const isClosed = card.status !== 'open'
@@ -134,6 +135,20 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
         >
           {card.clientName}
         </button>
+        {onDelete && (
+          <button
+            type="button"
+            title="Excluir (admin)"
+            aria-label="Excluir oportunidade"
+            onClick={(e) => { e.stopPropagation(); onDelete(card) }}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{ flexShrink: 0, marginLeft: 'auto', background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: '#b0b8c8', lineHeight: 0 }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = '#8e4550' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = '#b0b8c8' }}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
         {card.status === 'won' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#e3f5f1', color: '#1f8c7d', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{wonLabel}</span>}
         {card.status === 'lost' && <span style={{ flexShrink: 0, borderRadius: 20, background: '#f6e9ea', color: '#8e4550', fontSize: 10, fontWeight: 500, padding: '2px 7px' }}>{lostLabel}</span>}
       </div>
@@ -195,9 +210,10 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer }: {
   )
 }
 
-function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer }: {
+function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer, onDelete }: {
   stage: Stage; cards: RunCard[]; showValidity: boolean; wonLabel: string; lostLabel: string
   onTransfer?: (card: RunCard) => void
+  onDelete?: (card: RunCard) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id })
   const total = cards.reduce((sum, c) => sum + c.value, 0)
@@ -221,7 +237,7 @@ function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer }:
       </div>
       <p style={{ fontSize: 11, color: '#8892a4', padding: '0 4px', marginBottom: 10 }}>{fmt(total)}</p>
       {cards.map((c) => (
-        <Card key={c.runId} card={c} sla={stage.sla_days} showValidity={showValidity} wonLabel={wonLabel} lostLabel={lostLabel} onTransfer={onTransfer} />
+        <Card key={c.runId} card={c} sla={stage.sla_days} showValidity={showValidity} wonLabel={wonLabel} lostLabel={lostLabel} onTransfer={onTransfer} onDelete={onDelete} />
       ))}
       {cards.length === 0 && (
         <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#c8cdd8' }}>Vazio</p>
@@ -325,6 +341,22 @@ export function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
 
+  // Exclusão (só admin): pede confirmação antes
+  const [confirmDelete, setConfirmDelete] = useState<RunCard | null>(null)
+  function performDelete(card: RunCard) {
+    setConfirmDelete(null)
+    // Remove da tela na hora; se falhar, volta
+    setCards((prev) => prev.filter((c) => c.runId !== card.runId))
+    setError(null)
+    startTransition(async () => {
+      const result = await deleteContract(card.contractId)
+      if (result?.error) {
+        setError(result.error)
+        setCards((prev) => [...prev, card])
+      }
+    })
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over) return
@@ -333,21 +365,7 @@ export function KanbanBoard({
     if (!card) return
 
     if (over.id === TRASH_ZONE_ID) {
-      if (!confirm(`Excluir "${card.clientName}" PARA SEMPRE? Isso apaga todo o histórico, arquivos e faturamento ligados a esse contrato. Não tem como desfazer.`)) {
-        return
-      }
-      // Remove da tela imediatamente (otimista) — se falhar, o próximo
-      // "Atualizar" traz de volta, já que revalidatePath só roda no
-      // servidor depois da resposta.
-      setCards((prev) => prev.filter((c) => c.runId !== card.runId))
-      setError(null)
-      startTransition(async () => {
-        const result = await deleteContract(card.contractId)
-        if (result?.error) {
-          setError(result.error)
-          setCards((prev) => [...prev, card])
-        }
-      })
+      setConfirmDelete(card)
       return
     }
 
@@ -476,6 +494,7 @@ export function KanbanBoard({
                 setTransferPipelineId(otherPipelines![0]?.id ?? '')
                 setTransferStageId(otherPipelines![0]?.stages[0]?.id ?? '')
               } : undefined}
+              onDelete={isAdmin ? (card: RunCard) => setConfirmDelete(card) : undefined}
             />
           ))}
         </div>
@@ -494,6 +513,27 @@ export function KanbanBoard({
         )}
       </DndContext>
     </div>
+
+    {confirmDelete && (
+      <div role="dialog" aria-modal="true" aria-labelledby="del-title"
+        style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(26,31,54,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        onClick={() => setConfirmDelete(null)}>
+        <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, maxWidth: 440, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.2)' }}>
+          <p id="del-title" style={{ fontSize: 15, fontWeight: 600, color: '#1a1f36', margin: 0 }}>Tem certeza que quer excluir?</p>
+          <p style={{ fontSize: 13, color: '#52514e', margin: '10px 0 0', lineHeight: 1.5 }}>
+            <b>{confirmDelete.clientName || confirmDelete.title || 'Esta oportunidade'}</b>{confirmDelete.processNumber ? ` (${confirmDelete.processNumber})` : ''} será apagada para sempre,
+            com histórico, arquivos, propostas e faturamento ligados a ela. Não dá para desfazer.
+          </p>
+          <p style={{ fontSize: 12, color: '#8892a4', margin: '8px 0 0' }}>A empresa e os contatos continuam cadastrados.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+            <button type="button" autoFocus onClick={() => setConfirmDelete(null)}
+              style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d8e8', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+            <button type="button" onClick={() => performDelete(confirmDelete)}
+              style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#AF5B65', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Sim, excluir</button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   )
 }

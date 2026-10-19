@@ -9,6 +9,7 @@ import { getUserAccess } from '@/lib/auth/access'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { phoneKey } from '@/lib/whatsapp/contact-kind'
+import { identifyPhones } from '@/lib/whatsapp/contact-identity'
 
 export type NoteTargets = {
   contracts: { id: string; title: string; company_id: string | null }[]
@@ -101,6 +102,7 @@ export async function saveWhatsAppNote(input: {
   const digits = String(input.phone).replace(/\D/g, '')
   const last10 = digits.slice(-10)
   const contactName = names[digits] ?? names[last10] ?? names[`55${last10}`]
+    ?? (await identifyPhones(tenantId, [digits]))[phoneKey(digits)]?.name
     ?? list.find(m => m.direction === 'recebido' && m.unlinked_sender_name)?.unlinked_sender_name ?? null
   const phoneFmt = fmtPhone(digits)
   const senderIds = [...new Set(list.map(m => m.sent_by).filter(Boolean))] as string[]

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { LinkContactStep } from './link-contact-step'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -181,6 +182,8 @@ export function WhatsAppConversationPanel({
 
   const [showAssignPicker, setShowAssignPicker] = useState(false)
   const [showLinkSearch, setShowLinkSearch] = useState(false)
+  const [linkTarget, setLinkTarget] = useState<string | null>(null)
+  const [linkInfo, setLinkInfo] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ContractOption[]>([])
   const [busy, setBusy] = useState(false)
@@ -358,14 +361,6 @@ export function WhatsAppConversationPanel({
     return () => clearTimeout(timeout)
   }, [query])
 
-  async function handleLink(contractId: string) {
-    setBusy(true)
-    setError(null)
-    const result = await linkUnlinkedWhatsAppConversation(phone, contractId)
-    setBusy(false)
-    if (result.error) setError(result.error)
-    else { setShowLinkSearch(false); setQuery(''); onLinked?.(); router.refresh() }
-  }
 
   async function handleDeleteMessage(id: string) {
     // Remove optimisticamente do state local antes da confirmação do servidor
@@ -638,7 +633,7 @@ export function WhatsAppConversationPanel({
             {query.length >= 2 && (
               <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-md max-h-48 overflow-y-auto">
                 {results.length > 0 ? results.map((r) => (
-                  <button key={r.id} onClick={() => handleLink(r.id)} disabled={busy}
+                  <button key={r.id} onClick={() => { setLinkTarget(r.id); setQuery('') }} disabled={busy}
                     className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50 border-b border-gray-50 last:border-0">
                     {r.label}
                   </button>
@@ -649,6 +644,19 @@ export function WhatsAppConversationPanel({
             )}
           </div>
         )}
+        {linkTarget && (
+          <LinkContactStep
+            phone={phone}
+            contractId={linkTarget}
+            suggestedName={localDisplayName}
+            onCancel={() => setLinkTarget(null)}
+            onDone={(msg) => {
+              setLinkTarget(null); setShowLinkSearch(false); setLinkInfo(msg)
+              onLinked?.(); router.refresh()
+            }}
+          />
+        )}
+        {linkInfo && <p className="mt-2 text-xs text-positive-700">✓ {linkInfo}</p>}
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       </div>
 

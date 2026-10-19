@@ -197,7 +197,8 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                   c.id,
                   [c.process_number, c.title].filter(Boolean).join(' · ') || c.id.slice(0, 8)
                 ]))
-                const allEvents = [...(activities ?? []), ...(contractActivities ?? [])]
+                // A mesma atividade pode vir pela empresa e pela oportunidade: mostra uma vez só
+                const allEvents = [...new Map([...(activities ?? []), ...(contractActivities ?? [])].map(a => [a.id, a])).values()]
                   .sort((a, b) => {
                     const ap = (a as any).is_pinned ? 1 : 0
                     const bp = (b as any).is_pinned ? 1 : 0
