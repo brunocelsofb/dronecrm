@@ -552,9 +552,19 @@ export async function getConversationByPhone(phone: string): Promise<{
 
 export async function linkUnlinkedWhatsAppConversation(phone: string, contractId: string): Promise<ActionState> {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const cleanPhone = phone.replace(/\D/g, '')
   const last10 = cleanPhone.slice(-10)
+
+  // Lê antes de vincular: o nome de quem mandou some no vínculo
+  const { data: before } = await supabase
+    .from('contract_whatsapp_messages')
+    .select('direction, message, media_type, created_at, unlinked_sender_name, instance_name')
+    .ilike('phone', `%${last10}`)
+    .is('contract_id', null)
+    .order('created_at', { ascending: true })
+    .limit(1000)
 
   const { data, error } = await supabase
     .from('contract_whatsapp_messages')
@@ -568,13 +578,50 @@ export async function linkUnlinkedWhatsAppConversation(phone: string, contractId
 
   await supabase.from('activities').insert({
     contract_id: contractId,
+    user_id: user?.id ?? null,
     type: 'system',
-    content: `Conversa de WhatsApp vinculada a esta conta.`,
+    content: await linkSummary(supabase, cleanPhone, contractId, user?.id ?? null, before ?? [], data.length),
+    metadata: { kind: 'whatsapp_link', phone: cleanPhone, messages: data.length },
   })
 
   revalidatePath('/whatsapp')
   revalidatePath(`/contracts/${contractId}`)
   return {}
+}
+
+// "📱 WhatsApp de Fulano ((62) 98631-1129) vinculado à conta X por Y · 3 mensagens de 19/10 a 19/10 · última: …"
+async function linkSummary(
+  supabase: Awaited<ReturnType<typeof createClient>>, cleanPhone: string, contractId: string, userId: string | null,
+  msgs: { direction: string | null; message: string | null; media_type: string | null; created_at: string; unlinked_sender_name: string | null; instance_name: string | null }[],
+  count: number,
+): Promise<string> {
+  const local = cleanPhone.length > 11 && cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone
+  const fmtPhone = local.length === 11 ? `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`
+    : local.length === 10 ? `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}` : cleanPhone
+  const [{ data: contract }, { data: me }, { data: org }] = await Promise.all([
+    supabase.from('contracts').select('client_name, process_number').eq('id', contractId).maybeSingle(),
+    userId ? supabase.from('profiles').select('full_name').eq('id', userId).maybeSingle() : Promise.resolve({ data: null }),
+    supabase.from('organization_settings').select('whatsapp_contact_names, evo_instance_aliases').eq('tenant_id', await resolveTenantId()).maybeSingle(),
+  ])
+  const orgRow = org as { whatsapp_contact_names?: Record<string, string>; evo_instance_aliases?: Record<string, string | { label?: string }> } | null
+  const names = orgRow?.whatsapp_contact_names ?? {}
+  const alias = (inst: string) => { const a = orgRow?.evo_instance_aliases?.[inst]; return (typeof a === 'string' ? a : a?.label) || inst }
+  const last10 = cleanPhone.slice(-10)
+  const name = names[cleanPhone] ?? names[last10] ?? names[`55${last10}`]
+    ?? msgs.find(m => m.direction === 'recebido' && m.unlinked_sender_name)?.unlinked_sender_name ?? null
+  const who = name ? `${name} (${fmtPhone})` : fmtPhone
+  const conta = contract?.client_name ? `${contract.client_name}${contract.process_number ? ` · ${contract.process_number}` : ''}` : 'esta conta'
+  const day = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' })
+  const first = msgs[0]?.created_at, lastMsg = msgs[msgs.length - 1]
+  const period = first && lastMsg ? (day(first) === day(lastMsg.created_at) ? ` em ${day(first)}` : ` de ${day(first)} a ${day(lastMsg.created_at)}`) : ''
+  const MEDIA: Record<string, string> = { audio: '[áudio]', image: '[imagem]', video: '[vídeo]', document: '[documento]', sticker: '[figurinha]', call: '[ligação]' }
+  const preview = lastMsg
+    ? (lastMsg.media_type && MEDIA[lastMsg.media_type] ? MEDIA[lastMsg.media_type] : (lastMsg.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)) || '[sem texto]'
+    : null
+  const lastWho = lastMsg?.direction === 'recebido' ? 'do contato' : 'da empresa'
+  return `📱 WhatsApp de ${who} vinculado à conta ${conta}${me?.full_name ? ` por ${me.full_name}` : ''}.` +
+    `\n${count} mensagem(ns)${period}${lastMsg?.instance_name ? ` · pelo WhatsApp ${alias(lastMsg.instance_name)}` : ''}.` +
+    (preview ? `\nÚltima mensagem (${lastWho}): ${preview}` : '')
 }
 
 export async function saveWhatsAppConversationAsNote(contractId: string, noteText: string): Promise<ActionState> {
