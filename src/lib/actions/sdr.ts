@@ -131,7 +131,7 @@ export async function simulateSdr(settingsInput: SdrSettings, history: ChatTurn[
           return { result: 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.', closing: 'Obrigado! Vou encaminhar sua mensagem para o nosso time, que responde por aqui em breve.' }
         }
         events.push({ tool: 'Descartaria', detail: String(call.input.motivo ?? '') })
-        return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Qualquer coisa, estamos à disposição.' }
+        return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Esse pedido não é algo que atendemos, mas ficamos à disposição se precisar de outra coisa.' }
       },
     })
     return { ok: true, reply: res.text, events, ended: !!res.terminal, tokens: res.usage.input + res.usage.output }

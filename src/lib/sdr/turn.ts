@@ -74,8 +74,10 @@ export async function runSdrTurn(opts: {
     if (blockText) preText = blockText
   }
   // A IA às vezes encerra a vez sem escrever depois da ferramenta: nunca deixar o contato sem resposta
-  // Ordem: resposta final da IA > mensagem de encerramento (tem vendedor e link) > texto escrito junto da ferramenta
-  const text = finalText || (terminal && closing) || preText || closing || 'Certo! Pode me contar um pouco mais para eu entender melhor?'
+  // Ordem: resposta final da IA > (ao passar ao comercial) mensagem com vendedor e link >
+  // o que a IA escreveu junto da ferramenta (explica o motivo) > mensagem padrão
+  const handoffClosing = terminal === 'passar_para_comercial' ? closing : null
+  const text = finalText || handoffClosing || preText || closing || 'Certo! Pode me contar um pouco mais para eu entender melhor?'
   return { text: cleanReply(text), calls, terminal, usage }
 }
 

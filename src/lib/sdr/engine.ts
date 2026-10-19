@@ -271,7 +271,7 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
       return { result: 'Encaminhado ao time. Avise que uma pessoa vai responder por aqui.', closing: 'Obrigado! Vou encaminhar sua mensagem para o nosso time, que responde por aqui em breve.' }
     }
     await endConversation({ ...conv, answers }, 'disqualified', { end_reason: String(call.input.motivo ?? '').slice(0, 300) || 'Descartado' })
-    return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Qualquer coisa, estamos à disposição.' }
+    return { result: 'Encerrado.', closing: 'Obrigado pelo contato! Esse pedido não é algo que atendemos, mas ficamos à disposição se precisar de outra coisa.' }
   }
 
   const result = await runSdrTurn({
