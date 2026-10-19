@@ -226,20 +226,38 @@ export async function submitCustomSurveyResponse(
 
       if (isDetractor && surveyFull.contract_id) {
 
-        // Cria tarefa no plano de ação do contrato
-        await adminClient.from('action_plan_items').insert({
-          contract_id: surveyFull.contract_id,
-          description: `🚨 TRATATIVA DE DETRATOR: ${respondent_name || 'Cliente'} respondeu nota ${lowestScore}. Entre em contato em até 24 horas para entender os pontos de insatisfação.`,
-          responsible_department: 'Comercial',
-          status: 'pending',
-        })
-
-        // Cria notificação para o responsável
         const { data: contract } = await adminClient
           .from('contracts')
-          .select('owner_id, client_name')
+          .select('owner_id, client_name, tenant_id')
           .eq('id', surveyFull.contract_id)
           .maybeSingle()
+
+        // Abre uma tratativa (PDCA) no plano de ação, com a 1ª ação: falar com o cliente em 24h.
+        // source_ref evita duplicar se a mesma resposta for processada de novo.
+        const tomorrow = new Date(Date.now() - 3 * 3600_000 + 86_400_000).toISOString().slice(0, 10)
+        const { data: plan } = await adminClient.from('action_plans').insert({
+          tenant_id: contract?.tenant_id ?? null,
+          contract_id: surveyFull.contract_id,
+          title: `Detrator: ${respondent_name || 'Cliente'} respondeu nota ${lowestScore}`,
+          origin: 'nps',
+          description: 'Aberta automaticamente pela pesquisa. Entenda os pontos de insatisfação, analise a causa e defina as ações.',
+          source_ref: `survey:${survey.id}`,
+        }).select('id').maybeSingle()
+        if (plan?.id) {
+          await adminClient.from('action_plan_items').insert({
+            contract_id: surveyFull.contract_id,
+            plan_id: plan.id,
+            description: `🚨 Contatar ${respondent_name || 'o cliente'} para entender os pontos de insatisfação`,
+            why: `Respondeu nota ${lowestScore} na pesquisa`,
+            how: 'Ligação ou reunião; registrar o que foi dito nas atividades',
+            due_date: tomorrow,
+            assigned_to: contract?.owner_id ?? null,
+            responsible_department: 'comercial',
+            status: 'pending',
+          })
+        }
+
+        // Cria notificação para o responsável
 
         if (contract?.owner_id) {
           await adminClient.from('notifications').insert({

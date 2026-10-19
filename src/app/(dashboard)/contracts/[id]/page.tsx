@@ -41,7 +41,8 @@ import { getContractContacts } from '@/lib/actions/contract-contacts'
 import { getConnectedEmailAccount } from '@/lib/actions/email'
 import { getContractCustomFieldValues } from '@/lib/actions/custom-fields'
 import { DeleteContractButton } from '@/components/contracts/delete-contract-button'
-import { ActionPlanSection } from '@/components/contracts/action-plan-section'
+import { ActionPlanSection, type PlanRow, type ItemRow } from '@/components/contracts/action-plan-section'
+import { resolveActionPlanSettings } from '@/lib/quality/action-plan'
 import { DimensioningSection } from '@/components/contracts/dimensioning-section'
 import { ContractTabs } from '@/components/contracts/contract-tabs'
 import { setContractTag } from '@/lib/actions/tags'
@@ -111,7 +112,7 @@ export default async function ContractDetailPage({
     supabase.from('nps_surveys').select('id, token, score, comment, status, sent_at, answered_at, respondent_name, respondent_email, respondent_phone').eq('contract_id', id).order('sent_at', { ascending: false }),
     supabase.from('survey_templates').select('id, name, tag_id, questions, target_type, target_tag_id, target_pipeline_id').order('name'),
     supabase.from('custom_surveys').select('id, token, status, sent_at, answered_at, expires_at, respondent_name, respondent_email, respondent_phone, template_id, responses').eq('contract_id', id).order('sent_at', { ascending: false }),
-    supabase.from('action_plan_items').select('id, description, responsible_department, status, created_at, resolved_at').eq('contract_id', id).order('created_at', { ascending: false }),
+    supabase.from('action_plan_items').select('id, plan_id, description, responsible_department, status, created_at, resolved_at, why, where_text, due_date, assigned_to, how, how_much').eq('contract_id', id).order('created_at', { ascending: true }),
     supabase.from('dimensioning_reviews').select('id, file_storage_path, file_name, sent_at, status, reviewed_at, review_notes').eq('contract_id', id).order('sent_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, department'),
     supabase.from('billing_records').select('id, year, month, amount, measured_amount, glosa_amount, glosa_reason, discount_amount, discount_reason, contract_value, status, file_storage_path, file_name, notes, confirmed_at, approved_at').eq('contract_id', id).order('year', { ascending: false }).order('month', { ascending: false }),
@@ -260,6 +261,14 @@ export default async function ContractDetailPage({
   const fileKey = (k: string) => `${k}:${(contractFiles ?? []).map((f: any) => `${f.id}.${f.document_kind}`).join(',')}`
   const canChangeStage =
     contract.owner_id === currentProfile?.id || currentProfile?.role === 'admin'
+
+  // Plano de ação (tratativas PDCA) e ferramentas ligadas pela empresa
+  const [{ data: actionPlans }, { data: actionPlanOrg }] = await Promise.all([
+    supabase.from('action_plans')
+      .select('id, title, origin, description, phase, cycle, gut_g, gut_u, gut_t, five_whys, ishikawa, root_cause, efficacy_result, efficacy_note, efficacy_checked_at, standardization, created_at, closed_at')
+      .eq('contract_id', id),
+    supabase.from('organization_settings').select('action_plan_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
+  ])
 
   // Régua de renovação (processo interno da renovação)
   const [{ data: rulerRun }, { data: rulerOrg }] = isCurrentlyInContractsPipeline
@@ -653,7 +662,15 @@ export default async function ContractDetailPage({
           {
             id: 'plano-de-acao',
             label: 'Plano de Ação',
-            content: <ActionPlanSection contractId={contract.id} items={actionPlanItems ?? []} />,
+            content: (
+              <ActionPlanSection
+                contractId={contract.id}
+                plans={(actionPlans ?? []) as PlanRow[]}
+                items={(actionPlanItems ?? []) as ItemRow[]}
+                settings={resolveActionPlanSettings(actionPlanOrg?.action_plan_settings)}
+                people={(allProfiles ?? []).map(p => ({ id: p.id as string, name: (p.full_name as string | null) ?? '—' })).sort((a, b) => a.name.localeCompare(b.name))}
+              />
+            ),
           },
           {
             id: 'arquivos',
