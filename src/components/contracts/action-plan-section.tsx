@@ -12,16 +12,17 @@ import {
 } from '@/lib/actions/action-plans'
 import { updateActionPlanItemStatus, deleteActionPlanItem } from '@/lib/actions/workflow'
 import {
-  ORIGIN_LABEL, PHASE_LABEL, GUT_HELP, gutScore, gutBand, nextPhaseCheck, sortPlans,
-  type ActionPlanSettings, type PlanOrigin, type PlanPhase,
+  ORIGIN_LABEL, PHASE_LABEL, CAUSE_METHODS, availableMethods, gutScore, gutBand, nextPhaseCheck, sortPlans,
+  type ActionPlanSettings, type CauseMethod, type PlanOrigin, type PlanPhase,
 } from '@/lib/quality/action-plan'
 import { DEPARTMENTS, departmentLabel } from '@/lib/constants/departments'
 import { fmtBRL } from '@/lib/format'
+import { CauseMethodExample } from '@/components/quality/cause-method-example'
 
 export type PlanRow = {
   id: string; title: string; origin: PlanOrigin; description: string | null; phase: PlanPhase; cycle: number
   gut_g: number | null; gut_u: number | null; gut_t: number | null
-  five_whys: string[] | null; ishikawa: Record<string, string[]> | null; root_cause: string | null
+  five_whys: string[] | null; ishikawa: Record<string, string[]> | null; root_cause: string | null; cause_method: CauseMethod | null
   efficacy_result: 'eficaz' | 'nao_eficaz' | null; efficacy_note: string | null; efficacy_checked_at: string | null
   standardization: string | null; created_at: string; closed_at: string | null
 }
@@ -139,10 +140,10 @@ function NewPlanForm({ contractId, settings, onDone }: { contractId: string; set
         <textarea className={`${input} min-h-[60px]`} value={desc} maxLength={2000} onChange={e => setDesc(e.target.value)} /></label>
       {settings.tools.gut && (
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-          <GutSelect label="Gravidade" value={g} onChange={setG} help={GUT_HELP.g} />
-          <GutSelect label="Urgência" value={u} onChange={setU} help={GUT_HELP.u} />
-          <GutSelect label="Tendência" value={t} onChange={setT} help={GUT_HELP.t} />
-          <span className={`rounded-lg px-3 py-2 text-xs font-semibold ${TONE[gutBand(score).tone]}`}>GUT {score ?? '—'}</span>
+          <GutSelect label="Gravidade" value={g} onChange={setG} help={settings.gut_scale.g} />
+          <GutSelect label="Urgência" value={u} onChange={setU} help={settings.gut_scale.u} />
+          <GutSelect label="Tendência" value={t} onChange={setT} help={settings.gut_scale.t} />
+          <span className={`rounded-lg px-3 py-2 text-xs font-semibold ${TONE[gutBand(score, settings.gut_bands).tone]}`}>GUT {score ?? '—'}</span>
         </div>
       )}
       {error && <p className="text-xs text-negative-700">{error}</p>}
@@ -184,7 +185,7 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
   contractId: string; plan: PlanRow; items: ItemRow[]; settings: ActionPlanSettings; people: { id: string; name: string }[]; open: boolean; onToggle: () => void
 }) {
   const score = gutScore(plan.gut_g, plan.gut_u, plan.gut_t)
-  const band = gutBand(score)
+  const band = gutBand(score, settings.gut_bands)
   const ended = plan.phase === 'closed' || plan.phase === 'cancelled'
   const doneCount = items.filter(i => i.status === 'done').length
   const a = useAct()
@@ -203,7 +204,7 @@ function PlanCard({ contractId, plan, items, settings, people, open, onToggle }:
             {ORIGIN_LABEL[plan.origin]} · {PHASE_LABEL[plan.phase]}{plan.cycle > 1 ? ` · ciclo ${plan.cycle}` : ''} · {doneCount}/{items.length} ações · aberta em {br(plan.created_at)}
           </p>
         </div>
-        {settings.tools.gut && <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${TONE[band.tone]}`}>GUT {score ?? '—'}</span>}
+        {settings.tools.gut && <span title={band.label} className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${TONE[band.tone]}`}>GUT {score ?? '—'}</span>}
       </button>
 
       {open && (
@@ -267,9 +268,9 @@ function ProblemBlock({ contractId, plan, settings, disabled }: { contractId: st
       <textarea className={`${input} min-h-[50px]`} value={desc} disabled={disabled} maxLength={2000} placeholder="Fatos: o que, onde, quando, quem foi afetado" onChange={e => setDesc(e.target.value)} />
       {settings.tools.gut && (
         <div className="grid gap-2 sm:grid-cols-3">
-          <GutSelect label="Gravidade" value={g} onChange={setG} help={GUT_HELP.g} disabled={disabled} />
-          <GutSelect label="Urgência" value={u} onChange={setU} help={GUT_HELP.u} disabled={disabled} />
-          <GutSelect label="Tendência" value={t} onChange={setT} help={GUT_HELP.t} disabled={disabled} />
+          <GutSelect label="Gravidade" value={g} onChange={setG} help={settings.gut_scale.g} disabled={disabled} />
+          <GutSelect label="Urgência" value={u} onChange={setU} help={settings.gut_scale.u} disabled={disabled} />
+          <GutSelect label="Tendência" value={t} onChange={setT} help={settings.gut_scale.t} disabled={disabled} />
         </div>
       )}
       <SaveBar dirty={dirty} pending={a.pending} error={a.error}
@@ -284,16 +285,42 @@ function CauseBlock({ contractId, plan, settings, disabled }: { contractId: stri
   const initIsh = Object.fromEntries(settings.ishikawa_categories.map(c => [c.key, (plan.ishikawa?.[c.key] ?? []).join('\n')]))
   const [ish, setIsh] = useState<Record<string, string>>(initIsh)
   const [root, setRoot] = useState(plan.root_cause ?? '')
+  // Métodos que a empresa liberou; o já escolhido continua visível mesmo se a ferramenta foi desligada depois
+  const methods = availableMethods(settings)
+  if (plan.cause_method && !methods.includes(plan.cause_method)) methods.unshift(plan.cause_method)
+  const initMethod = plan.cause_method ?? settings.default_method
+  const [method, setMethod] = useState<CauseMethod>(initMethod)
+  const [example, setExample] = useState<CauseMethod | null>(null)
   const a = useAct()
-  const dirty = whys.join('|') !== initWhys.join('|') || JSON.stringify(ish) !== JSON.stringify(initIsh) || root !== (plan.root_cause ?? '')
+  const changed = method !== initMethod || whys.join('|') !== initWhys.join('|') || JSON.stringify(ish) !== JSON.stringify(initIsh) || root !== (plan.root_cause ?? '')
   // A próxima pergunta só aparece depois de responder a anterior
-  const visibleWhys = Math.min(5, Math.max(1, whys.findIndex(w => !w.trim()) === -1 ? 5 : whys.findIndex(w => !w.trim()) + 1))
+  const firstEmpty = whys.findIndex(w => !w.trim())
+  const visibleWhys = firstEmpty === -1 ? 5 : Math.max(1, firstEmpty + 1)
   return (
     <section className="space-y-3">
       <p className="text-xs font-semibold text-brand-700">2. Causa raiz</p>
-      {settings.tools.cinco_porques && (
+      {methods.length > 1 && (
+        <div>
+          <p className={small}>Qual análise fazer?</p>
+          <div className="mt-1 grid gap-2 sm:grid-cols-3">
+            {methods.map(m => (
+              <div key={m} className={`rounded-lg border p-2.5 ${method === m ? 'border-brand-700 bg-brand-100/60' : 'border-gray-200 bg-white'}`}>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                  <input type="radio" checked={method === m} disabled={disabled} onChange={() => setMethod(m)} />
+                  {CAUSE_METHODS[m].label}
+                </label>
+                <p className="mt-1 text-[11px] text-gray-600">{CAUSE_METHODS[m].when}</p>
+                <button type="button" onClick={() => setExample(example === m ? null : m)} className="mt-1 text-[11px] font-medium text-brand-700 hover:underline">
+                  {example === m ? 'Fechar exemplo' : 'Ver exemplo'}
+                </button>
+              </div>
+            ))}
+          </div>
+          {example && <div className="mt-2"><CauseMethodExample method={example} /></div>}
+        </div>
+      )}
+      {method === 'cinco_porques' && (
         <div className="space-y-1.5">
-          <p className="text-[11px] text-gray-500">5 Porquês: pergunte “por quê?” sobre a resposta anterior até chegar à causa.</p>
           {whys.slice(0, visibleWhys).map((w, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="w-24 shrink-0 text-[11px] font-medium text-gray-500">{i + 1}º por quê?</span>
@@ -302,28 +329,28 @@ function CauseBlock({ contractId, plan, settings, disabled }: { contractId: stri
           ))}
         </div>
       )}
-      {settings.tools.ishikawa && (
-        <div>
-          <p className="mb-1.5 text-[11px] text-gray-500">Ishikawa: possíveis causas em cada categoria (uma por linha).</p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {settings.ishikawa_categories.map(c => (
-              <label key={c.key} className="block rounded-lg border border-gray-200 bg-gray-50 p-2">
-                <span className="text-[11px] font-semibold text-gray-700">{c.label}</span>
-                <textarea className={`${input} mt-1 min-h-[56px] bg-white text-xs`} value={ish[c.key] ?? ''} disabled={disabled}
-                  onChange={e => setIsh(x => ({ ...x, [c.key]: e.target.value }))} />
-              </label>
-            ))}
-          </div>
+      {method === 'ishikawa' && (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {settings.ishikawa_categories.map(c => (
+            <label key={c.key} className="block rounded-lg border border-gray-200 bg-gray-50 p-2">
+              <span className="text-[11px] font-semibold text-gray-700">{c.label}</span>
+              <textarea className={`${input} mt-1 min-h-[56px] bg-white text-xs`} value={ish[c.key] ?? ''} disabled={disabled} placeholder="Uma causa por linha"
+                onChange={e => setIsh(x => ({ ...x, [c.key]: e.target.value }))} />
+            </label>
+          ))}
         </div>
       )}
       <label className="block"><span className={small}>Causa raiz identificada</span>
         <textarea className={`${input} min-h-[44px]`} value={root} disabled={disabled} maxLength={1000} onChange={e => setRoot(e.target.value)} /></label>
-      <SaveBar dirty={dirty} pending={a.pending} error={a.error}
-        onSave={() => a.run(() => updateActionPlan(contractId, plan.id, {
-          five_whys: whys,
-          ishikawa: Object.fromEntries(Object.entries(ish).map(([k, v]) => [k, v.split('\n')])),
-          root_cause: root,
-        }))} />
+      {!disabled && (
+        <SaveBar dirty={changed} pending={a.pending} error={a.error}
+          onSave={() => a.run(() => updateActionPlan(contractId, plan.id, {
+            cause_method: method,
+            five_whys: whys,
+            ishikawa: Object.fromEntries(Object.entries(ish).map(([k, v]) => [k, v.split('\n')])),
+            root_cause: root,
+          }))} />
+      )}
     </section>
   )
 }

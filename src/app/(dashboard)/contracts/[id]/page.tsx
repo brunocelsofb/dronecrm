@@ -265,7 +265,7 @@ export default async function ContractDetailPage({
   // Plano de ação (tratativas PDCA) e ferramentas ligadas pela empresa
   const [{ data: actionPlans }, { data: actionPlanOrg }] = await Promise.all([
     supabase.from('action_plans')
-      .select('id, title, origin, description, phase, cycle, gut_g, gut_u, gut_t, five_whys, ishikawa, root_cause, efficacy_result, efficacy_note, efficacy_checked_at, standardization, created_at, closed_at')
+      .select('id, title, origin, description, phase, cycle, gut_g, gut_u, gut_t, five_whys, ishikawa, root_cause, cause_method, efficacy_result, efficacy_note, efficacy_checked_at, standardization, created_at, closed_at')
       .eq('contract_id', id),
     supabase.from('organization_settings').select('action_plan_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
   ])

@@ -3,7 +3,11 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { saveActionPlanSettings } from '@/lib/actions/action-plans'
-import { DEFAULT_ISHIKAWA, type ActionPlanSettings } from '@/lib/quality/action-plan'
+import {
+  DEFAULT_ISHIKAWA, DEFAULT_GUT_SCALE, DEFAULT_GUT_BANDS, CAUSE_METHODS, availableMethods,
+  type ActionPlanSettings, type CauseMethod, type GutScale,
+} from '@/lib/quality/action-plan'
+import { CauseMethodExample } from '@/components/quality/cause-method-example'
 
 const box = 'rounded-xl border border-gray-200 bg-white p-5 space-y-3'
 
@@ -18,13 +22,23 @@ export function ActionPlanSettingsForm({ initial }: { initial: ActionPlanSetting
   const [tools, setTools] = useState(initial.tools)
   const [requireEff, setRequireEff] = useState(initial.require_efficacy)
   const [cats, setCats] = useState(initial.ishikawa_categories)
+  const [method, setMethod] = useState<CauseMethod>(initial.default_method)
+  const [example, setExample] = useState<CauseMethod | null>(null)
+  const [scale, setScale] = useState<GutScale>(initial.gut_scale)
+  const [high, setHigh] = useState(String(initial.gut_bands.high))
+  const [medium, setMedium] = useState(String(initial.gut_bands.medium))
+  const methods = availableMethods({ tools })
+  const effMethod = methods.includes(method) ? method : methods[0]
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const touch = () => setMsg(null)
 
   async function save() {
     setSaving(true); setMsg(null)
-    const r = await saveActionPlanSettings({ tools, require_efficacy: requireEff, ishikawa_categories: cats })
+    const r = await saveActionPlanSettings({
+      tools, require_efficacy: requireEff, ishikawa_categories: cats, default_method: effMethod,
+      gut_scale: scale, gut_bands: { high: Number(high), medium: Number(medium) },
+    })
     setSaving(false)
     setMsg(r.ok ? { ok: true, text: 'Salvo. Vale para todas as tratativas da empresa.' } : { ok: false, text: r.error })
   }
@@ -49,6 +63,60 @@ export function ActionPlanSettingsForm({ initial }: { initial: ActionPlanSetting
           </label>
         ))}
       </section>
+
+      <section className={box}>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Análise de causa</h2>
+          <p className="text-xs text-gray-500">Em cada tratativa a pessoa escolhe a análise entre as ligadas acima. Defina qual já vem marcada.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {methods.map(m => (
+            <div key={m} className={`rounded-lg border p-3 ${effMethod === m ? 'border-brand-700 bg-brand-100/60' : 'border-gray-200'}`}>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                <input type="radio" checked={effMethod === m} onChange={() => { touch(); setMethod(m) }} /> {CAUSE_METHODS[m].label}
+                {effMethod === m && <span className="text-[10px] font-normal text-brand-700">padrão</span>}
+              </label>
+              <p className="mt-1 text-[11px] text-gray-600">{CAUSE_METHODS[m].when}</p>
+              <button type="button" onClick={() => setExample(example === m ? null : m)} className="mt-1 text-[11px] font-medium text-brand-700 hover:underline">
+                {example === m ? 'Fechar exemplo' : 'Ver exemplo'}
+              </button>
+            </div>
+          ))}
+        </div>
+        {example && <CauseMethodExample method={example} />}
+      </section>
+
+      {tools.gut && (
+        <section className={box}>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Matriz GUT: notas e faixas</h2>
+            <p className="text-xs text-gray-500">Descreva o que significa cada nota (1 a 5) para a sua empresa. A prioridade é Gravidade × Urgência × Tendência (1 a 125).</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([['g', 'Gravidade'], ['u', 'Urgência'], ['t', 'Tendência']] as const).map(([k, label]) => (
+              <div key={k} className="space-y-1.5">
+                <p className="text-xs font-semibold text-gray-700">{label}</p>
+                {scale[k].map((v, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span className="w-4 text-xs font-semibold text-gray-500">{i + 1}</span>
+                    <input value={v} maxLength={60} onChange={e => { touch(); setScale({ ...scale, [k]: scale[k].map((x, j) => (j === i ? e.target.value : x)) }) }}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs focus:border-brand-700 focus:outline-none" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <label className="flex items-center gap-1.5"><span className="rounded-full bg-negative-100 px-2 py-0.5 text-xs font-semibold text-negative-700">Alta</span> a partir de
+              <input type="number" min={2} max={125} value={high} onChange={e => { touch(); setHigh(e.target.value) }} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" /></label>
+            <label className="flex items-center gap-1.5"><span className="rounded-full bg-warn-100 px-2 py-0.5 text-xs font-semibold text-warn-700">Média</span> a partir de
+              <input type="number" min={1} max={124} value={medium} onChange={e => { touch(); setMedium(e.target.value) }} className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm" /></label>
+            <span className="text-xs text-gray-500"><span className="rounded-full bg-positive-100 px-2 py-0.5 font-semibold text-positive-700">Baixa</span> abaixo de {medium || '—'}</span>
+          </div>
+          <button type="button" onClick={() => { touch(); setScale(DEFAULT_GUT_SCALE); setHigh(String(DEFAULT_GUT_BANDS.high)); setMedium(String(DEFAULT_GUT_BANDS.medium)) }}
+            className="text-sm text-gray-500 hover:underline">Voltar ao padrão</button>
+        </section>
+      )}
 
       <section className={box}>
         <h2 className="text-sm font-semibold text-gray-900">Verificação de eficácia</h2>

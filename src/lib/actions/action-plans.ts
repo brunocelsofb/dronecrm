@@ -7,8 +7,8 @@ import { getUserAccess } from '@/lib/auth/access'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import {
-  resolveActionPlanSettings, cleanWhys, cleanIshikawa, nextPhaseCheck, ORIGIN_LABEL, PHASE_LABEL,
-  type ActionPlanSettings, type PlanOrigin, type PlanPhase,
+  resolveActionPlanSettings, cleanWhys, cleanIshikawa, nextPhaseCheck, availableMethods, ORIGIN_LABEL, PHASE_LABEL,
+  type ActionPlanSettings, type CauseMethod, type PlanOrigin, type PlanPhase,
 } from '@/lib/quality/action-plan'
 
 type Result = { ok: true; id?: string } | { ok: false; error: string }
@@ -33,7 +33,7 @@ async function ctx(contractId: string): Promise<{ db: Db; tenantId: string; user
 
 async function loadPlan(db: Db, planId: string, contractId: string) {
   const { data } = await db.from('action_plans').select('*').eq('id', planId).eq('contract_id', contractId).maybeSingle()
-  return data as (Record<string, unknown> & { id: string; phase: PlanPhase; title: string; cycle: number }) | null
+  return data as (Record<string, unknown> & { id: string; phase: PlanPhase; title: string; cycle: number; cause_method: CauseMethod | null }) | null
 }
 
 async function log(db: Db, contractId: string, userId: string, content: string) {
@@ -67,7 +67,7 @@ export async function createActionPlan(contractId: string, input: {
 export async function updateActionPlan(contractId: string, planId: string, patch: {
   title?: string; description?: string; origin?: string
   gut_g?: number | null; gut_u?: number | null; gut_t?: number | null
-  five_whys?: string[]; ishikawa?: Record<string, string[]>; root_cause?: string; standardization?: string
+  five_whys?: string[]; ishikawa?: Record<string, string[]>; root_cause?: string; standardization?: string; cause_method?: CauseMethod
 }): Promise<Result> {
   const c = await ctx(contractId)
   if ('error' in c) return { ok: false, error: c.error }
@@ -82,6 +82,12 @@ export async function updateActionPlan(contractId: string, planId: string, patch
     if (patch.gut_g !== undefined) up.gut_g = gut(patch.gut_g)
     if (patch.gut_u !== undefined) up.gut_u = gut(patch.gut_u)
     if (patch.gut_t !== undefined) up.gut_t = gut(patch.gut_t)
+  }
+  if (patch.cause_method !== undefined) {
+    if (!availableMethods(c.settings).includes(patch.cause_method) && patch.cause_method !== plan.cause_method) {
+      return { ok: false, error: 'Esse método de análise está desligado nas configurações.' }
+    }
+    up.cause_method = patch.cause_method
   }
   if (patch.five_whys !== undefined) up.five_whys = cleanWhys(patch.five_whys)
   if (patch.ishikawa !== undefined) up.ishikawa = cleanIshikawa(patch.ishikawa, c.settings.ishikawa_categories)
@@ -220,6 +226,16 @@ export async function saveActionPlanSettings(input: ActionPlanSettings): Promise
   const cats = (input.ishikawa_categories ?? []).map(c => ({ key: c.key, label: (c.label ?? '').trim() }))
   if (cats.some(c => !c.label)) return { ok: false, error: 'Toda categoria do Ishikawa precisa de nome.' }
   if (input.tools.ishikawa && cats.length < 2) return { ok: false, error: 'O Ishikawa precisa de ao menos 2 categorias.' }
+  for (const k of ['g', 'u', 't'] as const) {
+    if ((input.gut_scale?.[k] ?? []).length !== 5 || input.gut_scale[k].some(x => !x?.trim())) {
+      return { ok: false, error: 'Preencha a descrição das 5 notas de Gravidade, Urgência e Tendência.' }
+    }
+  }
+  const { high, medium } = input.gut_bands ?? {}
+  if (!Number.isInteger(high) || !Number.isInteger(medium) || medium < 1 || high > 125 || medium >= high) {
+    return { ok: false, error: 'Faixas da GUT: a prioridade média deve começar abaixo da alta, entre 1 e 125.' }
+  }
+  if (!availableMethods(input).includes(input.default_method)) return { ok: false, error: 'O método padrão precisa estar ligado.' }
   const clean = resolveActionPlanSettings({ ...input, ishikawa_categories: cats })
   const tenantId = await resolveTenantId()
   const db = await createScopedAdmin(tenantId)
