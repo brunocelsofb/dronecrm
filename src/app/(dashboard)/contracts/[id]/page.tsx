@@ -26,6 +26,8 @@ import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
 import { resolveTenantId as resolveTenantForReading } from '@/lib/tenant/context'
 import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
+import { RenewalRulerPanel, type RulerRunView } from '@/components/contracts/renewal-ruler-panel'
+import { resolveRulerSettings } from '@/lib/agent/renewal-ruler'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
 import { ProposalsSection } from '@/components/proposals/proposals-section'
 import { ContractTicketsSection } from '@/components/tickets/contract-tickets-section'
@@ -51,6 +53,11 @@ import { getContractSchedule, getImplementationTemplates } from '@/lib/actions/i
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { CampaignPicker } from '@/components/marketing/campaign-picker'
+
+// Hoje em Brasília (aaaa-mm-dd), para marcar passos atrasados
+function todayBrIso(): string {
+  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
+}
 
 export default async function ContractDetailPage({
   params,
@@ -253,6 +260,17 @@ export default async function ContractDetailPage({
   const fileKey = (k: string) => `${k}:${(contractFiles ?? []).map((f: any) => `${f.id}.${f.document_kind}`).join(',')}`
   const canChangeStage =
     contract.owner_id === currentProfile?.id || currentProfile?.role === 'admin'
+
+  // Régua de renovação (processo interno da renovação)
+  const [{ data: rulerRun }, { data: rulerOrg }] = isCurrentlyInContractsPipeline
+    ? await Promise.all([
+        supabase.from('renewal_ruler_runs')
+          .select('id, status, period_end, steps, lock_renewed, started_at, ready_at, finished_at')
+          .eq('contract_id', id).order('started_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
+      ])
+    : [{ data: null }, { data: null }]
+  const rulerEnabled = resolveRulerSettings(rulerOrg?.copilot_settings).enabled
 
   // Dados de implantação
   const [implementationSchedule, implementationTemplates] = await Promise.all([
@@ -473,6 +491,17 @@ export default async function ContractDetailPage({
                     canEdit={canChangeStage}
                     canCreateProposal={['admin', 'member', 'aprovador_comercial'].includes(currentProfile?.role ?? '')}
                     isCurrentlyInContractsPipeline={isCurrentlyInContractsPipeline}
+                  />
+                )}
+
+                {isCurrentlyInContractsPipeline && (
+                  <RenewalRulerPanel
+                    contractId={contract.id}
+                    run={(rulerRun as RulerRunView | null) ?? null}
+                    enabled={rulerEnabled}
+                    canAct={!!currentProfile}
+                    isAdmin={currentProfile?.role === 'admin'}
+                    today={todayBrIso()}
                   />
                 )}
 

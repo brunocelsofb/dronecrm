@@ -10,6 +10,7 @@ import { runExpirationAlerts } from '@/lib/agent/expiration-alerts'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
 import { runMeasurementAlerts } from '@/lib/agent/measurement-alerts'
+import { runRulerOverdue } from '@/lib/agent/renewal-ruler-engine'
 
 export const maxDuration = 60  // segundos — Vercel Pro permite até 300s
 
@@ -55,9 +56,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         } catch (e) {
           measurement = { error: e instanceof Error ? e.message : String(e) }
         }
+        let ruler: unknown
+        try {
+          ruler = await runRulerOverdue(tenantId)
+        } catch (e) {
+          ruler = { error: e instanceof Error ? e.message : String(e) }
+        }
         byTenant.push({
           tenantId,
           measurement,
+          ruler,
           total:    report.total,
           by_level: report.by_level,
           results:  report.results,

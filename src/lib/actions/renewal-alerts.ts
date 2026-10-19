@@ -337,7 +337,22 @@ export async function sendRenewalAlert(
     .update({ status: 'done', completed: true, title: sentTitle, content: sentContent, metadata: sentMeta })
     .eq('id', activityId)
 
-  // 4. Avisa o gestor no WhatsApp do briefing (Gerencial). Falha aqui não
+  // 4. Régua de renovação: a partir do aviso ao cliente, o processo segue interno.
+  //    O 1º passo (aviso enviado) já fica concluído. Falha aqui não desfaz o envio.
+  if (!isConfirmation) {
+    try {
+      const { startRenewalRuler } = await import('@/lib/agent/renewal-ruler-engine')
+      const r = await startRenewalRuler(activity.contract_id, {
+        userId: user.id, firstDone: true,
+        periodEnd: typeof meta.valid_until === 'string' ? meta.valid_until : null,
+      })
+      if (!r.ok) console.warn('[renewal] régua de renovação não iniciada:', r.error)
+    } catch (e) {
+      console.error('[renewal] régua de renovação falhou:', e)
+    }
+  }
+
+  // 5. Avisa o gestor no WhatsApp do briefing (Gerencial). Falha aqui não
   //    desfaz o envio ao cliente — só fica no log.
   try {
     const { data: ci } = await admin

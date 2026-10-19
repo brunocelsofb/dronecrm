@@ -50,6 +50,7 @@ const BOXES: Box[] = [
     items: [
       { href: '/settings/carteira', label: 'Gestão da carteira', description: 'Campos da aba de dados da carteira' },
       { href: '/settings/curva-abc', label: 'Curva ABC', description: 'Faixas A, B e C por natureza' },
+      { href: '/settings/regua-renovacao', label: 'Régua de renovação', description: 'Passos internos, prazos e e-mails às áreas' },
       { href: '/settings/implementation-templates', label: 'Modelos de implantação', description: 'Cronogramas padrão de implantação' },
     ],
   },

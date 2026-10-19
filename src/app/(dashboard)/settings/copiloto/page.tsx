@@ -72,7 +72,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
       <div className="flex gap-1 border-b border-gray-200" role="tablist">
         {[
           { key: 'externo', label: 'Externo (cliente)', href: '/settings/copiloto' },
-          { key: 'interno', label: 'Interno (time Orbis)', href: '/settings/copiloto?tab=interno' },
+          { key: 'interno', label: 'Interno (sua equipe)', href: '/settings/copiloto?tab=interno' },
         ].map(t => {
           const on = (t.key === 'interno') === isInternal
           return (

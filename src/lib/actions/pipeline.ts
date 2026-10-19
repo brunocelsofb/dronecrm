@@ -424,6 +424,12 @@ export async function closeRun(
           error: `A vigência está com data vencida ou é hoje (${new Date(contractForValidity.valid_until).toLocaleDateString('pt-BR')}). Atualize pra uma data futura antes de marcar sucesso — isso é o que confirma que a renovação foi feita de verdade.`,
         }
       }
+
+      // Régua de renovação: com a trava ligada, só marca Renovado depois de concluir os passos
+      const { renewalLockMessage } = await import('@/lib/agent/renewal-ruler-engine')
+      const { resolveTenantId } = await import('@/lib/tenant/context')
+      const lockMsg = await renewalLockMessage(await resolveTenantId({ contractId }), contractId)
+      if (lockMsg) return { error: lockMsg }
     }
   }
 
@@ -747,6 +753,16 @@ export async function closeRun(
       })
     } catch (renewalValueError) {
       console.error('[closeRun] erro ao registrar valor da renovação:', renewalValueError)
+    }
+  }
+
+  // Régua de renovação: Renovado encerra; perda (rescisão) cancela
+  if (pipelineForGateType === 'gestao_contratos') {
+    try {
+      const { finishRenewalRuler } = await import('@/lib/agent/renewal-ruler-engine')
+      await finishRenewalRuler(contractId, outcome === 'won' ? 'done' : 'cancelled')
+    } catch (rulerError) {
+      console.error('[closeRun] erro ao encerrar a régua de renovação:', rulerError)
     }
   }
 
