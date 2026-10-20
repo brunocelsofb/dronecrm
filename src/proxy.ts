@@ -71,6 +71,23 @@ export async function proxy(request: NextRequest) {
         p_method: request.headers.get('next-action') ? 'ACTION' : request.method,
       })
     } catch { /* registro não pode derrubar a navegação */ }
+
+    // Só leitura de verdade: em sessão de suporte, nenhuma ação (server action, POST/PUT/
+    // PATCH/DELETE) nem GET com efeito chega ao app. Isso barra também o que sai para fora
+    // (WhatsApp, e-mail, assinatura, integrações), que o bloqueio do banco não alcança.
+    const method = request.method.toUpperCase()
+    const path = request.nextUrl.pathname
+    const sideEffectGet = path.startsWith('/api/settings/evo-instances') && request.nextUrl.searchParams.has('action')
+    if ((!['GET', 'HEAD', 'OPTIONS'].includes(method) || sideEffectGet) && path !== '/api/support/end') {
+      let inSupport = false
+      try {
+        const { data } = await supabase.schema('contract_crm').rpc('in_support_session')
+        inSupport = data === true
+      } catch { inSupport = true }   // na dúvida, bloqueia
+      if (inSupport) {
+        return NextResponse.json({ error: 'Acesso de suporte é só leitura: esta ação foi bloqueada e registrada.' }, { status: 403 })
+      }
+    }
   }
 
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||

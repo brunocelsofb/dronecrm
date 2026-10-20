@@ -15,7 +15,7 @@ import { featuresForUser, readProfileFeatures } from '@/lib/auth/access-profiles
 import { PageFrame } from '@/components/layout/page-frame'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { headers } from 'next/headers'
-import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
+import { getImpersonationState } from '@/lib/actions/impersonate'
 import { getSupportSession, isStaleImpersonation } from '@/lib/tenant/support'
 import { DPA_VERSION } from '@/lib/legal/dpa'
 import { resolveTenantId } from '@/lib/tenant/context'
@@ -123,15 +123,14 @@ export default async function DashboardLayout({
               {supportSession && <> · liberado até {new Date(supportSession.grant.expiresAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · cada tela fica registrada para a empresa</>}
             </span>
           </div>
-          <form action={stopImpersonation}>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-800 transition-colors"
-            >
-              <ArrowLeft size={12} />
-              Voltar ao Super Admin
-            </button>
-          </form>
+          {/* Sair por GET: em sessão de suporte toda ação (POST) é bloqueada no proxy */}
+          <a
+            href="/api/support/end?saida=1"
+            className="flex items-center gap-1.5 rounded-full bg-amber-900 px-3 py-1 text-xs font-semibold text-amber-100 no-underline hover:bg-amber-800 transition-colors"
+          >
+            <ArrowLeft size={12} />
+            Voltar ao Super Admin
+          </a>
         </div>
       )}
 
