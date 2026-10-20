@@ -31,6 +31,8 @@ export async function searchWhatsAppConversations(term: string): Promise<{ ok: t
   if (q.length < 2) return { ok: true, hits: [] }
 
   const admin = await createScopedAdmin()
+  // Quantas mensagens recentes entram na busca por texto (o texto é cifrado no banco)
+  const TEXT_SEARCH_WINDOW = 1000   // limite por consulta do banco
   const cols = 'phone, instance_name, message, unlinked_sender_name, created_at, contract_id'
   type Msg = { phone: string; instance_name: string | null; message: string | null; unlinked_sender_name: string | null; created_at: string; contract_id: string | null }
   const found: { m: Msg; by: WhatsAppSearchHit['matchedBy'] }[] = []
@@ -44,12 +46,19 @@ export async function searchWhatsAppConversations(term: string): Promise<{ ok: t
   // 2. Nome de quem mandou (sem cadastro) e texto das mensagens
   const [{ data: byName }, { data: byText }] = await Promise.all([
     admin.from('contract_whatsapp_messages').select(cols).ilike('unlinked_sender_name', `%${q}%`).order('created_at', { ascending: false }).limit(200),
+    // O texto das mensagens fica cifrado no banco: busca nas mais recentes já abertas
     q.length >= 3
-      ? admin.from('contract_whatsapp_messages').select(cols).ilike('message', `%${q}%`).order('created_at', { ascending: false }).limit(200)
+      ? admin.from('contract_whatsapp_messages').select(cols).not('message', 'is', null).order('created_at', { ascending: false }).limit(TEXT_SEARCH_WINDOW)
       : Promise.resolve({ data: [] as Msg[] }),
   ])
   for (const m of (byName ?? []) as Msg[]) found.push({ m, by: 'nome' })
-  for (const m of (byText ?? []) as Msg[]) found.push({ m, by: 'mensagem' })
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const needle = norm(q)
+  let textHits = 0
+  for (const m of (byText ?? []) as Msg[]) {
+    if (textHits >= 200) break
+    if (m.message && norm(m.message).includes(needle)) { found.push({ m, by: 'mensagem' }); textHits++ }
+  }
 
   // 3. Contatos cadastrados e clientes (contratos) com esse nome
   const [{ data: contacts }, { data: contracts }] = await Promise.all([

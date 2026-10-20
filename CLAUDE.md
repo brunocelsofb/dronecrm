@@ -14,8 +14,16 @@ O que é de uma empresa vai em `organization_settings` (linha da empresa, por `t
   Nesses casos, filtre `tenant_id` explicitamente.
 - Empresa do contexto: `resolveTenantId({ contractId?, instanceName? })` (`src/lib/tenant/context.ts`).
 - Crons: `forEachActiveTenant()` (`src/lib/tenant/cron.ts`) — uma rodada por empresa, com `CRON_SECRET`.
-- Tabela nova com dados de empresa: coluna `tenant_id` + política `tenant_guard` + incluir em `TENANT_TABLES`
+- Tabela nova com dados de empresa: coluna `tenant_id` + política `tenant_guard` + as três políticas
+  `support_readonly_ins/upd/del` (acesso de suporte só leitura) + incluir em `TENANT_TABLES`
   (scoped-admin) e em `RESET_TABLES` (`src/lib/tenant/reset.ts`).
+
+## Privacidade
+- Super Admin não vê conteúdo de empresa: só métricas/status. "Acessar" exige liberação do admin da
+  empresa (`support_access_grants`), por tempo limitado, só leitura, com registro (`support_access_log`).
+- Conteúdo cifrado por empresa: colunas em `ENCRYPTED_COLUMNS` (`src/lib/crypto/content.ts`); os clientes
+  do servidor cifram/decifram sozinhos. Não filtre essas colunas no banco (ilike/eq) — filtre depois de ler.
+- Contrato de tratamento de dados: `src/lib/legal/dpa.ts`. Mudou o texto → suba `DPA_VERSION`.
 
 ## Integrações por empresa
 - WhatsApp: servidor Evolution da plataforma (env), instâncias pertencem à empresa (`evo_instance_aliases`), limite por plano.

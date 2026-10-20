@@ -17,12 +17,15 @@ async function checkSuperAdmin() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('is_super_admin')
+    .select('is_super_admin, tenant_id')
     .eq('id', user.id)
     .maybeSingle()
 
   if (!(profile as any)?.is_super_admin) redirect('/')
+  return ((profile as { tenant_id?: string | null } | null)?.tenant_id) ?? null
 }
+
+const fmtDateTime = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 function PlanBadge({ plan }: { plan: string }) {
   const colors: Record<string, string> = {
@@ -56,8 +59,9 @@ function TrialBadge({ trialEndsAt }: { trialEndsAt: string | null }) {
   )
 }
 
-export default async function SuperAdminPage() {
-  await checkSuperAdmin()
+export default async function SuperAdminPage({ searchParams }: { searchParams: Promise<{ aviso?: string; empresa?: string }> }) {
+  const ownTenantId = await checkSuperAdmin()
+  const { aviso, empresa } = await searchParams
   const tenants = await getSuperAdminData()
   const planMatrix = await getPlanFeatureMatrix()
 
@@ -67,6 +71,22 @@ export default async function SuperAdminPage() {
         <h1 className="text-2xl font-bold text-gray-900">Super Admin</h1>
         <p className="text-sm text-gray-500">Gerenciamento de tenants e licenças</p>
       </div>
+
+      <div className="rounded-xl border border-brand-700/20 bg-brand-100 px-4 py-3 text-sm text-brand-800">
+        Privacidade: aqui aparecem só métricas e status de cada empresa. O conteúdo (clientes, mensagens, oportunidades) só abre pelo
+        <strong> Acessar</strong>, quando o admin da empresa libera o acesso de suporte em Configurações → Privacidade e dados — por tempo limitado,
+        só leitura e com cada tela registrada para a empresa.
+      </div>
+      {aviso === 'sem-liberacao' && (
+        <div role="alert" className="rounded-xl border border-warn-600/40 bg-warn-100 px-4 py-3 text-sm text-warn-700">
+          {empresa ?? 'Esta empresa'} não liberou o acesso de suporte. Peça ao admin dela para liberar em Configurações → Privacidade e dados.
+        </div>
+      )}
+      {aviso === 'liberacao-encerrada' && (
+        <div role="status" className="rounded-xl border border-warn-600/40 bg-warn-100 px-4 py-3 text-sm text-warn-700">
+          O acesso de suporte terminou (prazo encerrado ou liberação revogada pela empresa).
+        </div>
+      )}
 
       <PlanFeaturesMatrix initial={planMatrix} />
 
@@ -81,6 +101,8 @@ export default async function SuperAdminPage() {
               <th className="px-6 py-3 text-left">Nome / Slug</th>
               <th className="px-6 py-3 text-left">Plano / Trial</th>
               <th className="px-6 py-3 text-left">Usuários</th>
+              <th className="px-6 py-3 text-left">Uso</th>
+              <th className="px-6 py-3 text-left">Privacidade</th>
               <th className="px-6 py-3 text-left">Status</th>
               <th className="px-6 py-3 text-left">Criado em</th>
               <th className="px-6 py-3 text-left">Ações</th>
@@ -101,6 +123,15 @@ export default async function SuperAdminPage() {
                   <td className="px-6 py-3 text-gray-600">
                     {t.user_count} / {t.max_users}
                   </td>
+                  <td className="px-6 py-3 text-xs text-gray-600">
+                    <div>{t.metrics.companies} empresas · {t.metrics.openOpportunities} em andamento</div>
+                    <div>{t.metrics.whatsapp30d} msgs WhatsApp (30 dias)</div>
+                    <div className="text-gray-400">Última atividade: {t.metrics.lastActivityAt ? new Date(t.metrics.lastActivityAt).toLocaleDateString('pt-BR') : '—'}</div>
+                  </td>
+                  <td className="px-6 py-3 text-xs">
+                    <div className={t.dpa ? 'text-positive-700' : 'text-warn-700'}>{t.dpa ? `Contrato de dados aceito (v${t.dpa.version})` : 'Contrato de dados pendente'}</div>
+                    <div className={t.supportUntil ? 'text-positive-700' : 'text-gray-400'}>{t.supportUntil ? `Suporte liberado até ${fmtDateTime(t.supportUntil)}` : 'Suporte não liberado'}</div>
+                  </td>
                   <td className="px-6 py-3">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       t.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
@@ -119,7 +150,9 @@ export default async function SuperAdminPage() {
                         <input type="hidden" name="tenant_name" value={t.name} />
                         <button
                           type="submit"
-                          className="rounded border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
+                          disabled={t.id !== ownTenantId && !t.supportUntil}
+                          title={t.id !== ownTenantId && !t.supportUntil ? 'A empresa não liberou o acesso de suporte' : 'Entrar só para leitura (fica registrado)'}
+                          className="rounded border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Acessar
                         </button>
@@ -157,12 +190,12 @@ export default async function SuperAdminPage() {
                   </td>
                 </tr>
                 <tr key={`reset-row-${t.id}`}>
-                  <td colSpan={6} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <ResetCrmCard tenantName={t.name} tenantId={t.id} compact />
                   </td>
                 </tr>
                 <tr key={`abas-row-${t.id}`}>
-                  <td colSpan={6} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <input type="checkbox" id={`abas-${t.id}`} className="hidden peer/abas" />
                     <div className="hidden peer-checked/abas:block">
                       <TenantFeaturesEditor
@@ -176,7 +209,7 @@ export default async function SuperAdminPage() {
                   </td>
                 </tr>
                 <tr key={`edit-row-${t.id}`}>
-                  <td colSpan={6} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <EditTenantRow
                       tenant={{
                         id: t.id,

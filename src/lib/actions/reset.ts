@@ -30,6 +30,11 @@ export async function resetCrm(confirmName: string, tenantIdArg?: string): Promi
 
   try {
     const r = await resetTenantData(tenantId)
+    if (tenantIdArg) {
+      // Reset feito pela plataforma fica no registro de acessos da empresa
+      const { logSupport } = await import('@/lib/tenant/support')
+      await logSupport({ tenantId, actorId: user.id, action: 'reset', detail: 'Super Admin resetou os dados do CRM' })
+    }
     const total = Object.values(r.counts).reduce((a, b) => a + b, 0)
     console.log('[reset] empresa', tenantId, 'por', user.id, r)
     revalidatePath('/', 'layout')

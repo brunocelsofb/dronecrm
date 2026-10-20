@@ -61,6 +61,18 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Acesso de suporte: registra cada tela/ação para a empresa ver (quem, quando, o quê).
+  // A função do banco ignora quem não está em sessão de suporte e não repete a mesma
+  // tela em menos de 1 minuto. Pré-carregamento de links não conta.
+  if (user && impTenantId && !request.headers.get('next-router-prefetch') && request.headers.get('purpose') !== 'prefetch') {
+    try {
+      await supabase.schema('contract_crm').rpc('log_support_view', {
+        p_path: request.nextUrl.pathname + (request.nextUrl.search || ''),
+        p_method: request.headers.get('next-action') ? 'ACTION' : request.method,
+      })
+    } catch { /* registro não pode derrubar a navegação */ }
+  }
+
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
                       request.nextUrl.pathname.startsWith('/register')
 
@@ -76,7 +88,8 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/proposals/client') ||
     // Políticas públicas — exigidas pelo Google para publicar o OAuth (Gmail)
     request.nextUrl.pathname === '/privacy' ||
-    request.nextUrl.pathname === '/terms'
+    request.nextUrl.pathname === '/terms' ||
+    request.nextUrl.pathname === '/contrato-de-dados'
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { activeSupportGrant, logSupport } from '@/lib/tenant/support'
 
 const COOKIE_TENANT_ID   = 'orbis_imp_tid'
 const COOKIE_TENANT_NAME = 'orbis_imp_name'
@@ -51,13 +52,24 @@ export async function startImpersonation(formData: FormData): Promise<void> {
   if (error || !tenant) throw new Error('Tenant nao encontrado')
   if (!tenant.is_active) throw new Error('Tenant inativo')
 
-  // O banco passa a enxergar como essa empresa (RLS usa este campo)
   const superUser = await assertSuperAdmin()
+  const { data: me } = await admin.schema('contract_crm').from('profiles').select('tenant_id, full_name').eq('id', superUser.id).maybeSingle()
+
+  // Outra empresa: só com liberação de suporte ativa dada pelo admin dela
+  let maxAge = COOKIE_OPTS.maxAge
+  if (tenantId !== me?.tenant_id) {
+    const grant = await activeSupportGrant(tenantId)
+    if (!grant) redirect(`/super-admin?aviso=sem-liberacao&empresa=${encodeURIComponent(tenant.name as string)}`)
+    maxAge = Math.max(60, Math.floor((new Date(grant.expiresAt).getTime() - Date.now()) / 1000))
+    await logSupport({ tenantId, grantId: grant.id, actorId: superUser.id, actorName: (me?.full_name as string | null) ?? null, action: 'start', detail: 'Entrou pelo Acessar (só leitura)' })
+  }
+
+  // O banco passa a enxergar como essa empresa (RLS usa este campo)
   await admin.schema('contract_crm').from('profiles').update({ impersonating_tenant_id: tenantId }).eq('id', superUser.id)
 
   const cookieStore = await cookies()
-  cookieStore.set(COOKIE_TENANT_ID,   tenantId,   COOKIE_OPTS)
-  cookieStore.set(COOKIE_TENANT_NAME, tenantName, { ...COOKIE_OPTS, httpOnly: false })
+  cookieStore.set(COOKIE_TENANT_ID,   tenantId,   { ...COOKIE_OPTS, maxAge })
+  cookieStore.set(COOKIE_TENANT_NAME, tenantName, { ...COOKIE_OPTS, maxAge, httpOnly: false })
 
   redirect('/')
 }
@@ -66,7 +78,12 @@ export async function startImpersonation(formData: FormData): Promise<void> {
 export async function stopImpersonation(): Promise<void> {
   try {
     const superUser = await assertSuperAdmin()
-    await createAdminClient().schema('contract_crm').from('profiles').update({ impersonating_tenant_id: null }).eq('id', superUser.id)
+    const admin = createAdminClient()
+    const { data: me } = await admin.schema('contract_crm').from('profiles').select('tenant_id, impersonating_tenant_id, full_name').eq('id', superUser.id).maybeSingle()
+    if (me?.impersonating_tenant_id && me.impersonating_tenant_id !== me.tenant_id) {
+      await logSupport({ tenantId: me.impersonating_tenant_id as string, actorId: superUser.id, actorName: (me.full_name as string | null) ?? null, action: 'stop', detail: 'Saiu do acesso de suporte' })
+    }
+    await admin.schema('contract_crm').from('profiles').update({ impersonating_tenant_id: null }).eq('id', superUser.id)
   } catch { /* sem sessão: só limpa os cookies */ }
   const cookieStore = await cookies()
   cookieStore.delete(COOKIE_TENANT_ID)

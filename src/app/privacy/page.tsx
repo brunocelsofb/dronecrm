@@ -138,7 +138,8 @@ export default function PrivacyPage() {
 
         <hr className="border-gray-200 mt-12 mb-6" />
         <p className="text-xs text-gray-400 text-center">
-          2B Soluções Comerciais · Comercial Drone CRM · app.comercialdrone.com.br
+          2B Soluções Comerciais · Comercial Drone CRM · app.comercialdrone.com.br ·{' '}
+          <a href="/contrato-de-dados" className="underline">Contrato de tratamento de dados</a>
         </p>
       </div>
     </main>

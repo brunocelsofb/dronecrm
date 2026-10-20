@@ -14,6 +14,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { activeSupportGrant } from './support'
 
 // Rotinas automáticas (crons): roda um bloco "como" uma empresa
 const tenantScope = new AsyncLocalStorage<string>()
@@ -29,12 +30,15 @@ export const getCurrentTenantId = cache(async (): Promise<string | null> => {
   const { data: profile } = await admin
     .from('profiles').select('tenant_id, is_super_admin, impersonating_tenant_id').eq('id', user.id).maybeSingle()
   if (profile?.is_super_admin) {
-    // "Acessar" do Super Admin: gravado no perfil (o banco usa o mesmo valor no RLS)
-    if (profile.impersonating_tenant_id) return profile.impersonating_tenant_id as string
-    try {
-      const imp = (await headers()).get('x-orbis-imp-tenant-id')
-      if (imp) return imp
-    } catch { /* fora de request */ }
+    // "Acessar" do Super Admin: gravado no perfil (o banco usa o mesmo valor no RLS).
+    // Outra empresa só com liberação de suporte ativa dada pelo admin dela.
+    let imp = (profile.impersonating_tenant_id as string | null) ?? null
+    if (!imp) {
+      try { imp = (await headers()).get('x-orbis-imp-tenant-id') } catch { /* fora de request */ }
+    }
+    if (imp && imp !== profile.tenant_id) {
+      if (await activeSupportGrant(imp)) return imp
+    } else if (imp) return imp
   }
   return (profile?.tenant_id as string | null) ?? null
 })

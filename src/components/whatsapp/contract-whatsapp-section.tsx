@@ -1,5 +1,6 @@
 'use client'
 
+import { revealMessage, isSealed } from '@/components/whatsapp/reveal-message'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { sendContractWhatsApp, buildWhatsAppFromTemplate, sendContractWhatsAppMedia, resolveContactNameByPhone, saveWhatsAppConversationAsNote } from '@/lib/actions/whatsapp'
@@ -126,10 +127,13 @@ export function ContractWhatsAppSection({
 
           if (!matchContract && !matchPhone) return
 
+          // O texto vem cifrado do banco: abre antes de mostrar (na atualização, mantém o já aberto)
           if (payload.eventType === 'INSERT') {
-            addMessage(msg)
+            void revealMessage(msg as WhatsAppLog & { message?: string | null }).then(m => addMessage(m as WhatsAppLog))
           } else if (payload.eventType === 'UPDATE') {
-            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...msg } : m))
+            const { message: sealed, ...rest } = msg as WhatsAppLog & { message?: string | null }
+            const patch = isSealed(sealed) ? rest : msg
+            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, ...patch } : m))
           }
         }
       )

@@ -1,5 +1,6 @@
 'use client'
 
+import { revealMessage } from '@/components/whatsapp/reveal-message'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { LinkContactStep } from './link-contact-step'
@@ -212,7 +213,8 @@ export function WhatsAppConversationPanel({
         filter: `phone=eq.${phone}`,
       }, (payload) => {
         const newMsg = payload.new as Message
-        addMessageSafe(newMsg)
+        // O texto vem cifrado do banco: abre antes de mostrar
+        void revealMessage(newMsg).then(addMessageSafe)
       })
       .on('postgres_changes', {
         event: 'DELETE',

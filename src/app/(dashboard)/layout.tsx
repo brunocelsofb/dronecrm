@@ -16,6 +16,8 @@ import { PageFrame } from '@/components/layout/page-frame'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { headers } from 'next/headers'
 import { getImpersonationState, stopImpersonation } from '@/lib/actions/impersonate'
+import { getSupportSession, isStaleImpersonation } from '@/lib/tenant/support'
+import { DPA_VERSION } from '@/lib/legal/dpa'
 import { resolveTenantId } from '@/lib/tenant/context'
 
 export default async function DashboardLayout({
@@ -50,12 +52,24 @@ export default async function DashboardLayout({
 
   // Le estado de impersonation ANTES de buscar tenantData
   const impersonation = await getImpersonationState()
+  // Acesso de suporte: sem liberação válida (expirou/revogada) encerra na hora
+  if (isSuperAdmin && impersonation.active && await isStaleImpersonation()) redirect('/api/support/end')
+  const supportSession = isSuperAdmin && impersonation.active ? await getSupportSession() : null
 
   const adminSupa = createAdminClient()
+  const requestPathEarly = (await headers()).get('x-pathname') ?? ''
 
   // "Acessar" expirou (cookie de 4h) mas o perfil ainda aponta para a empresa: volta para a própria conta
   if (isSuperAdmin && !impersonation.active && (profile as { impersonating_tenant_id?: string | null } | null)?.impersonating_tenant_id) {
     await adminSupa.from('profiles').update({ impersonating_tenant_id: null }).eq('id', user.id)
+  }
+
+  // Admin da empresa: aviso enquanto o contrato de dados da versão atual não for aceito
+  let dpaPending = false
+  if (isAdmin && !impersonation.active && (profile as { tenant_id?: string | null } | null)?.tenant_id) {
+    const { data: acc } = await adminSupa.from('dpa_acceptances').select('id')
+      .eq('tenant_id', (profile as { tenant_id: string }).tenant_id).eq('version', DPA_VERSION).maybeSingle()
+    dpaPending = !acc && !requestPathEarly.startsWith('/settings/privacidade')
   }
 
   // Abas liberadas: plano do tenant (Super Admin → Planos e abas) + ajustes do cliente.
@@ -104,8 +118,9 @@ export default async function DashboardLayout({
           <div className="flex items-center gap-2">
             <Eye size={16} strokeWidth={2} />
             <span>
-              Voce esta visualizando como:{' '}
+              Acesso de suporte (só leitura) em{' '}
               <strong>{impersonation.tenantName}</strong>
+              {supportSession && <> · liberado até {new Date(supportSession.grant.expiresAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · cada tela fica registrada para a empresa</>}
             </span>
           </div>
           <form action={stopImpersonation}>
@@ -162,6 +177,11 @@ export default async function DashboardLayout({
         </div>
       </aside>
       <main className={`min-w-0 flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
+        {dpaPending && (
+          <a href="/settings/privacidade" className="mb-4 block rounded-lg border border-warn-600/40 bg-warn-100 px-4 py-2 text-sm text-warn-700 no-underline hover:border-warn-600">
+            Falta aceitar o Contrato de tratamento de dados (LGPD) da sua empresa. Leia e aceite em Configurações → Privacidade e dados →
+          </a>
+        )}
         {/* Bloqueio no navegador (trocar de tela pelo menu); pelo endereço, o redirect acima */}
         <PageFrame enabledFeatures={enabledFeatures} planFeatures={planFeatures}>{children}</PageFrame>
       </main>

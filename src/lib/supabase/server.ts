@@ -9,11 +9,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies, headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { withContentCrypto } from './content-crypto'
+import { resolveRowTenant } from './row-tenant'
 
 export async function createClient() {
   const cookieStore = await cookies()
 
-  return createServerClient(
+  // Conteúdo cifrado por empresa (mensagens de WhatsApp etc.) abre/fecha sozinho
+  return withContentCrypto(createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -36,7 +39,7 @@ export async function createClient() {
         },
       },
     }
-  )
+  ), resolveRowTenant)
 }
 
 /** Retorna o tenant_id ativo de impersonation.
@@ -54,8 +57,14 @@ export async function getActiveTenantId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data: profile } = await createAdminClient()
-    .from('profiles').select('is_super_admin').eq('id', user.id).maybeSingle()
-  return profile?.is_super_admin ? candidate : null
+    .from('profiles').select('is_super_admin, tenant_id').eq('id', user.id).maybeSingle()
+  if (!profile?.is_super_admin) return null
+  // Outra empresa: só com liberação de suporte ativa
+  if (candidate !== profile.tenant_id) {
+    const { activeSupportGrant } = await import('@/lib/tenant/support')
+    if (!(await activeSupportGrant(candidate))) return null
+  }
+  return candidate
 }
 
 /**
@@ -72,7 +81,9 @@ export async function createClientForTenant(): Promise<{
 }> {
   const tenantId = await getActiveTenantId()
   if (tenantId) {
-    return { client: createAdminClient() as any, tenantId }
+    // Super Admin em acesso de suporte: preso à empresa e só leitura
+    const { createScopedAdmin } = await import('@/lib/tenant/scoped-admin')
+    return { client: (await createScopedAdmin(tenantId)) as any, tenantId }
   }
   const regularClient = await createClient()
   return { client: regularClient as any, tenantId: null }

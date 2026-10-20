@@ -243,7 +243,7 @@ async function respond(conv: Conv, snapshotAt: string): Promise<void> {
   const onTool = async (call: ToolCall): Promise<string | { result: string; closing?: string }> => {
     if (call.name === 'registrar_respostas') {
       answers = mergeAnswers(answers, call.input)
-      await db.from('sdr_conversations').update({ answers, updated_at: nowIso() }).eq('id', conv.id)
+      await db.from('sdr_conversations').update({ tenant_id: conv.tenant_id, answers, updated_at: nowIso() }).eq('id', conv.id)   // tenant_id: chave da cifra
       return 'Registrado.'
     }
     if (call.name === 'passar_para_comercial') {
@@ -330,6 +330,7 @@ async function endConversation(conv: Conv, status: 'handed_off' | 'routed' | 'hu
   const db = createAdminClient()
   const { settings } = await loadConfig(conv.tenant_id)
   await db.from('sdr_conversations').update({
+    tenant_id: conv.tenant_id,   // mesma empresa; usado para cifrar respostas e resumo
     status, ended_at: nowIso(), updated_at: nowIso(), answers: conv.answers ?? {},
     ...(extra.end_reason !== undefined ? { end_reason: extra.end_reason } : {}),
     ...(extra.last_error !== undefined ? { last_error: extra.last_error } : {}),

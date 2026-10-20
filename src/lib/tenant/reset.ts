@@ -16,6 +16,9 @@ const RESET_TABLES = [
   'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_submissions', 'billing_records', 'contract_ai_readings', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
   'proposals', 'tickets', 'automation_rules', 'lead_routing_rules', 'leads', 'pipeline_runs', 'contracts',
   'renewal_ruler_runs', 'action_plans', 'company_files', 'whatsapp_contact_kind', 'proposal_catalog_items', 'sdr_conversations', 'marketing_list_syncs', 'marketing_lists', 'marketing_optouts',
+  // reset encerra as liberações de suporte; o registro de acessos (support_access_log) e o aceite
+  // do contrato de dados (dpa_acceptances) ficam: são a trilha de auditoria da empresa
+  'support_access_grants',
   'marketing_campaign_costs', 'marketing_campaigns', 'lead_integrations',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals',

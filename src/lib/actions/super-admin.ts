@@ -34,14 +34,34 @@ export async function getSuperAdminData() {
 
   if (error) throw new Error(error.message)
 
+  // Só métricas e status (contagens e datas) — nunca o conteúdo da empresa.
+  const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString()
+  const nowIso = new Date().toISOString()
+  const db = admin.schema('contract_crm')
   const tenantsWithCount = await Promise.all(
     (tenants ?? []).map(async (t) => {
-      const { count } = await admin
-        .schema('contract_crm')
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', t.id)
-      return { ...t, user_count: count ?? 0 }
+      const head = { count: 'exact' as const, head: true }
+      const [users, companies, openRuns, wa30, lastAct, grant, dpa] = await Promise.all([
+        db.from('profiles').select('id', head).eq('tenant_id', t.id),
+        db.from('companies').select('id', head).eq('tenant_id', t.id),
+        db.from('pipeline_runs').select('id', head).eq('tenant_id', t.id).eq('status', 'open'),
+        db.from('contract_whatsapp_messages').select('id', head).eq('tenant_id', t.id).gte('created_at', since30),
+        db.from('activities').select('created_at').eq('tenant_id', t.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        db.from('support_access_grants').select('expires_at').eq('tenant_id', t.id).is('revoked_at', null).lte('starts_at', nowIso).gt('expires_at', nowIso).order('expires_at', { ascending: false }).limit(1).maybeSingle(),
+        db.from('dpa_acceptances').select('version, accepted_at').eq('tenant_id', t.id).order('accepted_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+      return {
+        ...t,
+        user_count: users.count ?? 0,
+        metrics: {
+          companies: companies.count ?? 0,
+          openOpportunities: openRuns.count ?? 0,
+          whatsapp30d: wa30.count ?? 0,
+          lastActivityAt: (lastAct.data?.created_at as string | undefined) ?? null,
+        },
+        supportUntil: (grant.data?.expires_at as string | undefined) ?? null,
+        dpa: dpa.data ? { version: dpa.data.version as string, acceptedAt: dpa.data.accepted_at as string } : null,
+      }
     })
   )
 
