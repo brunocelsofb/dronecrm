@@ -3,22 +3,38 @@
 
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fetchAll } from '@/lib/revenue/dashboard-data'
+import { loadInactiveCompanies } from '@/lib/companies/inactive-data'
+import { resolveCompanySettings } from '@/lib/companies/settings'
 import { buildMembers, readFilters, type ListAudience, type SegClient, type SegContact, type SegLead } from './segments'
 
 export async function loadListMembers(tenantId: string, list: { audience: string; filters: unknown }) {
   const db = await createScopedAdmin(tenantId)
-  const audience = (['leads', 'clientes', 'ambos'].includes(list.audience) ? list.audience : 'leads') as ListAudience
+  const audience = (['leads', 'clientes', 'ambos', 'inativos'].includes(list.audience) ? list.audience : 'leads') as ListAudience
   const filters = readFilters(list.filters)
 
   const [leads, optoutRows] = await Promise.all([
-    audience === 'clientes' ? Promise.resolve([] as SegLead[]) : fetchAll<SegLead>((a, b) => db.from('leads')
+    audience === 'clientes' || audience === 'inativos' ? Promise.resolve([] as SegLead[]) : fetchAll<SegLead>((a, b) => db.from('leads')
       .select('id, name, email, phone, company_name, status, score, campaign_id, created_at, source, utm_source, utm_medium, gclid, fbclid').order('id').range(a, b)),
     fetchAll<{ email: string }>((a, b) => db.from('marketing_optouts').select('email').order('id').range(a, b)),
   ])
 
   const contacts: SegContact[] = []
   let clients: SegClient[] = []
-  if (audience !== 'leads') {
+  if (audience === 'inativos') {
+    // Empresas inativas (mesma regra da tela Empresas inativas): segmento e UF da empresa
+    const [{ list: inactive }, comps, tags] = await Promise.all([
+      loadInactiveCompanies(tenantId),
+      fetchAll<{ id: string; state: string | null }>((a, b) => db.from('companies').select('id, state').order('id').range(a, b)),
+      fetchAll<{ company_id: string; tag_id: string }>((a, b) => db.from('company_tags').select('company_id, tag_id').order('id').range(a, b)),
+    ])
+    const ufOf = new Map(comps.map(c => [c.id, (c.state ?? '').toUpperCase()]))
+    const tagsOf = new Map<string, string[]>()
+    for (const t of tags) tagsOf.set(t.company_id, [...(tagsOf.get(t.company_id) ?? []), t.tag_id])
+    clients = inactive.map(c => ({
+      company_id: c.id, company_name: c.tradeName || c.name,
+      segments: [c.segment ?? 'Sem segmento'], ufs: ufOf.get(c.id) ? [ufOf.get(c.id)!] : [], tag_ids: tagsOf.get(c.id) ?? [],
+    }))
+  } else if (audience !== 'leads') {
     const [pipelines, runs, contracts, companies, tags] = await Promise.all([
       fetchAll<{ id: string; type: string }>((a, b) => db.from('pipelines').select('id, type').order('id').range(a, b)),
       fetchAll<{ contract_id: string; pipeline_id: string }>((a, b) => db.from('pipeline_runs').select('contract_id, pipeline_id').eq('status', 'open').order('id').range(a, b)),
@@ -40,12 +56,12 @@ export async function loadListMembers(tenantId: string, list: { audience: string
     }
     for (const t of tags) { const e = byCompany.get(t.company_id); if (e && !e.tag_ids.includes(t.tag_id)) e.tag_ids.push(t.tag_id) }
     clients = [...byCompany.values()]
-    const ids = clients.map(c => c.company_id)
-    for (let i = 0; i < ids.length; i += 200) {
-      const { data, error } = await db.from('contacts').select('id, name, email, phone, company_id, is_primary').in('company_id', ids.slice(i, i + 200))
-      if (error) throw new Error(error.message)
-      contacts.push(...((data ?? []) as SegContact[]))
-    }
+  }
+  const ids = clients.map(c => c.company_id)
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await db.from('contacts').select('id, name, email, phone, company_id, is_primary').in('company_id', ids.slice(i, i + 200))
+    if (error) throw new Error(error.message)
+    contacts.push(...((data ?? []) as SegContact[]))
   }
 
   const optouts = new Set(optoutRows.map(o => o.email.toLowerCase()))
@@ -61,5 +77,7 @@ export async function loadListFilterOptions(tenantId: string) {
   ])
   const segments = [...new Set(contracts.map(c => c.segment).filter((s): s is string => !!s))].sort()
   const ufs = [...new Set(contracts.map(c => (c.uf ?? c.state ?? '').toUpperCase()).filter(Boolean))].sort()
-  return { segments, ufs, tags }
+  const { data: org } = await db.from('organization_settings').select('company_settings').eq('tenant_id', tenantId).maybeSingle()
+  const companySegments = [...resolveCompanySettings((org as { company_settings?: unknown } | null)?.company_settings).segments, 'Sem segmento']
+  return { segments, ufs, tags, companySegments }
 }

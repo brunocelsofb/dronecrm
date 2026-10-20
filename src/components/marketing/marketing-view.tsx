@@ -26,7 +26,7 @@ type Props = {
   lists: ListRow[]
   syncs: SyncRow[]
   optouts: { count: number; recent: OptoutRow[] }
-  listOptions: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[] }
+  listOptions: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[]; companySegments: string[] }
   campaigns: CampaignFull[]
   costs: { campaign_id: string; year: number; month: number; amount: number }[]
   report: Report

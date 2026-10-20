@@ -47,7 +47,11 @@ export async function createContract(
     const newCompanyCnpj = (formData.get('new_company_cnpj') as string) || null
     const newCompanyName = (formData.get('new_company_name') as string)?.trim()
     const newCompanyTradeName = (formData.get('new_company_trade_name') as string) || null
+    const newCompanySegment = ((formData.get('new_company_segment') as string) || '').trim()
 
+    if (newCompanyName && !newCompanySegment) {
+      return { error: 'Escolha o segmento da empresa nova.' }
+    }
     if (!newCompanyName) {
       return {
         error: 'Empresa é obrigatória: informe o CNPJ e clique em "Verificar" antes de salvar.',
@@ -60,6 +64,7 @@ export async function createContract(
         name: newCompanyName,
         trade_name: newCompanyTradeName,
         cnpj: newCompanyCnpj,
+        segment: JSON.stringify([newCompanySegment]),
         owner_id: user.id,
       })
       .select()

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { CsvImportForm } from '@/components/companies/csv-import-form'
+import { getCompanySettings } from '@/lib/actions/company-settings'
 
-export default function ImportCompaniesPage() {
+export default async function ImportCompaniesPage() {
+  const { segments } = await getCompanySettings()
   return (
     <div className="max-w-2xl space-y-6">
       <Link href="/companies" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-brand-700">
@@ -13,7 +15,7 @@ export default function ImportCompaniesPage() {
           Cadastre em massa as empresas que já fazem parte da sua base de clientes.
         </p>
       </div>
-      <CsvImportForm />
+      <CsvImportForm segments={segments} />
     </div>
   )
 }

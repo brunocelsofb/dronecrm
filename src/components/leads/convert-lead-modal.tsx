@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { convertLeadWithOptions } from '@/lib/actions/leads'
+import { getCompanySettings } from '@/lib/actions/company-settings'
 
 type Pipeline = { id: string; name: string }
 type Stage    = { id: string; name: string; pipeline_id: string }
@@ -31,6 +32,14 @@ export function ConvertLeadModal({
   const [confirmed, setConfirmed]   = useState(false)
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState<string | null>(null)
+  const [segments, setSegments]     = useState<string[]>([])
+  const [segment, setSegment]       = useState('')
+
+  useEffect(() => {
+    let alive = true
+    getCompanySettings().then(s => { if (alive) setSegments(s.segments) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   const filteredStages = stages.filter(s => s.pipeline_id === pipelineId)
 
@@ -40,10 +49,11 @@ export function ConvertLeadModal({
 
   async function handleConvert() {
     if (!pipelineId || !stageId || !responsibleId) { setError('Selecione funil, etapa e responsável.'); return }
+    if (!segment) { setError('Escolha o segmento da empresa.'); return }
     if (!confirmed) { setError('Confirme a criação da oportunidade.'); return }
     setSaving(true); setError(null)
     const res = await convertLeadWithOptions(leadId, {
-      pipelineId, stageId, responsibleId,
+      pipelineId, stageId, responsibleId, companySegment: segment,
       estimatedValue: estimatedValue ? Number(estimatedValue.replace(/\D/g,'')) : null,
     })
     setSaving(false)
@@ -93,6 +103,17 @@ export function ConvertLeadModal({
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none">
               {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
             </select>
+          </div>
+
+          {/* Segmento da empresa */}
+          <div>
+            <label className="block text-sm font-semibold text-[#1B556B] mb-1">Segmento da empresa *</label>
+            <select value={segment} onChange={e => setSegment(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1B556B] focus:outline-none">
+              <option value="">Selecione…</option>
+              {segments.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">Vale para a empresa nova; se ela já existir sem segmento, é preenchido.</p>
           </div>
 
           {/* Valor estimado */}

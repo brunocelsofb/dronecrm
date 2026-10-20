@@ -1,5 +1,7 @@
 'use server'
 
+import { getCompanySettings } from '@/lib/actions/company-settings'
+import { matchSegment, segmentValue } from '@/lib/companies/settings'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
@@ -267,6 +269,7 @@ export async function convertLeadWithOptions(
     stageId: string
     responsibleId: string
     estimatedValue?: number | null
+    companySegment?: string | null      // segmento da empresa (obrigatório quando a empresa é criada aqui)
   }
 ): Promise<{ error?: string; contractId?: string }> {
   const supabase = await createClient()
@@ -288,9 +291,16 @@ export async function convertLeadWithOptions(
     const { data } = await supabase.from('companies').select('id').ilike('name', lead.company_name.trim()).maybeSingle()
     if (data) companyId = data.id
   }
+  // Segmento (lista da empresa/tenant): obrigatório para criar a empresa
+  const { segments } = await getCompanySettings()
+  const seg = matchSegment(options.companySegment ?? '', segments)
   if (!companyId && lead.company_name) {
-    const { data } = await supabase.from('companies').insert({ name: lead.company_name, cnpj: lead.cnpj?.replace(/\D/g,'') ?? null, status: 'prospect', owner_id: options.responsibleId }).select('id').single()
+    if (!seg) return { error: 'Escolha o segmento da empresa.' }
+    const { data } = await supabase.from('companies').insert({ name: lead.company_name, cnpj: lead.cnpj?.replace(/\D/g,'') ?? null, status: 'prospect', segment: segmentValue(seg), owner_id: options.responsibleId }).select('id').single()
     companyId = data?.id ?? null
+  } else if (companyId && seg) {
+    // Empresa já existente sem segmento: preenche
+    await supabase.from('companies').update({ segment: segmentValue(seg) }).eq('id', companyId).is('segment', null)
   }
 
   // Contato

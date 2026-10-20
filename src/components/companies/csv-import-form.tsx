@@ -7,9 +7,10 @@ import Papa from 'papaparse'
 import { useRouter } from 'next/navigation'
 import { bulkImportCompanies, type ImportRow, type ImportResult } from '@/lib/actions/companies-import'
 import { IMPORT_COLUMNS, EXAMPLE_MARK, buildTemplateCsv, headerToKey } from '@/lib/companies/import-template'
+import { matchSegment } from '@/lib/companies/settings'
 
-function downloadTemplate() {
-  const blob = new Blob([buildTemplateCsv(true)], { type: 'text/csv;charset=utf-8' })
+function downloadTemplate(segmentExample?: string) {
+  const blob = new Blob([buildTemplateCsv(true, segmentExample)], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -32,7 +33,7 @@ function toRows(data: Record<string, string>[]): { rows: ImportRow[]; unknown: s
   return { rows, unknown: [...unknown] }
 }
 
-export function CsvImportForm() {
+export function CsvImportForm({ segments }: { segments: string[] }) {
   const router = useRouter()
   const [rows, setRows] = useState<ImportRow[] | null>(null)
   const [unknownCols, setUnknownCols] = useState<string[]>([])
@@ -42,8 +43,10 @@ export function CsvImportForm() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const isExample = (r: ImportRow) => (r.razao_social ?? '').toUpperCase().startsWith(EXAMPLE_MARK)
-  const validRows = (rows ?? []).filter(r => r.razao_social && !isExample(r))
+  const isExample = (r: ImportRow) => [r.razao_social, r.cnpj].some(v => (v ?? '').trim().toUpperCase().startsWith(EXAMPLE_MARK))
+  const cnpjOk = (r: ImportRow) => (r.cnpj ?? '').replace(/\D/g, '').length === 14
+  const validRows = (rows ?? []).filter(r => cnpjOk(r) && !isExample(r))
+  const needLookup = validRows.filter(r => !r.razao_social?.trim() || !r.nome_fantasia?.trim()).length
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -61,8 +64,8 @@ export function CsvImportForm() {
         setParsing(false)
         const { rows: parsed, unknown } = toRows(res.data)
         setUnknownCols(unknown)
-        if (parsed.every(r => !r.razao_social)) {
-          setError('Não encontrei a coluna "razao_social". Baixe o modelo abaixo e use os mesmos nomes de coluna.')
+        if (parsed.every(r => !r.cnpj)) {
+          setError('Não encontrei a coluna "cnpj" (obrigatória). Baixe o modelo abaixo e use os mesmos nomes de coluna.')
           setRows(null)
           return
         }
@@ -78,7 +81,7 @@ export function CsvImportForm() {
   async function handleImport() {
     setImporting(true)
     setError(null)
-    const res = await bulkImportCompanies(validRows)
+    const res = await bulkImportCompanies(rows ?? [])   // todas as linhas: o servidor numera como no arquivo
     setImporting(false)
     setResult(res)
     router.refresh()
@@ -95,7 +98,7 @@ export function CsvImportForm() {
           </div>
           <button
             type="button"
-            onClick={downloadTemplate}
+            onClick={() => downloadTemplate(segments[0])}
             className="rounded-md bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800"
           >
             ⬇ Baixar modelo CSV
@@ -127,7 +130,8 @@ export function CsvImportForm() {
             </table>
           </div>
           <ul className="mt-2 list-disc space-y-0.5 pl-4">
-            <li><span className="text-red-600">*</span> Só a <strong>razão social</strong> é obrigatória; as demais podem ficar em branco.</li>
+            <li><span className="text-red-600">*</span> Só o <strong>CNPJ</strong> é obrigatório. Razão social e nome fantasia em branco são buscados pelo CNPJ na Receita (até 150 consultas por arquivo).</li>
+            <li>Segmentos aceitos: {segments.map((s, i) => <span key={s}>{i ? ' · ' : ''}<strong>{s}</strong></span>)}. Vazio ou diferente: a empresa entra sem segmento e aparece no resultado para completar.</li>
             <li>A linha de exemplo do modelo (começa com “EXEMPLO”) é ignorada automaticamente.</li>
             <li>CNPJ já cadastrado é pulado — dá para importar o mesmo arquivo de novo sem duplicar.</li>
             <li>Se preencher o contato, ele vira o contato principal da empresa (usado nos avisos por WhatsApp e e-mail).</li>
@@ -148,7 +152,8 @@ export function CsvImportForm() {
         <div className="space-y-3">
           <p className="text-sm text-gray-600">
             <strong>{fileName}</strong> — {validRows.length} empresa(s) para importar
-            {rows.length !== validRows.length && ` (${rows.length - validRows.length} linha(s) ignorada(s): sem razão social ou exemplo)`}.
+            {rows.length !== validRows.length && ` (${rows.length - validRows.length} linha(s) ignorada(s): sem CNPJ válido ou exemplo)`}
+            {needLookup > 0 && ` · ${needLookup} serão completadas pela consulta do CNPJ (pode levar alguns segundos)`}.
           </p>
           {unknownCols.length > 0 && (
             <p className="text-xs text-amber-700">Colunas não reconhecidas (serão ignoradas): {unknownCols.join(', ')}</p>
@@ -158,19 +163,21 @@ export function CsvImportForm() {
             <table className="min-w-full divide-y divide-gray-200 text-xs">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-gray-500">Razão social</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-500">CNPJ</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">Razão social</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-500">Segmento</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-500">Cidade/UF</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-500">Contato</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.slice(0, 50).map((r, i) => {
-                  const ignored = !r.razao_social || isExample(r)
+                  const ignored = !cnpjOk(r) || isExample(r)
                   return (
                     <tr key={i} className={ignored ? 'bg-gray-50 text-gray-400' : ''}>
-                      <td className="px-3 py-1.5">{r.razao_social || <span className="text-red-500">sem razão social — ignorada</span>}{isExample(r) && ' (exemplo — ignorada)'}</td>
-                      <td className="px-3 py-1.5 font-mono">{r.cnpj || '—'}</td>
+                      <td className="px-3 py-1.5 font-mono">{isExample(r) ? 'exemplo — ignorada' : cnpjOk(r) ? r.cnpj : <span className="text-red-500">{r.cnpj ? 'CNPJ inválido' : 'sem CNPJ'} — ignorada</span>}</td>
+                      <td className="px-3 py-1.5">{r.razao_social || <span className="text-gray-400">buscar pelo CNPJ</span>}</td>
+                      <td className="px-3 py-1.5">{r.segmento ? (matchSegment(r.segmento, segments) ?? <span className="text-amber-700">{r.segmento} (não cadastrado)</span>) : <span className="text-amber-700">sem segmento</span>}</td>
                       <td className="px-3 py-1.5">{[r.cidade, r.uf].filter(Boolean).join('/') || '—'}</td>
                       <td className="px-3 py-1.5">{r.contato_nome || '—'}</td>
                     </tr>
@@ -197,6 +204,7 @@ export function CsvImportForm() {
           <p className="mt-1 text-gray-600">
             {result.imported} empresa(s) importada(s)
             {result.contacts > 0 && ` · ${result.contacts} contato(s) criado(s)`}
+            {result.looked_up > 0 && ` · ${result.looked_up} completada(s) pela consulta do CNPJ`}
             {result.skipped > 0 && ` · ${result.skipped} pulada(s) (CNPJ já cadastrado)`}
           </p>
           {result.errors.length > 0 && (

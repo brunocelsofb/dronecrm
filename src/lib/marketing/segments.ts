@@ -5,14 +5,14 @@
 
 import { inferChannel } from './tracking'
 
-export type ListAudience = 'leads' | 'clientes' | 'ambos'
+export type ListAudience = 'leads' | 'clientes' | 'ambos' | 'inativos'   // inativos = contatos das empresas inativas (reativação)
 export type ListFilters = {
   lead_status?: string[]          // novo, em_qualificacao, qualificado, convertido, descartado
   campaign_ids?: string[]
   channels?: string[]
   min_score?: number | null
   created_from?: string | null    // AAAA-MM-DD
-  segments?: string[]             // segmento do contrato (clientes)
+  segments?: string[]             // segmento do contrato (clientes) ou da empresa (inativos)
   ufs?: string[]                  // UF do contrato (clientes)
   tag_ids?: string[]              // etiquetas da empresa (clientes)
   only_primary?: boolean          // só o contato principal (clientes)
@@ -56,7 +56,7 @@ export function buildMembers(input: {
     if (!out.has(email)) out.set(email, { ...m, email })
   }
 
-  if (input.audience !== 'clientes') {
+  if (input.audience === 'leads' || input.audience === 'ambos') {
     for (const l of input.leads) {
       if (f.lead_status?.length && !f.lead_status.includes(l.status ?? '')) continue
       if (f.campaign_ids?.length && !f.campaign_ids.includes(l.campaign_id ?? '')) continue

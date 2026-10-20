@@ -15,6 +15,10 @@
     {
       "path": "/api/agent/expiration-alerts",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/inactive-hunter",
+      "schedule": "0 11 * * 1"
     }
   ]
 }

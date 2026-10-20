@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from 'react'
 import { lookupCnpj } from '@/lib/actions/cnpj-lookup'
+import { getCompanySettings } from '@/lib/actions/company-settings'
 import { findCompanyByCnpj } from '@/lib/actions/companies'
 import { createClient } from '@/lib/supabase/client'
 
@@ -21,6 +22,8 @@ type Contact = { id: string; name: string; role: string | null }
 type FoundCompany = { id: string; name: string; trade_name: string | null; cnpj?: string | null; contacts: Contact[] }
 
 export function CompanyContactSection({ preselectedCompanyId }: { preselectedCompanyId?: string }) {
+  const [segments, setSegments] = useState<string[]>([])
+  useEffect(() => { getCompanySettings().then(x => setSegments(x.segments)).catch(() => {}) }, [])
   const [cnpj, setCnpj] = useState('')
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -200,6 +203,14 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
             <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>Nome Fantasia</label>
             <input name="new_company_trade_name" value={newCompanyTradeName} onChange={e => setNewCompanyTradeName(e.target.value)}
               style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>Segmento *</label>
+            <select name="new_company_segment" required defaultValue=""
+              style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }}>
+              <option value="">Selecione...</option>
+              {segments.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+            </select>
           </div>
           <div>
             <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>Contato responsável *</label>

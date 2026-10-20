@@ -10,6 +10,9 @@ import { AddContactForm } from '@/components/companies/add-contact-form'
 import { RemoveContactButton } from '@/components/companies/remove-contact-button'
 import { TimelineFeed } from '@/components/contracts/timeline-feed'
 import { ContractTabs } from '@/components/contracts/contract-tabs'
+import { CompanyFilesSection } from '@/components/companies/company-files-section'
+import { CompanyActivityForm } from '@/components/companies/company-activity-form'
+import { ActivityDoneButton } from '@/components/companies/activity-done-button'
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
   lead:           { bg: '#e8e7f4', color: '#524e9c', label: 'Lead' },
@@ -146,7 +149,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
   const profileById = new Map((profiles ?? []).map(p => [p.id, p.full_name]))
   // ── Abas da conta ─────────────────────────────────────────────────────────
-  const [{ data: companyEmails }, { data: companyProposals }, { data: contractMeta }] = await Promise.all([
+  const [{ data: companyEmails }, { data: companyProposals }, { data: contractMeta }, { data: companyFiles }, { data: oppFiles }] = await Promise.all([
     contractIds.length
       ? supabase.from('contract_emails').select('id, contract_id, subject, from_email, to_email, direction, sent_at, opened_at').in('contract_id', contractIds).order('sent_at', { ascending: false }).limit(100)
       : Promise.resolve({ data: [] as any[] }),
@@ -155,6 +158,10 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       : Promise.resolve({ data: [] as any[] }),
     contractIds.length
       ? supabase.from('contracts').select('id, monthly_value, owner_id, created_at').in('id', contractIds)
+      : Promise.resolve({ data: [] as any[] }),
+    supabase.from('company_files').select('id, file_name, file_size, created_at, description, uploaded_by').eq('company_id', id).order('created_at', { ascending: false }),
+    contractIds.length
+      ? supabase.from('contract_files').select('id, contract_id, file_name, file_size, created_at').in('contract_id', contractIds).order('created_at', { ascending: false }).limit(200)
       : Promise.resolve({ data: [] as any[] }),
   ])
   const contractNameById = new Map((allCompanyContracts ?? []).map(c => [
@@ -241,6 +248,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <NewOpportunityButton companyId={company.id} pipelines={salesPipelinesList} stagesByPipeline={{}} />
             <Link href={`/companies/${company.id}/edit`} style={{ padding: '7px 14px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#fff', color: '#52514e', textDecoration: 'none' }}>Editar</Link>
             {isAdmin && <DeleteCompanyButton companyId={company.id} />}
           </div>
@@ -349,10 +357,14 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
             },
             {
               id: 'atividades', label: `Atividades (${taskEvents.length})`,
-              content: taskEvents.length === 0 ? <p className="text-sm text-gray-400">Nenhuma atividade nas oportunidades desta empresa.</p> : (
+              content: (
+                <div className="space-y-3">
+                <CompanyActivityForm companyId={company.id} currentUserId={user?.id ?? null}
+                  people={(profiles ?? []).map(p => ({ id: p.id as string, name: (p.full_name as string | null) ?? '—' }))} />
+                {taskEvents.length === 0 ? <p className="text-sm text-gray-400">Nenhuma atividade nesta empresa nem nas oportunidades dela.</p> : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-xs">
-                    <thead className="text-left text-gray-500"><tr><th className="py-1.5 pr-3 font-medium">Atividade</th><th className="py-1.5 pr-3 font-medium">Tipo</th><th className="py-1.5 pr-3 font-medium">Data</th><th className="py-1.5 pr-3 font-medium">Responsável</th><th className="py-1.5 pr-3 font-medium">Situação</th><th className="py-1.5 font-medium">Oportunidade</th></tr></thead>
+                    <thead className="text-left text-gray-500"><tr><th className="py-1.5 pr-3 font-medium">Atividade</th><th className="py-1.5 pr-3 font-medium">Tipo</th><th className="py-1.5 pr-3 font-medium">Data</th><th className="py-1.5 pr-3 font-medium">Responsável</th><th className="py-1.5 pr-3 font-medium">Situação</th><th className="py-1.5 pr-3 font-medium">Oportunidade</th><th /></tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {taskEvents.map((a: any) => {
                         const late = a.status !== 'done' && a.activity_date && a.activity_date < todayIso
@@ -366,12 +378,15 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                               ? <span className="rounded-full bg-positive-100 px-2 py-0.5 text-positive-700">Concluída</span>
                               : late ? <span className="rounded-full bg-negative-100 px-2 py-0.5 text-negative-700">Atrasada</span>
                               : <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">Planejada</span>}</td>
-                            <td className="py-2">{a.contract_id ? <Link href={`/contracts/${a.contract_id}?tab=atividades`} className="text-brand-700 hover:underline">{contractNameById.get(a.contract_id) ?? 'Abrir'}</Link> : '—'}</td>
+                            <td className="py-2 pr-3">{a.contract_id ? <Link href={`/contracts/${a.contract_id}?tab=atividades`} className="text-brand-700 hover:underline">{contractNameById.get(a.contract_id) ?? 'Abrir'}</Link> : <span className="text-gray-500">Empresa</span>}</td>
+                            <td className="py-2"><ActivityDoneButton id={a.id} done={a.status === 'done'} /></td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
+                </div>
+                )}
                 </div>
               ),
             },
@@ -413,6 +428,17 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                     </tbody>
                   </table>
                 </div>
+              ),
+            },
+            {
+              id: 'arquivos', label: `Arquivos (${(companyFiles ?? []).length + (oppFiles ?? []).length})`,
+              content: (
+                <CompanyFilesSection
+                  companyId={company.id}
+                  isAdmin={isAdmin}
+                  files={(companyFiles ?? []).map((f: any) => ({ ...f, uploader: f.uploaded_by ? profileById.get(f.uploaded_by) ?? null : null }))}
+                  contractFiles={(oppFiles ?? []).map((f: any) => ({ ...f, contract_label: contractNameById.get(f.contract_id) ?? 'Oportunidade' }))}
+                />
               ),
             },
             {

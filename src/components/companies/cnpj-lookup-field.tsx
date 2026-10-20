@@ -6,8 +6,10 @@ import { lookupCnpj, type CnpjData } from '@/lib/actions/cnpj-lookup'
 export function CnpjLookupField({
   defaultValue,
   onFound,
+  onChange,
 }: {
   defaultValue?: string
+  onChange?: (value: string) => void
   onFound: (data: { razaoSocial: string; nomeFantasia: string | null } & Partial<CnpjData>) => void
 }) {
   const [value, setValue] = useState(defaultValue ?? '')
@@ -31,7 +33,7 @@ export function CnpjLookupField({
     <div>
       <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>CNPJ</label>
       <div style={{ display: 'flex', gap: 8 }}>
-        <input name="cnpj" value={value} onChange={e => setValue(e.target.value)}
+        <input name="cnpj" value={value} onChange={e => { setValue(e.target.value); onChange?.(e.target.value) }}
           placeholder="00.000.000/0000-00" style={inputStyle} />
         <button type="button" onClick={handleLookup}
           disabled={loading || value.replace(/\D/g, '').length !== 14}

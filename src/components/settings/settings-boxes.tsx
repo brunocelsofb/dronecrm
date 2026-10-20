@@ -18,6 +18,7 @@ const BOXES: Box[] = [
     title: 'Empresa', icon: Building2, description: 'Quem é a empresa no CRM e as metas.',
     items: [
       { href: '/settings/empresa', label: 'Dados da empresa', description: 'Logo, nome, CNPJ e visual das propostas', keywords: 'cnpj logo marca link de login razão social' },
+      { href: '/settings/segmentos', label: 'Segmentos e inativos', description: 'Segmentos das empresas e regra de cliente inativo', keywords: 'segmento grupo hospitalar clinicas diagnostico inativo reativação hunter campanha' },
       { href: '/settings/metas', label: 'Metas de receita', description: 'Meta mês a mês e prazo do relatório de medição', keywords: 'meta receita faturamento medição' },
       { href: '/settings/protocolos', label: 'Numeração de chamados e propostas', description: 'Prefixo e próximo número' },
       { href: '/settings/wallpapers', label: 'Papéis de parede', description: 'Fundo do login e das páginas públicas' },

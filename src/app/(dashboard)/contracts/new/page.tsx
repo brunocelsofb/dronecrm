@@ -1,4 +1,5 @@
 'use client'
+import { getCompanySettings } from '@/lib/actions/company-settings'
 
 import { useActionState } from 'react'
 import { useEffect, useState } from 'react'
@@ -38,6 +39,8 @@ export default function NewContractPage() {
   const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([])
   const [orgCnpj, setOrgCnpj] = useState<string>('')
   const [accountOwners, setAccountOwners] = useState<{ id: string; full_name: string }[]>([])
+  const [segments, setSegments] = useState<string[]>([])
+  useEffect(() => { getCompanySettings().then(s => setSegments(s.segments)).catch(() => {}) }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -149,9 +152,7 @@ export default function NewContractPage() {
             <label className="block text-sm font-medium text-gray-700">Segmento {req('segment') && <span style={{ color: '#8e4550' }}>*</span>}</label>
             <select name="segment" required={req('segment')} className={inputCls}>
               <option value="">Selecione...</option>
-              <option value="hospitalar_geral">Grupo Hospitalar (Geral e especializado)</option>
-              <option value="diagnostico">Grupo Diagnóstico (imagem e laboratório)</option>
-              <option value="clinicas_outros">Grupo Clínicas e Outros</option>
+              {segments.map(sg => <option key={sg} value={sg}>{sg}</option>)}
             </select>
           </div>
         )}

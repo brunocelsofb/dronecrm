@@ -37,7 +37,7 @@ export async function saveList(input: { id?: string | null; name: string; audien
   const c = await ctx(); if (!c) return NO
   const name = (input.name ?? '').trim().slice(0, 120)
   if (!name) return { ok: false, error: 'Dê um nome à lista.' }
-  if (!['leads', 'clientes', 'ambos'].includes(input.audience)) return { ok: false, error: 'Público inválido.' }
+  if (!['leads', 'clientes', 'ambos', 'inativos'].includes(input.audience)) return { ok: false, error: 'Público inválido.' }
   const row = { name, audience: input.audience, filters: readFilters(input.filters), updated_at: new Date().toISOString() }
   if (input.id) {
     const { data, error } = await c.db.from('marketing_lists').update(row).eq('id', input.id).select('id')

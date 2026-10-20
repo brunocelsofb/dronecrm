@@ -15,14 +15,14 @@ export type ListRow = { id: string; name: string; audience: string; filters: unk
 export type SyncRow = { id: string; list_id: string; provider: string; target: string | null; status: string; total: number; sent: number; failed: number; errors: string | null; started_at: string }
 export type OptoutRow = { id: string; email: string; source: string | null; created_at: string }
 
-const AUD: Record<string, string> = { leads: 'Leads', clientes: 'Clientes (carteira)', ambos: 'Leads e clientes' }
+const AUD: Record<string, string> = { leads: 'Leads', clientes: 'Clientes (carteira)', ambos: 'Leads e clientes', inativos: 'Clientes inativos (reativação)' }
 const LEAD_STATUS: [string, string][] = [['novo', 'Novo'], ['em_qualificacao', 'Em qualificação'], ['qualificado', 'Qualificado'], ['convertido', 'Convertido'], ['descartado', 'Descartado']]
 const PROVIDER: Record<string, string> = { mailchimp: 'Mailchimp', rd_station: 'RD Station' }
 const br = (iso: string) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 
 type Props = {
   lists: ListRow[]; syncs: SyncRow[]; optouts: { count: number; recent: OptoutRow[] }
-  tools: ToolsStatus; options: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[] }
+  tools: ToolsStatus; options: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[]; companySegments: string[] }
   campaigns: { id: string; name: string; status: string }[]
   isAdmin: boolean
 }
@@ -120,13 +120,13 @@ export function ListsView(p: Props) {
               <input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} placeholder="Ex.: Hospitais SP — leads qualificados" className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
             </label>
             <label className="text-xs font-medium text-gray-700">Quem entra
-              <select value={editing.audience} onChange={e => { setEditing({ ...editing, audience: e.target.value }); setPreview(null) }} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm">
+              <select value={editing.audience} onChange={e => { const a = e.target.value; setEditing({ ...editing, audience: a, filters: (a === 'inativos') !== (editing.audience === 'inativos') ? { ...editing.filters, segments: [] } : editing.filters }); setPreview(null) }} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm">
                 {Object.entries(AUD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
           </div>
 
-          {editing.audience !== 'clientes' && (
+          {(editing.audience === 'leads' || editing.audience === 'ambos') && (
             <fieldset className="rounded-xl bg-gray-50 p-3">
               <legend className="px-1 text-xs font-semibold text-gray-700">Filtros dos leads</legend>
               <p className="text-[11px] text-gray-500">Situação</p>
@@ -150,10 +150,10 @@ export function ListsView(p: Props) {
 
           {editing.audience !== 'leads' && (
             <fieldset className="rounded-xl bg-gray-50 p-3">
-              <legend className="px-1 text-xs font-semibold text-gray-700">Filtros dos clientes (contatos das empresas com contrato em gestão)</legend>
-              {p.options.segments.length > 0 && <>
-                <p className="text-[11px] text-gray-500">Segmento do contrato</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">{p.options.segments.map(s => <button key={s} type="button" onClick={() => toggle('segments', s)} className={chip(!!editing.filters.segments?.includes(s))}>{s}</button>)}</div>
+              <legend className="px-1 text-xs font-semibold text-gray-700">{editing.audience === 'inativos' ? 'Filtros dos inativos (contatos das empresas sem contrato ativo e sem compra no prazo de Segmentos e inativos)' : 'Filtros dos clientes (contatos das empresas com contrato em gestão)'}</legend>
+              {(editing.audience === 'inativos' ? p.options.companySegments : p.options.segments).length > 0 && <>
+                <p className="text-[11px] text-gray-500">{editing.audience === 'inativos' ? 'Segmento da empresa' : 'Segmento do contrato'}</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">{(editing.audience === 'inativos' ? p.options.companySegments : p.options.segments).map(s => <button key={s} type="button" onClick={() => toggle('segments', s)} className={chip(!!editing.filters.segments?.includes(s))}>{s}</button>)}</div>
               </>}
               {p.options.ufs.length > 0 && <>
                 <p className="mt-2 text-[11px] text-gray-500">UF</p>

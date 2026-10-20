@@ -17,11 +17,11 @@ export const STATUS_VALUES: Record<string, string> = {
 }
 
 export const IMPORT_COLUMNS: ImportColumn[] = [
-  { key: 'razao_social', label: 'Razão social', required: true, hint: 'Nome oficial da empresa', example: 'Hospital Exemplo Ltda', aliases: ['razao social', 'nome', 'name', 'empresa'] },
-  { key: 'nome_fantasia', label: 'Nome fantasia', hint: 'Como a empresa é conhecida', example: 'Hospital Exemplo', aliases: ['nome fantasia', 'fantasia', 'trade_name'] },
-  { key: 'cnpj', label: 'CNPJ', hint: 'Com ou sem pontuação. Evita duplicar: CNPJ já cadastrado é pulado', example: '12.345.678/0001-90' },
+  { key: 'cnpj', label: 'CNPJ', required: true, hint: 'Com ou sem pontuação (14 dígitos). CNPJ já cadastrado é pulado', example: '12.345.678/0001-90' },
+  { key: 'razao_social', label: 'Razão social', hint: 'Em branco: buscada pelo CNPJ na Receita', example: 'Hospital Exemplo Ltda', aliases: ['razao social', 'nome', 'name', 'empresa'] },
+  { key: 'nome_fantasia', label: 'Nome fantasia', hint: 'Em branco: buscado pelo CNPJ na Receita', example: 'Hospital Exemplo', aliases: ['nome fantasia', 'fantasia', 'trade_name'] },
   { key: 'status', label: 'Status', hint: 'lead, prospect, cliente ativo, cliente inativo ou nao qualificado (vazio = lead)', example: 'cliente ativo' },
-  { key: 'segmento', label: 'Segmento', hint: 'Texto livre', example: 'Grupo Hospitalar (Geral e especializado)', aliases: ['segment'] },
+  { key: 'segmento', label: 'Segmento', hint: 'Um dos segmentos cadastrados (lista abaixo)', example: 'Grupo Hospitalar (geral e especializado)', aliases: ['segment'] },
   { key: 'telefone', label: 'Telefone', hint: 'Telefone da empresa', example: '(62) 3333-4444', aliases: ['phone', 'fone'] },
   { key: 'email', label: 'E-mail', hint: 'E-mail geral da empresa', example: 'contato@hospitalexemplo.com.br', aliases: ['e-mail'] },
   { key: 'cep', label: 'CEP', hint: 'Somente o CEP', example: '74000-000', aliases: ['zip_code'] },
@@ -40,9 +40,9 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
 export const EXAMPLE_MARK = 'EXEMPLO'
 
 // CSV com ";" (o Excel em português abre certo) e BOM (acentos)
-export function buildTemplateCsv(withExample = true): string {
+export function buildTemplateCsv(withExample = true, segmentExample?: string): string {
   const head = IMPORT_COLUMNS.map(c => c.key).join(';')
-  const example = IMPORT_COLUMNS.map(c => (c.key === 'razao_social' ? `${EXAMPLE_MARK} - ${c.example} (apague esta linha)` : c.example))
+  const example = IMPORT_COLUMNS.map(c => (c.key === 'cnpj' ? `${EXAMPLE_MARK} ${c.example}` : c.key === 'razao_social' ? `${EXAMPLE_MARK} - ${c.example} (apague esta linha)` : c.key === 'segmento' && segmentExample ? segmentExample : c.example))
     .map(v => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)).join(';')
   return '﻿' + head + (withExample ? `\r\n${example}` : '') + '\r\n'
 }
