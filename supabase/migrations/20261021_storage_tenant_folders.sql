@@ -78,16 +78,16 @@ language sql stable security definer set search_path = contract_crm, pg_temp as 
 $$;
 grant execute on function contract_crm.storage_object_in_my_tenant(text, text) to authenticated;
 
--- ── PARTE B (depois de publicar o código) ─────────────────────────────────────
--- select contract_crm.backfill_storage_legacy_objects();
+-- ── PARTE B (aplicada em 21/10, depois de publicar o código) ──────────────────
+select contract_crm.backfill_storage_legacy_objects();
 -- Políticas RESTRICTIVE: valem junto com as antigas (que liberavam o bucket inteiro).
--- create policy tenant_files_select on storage.objects as restrictive for select to authenticated
---   using (bucket_id not in ('contract-files','proposal-files') or contract_crm.storage_object_in_my_tenant(bucket_id, name));
--- create policy tenant_files_insert on storage.objects as restrictive for insert to authenticated
---   with check (bucket_id not in ('contract-files','proposal-files')
---     or (split_part(name, '/', 1) = contract_crm.current_tenant_id()::text and not contract_crm.in_support_session()));
--- create policy tenant_files_update on storage.objects as restrictive for update to authenticated
---   using (bucket_id not in ('contract-files','proposal-files') or (contract_crm.storage_object_in_my_tenant(bucket_id, name) and not contract_crm.in_support_session()))
---   with check (bucket_id not in ('contract-files','proposal-files') or (split_part(name, '/', 1) = contract_crm.current_tenant_id()::text and not contract_crm.in_support_session()));
--- create policy tenant_files_delete on storage.objects as restrictive for delete to authenticated
---   using (bucket_id not in ('contract-files','proposal-files') or (contract_crm.storage_object_in_my_tenant(bucket_id, name) and not contract_crm.in_support_session()));
+create policy tenant_files_select on storage.objects as restrictive for select to authenticated
+  using (bucket_id not in ('contract-files','proposal-files') or contract_crm.storage_object_in_my_tenant(bucket_id, name));
+create policy tenant_files_insert on storage.objects as restrictive for insert to authenticated
+  with check (bucket_id not in ('contract-files','proposal-files')
+    or (split_part(name, '/', 1) = contract_crm.current_tenant_id()::text and not contract_crm.in_support_session()));
+create policy tenant_files_update on storage.objects as restrictive for update to authenticated
+  using (bucket_id not in ('contract-files','proposal-files') or (contract_crm.storage_object_in_my_tenant(bucket_id, name) and not contract_crm.in_support_session()))
+  with check (bucket_id not in ('contract-files','proposal-files') or (split_part(name, '/', 1) = contract_crm.current_tenant_id()::text and not contract_crm.in_support_session()));
+create policy tenant_files_delete on storage.objects as restrictive for delete to authenticated
+  using (bucket_id not in ('contract-files','proposal-files') or (contract_crm.storage_object_in_my_tenant(bucket_id, name) and not contract_crm.in_support_session()));
