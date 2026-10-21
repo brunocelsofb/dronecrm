@@ -43,8 +43,11 @@ export function NotificationBell({ userId, placement = 'up' }: { userId: string;
 
     loadInitial()
 
+    // Nome único por sino: o layout tem dois (barra lateral e barra do celular) e o
+    // supabase-js devolve o MESMO canal para o mesmo nome — o 2º .on() depois do
+    // subscribe() lança erro e derruba a página.
     const channel = supabase
-      .channel(`notifications:${userId}`)
+      .channel(`notifications:${userId}:${Math.random().toString(36).slice(2, 10)}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'contract_crm', table: 'notifications', filter: `user_id=eq.${userId}` },
