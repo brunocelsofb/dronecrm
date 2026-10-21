@@ -16,7 +16,7 @@ type Row = {
 }
 
 const TABS: { id: '' | CustomerStatus; label: string }[] = [
-  { id: '', label: 'Todas' }, { id: 'ativa', label: 'Ativas' }, { id: 'sumiu', label: 'Sumiram' }, { id: 'sem_compra', label: 'Sem compra' },
+  { id: '', label: 'Todas' }, { id: 'ativa', label: 'Ativas' }, { id: 'inativa', label: 'Inativas' }, { id: 'sem_compra', label: 'Sem compra' },
 ]
 
 const fmtDate = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('pt-BR') : '—')
@@ -42,14 +42,14 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
   const digits = q.replace(/\D/g, '')
   const list = rows
     .filter(r => (!situacao || r.status === situacao) && (!term || r.name.toLowerCase().includes(term) || (digits.length >= 3 && (r.phone ?? '').includes(digits))))
-    .sort((a, b) => (situacao === 'sumiu' ? (a.stats.last ?? '').localeCompare(b.stats.last ?? '') : 0))
+    .sort((a, b) => (situacao === 'inativa' ? (a.stats.last ?? '').localeCompare(b.stats.last ?? '') : 0))
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Clientes</h1>
-          <p className="mt-1 text-sm text-gray-500">Quem compra, quem continua comprando e quem sumiu (mais de {settings.inactive_days} dias sem comprar).</p>
+          <p className="mt-1 text-sm text-gray-500">Quem compra, quem continua comprando e quem está inativa (mais de {settings.inactive_days} dias sem comprar).</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a href="/api/varejo/modelo-clientes" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
@@ -61,7 +61,7 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Clientes" value={String(rows.length)} />
         <Stat label="Ativas" value={String(count('ativa'))} />
-        <Stat label="Sumiram" value={String(count('sumiu'))} tone={count('sumiu') ? 'warn' : undefined} />
+        <Stat label="Inativas" value={String(count('inativa'))} tone={count('inativa') ? 'warn' : undefined} />
         <Stat label="Sem compra" value={String(count('sem_compra'))} />
       </div>
 

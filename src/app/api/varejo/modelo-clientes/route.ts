@@ -12,7 +12,7 @@ export async function GET() {
   const help = [
     ['Como preencher'],
     ['Uma linha por cliente. nome é obrigatório; telefone com DDD identifica a cliente (mesmo telefone atualiza).'],
-    ['ultima_compra, total_comprado e qtd_compras: histórico de antes do CRM. Contam para ativa ou sumiu.'],
+    ['ultima_compra, total_comprado e qtd_compras: histórico de antes do CRM. Contam para ativa ou inativa.'],
     ['aceita_whatsapp: sim só se a cliente autorizou receber novidades e ofertas (LGPD).'],
     ['Datas no formato dd/mm/aaaa. Valores no formato 459,80.'],
     ['Apague a linha de exemplo antes de importar.'],

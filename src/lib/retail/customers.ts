@@ -1,6 +1,6 @@
 // ─── Varejo: clientes (pessoa física) e pedidos — regras compartilhadas ───────
 // Situação da cliente pelas compras pagas (pago, enviado, entregue) e pelo
-// histórico importado: sem compra · ativa · sumiu (sem comprar há mais de N dias).
+// histórico importado: sem compra · ativa · inativa (sem comprar há mais de N dias).
 
 export const DEFAULT_INACTIVE_DAYS = 90
 
@@ -14,7 +14,7 @@ export function readRetailSettings(raw: unknown): RetailSettings {
 
 export const CUSTOMER_STATUS = {
   ativa: { label: 'Ativa', style: 'bg-positive-100 text-positive-700' },
-  sumiu: { label: 'Sumiu', style: 'bg-warn-100 text-warn-700' },
+  inativa: { label: 'Inativa', style: 'bg-warn-100 text-warn-700' },
   sem_compra: { label: 'Sem compra', style: 'bg-gray-100 text-gray-600' },
 } as const
 export type CustomerStatus = keyof typeof CUSTOMER_STATUS
@@ -117,7 +117,7 @@ export function mergeStats(
 export function customerStatus(last: string | null, inactiveDays: number, now = new Date()): CustomerStatus {
   if (!last) return 'sem_compra'
   const days = (now.getTime() - new Date(last).getTime()) / 86_400_000
-  return days > inactiveDays ? 'sumiu' : 'ativa'
+  return days > inactiveDays ? 'inativa' : 'ativa'
 }
 
 export function daysSince(iso: string | null, now = new Date()): number | null {

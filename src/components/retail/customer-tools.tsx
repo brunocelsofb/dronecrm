@@ -101,7 +101,7 @@ export function InactiveDaysForm({ initial }: { initial: number }) {
   }
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-gray-900">Quando a cliente conta como &quot;sumiu&quot;</h2>
+      <h2 className="text-sm font-semibold text-gray-900">Quando a cliente conta como inativa</h2>
       <p className="mt-1 text-xs text-gray-500">Dias sem comprar (pedido pago, enviado ou entregue, ou a última compra importada). Só o administrador muda.</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <input inputMode="numeric" value={days} onChange={e => setDays(e.target.value)} className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm" aria-label="Dias sem comprar" />

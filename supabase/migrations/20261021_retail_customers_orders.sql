@@ -1,7 +1,7 @@
 -- Módulo Varejo — etapa 2: clientes (pessoa física) e pedidos.
 --   - cliente: única por telefone dentro da empresa;
 --   - situação calculada pelas compras pagas (e pelo histórico importado):
---     sem compra · ativa · sumiu (sem comprar há mais de N dias; padrão 90, ajustável);
+--     sem compra · ativa · inativa (sem comprar há mais de N dias; padrão 90, ajustável);
 --   - pedido: itens com preço gravado no momento da venda; estoque baixa só no "pago".
 
 alter table contract_crm.organization_settings
@@ -23,7 +23,7 @@ create table if not exists contract_crm.retail_customers (
   source       text not null default 'manual' check (source in ('manual', 'planilha', 'vitrine')),
   whatsapp_optin boolean not null default false,
   optin_at     timestamptz,
-  -- histórico de antes do CRM (planilha): conta para ativa/sumiu
+  -- histórico de antes do CRM (planilha): conta para ativa/inativa
   legacy_last_purchase_at date,
   legacy_total numeric(12,2) check (legacy_total is null or legacy_total >= 0),
   legacy_orders integer check (legacy_orders is null or legacy_orders >= 0),
