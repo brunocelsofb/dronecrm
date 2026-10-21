@@ -32,15 +32,20 @@ export const FEATURES: FeatureDef[] = [
   { key: 'whatsapp-relatorios', label: 'Relatórios WPP',       paths: ['/whatsapp/relatorios'] },
   { key: 'surveys',             label: 'Pesquisas & NPS',      paths: ['/surveys-dashboard', '/surveys', '/nps-dashboard'] },
   { key: 'copiloto',            label: 'Agentes IA',          paths: ['/briefing', '/copiloto'] },
+  // Módulo opcional (varejo / pessoa física): fora de todos os planos; liberado por empresa
+  { key: 'varejo',              label: 'Varejo (catálogo)',    paths: ['/varejo'] },
 ]
 
 export const FEATURE_KEYS = FEATURES.map(f => f.key)
+
+// Módulos que nunca entram num plano sozinhos: o Super Admin libera por empresa
+export const OPTIONAL_FEATURES = ['varejo']
 
 // Usado só se a tabela plan_features não responder
 export const DEFAULT_PLAN_FEATURES: Record<PlanId, string[]> = {
   starter: ['dashboard', 'pipeline', 'leads', 'tickets', 'copiloto'],
   professional: ['dashboard', 'painel', 'financeiro', 'pipeline', 'leads', 'marketing', 'sdr', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
-  enterprise: FEATURE_KEYS,
+  enterprise: FEATURE_KEYS.filter(k => !OPTIONAL_FEATURES.includes(k)),
 }
 
 export function isPlanId(v: unknown): v is PlanId {

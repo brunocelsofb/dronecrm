@@ -1,0 +1,119 @@
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { hasFeature } from '@/lib/auth/access'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { fmtBRL } from '@/lib/format'
+import { PRODUCT_STATUSES, effectivePrice, retailPhotoUrl, totalStock } from '@/lib/retail/products'
+import { ProductImport } from '@/components/retail/product-import'
+
+export const dynamic = 'force-dynamic'
+
+type Row = {
+  id: string; code: string; name: string; category: string | null; price: number; promo_price: number | null
+  status: string; photos: string[] | null
+  retail_product_variants: { stock: number; active: boolean }[] | null
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  publicado: 'bg-positive-100 text-positive-700',
+  rascunho: 'bg-warn-100 text-warn-700',
+  arquivado: 'bg-gray-100 text-gray-500',
+}
+
+export default async function RetailProductsPage({ searchParams }: { searchParams: Promise<{ q?: string; categoria?: string; situacao?: string }> }) {
+  if (!(await hasFeature('varejo'))) redirect('/')
+  const { q = '', categoria = '', situacao = '' } = await searchParams
+  const db = await createScopedAdmin()
+  const { data } = await db.from('retail_products')
+    .select('id, code, name, category, price, promo_price, status, photos, retail_product_variants(stock, active)')
+    .order('name')
+  const all = (data ?? []) as unknown as Row[]
+  const categories = [...new Set(all.map(p => p.category).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  const term = q.trim().toLowerCase()
+  const list = all.filter(p =>
+    (!term || p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term)) &&
+    (!categoria || p.category === categoria) &&
+    (!situacao || p.status === situacao))
+  const withoutStock = all.filter(p => p.status === 'publicado' && totalStock(p.retail_product_variants ?? []) === 0).length
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Produtos</h1>
+          <p className="mt-1 text-sm text-gray-500">Peças da vitrine, com preço, fotos e estoque por cor e tamanho.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/api/varejo/modelo" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
+          <ProductImport />
+          <Link href="/varejo/produtos/nova" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Peças" value={String(all.length)} />
+        <Stat label="Publicadas" value={String(all.filter(p => p.status === 'publicado').length)} />
+        <Stat label="Unidades em estoque" value={String(all.filter(p => p.status !== 'arquivado').reduce((s, p) => s + totalStock(p.retail_product_variants ?? []), 0))} />
+        <Stat label="Publicadas sem estoque" value={String(withoutStock)} tone={withoutStock ? 'warn' : undefined} />
+      </div>
+
+      <form className="flex flex-wrap gap-2" method="get">
+        <input name="q" defaultValue={q} placeholder="Buscar por nome ou código" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+        <select name="categoria" defaultValue={categoria} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <option value="">Todas as categorias</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select name="situacao" defaultValue={situacao} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <option value="">Todas as situações</option>
+          {PRODUCT_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        <button className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Filtrar</button>
+      </form>
+
+      {list.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
+          {all.length === 0 ? 'Nenhuma peça cadastrada. Cadastre uma peça ou importe a planilha.' : 'Nenhuma peça encontrada com esses filtros.'}
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {list.map(p => {
+            const stock = totalStock(p.retail_product_variants ?? [])
+            const price = effectivePrice(p)
+            const cover = (p.photos ?? [])[0]
+            return (
+              <li key={p.id}>
+                <Link href={`/varejo/produtos/${p.id}`} className="flex gap-3 rounded-xl border border-gray-200 bg-white p-3 hover:border-brand-700/40">
+                  <div className="h-20 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {cover ? <img src={retailPhotoUrl(cover)} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center text-[10px] text-gray-400">sem foto</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-900">{p.name}</p>
+                    <p className="text-xs text-gray-500">{p.code}{p.category ? ` · ${p.category}` : ''}</p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {fmtBRL(price)}
+                      {price < p.price && <span className="ml-1 text-xs text-gray-400 line-through">{fmtBRL(p.price)}</span>}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[p.status] ?? ''}`}>{PRODUCT_STATUSES.find(s => s.id === p.status)?.label ?? p.status}</span>
+                      <span className={`text-xs ${stock === 0 ? 'text-negative-700' : 'text-gray-500'}`}>{stock === 0 ? 'Sem estoque' : `${stock} un.`}</span>
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+  return (
+    <div className={`rounded-xl border p-3 ${tone === 'warn' ? 'border-warn-600/40 bg-warn-100' : 'border-gray-200 bg-white'}`}>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={`mt-1 text-lg font-semibold ${tone === 'warn' ? 'text-warn-700' : 'text-gray-900'}`}>{value}</p>
+    </div>
+  )
+}

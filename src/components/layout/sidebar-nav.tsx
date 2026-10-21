@@ -15,6 +15,7 @@ import { isSettingsChild } from '@/lib/config/settings-nav'
 import {
   LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3,
   Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset, Bot,
+  ShoppingBag, Package,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
@@ -54,6 +55,11 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/tickets', label: 'Chamados', icon: LifeBuoy, feature: 'tickets' },
       { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle, feature: 'whatsapp' },
       { href: '/whatsapp/relatorios', label: 'Relatórios WPP', icon: BarChart3, feature: 'whatsapp-relatorios' },
+    ],
+  },
+  {
+    key: 'varejo', label: 'Varejo', icon: ShoppingBag, items: [
+      { href: '/varejo/produtos', label: 'Produtos', icon: Package, feature: 'varejo' },
     ],
   },
   {

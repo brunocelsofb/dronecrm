@@ -88,6 +88,8 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/zapsign/, help: { title: 'Modelos ZapSign', text: 'Modelos de contrato e aditivo da ZapSign. O CRM preenche as variáveis com os dados do contrato e envia para assinatura pela aba Contrato e aditivos.' } },
   { test: /^\/users/, help: { title: 'Usuários', text: 'Equipe da empresa: cadastro, papel (admin, membro, aprovadores), perfil de acesso e departamento.', tips: ['Perfil de acesso decide as abas que a pessoa vê (Configurações → Perfis de acesso). O Admin vê tudo.', 'Papel define quem é Admin e quem aprova propostas (técnico/comercial).', 'O limite de usuários depende da licença.'] } },
   { test: /^\/minha-conta/, help: { title: 'Minha conta', text: 'Seus dados, assinatura de e-mail e a conexão do seu Gmail (de onde saem seus e-mails pelo CRM).' } },
+  { test: /^\/varejo\/produtos\/[^/]+/, help: { title: 'Peça', text: 'Dados da peça, preço, fotos e estoque por cor e tamanho.', tips: ['Situação: só peças publicadas e com estoque aparecem na vitrine.', 'Cada cor e tamanho tem estoque próprio. "Gerar combinações" cria as variações a partir das cores e tamanhos digitados.', 'SKU em branco: o CRM monta CÓDIGO-COR-TAMANHO.', 'Preço promocional menor que o preço vale na venda.', 'A primeira foto é a capa; as fotos são reduzidas no próprio celular antes do envio.'] } },
+  { test: /^\/varejo/, help: { title: 'Produtos (Varejo)', text: 'Catálogo de peças da vitrine, com preço, fotos e estoque por cor e tamanho.', tips: ['Módulo opcional: aparece só para empresas com o Varejo liberado.', 'Importar planilha: uma linha por cor e tamanho; o código da peça e o SKU que a empresa já usa são preservados. Importar de novo atualiza, nada é apagado.', 'Baixe a planilha-modelo para ver as colunas.', '"Publicadas sem estoque" mostra peças à venda que estão zeradas.'] } },
   { test: /^\/super-admin/, help: { title: 'Super Admin', text: 'Central das licenças: crie empresas, defina planos e abas e acompanhe uso e status de cada empresa (só números, sem conteúdo).', tips: ['Acessar só funciona quando o admin da empresa libera o acesso de suporte (Configurações → Privacidade e dados): por tempo limitado, só leitura e com cada tela registrada para a empresa.', 'A cópia dos dados é baixada só pelo admin da própria empresa.', 'Resetar outra empresa exige o pedido dela e fica no registro de acessos.', 'Atualizar webhooks registra de novo o endereço de recebimento do WhatsApp de todas as empresas, com chave própria de cada número; não lê conteúdo.'] } },
 ]
 
@@ -115,6 +117,7 @@ export const NAV_HELP: Record<string, string> = {
   '/surveys-dashboard': 'Satisfação e NPS',
   '/briefing': 'Farmer (carteira) e Hunter (novos negócios)',
   '/settings': 'Dados, integrações e regras da empresa',
+  '/varejo/produtos': 'Peças, preços, fotos e estoque',
   '/super-admin': 'Licenças, planos e abas',
 }
 
