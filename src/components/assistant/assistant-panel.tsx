@@ -178,9 +178,9 @@ export function AssistantPanel() {
           style={
             position
               ? { position: 'fixed', left: Math.min(position.x, window.innerWidth - 384 - 8), top: Math.max(position.y - 536, 8) }
-              : { position: 'fixed', right: 20, bottom: 80 }
+              : { position: 'fixed', right: 12, bottom: 80 }
           }
-          className="z-40 flex h-[520px] w-96 flex-col rounded-xl border border-gray-200 bg-white shadow-2xl"
+          className="z-40 flex h-[min(520px,calc(100dvh-6rem))] w-[min(24rem,calc(100vw-1.5rem))] flex-col rounded-xl border border-gray-200 bg-white shadow-2xl"
         >
           <div className="flex items-center justify-between rounded-t-xl bg-brand-700 px-4 py-3">
             <p className="text-sm font-medium text-white">🤖 Théo</p>

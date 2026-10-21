@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { PLATFORM_BRAND } from '@/lib/config/platform'
+import { MobileNav } from '@/components/layout/mobile-nav'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
 import { signOut } from '@/lib/actions/auth'
 import { RefreshButton } from '@/components/layout/refresh-button'
@@ -110,8 +111,12 @@ export default async function DashboardLayout({
     redirect(`${target}?bloqueado=${encodeURIComponent(requestFeature)}&motivo=${reason}`)
   }
 
+  const mobileLogo = /\.(jpe?g)(\?|$)/i.test(sidebarLogoUrl)
+    ? <img src={sidebarLogoUrl} alt={orgName} className="h-7 w-auto max-w-[140px] rounded object-contain" />
+    : <img src={sidebarLogoUrl} alt={orgName} className="h-7 w-auto max-w-[140px] object-contain brightness-0 invert" />
+
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="min-h-screen bg-background md:flex">
       {/* Banner de Impersonation */}
       {impersonation.active && (
         <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-4 bg-amber-400 px-6 py-2 text-sm font-medium text-amber-900 shadow-md">
@@ -134,8 +139,38 @@ export default async function DashboardLayout({
         </div>
       )}
 
+      {/* Celular: barra do topo com menu, logo, notificações e conta (a barra lateral some) */}
+      <header className={`sticky z-40 flex h-14 items-center justify-between gap-2 bg-brand-800 px-2 md:hidden ${impersonation.active ? 'top-9 mt-9' : 'top-0'}`}>
+        <MobileNav
+          features={enabledFeatures}
+          isSuperAdmin={isSuperAdmin}
+          logo={mobileLogo}
+          footer={
+            <div className="flex items-center justify-between">
+              <Link href="/minha-conta" className="flex items-center gap-2 text-sm text-white no-underline">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">{initials(profile?.full_name ?? user.email ?? '')}</span>
+                <span className="max-w-[10rem] truncate">{profile?.full_name ?? user.email}</span>
+              </Link>
+              <form action={signOut}>
+                <button type="submit" className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-brand-100/80 hover:bg-white/10 hover:text-white">
+                  <LogOut size={16} strokeWidth={1.75} /> Sair
+                </button>
+              </form>
+            </div>
+          }
+        />
+        <Link href="/" className="flex min-w-0 flex-1 justify-center">{mobileLogo}</Link>
+        <div className="flex items-center gap-1">
+          <NotificationBell userId={user.id} placement="down" />
+          <Link href="/minha-conta" aria-label="Minha conta"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[11px] font-semibold text-white no-underline">
+            {initials(profile?.full_name ?? user.email ?? '')}
+          </Link>
+        </div>
+      </header>
+
       {/* Barra fina de ícones (fixa na lateral); cada grupo abre a continuação ao lado */}
-      <aside className={`sticky z-40 flex w-[88px] shrink-0 flex-col bg-brand-800 px-2 py-3 ${impersonation.active ? 'top-9 mt-9 h-[calc(100vh-2.25rem)]' : 'top-0 h-screen'}`}>
+      <aside className={`sticky z-40 hidden w-[88px] shrink-0 flex-col bg-brand-800 px-2 py-3 md:flex ${impersonation.active ? 'top-9 mt-9 h-[calc(100vh-2.25rem)]' : 'top-0 h-screen'}`}>
         <div className="mb-3 flex justify-center py-2">
           {/\.(jpe?g)(\?|$)/i.test(sidebarLogoUrl) ? (
             // JPG tem fundo: mostra com as cores originais
@@ -175,7 +210,7 @@ export default async function DashboardLayout({
           </div>
         </div>
       </aside>
-      <main className={`min-w-0 flex-1 p-6${impersonation.active ? ' mt-9' : ''}`}>
+      <main className={`min-w-0 flex-1 p-4 md:p-6${impersonation.active ? ' md:mt-9' : ''}`}>
         {dpaPending && (
           <a href="/settings/privacidade" className="mb-4 block rounded-lg border border-warn-600/40 bg-warn-100 px-4 py-2 text-sm text-warn-700 no-underline hover:border-warn-600">
             Falta aceitar o Contrato de tratamento de dados (LGPD) da sua empresa. Leia e aceite em Configurações → Privacidade e dados →

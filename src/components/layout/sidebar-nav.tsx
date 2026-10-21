@@ -22,7 +22,7 @@ type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: str
 type NavItem = { href: string; label: string; icon: Icon; feature: string }
 type NavGroup = { key: string; label: string; icon: Icon; items: NavItem[] }
 
-const NAV_GROUPS: NavGroup[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
     key: 'visao', label: 'Visão geral', icon: Gauge, items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
@@ -76,12 +76,12 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-function matches(pathname: string, href: string) {
+export function matches(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`)
 }
 
 // Tela ativa = a de endereço mais específico (ex.: /whatsapp/relatorios ganha de /whatsapp)
-function activeHref(pathname: string, items: NavItem[]): string | null {
+export function activeHref(pathname: string, items: NavItem[]): string | null {
   let best: string | null = null
   for (const it of items) if (matches(pathname, it.href) && (!best || it.href.length > best.length)) best = it.href
   return best

@@ -20,7 +20,7 @@ type Notification = {
   created_at: string
 }
 
-export function NotificationBell({ userId }: { userId: string }) {
+export function NotificationBell({ userId, placement = 'up' }: { userId: string; placement?: 'up' | 'down' }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
   const router = useRouter()
@@ -102,7 +102,7 @@ export function NotificationBell({ userId }: { userId: string }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className={`absolute z-50 rounded-lg border border-gray-200 bg-white shadow-lg ${placement === 'down' ? 'right-0 top-full mt-2 w-[min(20rem,calc(100vw-1.5rem))]' : 'bottom-full left-0 mb-2 w-80'}`}>
           <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
             <p className="text-xs font-semibold text-gray-700">Notificações</p>
             {unreadCount > 0 && (
