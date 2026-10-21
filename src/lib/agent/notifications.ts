@@ -12,6 +12,7 @@
 //   AGENT_FROM_EMAIL            — ex.: comercial@orbisengenharia.com.br
 //   AGENT_ALERT_EMAIL           — ex.: bruno.barbosa@orbisengenharia.com.br
 
+import { formatDateOnlyBR } from '@/lib/utils/date'
 import { normalizeBaseUrl } from '@/lib/whatsapp/tenant-evo'
 import { getValidAccessToken, sendGmailMessage } from '@/lib/email/gmail'
 import { sendSmtpMessage } from '@/lib/email/smtp'
@@ -320,6 +321,6 @@ export function formatBRL(value: number | null | undefined): string {
 
 export function formatDateBR(isoDate: string | null | undefined): string {
   if (!isoDate) return 'data não informada'
-  const d = new Date(isoDate)
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return formatDateOnlyBR(isoDate)
+  return new Date(isoDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' })
 }

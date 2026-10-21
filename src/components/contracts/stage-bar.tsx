@@ -3,7 +3,7 @@
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useTransition } from 'react'
 import { moveContractStage, reopenRun, closeRun, transferRunToPipeline } from '@/lib/actions/pipeline'
-import { addMonthsToDateString } from '@/lib/utils/date'
+import { contractEndDate, renewalStartDate } from '@/lib/utils/date'
 import { createClient } from '@/lib/supabase/client'
 import { registerContractFile } from '@/lib/actions/files'
 import { attachAvulsoReport } from '@/lib/actions/avulso'
@@ -55,7 +55,7 @@ export function StageBar({
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [transferPipelineId, setTransferPipelineId] = useState('')
   const [transferStageId, setTransferStageId] = useState('')
-  const [validFrom, setValidFrom] = useState('')
+  const [validFrom, setValidFrom] = useState(currentValidUntil ? renewalStartDate(String(currentValidUntil).slice(0, 10)) : '')
   const [validUntil, setValidUntil] = useState('')
   const [cnpjBilling, setCnpjBilling] = useState(billingCnpjs[0]?.value ?? '')
   const [contractType, setContractType] = useState('')
@@ -273,7 +273,7 @@ export function StageBar({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 16 }}>
               {MONTH_SHORTCUTS.map(m => (
                 <button key={m} type="button" disabled={!validFrom}
-                  onClick={() => validFrom && setValidUntil(addMonthsToDateString(validFrom, m))}
+                  onClick={() => validFrom && setValidUntil(contractEndDate(validFrom, m))}
                   style={{ padding: '4px 10px', fontSize: 11, borderRadius: 20, border: '0.5px solid #d1d8e8', background: '#fff', color: validFrom ? '#1a1f36' : '#b0b8c8', cursor: validFrom ? 'pointer' : 'not-allowed', opacity: validFrom ? 1 : 0.5 }}>
                   +{m}m
                 </button>

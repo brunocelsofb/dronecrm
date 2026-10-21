@@ -18,6 +18,7 @@
 // LIMITAÇÃO CONHECIDA: automações encadeadas podem formar loop —
 // há um limite de profundidade (_depth) como proteção mínima.
 
+import { daysUntilIso, formatDateOnlyBR, todayIsoBR } from '@/lib/utils/date'
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -67,12 +68,8 @@ export async function checkAndTriggerRenewals() {
       .in('id', contractIds)
       .not('valid_until', 'is', null)
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
     for (const contract of contracts ?? []) {
-      const validUntil = new Date(contract.valid_until as string)
-      const daysUntilExpiry = Math.floor((validUntil.getTime() - today.getTime()) / 86_400_000)
+      const daysUntilExpiry = daysUntilIso(String(contract.valid_until).slice(0, 10))
 
       if (daysUntilExpiry <= (pipeline.renewal_trigger_days as number)) {
         const run = openRuns.find((r) => r.contract_id === contract.id)
@@ -411,7 +408,7 @@ export async function closeRun(
         .eq('id', contractId)
         .maybeSingle()
 
-      const todayStr = new Date().toISOString().slice(0, 10)
+      const todayStr = todayIsoBR()
 
       if (!contractForValidity?.valid_until) {
         return {
@@ -421,7 +418,7 @@ export async function closeRun(
 
       if (contractForValidity.valid_until <= todayStr) {
         return {
-          error: `A vigência está com data vencida ou é hoje (${new Date(contractForValidity.valid_until).toLocaleDateString('pt-BR')}). Atualize pra uma data futura antes de marcar sucesso — isso é o que confirma que a renovação foi feita de verdade.`,
+          error: `A vigência está com data vencida ou é hoje (${formatDateOnlyBR(contractForValidity.valid_until)}). Atualize pra uma data futura antes de marcar sucesso — isso é o que confirma que a renovação foi feita de verdade.`,
         }
       }
 

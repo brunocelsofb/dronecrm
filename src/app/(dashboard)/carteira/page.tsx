@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { daysUntilIso, formatDateOnlyBR } from '@/lib/utils/date'
 import { createClientForTenant } from '@/lib/supabase/server'
 import { CarteiraSelectFilters } from '@/components/carteira/carteira-select-filters'
 import { brDate, daysBetween, type RunStep } from '@/lib/agent/renewal-ruler'
@@ -20,7 +21,7 @@ function fmt(v: number) {
 
 function diasAVencer(validUntil: string | null): number | null {
   if (!validUntil) return null
-  return Math.ceil((new Date(validUntil).getTime() - Date.now()) / 86400000)
+  return daysUntilIso(String(validUntil).slice(0, 10))
 }
 
 function alertaStyle(dias: number | null): { bg: string; color: string; label: string } {
@@ -395,7 +396,7 @@ export default async function CarteiraPage({
                       {c.score_weight ? <p className="text-[9px] text-gray-300 mt-0.5">Peso {c.score_weight}</p> : null}
                     </td>
                     <td className={`py-3 px-4 text-[11px] ${isVencido ? 'text-red-700' : 'text-gray-500'}`}>
-                      {c.valid_until ? new Date(c.valid_until + 'T12:00:00').toLocaleDateString('pt-BR') : <span className="text-gray-200">—</span>}
+                      {c.valid_until ? formatDateOnlyBR(c.valid_until) : <span className="text-gray-200">—</span>}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap" style={{ background: alert.bg, color: alert.color }}>{alert.label}</span>

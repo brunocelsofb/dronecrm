@@ -1,4 +1,5 @@
 import { fmtPct, fmtNum1 } from '@/lib/format'
+import { formatDateOnlyBR } from '@/lib/utils/date'
 import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 // Leitura de contrato pela IA (Farmer) pode levar até ~1 minuto
@@ -521,7 +522,7 @@ export default async function ContractDetailPage({
                       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Vigência</p>
                       <p className="text-base font-semibold text-gray-900">
                         {contract.valid_until
-                          ? `${contract.valid_from ? new Date(contract.valid_from).toLocaleDateString('pt-BR') : '?'} → ${new Date(contract.valid_until).toLocaleDateString('pt-BR')}`
+                          ? `${contract.valid_from ? formatDateOnlyBR(contract.valid_from) : '?'} → ${formatDateOnlyBR(contract.valid_until)}`
                           : 'Não informada'}
                       </p>
                     </div>
@@ -530,7 +531,7 @@ export default async function ContractDetailPage({
                       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Previsão de fechamento</p>
                       <p className="text-base font-semibold text-gray-900">
                         {displayRun?.expected_close_date
-                          ? new Date(displayRun.expected_close_date).toLocaleDateString('pt-BR')
+                          ? formatDateOnlyBR(displayRun.expected_close_date)
                           : 'Não informada'}
                       </p>
                     </div>

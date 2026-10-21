@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { addMonthsToDateString } from '@/lib/utils/date'
+import { contractEndDate } from '@/lib/utils/date'
 
 const MONTH_SHORTCUTS = [1, 2, 3, 6, 12, 24, 36, 48, 60]
 
@@ -21,7 +21,7 @@ export function ValidityPeriodInput({
 
   function applyMonths(months: number) {
     if (!from) return
-    setUntil(addMonthsToDateString(from, months))
+    setUntil(contractEndDate(from, months))
   }
 
   const inputStyle = {
@@ -53,7 +53,7 @@ export function ValidityPeriodInput({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
             {MONTH_SHORTCUTS.map(m => (
               <button key={m} type="button" disabled={!from} onClick={() => applyMonths(m)}
-                title={!from ? 'Preencha o início primeiro' : `+${m} meses a partir do início`}
+                title={!from ? 'Preencha o início primeiro' : `${m} meses a partir do início: termina na véspera do mesmo dia, ${m} meses depois`}
                 style={{
                   padding: '3px 8px', fontSize: 10, borderRadius: 20, cursor: from ? 'pointer' : 'not-allowed',
                   border: '0.5px solid #d1d8e8', background: '#fff', color: from ? '#1a1f36' : '#b0b8c8',

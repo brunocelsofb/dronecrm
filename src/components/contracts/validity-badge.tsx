@@ -1,11 +1,12 @@
 import { getValidityStatus, daysUntil, VALIDITY_STYLES } from '@/lib/utils/validity'
+import { formatDateOnlyBR } from '@/lib/utils/date'
 
 export function ValidityBadge({ validUntil, runStatus }: { validUntil: string | null; runStatus?: string | null }) {
   const status = getValidityStatus(validUntil)
   if (status === 'unknown' || !validUntil) return null
 
   const days = daysUntil(validUntil)
-  const dateStr = new Date(validUntil).toLocaleDateString('pt-BR')
+  const dateStr = formatDateOnlyBR(validUntil)
   const isWon = runStatus === 'won'
 
   const label = isWon ? 'Vigência' : 'Validade'

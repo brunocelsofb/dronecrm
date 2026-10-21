@@ -1,5 +1,6 @@
 'use client'
 
+import { contractEndDate } from '@/lib/utils/date'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -109,12 +110,8 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
   // Calcula vencimento automaticamente ao mudar início ou meses
   useEffect(() => {
     if (!data.valid_from || !data.validity_months) return
-    const start = new Date(data.valid_from + 'T12:00:00') // meio-dia evita problemas de timezone
-    start.setMonth(start.getMonth() + Number(data.validity_months))
-    const yyyy = start.getFullYear()
-    const mm = String(start.getMonth() + 1).padStart(2, '0')
-    const dd = String(start.getDate()).padStart(2, '0')
-    const calculated = `${yyyy}-${mm}-${dd}`
+    // Último dia coberto: véspera do mesmo dia, N meses depois (lib/utils/date)
+    const calculated = contractEndDate(String(data.valid_from).slice(0, 10), Number(data.validity_months))
     if (calculated !== data.valid_until) {
       setData(prev => ({ ...prev, valid_until: calculated }))
     }
@@ -294,11 +291,11 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
           <label style={lbl}>Vencimento</label>
           <input style={{ ...inp, background: '#f8f9fb', cursor: 'default' }} type="date" value={data.valid_until ?? ''}
             readOnly
-            title={data.valid_from && data.validity_months ? 'Calculado automaticamente: Início + Vigência' : 'Preencha Início e Vigência para calcular'}
+            title={data.valid_from && data.validity_months ? 'Calculado automaticamente: último dia coberto pela vigência' : 'Preencha Início e Vigência para calcular'}
             onChange={e => set('valid_until', e.target.value || null)}
           />
           {data.valid_from && data.validity_months && (
-            <p style={{ fontSize: 10, color: '#1f8c7d', marginTop: 3 }}>✓ Calculado: início + {data.validity_months} meses</p>
+            <p style={{ fontSize: 10, color: '#1f8c7d', marginTop: 3 }}>✓ Calculado: {data.validity_months} meses a partir do início (até a véspera do mesmo dia)</p>
           )}
         </div>
       </div>

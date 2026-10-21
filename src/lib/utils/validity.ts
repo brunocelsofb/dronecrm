@@ -1,10 +1,10 @@
+import { daysUntilIso } from '@/lib/utils/date'
+
 export type ValidityStatus = 'valid' | 'expiring_soon' | 'expired' | 'unknown'
 
+// Dias até o último dia da vigência, contando do "hoje" de Brasília (0 = vence hoje)
 export function daysUntil(validUntil: string): number {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const end = new Date(validUntil)
-  return Math.floor((end.getTime() - today.getTime()) / 86_400_000)
+  return daysUntilIso(String(validUntil).slice(0, 10))
 }
 
 export function getValidityStatus(validUntil: string | null): ValidityStatus {
