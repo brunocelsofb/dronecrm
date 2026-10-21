@@ -15,7 +15,7 @@ import { fmtPct } from '@/lib/format'
 export const dynamic = 'force-dynamic'
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const ACTION: Record<string, string> = { start: 'Entrou', view: 'Viu a tela', action: 'Ação (bloqueada se gravava)', write_blocked: 'Tentou gravar (bloqueado)', stop: 'Saiu', reset: 'Resetou o CRM' }
+const ACTION: Record<string, string> = { start: 'Entrou', view: 'Viu a tela', action: 'Ação (bloqueada se gravava)', write_blocked: 'Tentou gravar (bloqueado)', stop: 'Saiu', reset: 'Resetou o CRM', export: 'Exportou os dados' }
 
 export default async function PrivacyPage() {
   const access = await getUserAccess()
@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
   const totalN = total.count ?? 0, sealedN = sealed.count ?? 0
 
   return (
-    <SettingsSubpage title="Privacidade e dados" description="Contrato de tratamento de dados, acesso de suporte da plataforma, retenção e criptografia das mensagens.">
+    <SettingsSubpage title="Privacidade e dados" description="Contrato de tratamento de dados, acesso de suporte da plataforma, retenção, criptografia das mensagens e exportação dos dados.">
       {support && (
         <p className="mb-4 rounded-lg bg-warn-100 px-4 py-2 text-sm text-warn-700">Você está em acesso de suporte (só leitura): nada aqui pode ser alterado.</p>
       )}
@@ -115,12 +115,25 @@ export default async function PrivacyPage() {
         <RetentionForm initial={privacy.whatsapp_retention_days} readOnly={!!support} />
       </section>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5">
+      <section className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-gray-900">4. Criptografia</h2>
         <p className="mt-1 text-xs text-gray-500">Mensagens de WhatsApp e conversas da assistente virtual ficam guardadas criptografadas com uma chave só da sua empresa.</p>
         <p className="mt-3 text-sm text-gray-700">
           {totalN === 0 ? 'Nenhuma mensagem guardada.' : <>{sealedN} de {totalN} mensagens já criptografadas ({fmtPct(totalN ? (sealedN / totalN) * 100 : 0)}).{sealedN < totalN && ' As antigas são criptografadas aos poucos, todo dia.'}</>}
         </p>
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-gray-900">5. Exportar todos os dados</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Baixa um arquivo .zip com uma planilha (CSV) por tabela: clientes, oportunidades, contratos, propostas, chamados,
+          mensagens, pedidos, produtos e o restante. Serve para guardar uma cópia ou levar os dados ao encerrar o uso do sistema.
+          Chaves, senhas e tokens de integração não vão no arquivo. Anexos (PDFs e imagens) não entram; o caminho de cada um está nas planilhas.
+        </p>
+        {support
+          ? <p className="mt-3 text-sm text-gray-500">Indisponível em acesso de suporte.</p>
+          : <a href="/api/exportar-dados" download className="mt-3 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Baixar exportação (.zip)</a>}
+        <p className="mt-2 text-xs text-gray-500">O arquivo tem dados pessoais: guarde em local seguro. Cada exportação fica no registro de acessos acima.</p>
       </section>
     </SettingsSubpage>
   )

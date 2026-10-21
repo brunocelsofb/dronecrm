@@ -55,7 +55,7 @@ export const isStaleImpersonation = cache(async (): Promise<boolean> => {
 
 export async function logSupport(entry: {
   tenantId: string; grantId?: string | null; actorId: string; actorName?: string | null
-  action: 'start' | 'view' | 'action' | 'write_blocked' | 'stop' | 'reset'; path?: string | null; detail?: string | null
+  action: 'start' | 'view' | 'action' | 'write_blocked' | 'stop' | 'reset' | 'export'; path?: string | null; detail?: string | null
 }): Promise<void> {
   try {
     await createAdminClient().from('support_access_log').insert({
