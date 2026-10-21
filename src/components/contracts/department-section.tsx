@@ -4,14 +4,14 @@ import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { transferContract, returnContract } from '@/lib/actions/workflow'
 import { DEPARTMENTS, departmentLabel } from '@/lib/constants/departments'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type UserOption = { id: string; full_name: string; department: string | null }
 type TransferLog = { id: string; content: string; created_at: string; user_name: string | null }
 
 async function uploadAttachment(contractId: string, file: File): Promise<{ path: string; name: string } | null> {
   const supabase = createClient()
-  const storagePath = `transfers/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+  const storagePath = await tenantStoragePath(supabase, `transfers/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
   const { error } = await supabase.storage.from('contract-files').upload(storagePath, file)
   if (error) throw new Error(`Falha no upload: ${error.message}`)
   return { path: storagePath, name: file.name }

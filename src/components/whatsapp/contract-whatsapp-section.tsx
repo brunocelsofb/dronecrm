@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { sendContractWhatsApp, buildWhatsAppFromTemplate, sendContractWhatsAppMedia, resolveContactNameByPhone, saveWhatsAppConversationAsNote } from '@/lib/actions/whatsapp'
 import { WhatsAppChatView } from '@/components/whatsapp/whatsapp-chat-view'
 import { createClient } from '@/lib/supabase/client'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type Template = { id: string; name: string }
 type WhatsAppLog = {
@@ -211,7 +211,7 @@ export function ContractWhatsAppSection({
     setError(null)
 
     const supabase = createClient()
-    const storagePath = `whatsapp-media/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    const storagePath = await tenantStoragePath(supabase, `whatsapp-media/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
     const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
 
     if (uploadError) {

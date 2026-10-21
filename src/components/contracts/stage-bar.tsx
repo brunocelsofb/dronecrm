@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { registerContractFile } from '@/lib/actions/files'
 import { attachAvulsoReport } from '@/lib/actions/avulso'
 import { useRouter } from 'next/navigation'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type Stage = {
   id: string; name: string; order_index: number
@@ -133,7 +133,7 @@ export function StageBar({
     setReportMsg(null); setError(null); setReportBusy(true)
     try {
       const supabase = createClient()
-      const storagePath = `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(file.name)}`
+      const storagePath = await tenantStoragePath(supabase, `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(file.name)}`)
       const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, file)
       if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
       const reg = await registerContractFile(contractId, file.name, storagePath, file.size, file.type)
@@ -185,7 +185,7 @@ export function StageBar({
       }
       if (outcome === 'won' && isAvulso && reportFile) {
         const supabase = createClient()
-        const storagePath = `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(reportFile.name)}`
+        const storagePath = await tenantStoragePath(supabase, `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(reportFile.name)}`)
         const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, reportFile)
         if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
         const reg = await registerContractFile(contractId, reportFile.name, storagePath, reportFile.size, reportFile.type)

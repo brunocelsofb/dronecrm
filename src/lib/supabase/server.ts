@@ -7,7 +7,7 @@
 // você for instalar o pacote.
 
 import { createServerClient } from '@supabase/ssr'
-import { cookies, headers } from 'next/headers'
+import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withContentCrypto } from './content-crypto'
 import { resolveRowTenant } from './row-tenant'
@@ -43,22 +43,23 @@ export async function createClient() {
 }
 
 /** Retorna o tenant_id ativo de impersonation.
- * Lê primeiro o cookie (funciona em Route Handlers onde o middleware não injeta headers),
- * e usa o header como fallback (funciona em Server Components/Actions via middleware). */
+ * Fonte da verdade: profiles.impersonating_tenant_id (gravado pelo "Acessar" e usado pelo
+ * banco no RLS e no modo só leitura). O cookie só indica que a sessão de suporte está
+ * aberta neste navegador; cookie ou cabeçalho sozinhos nunca escolhem a empresa. */
 export async function getActiveTenantId(): Promise<string | null> {
-  // Cookie: fonte primária — acessível em qualquer contexto server (Route Handlers incluídos)
   const cookieStore = await cookies()
-  const headersList = await headers()
-  const candidate = cookieStore.get('orbis_imp_tid')?.value ?? headersList.get('x-orbis-imp-tenant-id') ?? null
-  if (!candidate) return null
+  const cookieTenant = cookieStore.get('orbis_imp_tid')?.value ?? null
+  if (!cookieTenant) return null
 
   // Só vale para Super Admin: o cookie poderia ser forjado por qualquer usuário
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data: profile } = await createAdminClient()
-    .from('profiles').select('is_super_admin, tenant_id').eq('id', user.id).maybeSingle()
+    .from('profiles').select('is_super_admin, tenant_id, impersonating_tenant_id').eq('id', user.id).maybeSingle()
   if (!profile?.is_super_admin) return null
+  const candidate = (profile.impersonating_tenant_id as string | null) ?? null
+  if (!candidate || candidate !== cookieTenant) return null
   // Outra empresa: só com liberação de suporte ativa
   if (candidate !== profile.tenant_id) {
     const { activeSupportGrant } = await import('@/lib/tenant/support')

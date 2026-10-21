@@ -21,7 +21,7 @@ const RESET_TABLES = [
   'support_access_grants',
   'marketing_campaign_costs', 'marketing_campaigns', 'lead_integrations',
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
-  'implementation_templates', 'zapsign_templates', 'monthly_goals',
+  'implementation_templates', 'zapsign_templates', 'monthly_goals', 'storage_legacy_objects',
 ] as const
 
 // Tabelas que vão na cópia (planilha) — inclui as filhas sem tenant_id via contrato

@@ -24,7 +24,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   // Só permite servir arquivos dentro dessas pastas — não abre a porta
   // pra servir qualquer arquivo do bucket sem autenticação.
-  if (!fullPath.startsWith('signatures/') && !fullPath.startsWith('custom-fields/') && !fullPath.startsWith('whatsapp-media/')) {
+  // Aceita também a pasta da empresa na frente: <tenant_id>/signatures/...
+  if (!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/)?(signatures|custom-fields|whatsapp-media)\//i.test(fullPath) || fullPath.includes('..')) {
     return NextResponse.json({ error: 'Caminho inválido.' }, { status: 400 })
   }
 

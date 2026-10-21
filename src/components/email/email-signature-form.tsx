@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Bold, Italic, Strikethrough } from 'lucide-react'
 import { updateEmailSignature } from '@/lib/actions/email'
 import { createClient } from '@/lib/supabase/client'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 const FONT_FAMILIES = ['Arial', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'Trebuchet MS', 'Tahoma']
 const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32]
@@ -104,7 +104,7 @@ export function EmailSignatureForm({ currentSignature }: { currentSignature: str
     setUploadError(null)
 
     const supabase = createClient()
-    const storagePath = `signatures/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    const storagePath = await tenantStoragePath(supabase, `signatures/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
     const { error: uploadErr } = await supabase.storage.from('proposal-files').upload(storagePath, file)
 
     if (uploadErr) {

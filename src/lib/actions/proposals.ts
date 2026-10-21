@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveTenantId } from '@/lib/tenant/context'
+import { resolveTenantId, requireTenantId } from '@/lib/tenant/context'
+import { tenantStoragePathFor } from '@/lib/utils/storage'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 export type ActionState = { error?: string }
@@ -476,7 +477,7 @@ export async function generateProposalPdf(proposalId: string, contractId: string
   const { bytes, error: buildError } = await buildMergedProposalBytes(proposalId)
   if (buildError || !bytes) return { error: buildError ?? 'Falha ao gerar PDF.' }
 
-  const finalPath = `generated/${proposalId}-v${proposal.version}-${Date.now()}.pdf`
+  const finalPath = tenantStoragePathFor(await requireTenantId(), `generated/${proposalId}-v${proposal.version}-${Date.now()}.pdf`)
 
   const { error: uploadError } = await supabase.storage
     .from('proposal-files')

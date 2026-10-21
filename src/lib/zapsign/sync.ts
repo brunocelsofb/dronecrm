@@ -6,7 +6,7 @@
 // e guardado na aba "Contrato e aditivos" do contrato.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePathFor } from '@/lib/utils/storage'
 import { getZapSignDocument, type ZapSignDocument, type ZapAuth } from './api'
 import { onContractSigned } from '@/lib/contracts/signed-followup'
 
@@ -76,7 +76,7 @@ export async function applyZapSignState(doc: ZapSignDocRow, api: ZapSignDocument
     if (res.ok) {
       const buf = Buffer.from(await res.arrayBuffer())
       const fileName = `${doc.name} (assinado).pdf`
-      const storagePath = `${doc.contract_id}/${Date.now()}-${sanitizeStorageFileName(fileName)}`
+      const storagePath = tenantStoragePathFor(doc.tenant_id as string, `${doc.contract_id}/${Date.now()}-${sanitizeStorageFileName(fileName)}`)
       const up = await admin.storage.from('contract-files').upload(storagePath, buf, { contentType: 'application/pdf' })
       if (!up.error) {
         const { data: file } = await admin.from('contract_files').insert({

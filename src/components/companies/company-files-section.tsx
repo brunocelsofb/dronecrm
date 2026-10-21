@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trash2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 import { registerCompanyFile, companyFileUrl, contractFileUrl, deleteCompanyFile } from '@/lib/actions/company-files'
 
 type F = { id: string; file_name: string; file_size: number | null; created_at: string; description?: string | null; uploader?: string | null }
@@ -26,8 +26,9 @@ export function CompanyFilesSection({ companyId, files, contractFiles, isAdmin }
     if (!file) return
     if (file.size > 50 * 1024 * 1024) { setError('Arquivo acima de 50 MB.'); return }
     setBusy(true); setError(null)
-    const path = `companies/${companyId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
-    const { error: upErr } = await createClient().storage.from('contract-files').upload(path, file)
+    const sb = createClient()
+    const path = await tenantStoragePath(sb, `companies/${companyId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
+    const { error: upErr } = await sb.storage.from('contract-files').upload(path, file)
     if (upErr) { setBusy(false); setError(`Falha no upload: ${upErr.message}`); return }
     const r = await registerCompanyFile(companyId, { name: file.name, path, size: file.size, type: file.type, description: desc })
     setBusy(false)

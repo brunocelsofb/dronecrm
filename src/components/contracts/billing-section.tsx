@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { setBillingType } from '@/lib/actions/billing'
 import { saveMeasurement, approveMeasurement, saveRecurringDiscount } from '@/lib/actions/measurements'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 import { measurementLoss, brl, MONTHS_LONG } from '@/lib/revenue/measurement'
 import { RevenueTypeBadge } from '@/components/contracts/revenue-type-badge'
 
@@ -103,7 +103,7 @@ export function BillingSection({
       let fileNameToSave: string | null = null
       if (file) {
         const supabase = createClient()
-        const storagePath = `billing/${contractId}/${year}-${month}-${Date.now()}-${sanitizeStorageFileName(file.name)}`
+        const storagePath = await tenantStoragePath(supabase, `billing/${contractId}/${year}-${month}-${Date.now()}-${sanitizeStorageFileName(file.name)}`)
         const { error: uploadError } = await supabase.storage.from('contract-files').upload(storagePath, file)
         if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`)
         filePath = storagePath

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { requireTenantId } from '@/lib/tenant/context'
+import { sanitizeStorageFileName, tenantStoragePathFor } from '@/lib/utils/storage'
 
 export async function POST(req: Request) {
   const userClient = await createClient()
@@ -17,7 +19,7 @@ export async function POST(req: Request) {
 
   const admin = (await createScopedAdmin())
   const fileName = file.name
-  const filePath = `templates/${Date.now()}-${fileName}`
+  const filePath = tenantStoragePathFor(await requireTenantId(), `templates/${Date.now()}-${sanitizeStorageFileName(fileName)}`)
 
   const bytes = await file.arrayBuffer()
   const { error: upErr } = await admin.storage.from('proposal-files').upload(filePath, bytes, { contentType: 'application/pdf' })

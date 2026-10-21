@@ -8,7 +8,7 @@ import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { sendDimensioningReview, reviewDimensioning } from '@/lib/actions/workflow'
 import { getFileDownloadUrl } from '@/lib/actions/files'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type Review = {
   id: string
@@ -45,7 +45,7 @@ export function DimensioningSection({ contractId, reviews }: { contractId: strin
     setError(null)
 
     const supabase = createClient()
-    const storagePath = `dimensionamento/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    const storagePath = await tenantStoragePath(supabase, `dimensionamento/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
 
     const { error: uploadError } = await supabase.storage.from('contract-files').upload(storagePath, file)
 

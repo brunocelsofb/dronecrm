@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { LinkContactStep } from './link-contact-step'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { tenantStoragePath } from '@/lib/utils/storage'
 import {
   linkUnlinkedWhatsAppConversation,
   sendUnlinkedWhatsAppMessage,
@@ -274,7 +275,7 @@ export function WhatsAppConversationPanel({
     setError(null)
 
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const storagePath = `whatsapp-media/central/${Date.now()}-${safeName}`
+    const storagePath = await tenantStoragePath(supabase, `whatsapp-media/central/${Date.now()}-${safeName}`)
 
     const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
 

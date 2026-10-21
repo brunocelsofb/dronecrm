@@ -30,6 +30,8 @@ export async function proxy(request: NextRequest) {
   // Caminho atual para o layout bloquear abas fora do plano
   requestHeaders.set('x-pathname', request.nextUrl.pathname)
   const impTenantId = request.cookies.get(COOKIE_TENANT_ID)?.value
+  // Nunca aceitar este cabeçalho vindo do navegador: só o proxy o define (a partir do cookie)
+  requestHeaders.delete('x-orbis-imp-tenant-id')
   if (impTenantId) {
     requestHeaders.set('x-orbis-imp-tenant-id', impTenantId)
   }

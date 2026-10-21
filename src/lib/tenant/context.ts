@@ -11,7 +11,6 @@
 
 import { cache } from 'react'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { activeSupportGrant } from './support'
@@ -32,10 +31,8 @@ export const getCurrentTenantId = cache(async (): Promise<string | null> => {
   if (profile?.is_super_admin) {
     // "Acessar" do Super Admin: gravado no perfil (o banco usa o mesmo valor no RLS).
     // Outra empresa só com liberação de suporte ativa dada pelo admin dela.
-    let imp = (profile.impersonating_tenant_id as string | null) ?? null
-    if (!imp) {
-      try { imp = (await headers()).get('x-orbis-imp-tenant-id') } catch { /* fora de request */ }
-    }
+    // Só o campo do perfil vale (é o mesmo que o banco usa); cookie/cabeçalho não escolhem empresa
+    const imp = (profile.impersonating_tenant_id as string | null) ?? null
     if (imp && imp !== profile.tenant_id) {
       if (await activeSupportGrant(imp)) return imp
     } else if (imp) return imp

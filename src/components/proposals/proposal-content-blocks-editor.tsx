@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { addImageBlock, addTableBlock, deleteContentBlock, updateBlockIntroduction, updateTableBlock } from '@/lib/actions/proposals'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type ContentBlock = {
   id: string
@@ -175,7 +175,7 @@ export function ProposalContentBlocksEditor({
     if (!file) return
     setUploadingImage(true); setError(null)
     const supabase = createClient()
-    const storagePath = `proposal-content/${proposalId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    const storagePath = await tenantStoragePath(supabase, `proposal-content/${proposalId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
     const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
     if (uploadError) { setError(`Falha no upload: ${uploadError.message}`); setUploadingImage(false); return }
     const result = await addImageBlock(proposalId, contractId, storagePath, imageSize)
