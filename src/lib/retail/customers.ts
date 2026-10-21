@@ -145,3 +145,38 @@ export function orderMessage(o: OrderMessageInput, fmt: (n: number) => string): 
   if (o.paymentLink) lines.push(`Link para pagamento: ${o.paymentLink}`)
   return lines.join('\n')
 }
+
+// ─── Aniversário ──────────────────────────────────────────────────────────────
+// Data de hoje no fuso de Brasília (o servidor roda em UTC)
+export function todayInBrazil(now = new Date()): { y: number; m: number; d: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now).split('-').map(Number)
+  return { y: parts[0], m: parts[1], d: parts[2] }
+}
+
+export type BirthdayInfo = { day: number; month: number; daysUntil: number; turning: number | null }
+
+// Dias até o próximo aniversário (0 = hoje). 29/02 conta como 28/02 em ano não bissexto.
+export function birthdayInfo(birth: string | null | undefined, now = new Date()): BirthdayInfo | null {
+  const m = birth?.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return null
+  const by = Number(m[1]), bm = Number(m[2]), bd = Number(m[3])
+  const t = todayInBrazil(now)
+  const today = Date.UTC(t.y, t.m - 1, t.d)
+  const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+  const next = (y: number) => Date.UTC(y, bm - 1, bm === 2 && bd === 29 && !isLeap(y) ? 28 : bd)
+  let year = t.y
+  if (next(year) < today) year++
+  const daysUntil = Math.round((next(year) - today) / 86_400_000)
+  return { day: bd, month: bm, daysUntil, turning: by > 1900 ? year - by : null }
+}
+
+export function birthdayLabel(b: BirthdayInfo | null): string | null {
+  if (!b) return null
+  if (b.daysUntil === 0) return 'Aniversário hoje'
+  if (b.daysUntil === 1) return 'Aniversário amanhã'
+  return b.daysUntil <= 30 ? `Aniversário em ${b.daysUntil} dias` : null
+}
+
+export function birthdayMessage(name: string, storeName: string): string {
+  return `Olá, ${name.split(' ')[0]}! Hoje é um dia especial e a ${storeName} não podia deixar passar: feliz aniversário! Que seu novo ano seja cheio de alegria e momentos lindos.`
+}

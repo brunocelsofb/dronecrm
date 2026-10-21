@@ -4,7 +4,7 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fmtBRL } from '@/lib/format'
-import { CUSTOMER_STATUS, customerStatus, formatPhone, mergeStats, orderStatusLabel, ORDER_STATUSES } from '@/lib/retail/customers'
+import { CUSTOMER_STATUS, birthdayInfo, birthdayMessage, customerStatus, formatPhone, mergeStats, orderStatusLabel, ORDER_STATUSES, whatsappLink } from '@/lib/retail/customers'
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { CustomerForm, type CustomerData } from '@/components/retail/customer-form'
 
@@ -39,6 +39,10 @@ export default async function RetailCustomerPage({ params }: { params: Promise<{
   ])
   const s = mergeStats(stats.get(id), c)
   const status = customerStatus(s.last, settings.inactive_days)
+  const bday = birthdayInfo(c.birth_date)
+  const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
+  const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
+  const congrats = bday && c.phone ? whatsappLink(c.phone, birthdayMessage(c.name, storeName)) : null
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -60,6 +64,20 @@ export default async function RetailCustomerPage({ params }: { params: Promise<{
         <Info label="Primeira compra" value={fmtDate(s.first)} />
         <Info label="Última compra" value={fmtDate(s.last)} />
       </div>
+      {bday && (
+        <section className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${bday.daysUntil === 0 ? 'border-accent-purple/40 bg-accent-purple/10' : 'border-gray-200 bg-white'}`}>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">
+              Aniversário: {String(bday.day).padStart(2, '0')}/{String(bday.month).padStart(2, '0')}
+              {bday.turning ? ` · fará ${bday.turning} anos` : ''}
+            </p>
+            <p className="text-xs text-gray-500">{bday.daysUntil === 0 ? 'É hoje.' : bday.daysUntil === 1 ? 'É amanhã.' : `Faltam ${bday.daysUntil} dias.`}</p>
+          </div>
+          {congrats
+            ? <a href={congrats} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Mandar parabéns no WhatsApp</a>
+            : <span className="text-xs text-gray-500">Cadastre o telefone para mandar parabéns pelo WhatsApp.</span>}
+        </section>
+      )}
       {(c.legacy_last_purchase_at || c.legacy_total) && (
         <p className="text-xs text-gray-500">Inclui o histórico importado de antes do CRM: {c.legacy_orders ?? '—'} compra(s), {fmtBRL(c.legacy_total)} até {fmtDate(c.legacy_last_purchase_at)}.</p>
       )}

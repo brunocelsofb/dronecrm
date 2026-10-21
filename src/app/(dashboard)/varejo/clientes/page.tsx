@@ -4,19 +4,19 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fmtBRL } from '@/lib/format'
-import { CUSTOMER_STATUS, customerStatus, daysSince, formatPhone, mergeStats, type CustomerStatus } from '@/lib/retail/customers'
+import { CUSTOMER_STATUS, birthdayInfo, birthdayLabel, customerStatus, daysSince, formatPhone, mergeStats, todayInBrazil, type CustomerStatus } from '@/lib/retail/customers'
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { CustomerImport, InactiveDaysForm } from '@/components/retail/customer-tools'
 
 export const dynamic = 'force-dynamic'
 
 type Row = {
-  id: string; name: string; phone: string | null; city: string | null; whatsapp_optin: boolean
+  id: string; name: string; phone: string | null; city: string | null; whatsapp_optin: boolean; birth_date: string | null
   legacy_last_purchase_at: string | null; legacy_total: number | null; legacy_orders: number | null
 }
 
-const TABS: { id: '' | CustomerStatus; label: string }[] = [
-  { id: '', label: 'Todas' }, { id: 'ativa', label: 'Ativas' }, { id: 'inativa', label: 'Inativas' }, { id: 'sem_compra', label: 'Sem compra' },
+const TABS: { id: '' | CustomerStatus | 'aniversario'; label: string }[] = [
+  { id: '', label: 'Todas' }, { id: 'ativa', label: 'Ativas' }, { id: 'inativa', label: 'Inativas' }, { id: 'sem_compra', label: 'Sem compra' }, { id: 'aniversario', label: 'Aniversariantes' },
 ]
 
 const fmtDate = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('pt-BR') : '—')
@@ -30,19 +30,23 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
   const [settings, stats, { data }] = await Promise.all([
     loadRetailSettings(db, tenantId),
     loadCustomerOrderStats(db),
-    db.from('retail_customers').select('id, name, phone, city, whatsapp_optin, legacy_last_purchase_at, legacy_total, legacy_orders').order('name').limit(5000),
+    db.from('retail_customers').select('id, name, phone, city, whatsapp_optin, birth_date, legacy_last_purchase_at, legacy_total, legacy_orders').order('name').limit(5000),
   ])
   const now = new Date()
   const rows = ((data ?? []) as Row[]).map(c => {
     const s = mergeStats(stats.get(c.id), c)
-    return { ...c, stats: s, status: customerStatus(s.last, settings.inactive_days, now) }
+    return { ...c, stats: s, status: customerStatus(s.last, settings.inactive_days, now), bday: birthdayInfo(c.birth_date, now) }
   })
   const count = (st: CustomerStatus) => rows.filter(r => r.status === st).length
   const term = q.trim().toLowerCase()
   const digits = q.replace(/\D/g, '')
   const list = rows
-    .filter(r => (!situacao || r.status === situacao) && (!term || r.name.toLowerCase().includes(term) || (digits.length >= 3 && (r.phone ?? '').includes(digits))))
-    .sort((a, b) => (situacao === 'inativa' ? (a.stats.last ?? '').localeCompare(b.stats.last ?? '') : 0))
+    .filter(r => (situacao === 'aniversario' ? (r.bday !== null && r.bday.daysUntil <= 30) : (!situacao || r.status === situacao)) && (!term || r.name.toLowerCase().includes(term) || (digits.length >= 3 && (r.phone ?? '').includes(digits))))
+    .sort((a, b) => situacao === 'inativa' ? (a.stats.last ?? '').localeCompare(b.stats.last ?? '')
+      : situacao === 'aniversario' ? (a.bday?.daysUntil ?? 999) - (b.bday?.daysUntil ?? 999) : 0)
+  const month = todayInBrazil(now).m
+  const bdayMonth = rows.filter(r => r.bday?.month === month).length
+  const bdayToday = rows.filter(r => r.bday?.daysUntil === 0).length
 
   return (
     <div className="space-y-5">
@@ -58,11 +62,12 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Clientes" value={String(rows.length)} />
         <Stat label="Ativas" value={String(count('ativa'))} />
         <Stat label="Inativas" value={String(count('inativa'))} tone={count('inativa') ? 'warn' : undefined} />
         <Stat label="Sem compra" value={String(count('sem_compra'))} />
+        <Stat label={bdayToday ? `Aniversários no mês · ${bdayToday} hoje` : 'Aniversários no mês'} value={String(bdayMonth)} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -91,7 +96,7 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
                 const ago = daysSince(r.stats.last, now)
                 return (
                   <tr key={r.id} className="border-t border-gray-100">
-                    <td className="px-3 py-2"><Link href={`/varejo/clientes/${r.id}`} className="font-medium text-gray-900 hover:text-brand-700">{r.name}</Link>{r.city && <span className="block text-xs text-gray-500">{r.city}</span>}</td>
+                    <td className="px-3 py-2"><Link href={`/varejo/clientes/${r.id}`} className="font-medium text-gray-900 hover:text-brand-700">{r.name}</Link>{r.city && <span className="block text-xs text-gray-500">{r.city}</span>}{birthdayLabel(r.bday) && <span className={`block text-xs ${r.bday?.daysUntil === 0 ? 'font-medium text-accent-purple' : 'text-gray-500'}`}>{birthdayLabel(r.bday)}</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-gray-700">{formatPhone(r.phone)}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fmtDate(r.stats.last)}{ago !== null && <span className="block text-xs text-gray-500">há {ago} dia(s)</span>}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{r.stats.orders}</td>
