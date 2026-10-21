@@ -12,17 +12,12 @@ revoke insert, update, delete, truncate on contract_crm.profiles from anon, auth
 grant update (full_name, job_title, email_signature) on contract_crm.profiles to authenticated;
 grant insert (id, full_name, email) on contract_crm.profiles to authenticated;
 
--- 2) [PENDENTE — não aplicado em 20/10: o drop policy foi cancelado; aguarda confirmação]
---    Políticas: UPDATE só da própria linha. As políticas ALL amplas viram só leitura.
-drop policy if exists profiles_update on contract_crm.profiles;
-drop policy if exists admin_update_any_profile on contract_crm.profiles;
-drop policy if exists update_own_profile_non_role_fields on contract_crm.profiles;
-create policy update_own_profile_non_role_fields on contract_crm.profiles
-  for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
-
-drop policy if exists tenant_isolation on contract_crm.profiles;
-drop policy if exists super_admin_all on contract_crm.profiles;
--- Leitura continua coberta por own_profile / profiles_select (+ tenant_guard RESTRICTIVE).
+-- 2) UPDATE só da própria linha. Em vez de apagar as políticas amplas antigas
+--    (profiles_update, admin_update_any_profile, tenant_isolation, super_admin_all),
+--    uma política RESTRICTIVE limita qualquer UPDATE pela sessão à linha do próprio usuário.
+create policy own_row_update_only on contract_crm.profiles
+  as restrictive for update to authenticated
+  using (auth.uid() = id) with check (auth.uid() = id);
 
 -- 3) Trava extra: mesmo que um grant volte por engano, a sessão do usuário não muda privilégios.
 --    SECURITY INVOKER de propósito: current_user é o papel da requisição (anon/authenticated).

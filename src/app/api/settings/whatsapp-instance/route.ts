@@ -9,8 +9,7 @@ import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
-const WEBHOOK_URL =
-  `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
+import { evolutionWebhookUrl, EVO_WEBHOOK_EVENTS } from '@/lib/whatsapp/webhook-token'
 
 // Liga ou desliga o webhook da instância na Evolution (melhor esforço)
 async function setInstanceWebhook(
@@ -22,8 +21,8 @@ async function setInstanceWebhook(
       headers: { apikey: apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         webhook: enabled
-          ? { enabled: true, url: WEBHOOK_URL, webhookByEvents: true, webhookBase64: false,
-              events: ['MESSAGES_UPSERT', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CONNECTION_UPDATE'] }
+          ? { enabled: true, url: evolutionWebhookUrl(instance), webhookByEvents: true, webhookBase64: false,
+              events: EVO_WEBHOOK_EVENTS }
           : { enabled: false, url: '', events: [] },
       }),
     })

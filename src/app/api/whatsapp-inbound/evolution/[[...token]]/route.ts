@@ -2,7 +2,8 @@ import { NextResponse, after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOptOutMessage, recordWhatsAppOptOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
-import { resolveTenantId } from '@/lib/tenant/context'
+import { tenantIdForInstance } from '@/lib/tenant/context'
+import { isValidEvoWebhookToken } from '@/lib/whatsapp/webhook-token'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { routeInboundToSdr, startSdrFromTriage } from '@/lib/sdr/engine'
 
@@ -34,8 +35,12 @@ function buildMediaProxyUrl(messageId: string, instanceName: string | null): str
   return `/api/whatsapp/media?${params.toString()}`
 }
 
-export async function POST(request: Request) {
+// Quem chama: só o servidor Evolution. A URL de cada instância leva um token
+// (webhook-token.ts) e a empresa vem da dona da instância — nunca de um padrão.
+export async function POST(request: Request, { params }: { params: Promise<{ token?: string[] }> }) {
   const supabase = createAdminClient()
+  // Token tem 32 caracteres; outro trecho (ex.: nome do evento) não conta como token
+  const token = ((await params).token ?? []).find(seg => /^[A-Za-z0-9_-]{32}$/.test(seg)) ?? null
 
   let body: any
   try {
@@ -47,10 +52,25 @@ export async function POST(request: Request) {
   try {
     const eventRaw = body?.event ?? body?.type ?? ''
     const event = eventRaw.toLowerCase().replace(/[.\-]/g, '_')
-    const instanceName = body?.instance ?? body?.instanceName ?? null
+    const instanceName: string | null = body?.instance ?? body?.instanceName ?? null
+
+    // Autenticação: instância conhecida + token da URL dessa instância
+    const hookTenantId = instanceName ? await tenantIdForInstance(instanceName) : null
+    if (!instanceName || !hookTenantId) {
+      return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
+    }
+    if (token) {
+      if (!isValidEvoWebhookToken(instanceName, token)) {
+        return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
+      }
+    } else {
+      // TRANSIÇÃO: webhooks registrados antes do token ainda chamam sem ele.
+      // Depois de reregistrar todas as instâncias, este caminho passa a recusar.
+      console.warn('[evo-webhook] chamada sem token (transição):', instanceName)
+    }
 
     // Instância privada (ex.: WhatsApp pessoal do gestor): nada entra no CRM
-    if (await isPrivateInstance(instanceName)) {
+    if (await isPrivateInstance(instanceName, hookTenantId)) {
       return NextResponse.json({ ok: true, skipped: 'private instance' })
     }
 
@@ -70,7 +90,8 @@ export async function POST(request: Request) {
         for (const k of keys) {
           const msgId = k?.id ?? k?.messageId ?? k?.key?.id
           if (!msgId) continue
-          await admin.from('contract_whatsapp_messages').delete().eq('zapi_message_id', msgId)
+          await admin.from('contract_whatsapp_messages').delete()
+            .eq('tenant_id', hookTenantId).eq('zapi_message_id', msgId)
         }
       } catch (e) {
         console.error('[evo-webhook] erro delete:', e)
@@ -93,7 +114,7 @@ export async function POST(request: Request) {
         const { data: callOrgData } = await supabase
           .from('organization_settings')
           .select('tenant_id')
-          .eq('tenant_id', await resolveTenantId({ instanceName }))
+          .eq('tenant_id', hookTenantId)
           .maybeSingle()
         const callTenantId = callOrgData?.tenant_id ?? null
         if (callTenantId) {
@@ -164,7 +185,7 @@ export async function POST(request: Request) {
       const { data: callOrgData } = await supabase
         .from('organization_settings')
         .select('tenant_id')
-        .eq('tenant_id', await resolveTenantId({ instanceName }))
+        .eq('tenant_id', hookTenantId)
         .maybeSingle()
       const callTenantId = callOrgData?.tenant_id ?? null
 
@@ -337,7 +358,7 @@ export async function POST(request: Request) {
         .schema('contract_crm')
         .from('organization_settings')
         .select('tenant_id')
-        .eq('tenant_id', await resolveTenantId({ instanceName }))
+        .eq('tenant_id', hookTenantId)
         .maybeSingle()
 
       if (orgErr) {
@@ -353,6 +374,7 @@ export async function POST(request: Request) {
             .schema('contract_crm')
             .from('contract_whatsapp_messages')
             .select('id')
+            .eq('tenant_id', hookTenantId)
             .eq('zapi_message_id', messageId)
             .maybeSingle()
           if (existingFromMe) {
@@ -402,6 +424,7 @@ export async function POST(request: Request) {
       const { data: dup } = await supabase
         .from('contract_whatsapp_messages')
         .select('id')
+        .eq('tenant_id', hookTenantId)
         .eq('zapi_message_id', messageId)
         .maybeSingle()
       if (dup) return NextResponse.json({ ok: true, skipped: 'duplicata' })
@@ -417,7 +440,7 @@ export async function POST(request: Request) {
     const { data: orgData } = await supabase
       .from('organization_settings')
       .select('tenant_id')
-      .eq('tenant_id', await resolveTenantId({ instanceName }))
+      .eq('tenant_id', hookTenantId)
       .maybeSingle()
     const tenantId = orgData?.tenant_id ?? null
     if (!tenantId) return NextResponse.json({ ok: false, error: 'tenant_id missing' })
@@ -492,7 +515,7 @@ export async function POST(request: Request) {
       const { data: orgSettings__raw } = await supabase
         .from('organization_settings')
         .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, triage_menu_options, triage_enabled')
-        .eq('tenant_id', await resolveTenantId({ instanceName }))
+        .eq('tenant_id', hookTenantId)
         .maybeSingle()
       const orgSettings = withPlatformEvo(orgSettings__raw)
 
@@ -537,7 +560,7 @@ export async function POST(request: Request) {
           const { data: orgSettingsNps__raw } = await supabase
             .from('organization_settings')
             .select('evo_server_url, evo_api_key, evo_instance_name')
-            .eq('tenant_id', await resolveTenantId({ instanceName }))
+            .eq('tenant_id', hookTenantId)
             .maybeSingle()
           const orgSettingsNps = withPlatformEvo(orgSettingsNps__raw)
 

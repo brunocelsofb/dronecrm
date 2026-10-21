@@ -149,10 +149,8 @@ export function WhatsAppSettingsForm({ isConnected, currentServerUrl, currentIns
 
       {/* Instrução de webhook */}
       <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-600">Webhook configurado automaticamente em:</p>
-        <code className="block text-xs font-mono text-gray-700 bg-white border rounded px-2 py-1.5 break-all">
-          https://crm-gestaocontratos-pi.vercel.app/api/whatsapp-inbound/evolution
-        </code>
+        <p className="text-xs font-semibold text-gray-600">Webhook configurado automaticamente</p>
+        <p className="text-xs text-gray-500">Cada número recebe um endereço com chave própria. Se as mensagens recebidas pararem de chegar, use o botão abaixo.</p>
         <button
           type="button"
           onClick={async () => {

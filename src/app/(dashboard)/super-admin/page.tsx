@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive } from '@/lib/actions/super-admin'
+import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive, resyncAllEvoWebhooks } from '@/lib/actions/super-admin'
 import { startImpersonation } from '@/lib/actions/impersonate'
 import { EditTenantRow } from './edit-tenant-row'
 import { ResetCrmCard } from '@/components/settings/reset-crm-card'
@@ -59,9 +59,9 @@ function TrialBadge({ trialEndsAt }: { trialEndsAt: string | null }) {
   )
 }
 
-export default async function SuperAdminPage({ searchParams }: { searchParams: Promise<{ aviso?: string; empresa?: string }> }) {
+export default async function SuperAdminPage({ searchParams }: { searchParams: Promise<{ aviso?: string; empresa?: string; ok?: string; falhas?: string }> }) {
   const ownTenantId = await checkSuperAdmin()
-  const { aviso, empresa } = await searchParams
+  const { aviso, empresa, ok, falhas } = await searchParams
   const tenants = await getSuperAdminData()
   const planMatrix = await getPlanFeatureMatrix()
 
@@ -87,6 +87,22 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
           O acesso de suporte terminou (prazo encerrado ou liberação revogada pela empresa).
         </div>
       )}
+
+      {aviso === 'webhooks' && (
+        <div role="status" className={`rounded-xl border px-4 py-3 text-sm ${Number(falhas ?? 0) > 0 ? 'border-warn-600/40 bg-warn-100 text-warn-700' : 'border-positive-600/40 bg-positive-100 text-positive-700'}`}>
+          Webhooks do WhatsApp atualizados: {Number(ok ?? 0)} instância(s) ok{Number(falhas ?? 0) > 0 ? `, ${Number(falhas)} com falha (veja os logs)` : ''}.
+        </div>
+      )}
+
+      <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-6 py-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-800">Webhooks do WhatsApp</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Registra de novo o webhook de todas as instâncias de todas as empresas, com a chave própria de cada número. Use depois de uma atualização de segurança ou se as mensagens recebidas pararem de chegar.</p>
+        </div>
+        <form action={resyncAllEvoWebhooks}>
+          <button type="submit" className="whitespace-nowrap rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Atualizar webhooks</button>
+        </form>
+      </div>
 
       <PlanFeaturesMatrix initial={planMatrix} />
 

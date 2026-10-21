@@ -202,3 +202,26 @@ export async function saveTenantFeatures(tenantId: string, add: string[], remove
   revalidatePath('/', 'layout')
   return { ok: true }
 }
+
+// Registra de novo o webhook de todas as instâncias de WhatsApp de todas as empresas,
+// já com a URL com token por instância. Só mexe na configuração do webhook no
+// servidor Evolution; não lê conteúdo de nenhuma empresa.
+export async function resyncAllEvoWebhooks(): Promise<void> {
+  await assertSuperAdmin()
+  const { getInstanceOwnership, getTenantEvoCreds } = await import('@/lib/whatsapp/tenant-evo')
+  const { isPrivateInstance } = await import('@/lib/whatsapp/private-instances')
+  const { setEvoWebhook } = await import('@/lib/whatsapp/evolution')
+
+  let ok = 0
+  let falhas = 0
+  const owner = await getInstanceOwnership()
+  for (const [instanceName, tenantId] of owner) {
+    if (await isPrivateInstance(instanceName, tenantId)) continue
+    const creds = await getTenantEvoCreds(tenantId)
+    if (!creds) { falhas++; continue }
+    const r = await setEvoWebhook({ ...creds, instanceName })
+    if (r.ok) ok++
+    else { falhas++; console.warn('[resync-webhooks]', tenantId, instanceName, r.error) }
+  }
+  redirect(`/super-admin?aviso=webhooks&ok=${ok}&falhas=${falhas}`)
+}

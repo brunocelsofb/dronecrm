@@ -17,13 +17,13 @@ function normalize(name: string): string {
   return name.trim().toLowerCase()
 }
 
-export async function getPrivateInstances(): Promise<Set<string>> {
+export async function getPrivateInstances(tenantId?: string): Promise<Set<string>> {
   try {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('organization_settings')
       .select('evo_instance_aliases')
-      .eq('tenant_id', await resolveTenantId())
+      .eq('tenant_id', tenantId ?? await resolveTenantId())
       .maybeSingle()
     if (error) throw error
 
@@ -38,9 +38,9 @@ export async function getPrivateInstances(): Promise<Set<string>> {
   }
 }
 
-export async function isPrivateInstance(name: string | null | undefined): Promise<boolean> {
+export async function isPrivateInstance(name: string | null | undefined, tenantId?: string): Promise<boolean> {
   if (!name) return false
-  return (await getPrivateInstances()).has(normalize(name))
+  return (await getPrivateInstances(tenantId)).has(normalize(name))
 }
 
 export const PRIVATE_INSTANCE_ERROR = 'Instância reservada (privada) — não disponível no CRM'

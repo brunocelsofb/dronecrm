@@ -89,8 +89,7 @@ export async function connectEvo(formData?: any): Promise<ActionState> {
   if (error) return { error: error.message }
   await registerInstanceForTenant(tenantId, instanceName, requested)
 
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
-  const webhookRes = await setEvoWebhook({ ...creds, instanceName, webhookUrl })
+  const webhookRes = await setEvoWebhook({ ...creds, instanceName })
   if (!webhookRes.ok) console.warn('[evo] webhook não configurado:', webhookRes.error)
 
   revalidatePath('/settings')
@@ -168,8 +167,7 @@ export async function configureEvoWebhook(_formData?: any): Promise<ActionState>
   if (!(await isCurrentUserAdmin())) return { error: 'Acesso negado.' }
   const creds = await getEvoCredentials()
   if (!creds) return { error: 'Credenciais não configuradas.' }
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/whatsapp-inbound/evolution`
-  const res = await setEvoWebhook({ ...creds, webhookUrl })
+  const res = await setEvoWebhook({ ...creds })
   if (!res.ok) return { error: `Erro ao configurar webhook: ${res.error}` }
   return {}
 }

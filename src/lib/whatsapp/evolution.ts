@@ -1,6 +1,8 @@
 // Integração com Evolution API (substitui Z-API)
 // Docs: https://doc.evolution-api.com
 
+import { evolutionWebhookUrl, EVO_WEBHOOK_EVENTS } from '@/lib/whatsapp/webhook-token'
+
 export type EvoCredentials = {
   serverUrl: string
   apiKey: string
@@ -144,11 +146,13 @@ export async function verifyEvoConnection(creds: EvoCredentials): Promise<{ ok: 
   }
 }
 
+// URL com o token da instância (webhook-token.ts); o webhook recusa token errado.
 export async function setEvoWebhook({
-  serverUrl, apiKey, instanceName, webhookUrl
-}: EvoCredentials & { webhookUrl: string }): Promise<{ ok: boolean; error?: string }> {
+  serverUrl, apiKey, instanceName,
+}: EvoCredentials): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${serverUrl}/webhook/set/${instanceName}`, {
+    const webhookUrl = evolutionWebhookUrl(instanceName)
+    const res = await fetch(`${serverUrl}/webhook/set/${encodeURIComponent(instanceName)}`, {
       method: 'POST',
       headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -157,7 +161,7 @@ export async function setEvoWebhook({
           url: webhookUrl,
           webhookByEvents: true,
           webhookBase64: false,
-          events: ['MESSAGES_UPSERT', 'SEND_MESSAGE', 'CONNECTION_UPDATE'],
+          events: EVO_WEBHOOK_EVENTS,
         },
       }),
     })
