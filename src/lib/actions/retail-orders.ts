@@ -13,6 +13,7 @@ import { getSupportSession } from '@/lib/tenant/support'
 import { cleanText, cleanLongText, parseMoney } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { canonicalPhone, isOrderStatus, isPaymentMethod, onlyDigits, PAID_STATUSES, type OrderStatus } from '@/lib/retail/customers'
+import { loadPricingConfig, onRetailOrderCancelled, onRetailOrderPaid } from '@/lib/retail/loyalty-server'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 type Db = Awaited<ReturnType<typeof createScopedAdmin>>
@@ -121,6 +122,7 @@ export async function createRetailOrder(input: OrderInput): Promise<Result<{ id:
       revalidatePath('/varejo/pedidos')
       return { ok: false, error: `Pedido nº ${order.number} criado como "aguardando pagamento": ${err}` }
     }
+    await onRetailOrderPaid(db, orderId, (await loadPricingConfig(db, g.tenantId)).loyalty)
   }
   revalidatePath('/varejo/pedidos'); revalidatePath('/varejo/clientes'); revalidatePath('/varejo/produtos')
   return { ok: true, id: orderId, number: order.number as number }
@@ -149,6 +151,9 @@ export async function updateRetailOrderStatus(orderId: string, status: string): 
   if (status === 'cancelado') patch.cancelled_at = new Date().toISOString()
   const { error } = await db.from('retail_orders').update(patch).eq('id', orderId)
   if (error) return { ok: false, error: error.message }
+  // Fidelidade: conta a compra (e gera cashback) no primeiro "pago"; cancelamento desfaz
+  if (patch.paid_at) await onRetailOrderPaid(db, orderId, (await loadPricingConfig(db, g.tenantId)).loyalty)
+  if (status === 'cancelado') await onRetailOrderCancelled(db, orderId)
   revalidatePath(`/varejo/pedidos/${orderId}`); revalidatePath('/varejo/pedidos'); revalidatePath('/varejo/clientes'); revalidatePath('/varejo/produtos')
   return { ok: true }
 }
@@ -157,15 +162,16 @@ export async function updateRetailOrderPayment(orderId: string, input: { discoun
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   const db = await createScopedAdmin(g.tenantId)
-  const { data: o } = await db.from('retail_orders').select('id, status, subtotal').eq('id', orderId).maybeSingle()
+  const { data: o } = await db.from('retail_orders').select('id, status, subtotal, loyalty_discount').eq('id', orderId).maybeSingle()
   if (!o) return { ok: false, error: 'Pedido não encontrado.' }
   if (o.status === 'cancelado') return { ok: false, error: 'Pedido cancelado não pode ser alterado.' }
+  const loyalty = Number(o.loyalty_discount ?? 0)
   const discount = money(input.discount, 'Desconto'); if (!discount.ok) return discount
   const shipping = money(input.shipping, 'Frete'); if (!shipping.ok) return shipping
   const subtotal = Number(o.subtotal)
-  if (discount.value > subtotal) return { ok: false, error: 'Desconto maior que o subtotal.' }
+  if (discount.value + loyalty > subtotal) return { ok: false, error: loyalty ? 'Desconto + fidelidade passam do valor das peças.' : 'Desconto maior que o subtotal.' }
   if (input.payment_link && !cleanLink(input.payment_link)) return { ok: false, error: 'Link de pagamento inválido (use https://…).' }
-  const total = round2(subtotal - discount.value + shipping.value)
+  const total = round2(subtotal - discount.value - loyalty + shipping.value)
   const { error } = await db.from('retail_orders').update({
     discount: discount.value, shipping: shipping.value, total,
     payment_method: isPaymentMethod(input.payment_method) ? input.payment_method : null,

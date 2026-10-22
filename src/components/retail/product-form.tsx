@@ -10,7 +10,10 @@ import { createClient } from '@/lib/supabase/client'
 import {
   saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto,
 } from '@/lib/actions/retail-products'
-import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, retailPhotoUrl, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
+import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, effectivePrice, parseMoney, retailPhotoUrl, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
+import { analyzePrice, referencePrice, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
+import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
+import Link from 'next/link'
 
 type Cell = { id?: string; sku: string; stock: string; active: boolean }
 
@@ -74,11 +77,11 @@ function Step({ n, title, done, children, id }: { n: number; title: string; done
   )
 }
 
-export function ProductForm({ product, categories, justCreated }: { product: RetailProduct | null; categories: string[]; justCreated?: boolean }) {
+export function ProductForm({ product, categories, justCreated, pricing, loyalty }: { product: RetailProduct | null; categories: string[]; justCreated?: boolean; pricing: PricingSettings; loyalty: LoyaltySettings }) {
   const router = useRouter()
   const [f, setF] = useState({
     code: product?.code ?? '', name: product?.name ?? '', category: product?.category ?? '',
-    price: money(product?.price), promo_price: money(product?.promo_price),
+    price: money(product?.price), promo_price: money(product?.promo_price), cost_price: money(product?.cost_price),
     status: (product?.status ?? 'rascunho') as ProductStatus,
     description: product?.description ?? '', composition: product?.composition ?? '', care: product?.care ?? '',
     measures: product?.measures ?? '', weight_g: product?.weight_g?.toString() ?? '',
@@ -271,6 +274,7 @@ export function ProductForm({ product, categories, justCreated }: { product: Ret
             <p className={hint}>Agrupa as peças na vitrine. Comece a digitar para reaproveitar uma que já existe.</p>
           </div>
         </div>
+        <PricePanel f={f} setPrice={v => setF(prev => ({ ...prev, price: v }))} setCost={v => setF(prev => ({ ...prev, cost_price: v }))} pricing={pricing} loyalty={loyalty} />
         <details className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium text-brand-700">Detalhes para a vitrine (opcional, ajuda a vender)</summary>
           <div className="mt-3 space-y-3">
@@ -466,6 +470,58 @@ export function ProductForm({ product, categories, justCreated }: { product: Ret
           {busy ? 'Salvando…' : product ? 'Salvar alterações' : 'Criar peça'}
         </button>
       </div>
+    </div>
+  )
+}
+
+// Custo da peça e o que o preço deixa de ganho (só no CRM; nunca vai para a vitrine)
+function PricePanel({ f, setPrice, setCost, pricing, loyalty }: {
+  f: { price: string; promo_price: string; cost_price: string }; setPrice: (v: string) => void; setCost: (v: string) => void
+  pricing: PricingSettings; loyalty: LoyaltySettings
+}) {
+  const cost = parseMoney(f.cost_price) ?? 0
+  const price = parseMoney(f.price)
+  const promo = parseMoney(f.promo_price)
+  const selling = price !== null ? effectivePrice({ price, promo_price: promo }) : null
+  const ref = referencePrice(cost, pricing, loyalty)
+  const a = selling !== null && cost > 0 ? analyzePrice(selling, cost, pricing, loyalty) : null
+  const configured = pricing.tax_pct + pricing.card_pct + pricing.other_pct + pricing.per_piece + pricing.fixed_monthly > 0
+  const tone = !a ? '' : a.contribution < 0 ? 'border-negative-600/40 bg-negative-100/50' : a.marginPct + 1e-9 < pricing.target_margin_pct ? 'border-warn-600/40 bg-warn-100/50' : 'border-positive-600/40 bg-positive-100/50'
+  return (
+    <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+      <div className="max-w-xs">
+        <label className={lbl} htmlFor="p-cost">Custo da peça</label>
+        <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
+          <span className="pl-3 text-sm text-gray-500">R$</span>
+          <input id="p-cost" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.cost_price} onChange={e => setCost(e.target.value)} placeholder="quanto você pagou" />
+        </div>
+        <p className={hint}>Só você vê. Nunca aparece na vitrine.</p>
+      </div>
+      {cost <= 0 ? (
+        <p className="text-sm text-gray-500">Informe o custo para ver o preço de referência e quanto cada venda deixa para você.</p>
+      ) : (
+        <>
+          {ref.ok ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
+              <span>Preço de referência para {fmtPct(pricing.target_margin_pct)} de margem: <strong>{fmtBRL(ref.price)}</strong> (markup {fmtNum1(ref.markup)})</span>
+              <button type="button" onClick={() => setPrice(ref.price.toFixed(2).replace('.', ','))} className="rounded-lg border border-brand-700 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">Usar este preço</button>
+            </div>
+          ) : <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">{ref.reason}</p>}
+          {a && (
+            <div className={`rounded-lg border px-3 py-2 text-sm ${tone}`}>
+              <p className="font-medium text-gray-900">Vendendo a {fmtBRL(a.price)}{promo !== null && price !== null && promo < price ? ' (preço de promoção)' : ''}:</p>
+              <ul className="mt-1 space-y-0.5 text-gray-700">
+                <li>Sobra {fmtBRL(a.contribution)} por peça · margem {fmtPct(a.marginPct)} · markup {fmtNum1(a.markup)} ({fmtPct(a.markupPct)} sobre o custo)</li>
+                <li>Abaixo de {fmtBRL(a.minPrice)} a venda dá prejuízo</li>
+                {a.breakEvenUnits !== null && <li>{a.breakEvenUnits} peças como esta pagam os custos fixos do mês</li>}
+                {a.contribution < 0 && <li className="font-medium text-negative-700">Este preço não cobre o custo e as despesas da venda.</li>}
+                {a.contribution >= 0 && a.marginPct + 1e-9 < pricing.target_margin_pct && <li className="text-warn-700">Abaixo da sua margem desejada de {fmtPct(pricing.target_margin_pct)}.</li>}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+      {!configured && <p className="text-xs text-gray-500">Para a conta ficar completa, informe impostos, taxas e custos fixos em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Preço e fidelidade</Link>.</p>}
     </div>
   )
 }

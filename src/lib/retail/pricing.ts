@@ -1,5 +1,6 @@
 // Preço dos itens de um pedido, sempre com os valores do banco.
 // Usado pelo pedido manual (tela) e pela vitrine (etapa 3). Não é ação do servidor.
+// O custo (unit_cost) é gravado no item para a margem do pedido; nunca sai na vitrine.
 import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { effectivePrice } from '@/lib/retail/products'
 
@@ -10,7 +11,7 @@ export type OrderItemInput = { variant_id: string; qty: number }
 
 type PricedItem = {
   product_id: string; variant_id: string; code: string; name: string; sku: string; color: string | null; size: string | null
-  qty: number; unit_price: number; total: number
+  qty: number; unit_price: number; total: number; unit_cost: number | null
 }
 
 // Preço e dados de cada item vindos do banco (variação ativa, peça não arquivada)
@@ -24,9 +25,9 @@ export async function priceItems(db: Db, items: OrderItemInput[]): Promise<{ ok:
   if (!merged.size) return { ok: false, error: 'Adicione ao menos uma peça.' }
   if (merged.size > 50) return { ok: false, error: 'Máximo de 50 itens por pedido.' }
   const { data } = await db.from('retail_product_variants')
-    .select('id, sku, color, size, active, product_id, retail_products(id, code, name, price, promo_price, status)')
+    .select('id, sku, color, size, active, product_id, retail_products(id, code, name, price, promo_price, status, cost_price)')
     .in('id', [...merged.keys()])
-  type V = { id: string; sku: string; color: string | null; size: string | null; active: boolean; product_id: string; retail_products: { id: string; code: string; name: string; price: number; promo_price: number | null; status: string } | null }
+  type V = { id: string; sku: string; color: string | null; size: string | null; active: boolean; product_id: string; retail_products: { id: string; code: string; name: string; price: number; promo_price: number | null; status: string; cost_price: number | null } | null }
   const byId = new Map(((data ?? []) as unknown as V[]).map(v => [v.id, v]))
   const out: PricedItem[] = []
   for (const [variantId, qty] of merged) {
@@ -35,7 +36,7 @@ export async function priceItems(db: Db, items: OrderItemInput[]): Promise<{ ok:
     if (!v || !p) return { ok: false, error: 'Uma das peças não existe mais.' }
     if (!v.active || p.status === 'arquivado') return { ok: false, error: `${p.name} (${[v.color, v.size].filter(Boolean).join(' / ')}) não está disponível.` }
     const unit = round2(effectivePrice({ price: Number(p.price), promo_price: p.promo_price === null ? null : Number(p.promo_price) }))
-    out.push({ product_id: p.id, variant_id: v.id, code: p.code, name: p.name, sku: v.sku, color: v.color, size: v.size, qty, unit_price: unit, total: round2(unit * qty) })
+    out.push({ product_id: p.id, variant_id: v.id, code: p.code, name: p.name, sku: v.sku, color: v.color, size: v.size, qty, unit_price: unit, total: round2(unit * qty), unit_cost: p.cost_price === null || p.cost_price === undefined ? null : Number(p.cost_price) })
   }
   return { ok: true, items: out, subtotal: round2(out.reduce((s, i) => s + i.total, 0)) }
 }

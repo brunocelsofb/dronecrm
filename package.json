@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:varejo": "node --experimental-strip-types --test tests/retail-margin.test.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",

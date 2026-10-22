@@ -34,6 +34,7 @@ export type RetailProduct = {
   measures: string | null
   price: number
   promo_price: number | null
+  cost_price?: number | null // só no Drone; nunca vai para a vitrine pública
   status: ProductStatus
   photos: string[]
   weight_g: number | null

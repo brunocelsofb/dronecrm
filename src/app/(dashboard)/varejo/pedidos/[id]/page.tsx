@@ -5,17 +5,20 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fmtBRL } from '@/lib/format'
 import { ORDER_STATUSES, PAYMENT_METHODS, formatPhone, orderMessage, whatsappLink } from '@/lib/retail/customers'
 import { OrderPanel } from '@/components/retail/order-panel'
+import { NegotiationPanel } from '@/components/retail/negotiation-panel'
+import { requireTenantId } from '@/lib/tenant/context'
+import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type Order = {
   id: string; number: number; status: string; payment_method: string | null; payment_condition: string | null; payment_link: string | null
-  subtotal: number; discount: number; shipping: number; total: number; source: string; notes: string | null; stock_applied: boolean
+  subtotal: number; discount: number; shipping: number; total: number; loyalty_discount: number; loyalty_kind: string | null; loyalty_earned: number; source: string; notes: string | null; stock_applied: boolean
   delivery: { method?: string | null; cep?: string | null; address?: string | null } | null
   paid_at: string | null; created_at: string; customer_id: string | null
   retail_customers: { id: string; name: string; phone: string | null } | null
-  retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number }[]
+  retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number; unit_cost: number | null; retail_products: { cost_price: number | null } | null }[]
 }
 
 const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
@@ -24,9 +27,10 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   if (!(await hasFeature('varejo'))) redirect('/')
   const { id } = await params
   if (!UUID.test(id)) notFound()
-  const db = await createScopedAdmin()
+  const tenantId = await requireTenantId()
+  const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, source, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total)')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -34,11 +38,18 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const message = orderMessage({
     number: o.number, customerName: o.retail_customers?.name ?? null,
     items: o.retail_order_items.map(i => ({ name: i.name, color: i.color, size: i.size, qty: i.qty, total: n(i.total) })),
-    subtotal: n(o.subtotal), discount: n(o.discount), shipping: n(o.shipping), total: n(o.total),
+    subtotal: n(o.subtotal), discount: n(o.discount), shipping: n(o.shipping), total: n(o.total), loyaltyDiscount: n(o.loyalty_discount),
     paymentMethod: o.payment_method, paymentCondition: o.payment_condition, paymentLink: o.payment_link,
   }, fmtBRL)
   const wa = whatsappLink(o.retail_customers?.phone, message)
   const st = ORDER_STATUSES.find(s => s.id === o.status)
+  const { pricing, loyalty } = await loadPricingConfig(db, tenantId)
+  const custLoyalty = o.customer_id ? await customerLoyalty(db, o.customer_id, loyalty, o.id) : { mode: 'off' as const }
+  // custo gravado na venda; pedidos antigos (sem custo gravado) usam o custo atual da peça
+  const lines = o.retail_order_items.map(i => ({
+    qty: i.qty, unit_price: n(i.unit_price),
+    unit_cost: i.unit_cost !== null && i.unit_cost !== undefined ? n(i.unit_cost) : i.retail_products?.cost_price !== null && i.retail_products?.cost_price !== undefined ? n(i.retail_products.cost_price) : null,
+  }))
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -74,13 +85,24 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
         <div className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-sm">
           <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{fmtBRL(n(o.subtotal))}</span></div>
           {n(o.discount) > 0 && <div className="flex justify-between text-gray-600"><span>Desconto</span><span>− {fmtBRL(n(o.discount))}</span></div>}
+          {n(o.loyalty_discount) > 0 && <div className="flex justify-between text-gray-600"><span>Fidelidade</span><span>− {fmtBRL(n(o.loyalty_discount))}</span></div>}
           {n(o.shipping) > 0 && <div className="flex justify-between text-gray-600"><span>Frete</span><span>{fmtBRL(n(o.shipping))}</span></div>}
           <div className="flex justify-between font-semibold text-gray-900"><span>Total</span><span>{fmtBRL(n(o.total))}</span></div>
-          <p className="text-xs text-gray-500">Pagamento: {[PAYMENT_METHODS.find(p => p.id === o.payment_method)?.label, o.payment_condition].filter(Boolean).join(' · ') || '—'}{o.stock_applied ? ' · estoque baixado' : ''}</p>
+          <p className="text-xs text-gray-500">Pagamento: {[PAYMENT_METHODS.find(p => p.id === o.payment_method)?.label, o.payment_condition].filter(Boolean).join(' · ') || '—'}{o.stock_applied ? ' · estoque baixado' : ''}{n(o.loyalty_earned) > 0 ? ` · gerou ${fmtBRL(n(o.loyalty_earned))} de cashback` : ''}</p>
         </div>
       </section>
 
+      <NegotiationPanel
+        orderId={o.id} lines={lines}
+        payment={{ discount: n(o.discount), shipping: n(o.shipping), payment_method: o.payment_method, payment_condition: o.payment_condition, payment_link: o.payment_link, notes: o.notes }}
+        loyaltyDiscount={n(o.loyalty_discount)} loyaltyKind={o.loyalty_kind}
+        pricing={pricing} loyalty={loyalty} customerLoyalty={custLoyalty}
+        editable={o.status !== 'cancelado' && !o.stock_applied} hasCustomer={!!o.customer_id}
+      />
+
       <OrderPanel
+        // remonta quando a negociação muda o desconto (o formulário não fica com valor velho)
+        key={`${n(o.discount)}|${n(o.loyalty_discount)}|${n(o.total)}`}
         order={{
           id: o.id, status: o.status, discount: n(o.discount), shipping: n(o.shipping), payment_method: o.payment_method,
           payment_condition: o.payment_condition, payment_link: o.payment_link, notes: o.notes,

@@ -7,16 +7,17 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   if (!(await hasFeature('varejo'))) return NextResponse.json({ error: 'Sem acesso ao módulo Varejo.' }, { status: 403 })
-  const header = ['codigo', 'nome', 'categoria', 'preco', 'preco_promocional', 'cor', 'tamanho', 'sku', 'estoque', 'descricao', 'composicao', 'cuidados', 'situacao']
+  const header = ['codigo', 'nome', 'categoria', 'preco', 'preco_promocional', 'custo', 'cor', 'tamanho', 'sku', 'estoque', 'descricao', 'composicao', 'cuidados', 'situacao']
   const example = [
-    ['EX001', 'Peça de exemplo', 'Calças', '157,90', '', 'Preto', 'P', '', '2', 'Descrição curta da peça', '96% poliéster, 4% elastano', 'Lavar à mão', 'rascunho'],
-    ['EX001', 'Peça de exemplo', 'Calças', '157,90', '', 'Preto', 'M', '', '1', '', '', '', ''],
+    ['EX001', 'Peça de exemplo', 'Calças', '157,90', '', '70,00', 'Preto', 'P', '', '2', 'Descrição curta da peça', '96% poliéster, 4% elastano', 'Lavar à mão', 'rascunho'],
+    ['EX001', 'Peça de exemplo', 'Calças', '157,90', '', '', 'Preto', 'M', '', '1', '', '', '', ''],
   ]
   const help = [
     ['Como preencher'],
     ['Uma linha por variação (cor + tamanho). Linhas com o mesmo código formam uma peça.'],
     ['codigo: código da peça que você já usa (ex.: PC682). Obrigatório.'],
     ['nome e preco: obrigatórios na primeira linha de cada código. Preço no formato 157,90.'],
+    ['custo: quanto a peça custou para você (opcional). Fica só no CRM, nunca aparece na vitrine. Em branco não apaga o custo já cadastrado.'],
     ['sku: opcional. Em branco, o CRM monta CODIGO-COR-TAMANHO.'],
     ['estoque: quantidade daquela cor e tamanho.'],
     ['situacao: rascunho, publicado ou arquivado (em branco = rascunho).'],

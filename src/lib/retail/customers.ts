@@ -128,7 +128,7 @@ export type OrderMessageInput = {
   number: number
   customerName: string | null
   items: { name: string; color: string | null; size: string | null; qty: number; total: number }[]
-  subtotal: number; discount: number; shipping: number; total: number
+  subtotal: number; discount: number; shipping: number; total: number; loyaltyDiscount?: number
   paymentMethod: string | null; paymentCondition: string | null; paymentLink: string | null
 }
 
@@ -138,6 +138,7 @@ export function orderMessage(o: OrderMessageInput, fmt: (n: number) => string): 
   o.items.forEach((it, i) => lines.push(`${i + 1}. ${it.name}${it.color ? ` | ${it.color}` : ''}${it.size ? ` | ${it.size}` : ''} | ${it.qty} un. | ${fmt(it.total)}`))
   lines.push(`Subtotal: ${fmt(o.subtotal)}`)
   if (o.discount > 0) lines.push(`Desconto: ${fmt(o.discount)}`)
+  if ((o.loyaltyDiscount ?? 0) > 0) lines.push(`Fidelidade: ${fmt(o.loyaltyDiscount ?? 0)}`)
   if (o.shipping > 0) lines.push(`Frete: ${fmt(o.shipping)}`)
   lines.push(`Total: ${fmt(o.total)}`)
   const pm = PAYMENT_METHODS.find(p => p.id === o.paymentMethod)?.label

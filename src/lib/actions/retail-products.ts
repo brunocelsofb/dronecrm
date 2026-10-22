@@ -37,6 +37,7 @@ export type ProductInput = {
   measures?: string | null
   price: string | number
   promo_price?: string | number | null
+  cost_price?: string | number | null
   status: ProductStatus
   weight_g?: string | number | null
   variants: { id?: string | null; sku?: string | null; color?: string | null; size?: string | null; stock: string | number; active: boolean }[]
@@ -75,6 +76,8 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
   if (!name) return { ok: false, error: 'Informe o nome da peça.' }
   if (price === null) return { ok: false, error: 'Preço inválido.' }
   if (input.promo_price && promo === null) return { ok: false, error: 'Preço promocional inválido.' }
+  const cost = input.cost_price === null || input.cost_price === undefined || input.cost_price === '' ? null : parseMoney(input.cost_price)
+  if (input.cost_price && cost === null) return { ok: false, error: 'Custo inválido.' }
   if (!isProductStatus(input.status)) return { ok: false, error: 'Situação inválida.' }
   const weight = input.weight_g === null || input.weight_g === undefined || input.weight_g === '' ? null : parseStock(input.weight_g)
   const vv = validateVariants(code, input.variants)
@@ -88,7 +91,7 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
     composition: cleanText(input.composition, 300),
     care: cleanLongText(input.care, 1000),
     measures: cleanLongText(input.measures, 2000),
-    price, promo_price: promo, status: input.status, weight_g: weight,
+    price, promo_price: promo, cost_price: cost, status: input.status, weight_g: weight,
     updated_at: new Date().toISOString(),
   }
 
@@ -209,7 +212,7 @@ export async function moveRetailPhoto(productId: string, path: string, direction
 // Uma linha por variação. Linhas com o mesmo código formam uma peça.
 // Peça e variação existentes (mesmo código / mesmo SKU) são atualizadas; nada é apagado.
 export type ImportProduct = {
-  code: string; name: string; category: string | null; price: number; promo_price: number | null
+  code: string; name: string; category: string | null; price: number; promo_price: number | null; cost_price: number | null
   status: ProductStatus; description: string | null; composition: string | null; care: string | null
   variants: { sku: string; color: string | null; size: string | null; stock: number }[]
 }
@@ -222,6 +225,7 @@ const COLS: Record<string, string[]> = {
   category: ['categoria'],
   price: ['preco', 'preço', 'preco de venda', 'preço de venda', 'valor'],
   promo_price: ['preco promocional', 'preço promocional', 'promocao', 'promoção'],
+  cost_price: ['custo', 'preco de custo', 'preço de custo', 'custo unitario', 'custo unitário'],
   color: ['cor'],
   size: ['tamanho', 'tam'],
   sku: ['sku', 'codigo da variacao', 'código da variação'],
@@ -281,6 +285,7 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
       p = {
         code, name, category: cleanText(pick(rec, 'category'), 80), price,
         promo_price: parseMoney(pick(rec, 'promo_price')),
+        cost_price: parseMoney(pick(rec, 'cost_price')),
         status: statusFrom(pick(rec, 'status')),
         description: cleanLongText(pick(rec, 'description')), composition: cleanText(pick(rec, 'composition'), 300), care: cleanLongText(pick(rec, 'care'), 1000),
         variants: [],
@@ -310,6 +315,8 @@ export async function importRetailProductsChunk(products: ImportProduct[]): Prom
     const { data: existing } = await db.from('retail_products').select('id').eq('code', code).maybeSingle()
     const row = {
       code, name, category: cleanText(raw.category, 80), price, promo_price: parseMoney(raw.promo_price),
+      // custo em branco na planilha não apaga o custo já cadastrado
+      ...(parseMoney(raw.cost_price) !== null ? { cost_price: parseMoney(raw.cost_price) } : {}),
       status: isProductStatus(raw.status) ? raw.status : 'rascunho',
       description: cleanLongText(raw.description), composition: cleanText(raw.composition, 300), care: cleanLongText(raw.care, 1000),
       updated_at: new Date().toISOString(),
