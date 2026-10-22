@@ -10,6 +10,7 @@
 //     no servidor compartilhado) e é registrada na hora como dela;
 //   - limite de números por plano (plan_features.max_whatsapp, ou ajuste no cliente).
 
+import { getEffectivePlan } from '@/lib/config/plans'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getDefaultTenantId } from '@/lib/tenant/context'
 
@@ -82,7 +83,7 @@ export async function getWhatsAppLimit(tenantId: string): Promise<number> {
   const admin = createAdminClient()
   const { data: t } = await admin.from('tenants').select('plan, trial_ends_at, max_whatsapp_override').eq('id', tenantId).maybeSingle()
   if (t?.max_whatsapp_override != null) return Number(t.max_whatsapp_override)
-  const plan = t?.trial_ends_at && new Date(t.trial_ends_at) > new Date() ? 'enterprise' : (t?.plan ?? 'starter')
+  const plan = getEffectivePlan(t?.plan ?? 'starter', t?.trial_ends_at ?? null) // teste do plano Loja continua Loja
   const { data: pf } = await admin.from('plan_features').select('max_whatsapp').eq('plan', plan).maybeSingle()
   return Number(pf?.max_whatsapp ?? 1)
 }
