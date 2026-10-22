@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { PLANS } from '@/lib/config/plans'
 import { redirect } from 'next/navigation'
 import { getSuperAdminData, createNewTenantAndUser, toggleTenantActive, resyncAllEvoWebhooks } from '@/lib/actions/super-admin'
 import { startImpersonation } from '@/lib/actions/impersonate'
@@ -32,6 +33,7 @@ function PlanBadge({ plan }: { plan: string }) {
     starter: 'bg-gray-100 text-gray-700',
     professional: 'bg-blue-100 text-blue-700',
     enterprise: 'bg-purple-100 text-purple-700',
+    loja: 'bg-positive-100 text-positive-700',
   }
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors[plan] ?? colors.starter}`}>
@@ -274,9 +276,7 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Plano</label>
             <select name="plan" defaultValue="starter" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1b556b] focus:outline-none">
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
+              {PLANS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
           <div>

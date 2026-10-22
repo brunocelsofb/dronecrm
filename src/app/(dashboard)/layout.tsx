@@ -102,6 +102,8 @@ export default async function DashboardLayout({
   // Aba fora do plano, aberta direto pelo endereço: nem carrega o conteúdo
   const requestPath = (await headers()).get('x-pathname') ?? ''
   const requestFeature = featureForPath(requestPath)
+  // Loja (varejo) sem o Dashboard B2B: a tela inicial é o Painel da loja
+  if (requestPath === '/' && !enabledFeatures.includes('dashboard') && enabledFeatures.includes('varejo')) redirect('/varejo/painel')
   if (requestFeature && !enabledFeatures.includes(requestFeature)) {
     // Vai para a primeira aba liberada (Configurações só abre para Admin;
     // sem nenhuma aba, "Minha conta", que é sempre liberada)

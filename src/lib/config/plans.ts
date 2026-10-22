@@ -4,12 +4,14 @@
 // Cada cliente (tenant) pode ter ajustes: features_add (libera além do plano)
 // e features_remove (tira do plano). Configurações é sempre liberada.
 
-export type PlanId = 'starter' | 'professional' | 'enterprise'
+export type PlanId = 'starter' | 'professional' | 'enterprise' | 'loja'
 
 export const PLANS: { id: PlanId; label: string }[] = [
   { id: 'starter', label: 'Starter' },
   { id: 'professional', label: 'Professional' },
   { id: 'enterprise', label: 'Enterprise' },
+  // Varejo (pessoa física): as abas são escolhidas no Super Admin → Planos e abas
+  { id: 'loja', label: 'Loja' },
 ]
 
 export type FeatureDef = { key: string; label: string; paths: string[] }
@@ -46,14 +48,17 @@ export const DEFAULT_PLAN_FEATURES: Record<PlanId, string[]> = {
   starter: ['dashboard', 'pipeline', 'leads', 'tickets', 'copiloto'],
   professional: ['dashboard', 'painel', 'financeiro', 'pipeline', 'leads', 'marketing', 'sdr', 'contracts', 'companies', 'propostas', 'carteira', 'tickets', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
   enterprise: FEATURE_KEYS.filter(k => !OPTIONAL_FEATURES.includes(k)),
+  // ponto de partida; o Super Admin ajusta em Planos e abas
+  loja: ['varejo', 'pipeline', 'leads', 'whatsapp', 'whatsapp-relatorios', 'copiloto'],
 }
 
 export function isPlanId(v: unknown): v is PlanId {
-  return v === 'starter' || v === 'professional' || v === 'enterprise'
+  return v === 'starter' || v === 'professional' || v === 'enterprise' || v === 'loja'
 }
 
 export function getEffectivePlan(plan: string, trialEndsAt: string | null): PlanId {
-  if (trialEndsAt && new Date(trialEndsAt) > new Date()) return 'enterprise'
+  // Teste: libera o Enterprise; no plano Loja, o teste continua no próprio plano Loja
+  if (trialEndsAt && new Date(trialEndsAt) > new Date()) return plan === 'loja' ? 'loja' : 'enterprise'
   return isPlanId(plan) ? plan : 'starter'
 }
 

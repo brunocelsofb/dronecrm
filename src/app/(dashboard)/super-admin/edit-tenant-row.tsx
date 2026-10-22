@@ -1,5 +1,6 @@
 'use client'
 
+import { PLANS } from '@/lib/config/plans'
 import { useRef, useTransition } from 'react'
 import { updateTenantData } from '@/lib/actions/super-admin'
 
@@ -69,9 +70,7 @@ export function EditTenantRow({ tenant }: Props) {
               defaultValue={tenant.plan}
               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             >
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
+              {PLANS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
           <div>
