@@ -11,6 +11,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { readLoyalty, readPricing, round2, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
+import { readDashboardBlocks } from '@/lib/retail/dashboard-blocks'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 
@@ -103,5 +104,18 @@ export async function removeOrderLoyalty(orderId: string): Promise<Result> {
   const err = await recomputeTotal(db, orderId, 0, null)
   if (err) return { ok: false, error: err }
   revalidatePath(`/varejo/pedidos/${orderId}`)
+  return { ok: true }
+}
+
+// Blocos do Painel do Varejo (quais aparecem e em que ordem)
+export async function saveRetailDashboard(blocks: string[]): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const list = readDashboardBlocks(Array.isArray(blocks) ? blocks : [])
+  const db = await createScopedAdmin(g.tenantId)
+  const { raw } = await loadPricingConfig(db, g.tenantId)
+  const { error } = await db.from('organization_settings').update({ retail_settings: { ...raw, dashboard: list } }).eq('tenant_id', g.tenantId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/varejo/painel')
   return { ok: true }
 }
