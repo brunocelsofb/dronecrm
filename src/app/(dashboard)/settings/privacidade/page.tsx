@@ -11,13 +11,15 @@ import { SettingsSubpage } from '@/components/settings/settings-subpage'
 import { DpaDocument } from '@/components/legal/dpa-document'
 import { DpaAcceptForm, SupportAccessPanel, RetentionForm } from '@/components/settings/privacy-forms'
 import { fmtPct } from '@/lib/format'
+import { listProductPhotos, PHOTOS_PER_PART } from '@/lib/retail/photo-export'
 
 export const dynamic = 'force-dynamic'
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const ACTION: Record<string, string> = { start: 'Entrou', view: 'Viu a tela', action: 'Ação (bloqueada se gravava)', write_blocked: 'Tentou gravar (bloqueado)', stop: 'Saiu', reset: 'Resetou o CRM', export: 'Exportou os dados' }
 
-export default async function PrivacyPage() {
+export default async function PrivacyPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
+  const { erro } = await searchParams
   const access = await getUserAccess()
   if (!access?.isAdmin) redirect('/settings')
   const tenantId = await resolveTenantId()
@@ -45,9 +47,12 @@ export default async function PrivacyPage() {
     state: g.revoked_at ? 'revogada' : (g.expires_at as string) > nowIso && (g.starts_at as string) <= nowIso ? 'ativa' : 'encerrada',
   }))
   const totalN = total.count ?? 0, sealedN = sealed.count ?? 0
+  const retail = access.features.includes('varejo')
+  const photoCount = retail ? (await listProductPhotos(db, tenantId)).length : 0
+  const photoParts = Math.ceil(photoCount / PHOTOS_PER_PART)
 
   return (
-    <SettingsSubpage title="Privacidade e dados" description="Contrato de tratamento de dados, acesso de suporte da plataforma, retenção, criptografia das mensagens e exportação dos dados.">
+    <SettingsSubpage title="Privacidade e dados" description="Contrato de tratamento de dados, acesso de suporte, retenção, criptografia, exportação dos dados e o que acontece se você sair.">
       {support && (
         <p className="mb-4 rounded-lg bg-warn-100 px-4 py-2 text-sm text-warn-700">Você está em acesso de suporte (só leitura): nada aqui pode ser alterado.</p>
       )}
@@ -123,17 +128,52 @@ export default async function PrivacyPage() {
         </p>
       </section>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-5">
+      <section id="exportar" className="mb-6 scroll-mt-20 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-gray-900">5. Exportar todos os dados</h2>
         <p className="mt-1 text-xs text-gray-500">
           Baixa um arquivo .zip com uma planilha (CSV) por tabela: clientes, oportunidades, contratos, propostas, chamados,
           mensagens, pedidos, produtos e o restante. Serve para guardar uma cópia ou levar os dados ao encerrar o uso do sistema.
-          Chaves, senhas e tokens de integração não vão no arquivo. Anexos (PDFs e imagens) não entram; o caminho de cada um está nas planilhas.
+          Chaves, senhas e tokens de integração não vão no arquivo.
         </p>
+        {erro && <p role="alert" className="mt-3 rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{erro}</p>}
         {support
           ? <p className="mt-3 text-sm text-gray-500">Indisponível em acesso de suporte.</p>
-          : <a href="/api/exportar-dados" download className="mt-3 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Baixar exportação (.zip)</a>}
-        <p className="mt-2 text-xs text-gray-500">O arquivo tem dados pessoais: guarde em local seguro. Cada exportação fica no registro de acessos acima.</p>
+          : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a href="/api/exportar-dados" className="inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Baixar dados (.zip)</a>
+              {retail && photoCount > 0 && Array.from({ length: photoParts }, (_, k) => (
+                <a key={k} href={`/api/exportar-fotos?parte=${k + 1}`} className="inline-block rounded-lg border border-brand-700 px-4 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100">
+                  Baixar fotos das peças{photoParts > 1 ? ` (parte ${k + 1} de ${photoParts})` : ''}
+                </a>
+              ))}
+            </div>
+          )}
+        <p className="mt-2 text-xs text-gray-500">
+          O arquivo é preparado na hora (pode levar até um minuto) e o download começa sozinho; o link vale por 10 minutos e o arquivo é apagado do servidor depois.
+          {retail && photoCount > 0 ? ` As fotos saem em pastas pelo código da peça (${photoCount} foto(s)${photoParts > 1 ? `, em partes de até ${PHOTOS_PER_PART}` : ''}).` : ''}
+          {' '}Tem dados pessoais: guarde em local seguro. Cada exportação fica no registro de acessos acima.
+        </p>
+      </section>
+
+      <section id="saida" className="scroll-mt-20 rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-gray-900">6. Se você decidir sair</h2>
+        <p className="mt-1 text-xs text-gray-500">Os dados são da sua empresa. O sistema é um serviço que você usa enquanto for cliente. Ao encerrar:</p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-100 text-sm">
+            <thead className="bg-gray-50 text-left text-xs text-gray-500">
+              <tr><th className="px-3 py-2 font-medium">O quê</th><th className="px-3 py-2 font-medium">É de quem</th><th className="px-3 py-2 font-medium">Na saída</th></tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 align-top text-gray-700">
+              <tr><td className="px-3 py-2 font-medium">Dados (clientes, vendas, histórico)</td><td className="px-3 py-2">Da sua empresa</td><td className="px-3 py-2">Você baixa tudo no quadro 5. Depois do encerramento, os dados são apagados em até 30 dias, como diz o contrato de tratamento de dados.</td></tr>
+              {retail && <tr><td className="px-3 py-2 font-medium">Fotos das peças</td><td className="px-3 py-2">Da sua empresa</td><td className="px-3 py-2">Botão &quot;Baixar fotos das peças&quot; no quadro 5.</td></tr>}
+              {retail && <tr><td className="px-3 py-2 font-medium">Domínio da loja</td><td className="px-3 py-2">Da sua empresa (registrado no seu CPF ou CNPJ)</td><td className="px-3 py-2">Continua seu. A plataforma desliga o domínio da vitrine e você aponta para onde quiser.</td></tr>}
+              {retail && <tr><td className="px-3 py-2 font-medium">Vitrine (layout e funcionamento)</td><td className="px-3 py-2">Da plataforma: você usa enquanto for cliente</td><td className="px-3 py-2">Sai do ar no encerramento.</td></tr>}
+              {retail && <tr><td className="px-3 py-2 font-medium">Cashback e descontos das suas clientes</td><td className="px-3 py-2">Compromisso da sua empresa com as clientes</td><td className="px-3 py-2">A exportação traz o saldo de cada cliente (saldos_cashback.csv) para você decidir como honrar.</td></tr>}
+              <tr><td className="px-3 py-2 font-medium">Usuários e acessos</td><td className="px-3 py-2">Da sua empresa</td><td className="px-3 py-2">Encerrados junto com a conta.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-gray-500">Prazos de aviso e condições comerciais seguem o contrato da sua licença.</p>
       </section>
     </SettingsSubpage>
   )

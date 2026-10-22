@@ -7,6 +7,7 @@
 
 import { strToU8, zipSync } from 'fflate'
 import { TENANT_TABLES } from './scoped-admin'
+import { cashbackBalance, type CashbackEntry } from '@/lib/retail/margin'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 type Db = ReturnType<typeof createAdminClient>
@@ -76,6 +77,7 @@ export async function buildTenantExport(db: Db, tenantId: string, meta: { compan
   const counts: Record<string, number> = {}
   const failed: string[] = []
   const files: Record<string, Uint8Array> = {}
+  const keep: Record<string, Record<string, unknown>[]> = {}
 
   // Poucas tabelas por vez para não estourar conexões
   for (let i = 0; i < tables.length; i += 6) {
@@ -83,12 +85,31 @@ export async function buildTenantExport(db: Db, tenantId: string, meta: { compan
       try {
         const rows = await readAll(db, t, tenantId)
         counts[t] = rows.length
+        if (t === 'retail_loyalty_entries' || t === 'retail_customers') keep[t] = rows
         if (rows.length) files[`dados/${t}.csv`] = strToU8(toCsv(rows, t))
       } catch (e) {
         console.error('[export]', e)
         failed.push(t)
       }
     }))
+  }
+
+  // Varejo: saldo de cashback de cada cliente hoje (para a empresa honrar ao sair do sistema)
+  const entries = keep.retail_loyalty_entries ?? []
+  if (entries.length) {
+    const byCustomer = new Map<string, CashbackEntry[]>()
+    for (const e of entries) {
+      const list = byCustomer.get(e.customer_id as string) ?? []
+      list.push({ kind: e.kind as 'credito' | 'uso', amount: Number(e.amount), at: e.created_at as string, expires_at: e.expires_at as string | null })
+      byCustomer.set(e.customer_id as string, list)
+    }
+    const customers = new Map((keep.retail_customers ?? []).map(c => [c.id as string, c]))
+    const rows = [...byCustomer.entries()].map(([id, list]) => {
+      const b = cashbackBalance(list)
+      const c = customers.get(id)
+      return { cliente: c?.name ?? id, telefone: c?.phone ?? '', saldo: b.balance.toFixed(2).replace('.', ','), proximo_vencimento: b.nextExpiry ? b.nextExpiry.slice(0, 10) : '', valor_que_vence: b.expiringAmount.toFixed(2).replace('.', ',') }
+    }).filter(r => r.saldo !== '0,00')
+    if (rows.length) files['dados/saldos_cashback.csv'] = strToU8(toCsv(rows, 'saldos_cashback'))
   }
 
   const when = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
@@ -99,6 +120,7 @@ export async function buildTenantExport(db: Db, tenantId: string, meta: { compan
     'Conteúdo: uma planilha CSV por tabela, na pasta "dados" (separador ponto e vírgula, UTF-8).',
     'Abra no Excel, Google Planilhas ou LibreOffice. As colunas "id" e "..._id" ligam uma tabela à outra.',
     'Mensagens de WhatsApp e conversas da assistente saem já decifradas.',
+    'Varejo: saldos_cashback.csv traz o crédito de cada cliente hoje. Fotos das peças: botão próprio na mesma tela.',
     '',
     'Não incluído (por segurança): chaves, senhas e tokens de integrações (WhatsApp, e-mail, ZapSign,',
     'IA) e os tokens dos links públicos (propostas, pesquisas, chamados). Arquivos anexados (PDFs,',
