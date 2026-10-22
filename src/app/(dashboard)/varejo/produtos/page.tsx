@@ -71,8 +71,20 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
       </form>
 
       {list.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
-          {all.length === 0 ? 'Nenhuma peça cadastrada. Cadastre uma peça ou importe a planilha.' : 'Nenhuma peça encontrada com esses filtros.'}
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
+          {all.length === 0 ? (
+            <div className="mx-auto max-w-md text-left">
+              <p className="text-base font-medium text-gray-900">Comece pela primeira peça</p>
+              <ol className="mt-3 list-decimal space-y-1 pl-5 text-gray-600">
+                <li>Toque em <strong>Nova peça</strong> e preencha nome, código e preço.</li>
+                <li>Diga as cores e os tamanhos e quantas unidades tem de cada.</li>
+                <li>Adicione as fotos.</li>
+                <li>Escolha <strong>Publicada</strong> para aparecer na vitrine.</li>
+              </ol>
+              <p className="mt-3 text-xs text-gray-500">Muitas peças? Baixe a planilha-modelo, preencha e importe tudo de uma vez.</p>
+              <Link href="/varejo/produtos/nova" className="mt-4 inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>
+            </div>
+          ) : 'Nenhuma peça encontrada com esses filtros.'}
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -96,7 +108,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
                     </p>
                     <div className="mt-1 flex items-center gap-2">
                       <span className={`rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[p.status] ?? ''}`}>{PRODUCT_STATUSES.find(s => s.id === p.status)?.label ?? p.status}</span>
-                      <span className={`text-xs ${stock === 0 ? 'text-negative-700' : 'text-gray-500'}`}>{stock === 0 ? 'Sem estoque' : `${stock} un.`}</span>
+                      <span className={`text-xs ${stock === 0 ? 'text-warn-700' : 'text-gray-500'}`}>{stock === 0 ? 'Estoque zerado · toque para informar' : `${stock} un.`}</span>
                     </div>
                   </div>
                 </Link>

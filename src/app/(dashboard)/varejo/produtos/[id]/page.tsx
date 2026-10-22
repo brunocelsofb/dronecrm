@@ -9,9 +9,10 @@ export const dynamic = 'force-dynamic'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export default async function RetailProductPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RetailProductPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ criada?: string }> }) {
   if (!(await hasFeature('varejo'))) redirect('/')
   const { id } = await params
+  const { criada } = await searchParams
   let product: RetailProduct | null = null
   let categories: string[] = []
   const db = await createScopedAdmin()
@@ -39,7 +40,8 @@ export default async function RetailProductPage({ params }: { params: Promise<{ 
     <div className="mx-auto max-w-3xl space-y-4">
       <Link href="/varejo/produtos" className="text-sm text-brand-700 hover:underline">← Produtos</Link>
       <h1 className="text-xl font-semibold text-gray-900">{product ? product.name : 'Nova peça'}</h1>
-      <ProductForm product={product} categories={categories} />
+      {!product && <p className="text-sm text-gray-500">São 4 passos rápidos: dados, quantidades, fotos e vitrine. Campos com * são obrigatórios.</p>}
+      <ProductForm product={product} categories={categories} justCreated={!!product && criada === '1'} />
     </div>
   )
 }
