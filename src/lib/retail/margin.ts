@@ -46,8 +46,10 @@ export const DEFAULT_LOYALTY: LoyaltySettings = {
   tiers: [{ min: 500, pct: 5 }, { min: 1500, pct: 8 }, { min: 3000, pct: 10 }],
 }
 
+// Campo vazio ou ausente usa o padrão (antes virava 0: a margem desejada ficava 0% sem configurar)
 const num = (v: unknown, min: number, max: number, fallback: number) => {
-  const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(',', '.'))
+  if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) return fallback
+  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
   return Number.isFinite(n) && n >= min && n <= max ? n : fallback
 }
 
@@ -243,12 +245,27 @@ export function tierFor(spent12m: number, l: LoyaltySettings): { pct: number; ne
 }
 
 // ─── Impostos por regime (com data a partir de quando vale) ───────────────────
+// MEI e Simples são calculados pelo FATURADO da loja, não pela peça:
+// - MEI: imposto fixo por mês (DAS), que entra nos custos fixos; 0% em cada venda.
+// - Simples: alíquota efetiva calculada sozinha pelo faturamento dos últimos 12 meses
+//   (vendas pagas no Drone + vendas fora do Drone que a loja informar).
+// - Lucro Presumido / Outro: percentual informado pelo contador.
 export type TaxRegimeId = 'mei' | 'simples' | 'presumido' | 'outro'
-export type TaxRegime = { regime: TaxRegimeId; rate_pct: number; since: string; note?: string | null }
+export type TaxRegime = {
+  regime: TaxRegimeId; since: string; note?: string | null
+  rate_pct: number              // Presumido / Outro (no Simples, só reserva se passar do teto)
+  das_monthly?: number          // MEI: DAS do mês
+  outside_revenue_12m?: number  // Simples: vendas fora do Drone nos últimos 12 meses
+}
+
+// MEI 2026 (comércio/indústria): 5% do salário mínimo de R$ 1.621,00 (R$ 81,05) + R$ 1,00 de ICMS.
+// Serviços: + R$ 5,00 de ISS (R$ 86,05); comércio e serviços: R$ 87,05. Limite: R$ 81.000,00 por ano.
+export const MEI_DAS_2026 = { comercio: 82.05, servicos: 86.05, ambos: 87.05 }
+export const MEI_ANNUAL_LIMIT = 81_000
 
 export const TAX_REGIMES: { id: TaxRegimeId; label: string; hint: string }[] = [
-  { id: 'mei', label: 'MEI', hint: 'O imposto é o DAS fixo do mês: coloque o valor nos custos fixos e deixe 0% aqui.' },
-  { id: 'simples', label: 'Simples Nacional', hint: 'Use a alíquota efetiva (a calculadora abaixo ajuda). Confirme com o seu contador.' },
+  { id: 'mei', label: 'MEI', hint: 'Imposto fixo por mês (DAS), não por peça. Ele entra sozinho nos custos fixos do mês.' },
+  { id: 'simples', label: 'Simples Nacional', hint: 'A alíquota sai do faturamento dos últimos 12 meses e é recalculada sozinha com as vendas do Drone.' },
   { id: 'presumido', label: 'Lucro Presumido', hint: 'Some os impostos sobre a venda (PIS, COFINS, ICMS…) que o contador informar.' },
   { id: 'outro', label: 'Outro', hint: 'Informe o percentual total de impostos sobre a venda.' },
 ]
@@ -258,9 +275,27 @@ export function readTaxRegimes(raw: unknown): TaxRegime[] {
   return raw
     .map(r => r as Partial<TaxRegime>)
     .filter(r => (r.regime === 'mei' || r.regime === 'simples' || r.regime === 'presumido' || r.regime === 'outro') && typeof r.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.since))
-    .map(r => ({ regime: r.regime as TaxRegimeId, rate_pct: num(r.rate_pct, 0, 60, 0), since: r.since as string, note: typeof r.note === 'string' ? r.note.slice(0, 200) : null }))
+    .map(r => ({
+      regime: r.regime as TaxRegimeId, since: r.since as string, note: typeof r.note === 'string' ? r.note.slice(0, 200) : null,
+      rate_pct: r.regime === 'mei' ? 0 : num(r.rate_pct, 0, 60, 0),
+      ...(r.regime === 'mei' ? { das_monthly: num(r.das_monthly, 0, 10000, MEI_DAS_2026.comercio) } : {}),
+      ...(r.regime === 'simples' ? { outside_revenue_12m: num(r.outside_revenue_12m, 0, 1e9, 0) } : {}),
+    }))
     .sort((a, b) => a.since.localeCompare(b.since))
     .slice(-24)
+}
+
+// Imposto sobre cada venda e custo fixo extra (DAS do MEI) de um regime.
+// rbt12 = vendas pagas no Drone nos últimos 12 meses (o Simples soma as vendas fora)
+export function regimeTax(r: TaxRegime, rbt12Drone: number): { tax_pct: number; fixed_extra: number; rbt12: number | null; overLimit: boolean } {
+  if (r.regime === 'mei') return { tax_pct: 0, fixed_extra: r.das_monthly ?? MEI_DAS_2026.comercio, rbt12: rbt12Drone, overLimit: rbt12Drone > MEI_ANNUAL_LIMIT }
+  if (r.regime === 'simples') {
+    const rbt12 = Math.max(0, rbt12Drone) + (r.outside_revenue_12m ?? 0)
+    if (rbt12 <= 0) return { tax_pct: SIMPLES_ANEXO_I[0].nominal, fixed_extra: 0, rbt12: 0, overLimit: false } // começo: 1ª faixa
+    const s = simplesAnexoIRate(rbt12)
+    return s ? { tax_pct: s.effective, fixed_extra: 0, rbt12, overLimit: false } : { tax_pct: r.rate_pct, fixed_extra: 0, rbt12, overLimit: true }
+  }
+  return { tax_pct: r.rate_pct, fixed_extra: 0, rbt12: null, overLimit: false }
 }
 
 // Data (aaaa-mm-dd) de um instante, no fuso de Brasília
@@ -277,10 +312,13 @@ export function regimeAt(regimes: TaxRegime[], when: string | Date): TaxRegime |
   return found
 }
 
-// Precificação com o imposto do regime em vigor na data (sem regime cadastrado, usa tax_pct)
-export function pricingAt(p: PricingSettings, regimes: TaxRegime[], when: string | Date): PricingSettings {
+// Precificação com o imposto do regime em vigor na data (sem regime cadastrado, usa tax_pct).
+// No Simples, a alíquota usa o faturamento de 12 meses de hoje (não o da época).
+export function pricingAt(p: PricingSettings, regimes: TaxRegime[], when: string | Date, rbt12Drone = 0): PricingSettings {
   const r = regimeAt(regimes, when)
-  return r ? { ...p, tax_pct: r.rate_pct } : p
+  if (!r) return p
+  const t = regimeTax(r, rbt12Drone)
+  return { ...p, tax_pct: t.tax_pct, fixed_monthly: p.fixed_monthly + t.fixed_extra }
 }
 
 // Simples Nacional, Anexo I (comércio) — LC 123/2006 com a redação da LC 155/2016.
@@ -348,4 +386,49 @@ export function loyaltyUnitText(n: number, unit: LoyaltyUnit, fmt: (v: number) =
   if (unit === 'valor') return fmt(n)
   const k = Math.round(n)
   return unit === 'pecas' ? `${k} peça${k === 1 ? '' : 's'}` : `${k} compra${k === 1 ? '' : 's'}`
+}
+
+// ─── Condições de pagamento da proposta (Pix e cartão) ────────────────────────
+export type PaymentConditions = {
+  pix: { enabled: boolean; discount_pct: number; fee_pct: number }
+  card: { enabled: boolean; max_installments: number; fee_pct: number }
+}
+export const DEFAULT_CONDITIONS: PaymentConditions = {
+  pix: { enabled: true, discount_pct: 5, fee_pct: 0 },
+  card: { enabled: true, max_installments: 3, fee_pct: 4.99 },
+}
+
+export function readPaymentConditions(raw: unknown): PaymentConditions {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, Record<string, unknown> | undefined>
+  return {
+    pix: { enabled: r.pix?.enabled !== false, discount_pct: num(r.pix?.discount_pct, 0, 50, DEFAULT_CONDITIONS.pix.discount_pct), fee_pct: num(r.pix?.fee_pct, 0, 20, 0) },
+    card: { enabled: r.card?.enabled !== false, max_installments: Math.round(num(r.card?.max_installments, 1, 24, 3)), fee_pct: num(r.card?.fee_pct, 0, 30, DEFAULT_CONDITIONS.card.fee_pct) },
+  }
+}
+
+export type ConditionOption = {
+  id: 'pix' | 'card'; label: string
+  discount: number      // desconto da condição (R$)
+  total: number         // valor das peças a pagar nesta condição (sem frete)
+  installments: number; installmentValue: number
+  analysis: OrderAnalysis
+}
+
+// Cada condição muda o ganho: o Pix dá desconto e tem taxa baixa; o cartão tem a taxa da maquininha.
+// baseDiscount = descontos que já estão no pedido (combinados e fidelidade)
+export function conditionOptions(lines: OrderLine[], baseDiscount: number, p: PricingSettings, l: LoyaltySettings, c: PaymentConditions): ConditionOption[] {
+  const subtotal = lines.reduce((s, i) => s + i.qty * i.unit_price, 0)
+  const base = Math.max(0, subtotal - baseDiscount)
+  const out: ConditionOption[] = []
+  if (c.pix.enabled) {
+    const discount = round2(base * c.pix.discount_pct / 100)
+    const total = round2(base - discount)
+    out.push({ id: 'pix', label: c.pix.discount_pct > 0 ? `Pix à vista com ${String(c.pix.discount_pct).replace('.', ',')}% de desconto` : 'Pix à vista', discount, total, installments: 1, installmentValue: total, analysis: analyzeOrder(lines, baseDiscount + discount, { ...p, card_pct: c.pix.fee_pct }, l) })
+  }
+  if (c.card.enabled) {
+    const total = round2(base)
+    const n = c.card.max_installments
+    out.push({ id: 'card', label: n > 1 ? `Cartão em até ${n}x sem juros` : 'Cartão à vista', discount: 0, total, installments: n, installmentValue: round2(total / n), analysis: analyzeOrder(lines, baseDiscount, { ...p, card_pct: c.card.fee_pct }, l) })
+  }
+  return out
 }

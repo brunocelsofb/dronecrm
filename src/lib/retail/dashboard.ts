@@ -5,7 +5,7 @@ import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { PAID_STATUSES, birthdayInfo, customerStatus, mergeStats, type BirthdayInfo } from '@/lib/retail/customers'
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { analyzeOrder, pricingAt, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { analyzeOrder, pricingAt, readPricing, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
 import { breakEvenProgress, changePct, monthBounds, summarizeSales, type BreakEvenProgress, type MonthBounds, type SalesSummary } from '@/lib/retail/dashboard-calc'
 import type { DashboardBlockId } from '@/lib/retail/dashboard-blocks'
 
@@ -52,7 +52,8 @@ export type RetailDashboard = {
 export async function loadRetailDashboard(db: Db, tenantId: string, blocks: DashboardBlockId[], now = new Date()): Promise<RetailDashboard> {
   const has = (b: DashboardBlockId) => blocks.includes(b)
   const month = monthBounds(now)
-  const { pricing, loyalty, regimes } = await loadPricingConfig(db, tenantId)
+  const { pricing, loyalty, regimes, rbt12, raw } = await loadPricingConfig(db, tenantId)
+  const basePricing = readPricing(raw.pricing)
   const out: RetailDashboard = { month, pricing, loyalty }
   const tasks: Promise<void>[] = []
 
@@ -63,7 +64,7 @@ export async function loadRetailDashboard(db: Db, tenantId: string, blocks: Dash
       const prevTo = new Date(Math.min(Date.parse(month.prevStart) + elapsed, Date.parse(month.start))).toISOString()
       const [cur, prev] = await Promise.all([paidBetween(db, month.start, month.end), has('vendas') ? paidBetween(db, month.prevStart, prevTo) : Promise.resolve([])])
       // cada venda com o imposto do regime em vigor na data em que foi paga
-      const analyze = (o: PaidRow) => analyzeOrder(o.retail_order_items.map(lineOf), n(o.discount) + n(o.loyalty_discount), pricingAt(pricing, regimes, o.paid_at ?? now), loyalty)
+      const analyze = (o: PaidRow) => analyzeOrder(o.retail_order_items.map(lineOf), n(o.discount) + n(o.loyalty_discount), pricingAt(basePricing, regimes, o.paid_at ?? now, rbt12), loyalty)
       const s = summarizeSales(cur.map(analyze))
       const p = summarizeSales(prev.map(analyze))
       out.sales = { ...s, prevRevenue: p.revenue, prevOrders: p.orders, revenueChange: changePct(s.revenue, p.revenue) }

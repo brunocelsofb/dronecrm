@@ -9,7 +9,7 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { readLoyalty, readPricing, readTaxRegimes, regimeAt, round2, loyaltyUnitText, type LoyaltySettings, type PricingSettings, type TaxRegime } from '@/lib/retail/margin'
+import { readLoyalty, readPricing, readTaxRegimes, readPaymentConditions, regimeAt, round2, loyaltyUnitText, type PaymentConditions, type LoyaltySettings, type PricingSettings, type TaxRegime } from '@/lib/retail/margin'
 import { parseMoney } from '@/lib/retail/products'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
 import { readDashboardBlocks } from '@/lib/retail/dashboard-blocks'
@@ -24,7 +24,7 @@ async function guard(adminOnly = false): Promise<{ tenantId: string } | { error:
   return { tenantId: await requireTenantId() }
 }
 
-export async function saveRetailPricing(input: { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[] }): Promise<Result> {
+export async function saveRetailPricing(input: { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; conditions: PaymentConditions }): Promise<Result> {
   const g = await guard(true)
   if ('error' in g) return { ok: false, error: g.error }
   const regimes = readTaxRegimes(input.regimes)
@@ -45,6 +45,7 @@ export async function saveRetailPricing(input: { pricing: PricingSettings; loyal
     ...raw,
     pricing,
     tax_regimes: regimes,
+    payment_conditions: readPaymentConditions(input.conditions),
     // mudou a regra do "a cada X": a contagem recomeça agora (compras antigas não viram prêmio na regra nova)
     loyalty: { ...loyalty, changed_at: prev.enabled !== loyalty.enabled || prev.mode !== loyalty.mode || prev.every_unit !== loyalty.every_unit || prev.every_amount !== loyalty.every_amount ? new Date().toISOString() : prev.changed_at ?? null },
   }
@@ -140,4 +141,39 @@ export async function setRetailProductPrice(productId: string, price: string | n
   if (!data) return { ok: false, error: 'Peça não encontrada.' }
   revalidatePath('/varejo/precificacao'); revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${productId}`)
   return { ok: true }
+}
+
+// ─── CNPJ da loja: CNAE e opção pelo Simples/MEI (dados públicos da Receita via BrasilAPI) ──
+// Só sugere o regime; o percentual do Lucro Presumido não sai do CNAE (depende do estado e do produto).
+export type CnpjInfo = { name: string; uf: string | null; cnae: string | null; cnaeText: string | null; simples: boolean | null; mei: boolean | null; retail: boolean; suggested: 'mei' | 'simples' | 'presumido' | null }
+
+export async function lookupCnpj(raw: string): Promise<Result<{ info: CnpjInfo }>> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const cnpj = String(raw ?? '').replace(/\D/g, '')
+  if (cnpj.length !== 14) return { ok: false, error: 'CNPJ precisa ter 14 números.' }
+  let d: Record<string, unknown>
+  try {
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
+    if (res.status === 404) return { ok: false, error: 'CNPJ não encontrado na Receita.' }
+    if (!res.ok) return { ok: false, error: 'A consulta do CNPJ não respondeu agora. Tente de novo ou escolha o regime à mão.' }
+    d = await res.json() as Record<string, unknown>
+  } catch {
+    return { ok: false, error: 'A consulta do CNPJ não respondeu agora. Tente de novo ou escolha o regime à mão.' }
+  }
+  const bool = (v: unknown) => (v === true || v === false ? v : null)
+  const cnae = d.cnae_fiscal !== undefined && d.cnae_fiscal !== null ? String(d.cnae_fiscal).padStart(7, '0') : null
+  const simples = bool(d.opcao_pelo_simples), mei = bool(d.opcao_pelo_mei)
+  return {
+    ok: true,
+    info: {
+      name: String(d.nome_fantasia || d.razao_social || 'Empresa'),
+      uf: typeof d.uf === 'string' ? d.uf : null,
+      cnae: cnae ? `${cnae.slice(0, 4)}-${cnae.slice(4, 5)}/${cnae.slice(5)}` : null,
+      cnaeText: typeof d.cnae_fiscal_descricao === 'string' ? d.cnae_fiscal_descricao : null,
+      simples, mei,
+      retail: !!cnae && cnae.startsWith('47'), // divisão 47: comércio varejista
+      suggested: mei === true ? 'mei' : simples === true ? 'simples' : simples === false ? 'presumido' : null,
+    },
+  }
 }

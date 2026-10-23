@@ -6,9 +6,12 @@ import { fmtBRL } from '@/lib/format'
 import { ORDER_STATUSES, PAYMENT_METHODS, formatPhone, orderMessage, whatsappLink } from '@/lib/retail/customers'
 import { OrderPanel } from '@/components/retail/order-panel'
 import { NegotiationPanel } from '@/components/retail/negotiation-panel'
+import { ProposalPanel } from '@/components/retail/proposal-panel'
+import { isProposal } from '@/lib/retail/proposal'
+import { appBaseUrl } from '@/lib/whatsapp/webhook-token'
 import { requireTenantId } from '@/lib/tenant/context'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { pricingAt } from '@/lib/retail/margin'
+import { pricingAt, readPricing, conditionOptions } from '@/lib/retail/margin'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -18,6 +21,7 @@ type Order = {
   subtotal: number; discount: number; shipping: number; total: number; loyalty_discount: number; loyalty_kind: string | null; loyalty_earned: number; source: string; notes: string | null; stock_applied: boolean
   delivery: { method?: string | null; cep?: string | null; address?: string | null } | null
   paid_at: string | null; created_at: string; customer_id: string | null
+  proposal_token: string | null; proposal: unknown; proposal_sent_at: string | null; proposal_choice: string | null; proposal_accepted_at: string | null
   retail_customers: { id: string; name: string; phone: string | null } | null
   retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number; unit_cost: number | null; retail_products: { cost_price: number | null } | null }[]
 }
@@ -31,7 +35,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -46,7 +50,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const st = ORDER_STATUSES.find(s => s.id === o.status)
   const cfg = await loadPricingConfig(db, tenantId)
   // imposto do regime em vigor na data da venda (pedido pago) ou hoje (em aberto)
-  const pricing = pricingAt(cfg.pricing, cfg.regimes, o.paid_at ?? new Date())
+  const pricing = pricingAt(readPricing(cfg.raw.pricing), cfg.regimes, o.paid_at ?? new Date(), cfg.rbt12)
   const loyalty = cfg.loyalty
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
   const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
@@ -97,6 +101,24 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
           <p className="text-xs text-gray-500">Pagamento: {[PAYMENT_METHODS.find(p => p.id === o.payment_method)?.label, o.payment_condition].filter(Boolean).join(' · ') || '—'}{o.stock_applied ? ' · estoque baixado' : ''}{n(o.loyalty_earned) > 0 ? ` · gerou ${fmtBRL(n(o.loyalty_earned))} de cashback` : ''}</p>
         </div>
       </section>
+
+      {(() => {
+        const prop = isProposal(o.proposal) ? o.proposal : null
+        // na proposta já aceita, o desconto do Pix está no pedido: mostra o ganho como ficou
+        const base = n(o.discount) + n(o.loyalty_discount)
+        const previews = conditionOptions(lines, prop && o.proposal_accepted_at ? base - (prop.options.find(x => x.id === o.proposal_choice)?.discount ?? 0) : base, pricing, loyalty, cfg.conditions).map(c => ({
+          id: c.id, label: c.label, grand_total: Math.round((c.total + n(o.shipping)) * 100) / 100, installments: c.installments,
+          installmentValue: Math.round(((c.total + n(o.shipping)) / c.installments) * 100) / 100, contribution: c.analysis.contribution, marginPct: c.analysis.marginPct,
+        }))
+        return (
+          <ProposalPanel orderId={o.id} previews={previews} targetMargin={pricing.target_margin_pct}
+            url={o.proposal_token ? `${appBaseUrl()}/loja/proposta/${o.proposal_token}` : null} sentAt={o.proposal_sent_at} acceptedAt={o.proposal_accepted_at}
+            choiceLabel={prop?.options.find(x => x.id === o.proposal_choice)?.label ?? null}
+            links={{ pix: prop?.options.find(x => x.id === 'pix')?.link ?? null, card: prop?.options.find(x => x.id === 'card')?.link ?? null }}
+            customer={o.retail_customers ? { name: o.retail_customers.name, phone: o.retail_customers.phone } : null} storeName={storeName}
+            editable={o.status !== 'cancelado' && !o.stock_applied} />
+        )
+      })()}
 
       <NegotiationPanel
         orderId={o.id} lines={lines} storeName={storeName}

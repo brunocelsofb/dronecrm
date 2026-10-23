@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   referencePrice, analyzePrice, analyzeOrder, loyaltyCostPct, breakEvenRevenue, cashbackBalance, everyRewards, tierFor,
-  readLoyalty, readPricing, DEFAULT_LOYALTY, readTaxRegimes, regimeAt, pricingAt, simplesAnexoIRate, analyzeLines, loyaltyMessage,
+  readLoyalty, readPricing, DEFAULT_LOYALTY, readTaxRegimes, regimeAt, pricingAt, simplesAnexoIRate, analyzeLines, loyaltyMessage, regimeTax, MEI_DAS_2026, conditionOptions, readPaymentConditions,
 } from '../src/lib/retail/margin.ts'
 
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} ≠ ${b}`)
@@ -92,7 +92,7 @@ test('fidelidade "a cada X": simulação de compras confere com as fórmulas (a 
 
 test('regime de imposto pela data da venda e Simples Nacional (Anexo I)', () => {
   const regimes = readTaxRegimes([
-    { regime: 'simples', rate_pct: 4, since: '2026-01-01' },
+    { regime: 'outro', rate_pct: 4, since: '2026-01-01' },
     { regime: 'presumido', rate_pct: 11.5, since: '2026-11-01' },
     { regime: 'xyz', rate_pct: 1, since: '2026-05-01' },
   ])
@@ -178,6 +178,8 @@ test('leitura das configurações descarta valores inválidos', () => {
   assert.deepEqual(l.tiers, [{ min: 500, pct: 5 }, { min: 3000, pct: 10 }])
   assert.equal(readPricing({ tax_pct: '6,5', card_pct: 200 }).tax_pct, 6.5)
   assert.equal(readPricing({ card_pct: 200 }).card_pct, 0)
+  assert.equal(readPricing({}).target_margin_pct, 30) // sem configurar: margem padrão, não 0
+  assert.equal(readPricing({ target_margin_pct: '' }).target_margin_pct, 30)
 })
 
 test('propriedade: em 20 mil casos aleatórios, o preço sugerido é o menor centavo que atinge a margem', () => {
@@ -194,4 +196,36 @@ test('propriedade: em 20 mil casos aleatórios, o preço sugerido é o menor cen
     assert.ok(analyzePrice(r.price - 0.01, cost, p, l).marginPct < p.target_margin_pct + 1e-9, `não é o mínimo: ${JSON.stringify({ cost, p, price: r.price })}`)
   }
   assert.ok(checked > 15000)
+})
+
+test('MEI e Simples pelo faturado', () => {
+  const mei = readTaxRegimes([{ regime: 'mei', since: '2026-01-01', rate_pct: 9 }])[0]
+  assert.equal(mei.rate_pct, 0); assert.equal(mei.das_monthly, 82.05) // DAS comércio 2026
+  assert.deepEqual(regimeTax(mei, 50000), { tax_pct: 0, fixed_extra: 82.05, rbt12: 50000, overLimit: false })
+  assert.equal(regimeTax(mei, 81000.01).overLimit, true)
+  const p = pricingAt(P({ fixed_monthly: 5000 }), [mei], '2026-06-01', 0)
+  assert.equal(p.tax_pct, 0); close(p.fixed_monthly, 5082.05)
+  assert.equal(MEI_DAS_2026.comercio, 82.05)
+  // Simples: 300 mil no Drone + 70 mil,01 fora = 370 mil,01 → 5,754% (3ª faixa)
+  const sim = readTaxRegimes([{ regime: 'simples', since: '2026-01-01', outside_revenue_12m: 70000.01 }])[0]
+  close(regimeTax(sim, 300000).tax_pct, 5.754, 0.001)
+  close(regimeTax(sim, 0).tax_pct, 4) // 70 mil fora do Drone: 1ª faixa
+  const zero = readTaxRegimes([{ regime: 'simples', since: '2026-01-01' }])[0]
+  assert.equal(regimeTax(zero, 0).tax_pct, 4) // sem faturamento: 1ª faixa
+  close(pricingAt(P(), [zero], '2026-06-01', 100000).tax_pct, 4)
+  assert.equal(regimeTax(zero, 5_000_000).overLimit, true)
+})
+
+test('condições de pagamento: Pix com desconto e cartão com taxa', () => {
+  const c = readPaymentConditions({ pix: { discount_pct: 5, fee_pct: 0 }, card: { max_installments: 3, fee_pct: 4.99 } })
+  // 2 × 120 (custo 60), sem fidelidade, imposto 6%, custo por peça 3
+  const opts = conditionOptions([{ qty: 2, unit_price: 120, unit_cost: 60 }], 0, P({ card_pct: 99 }), OFF, c)
+  const pix = opts.find(o => o.id === 'pix'), card = opts.find(o => o.id === 'card')
+  // Pix: 240 − 5% (12) = 228; variáveis 6% × 228 = 13,68; ganho 228 − 126 − 13,68 = 88,32
+  assert.equal(pix.discount, 12); assert.equal(pix.total, 228); assert.equal(pix.analysis.contribution, 88.32)
+  // Cartão: 240; variáveis (6 + 4,99)% × 240 = 26,376; ganho 240 − 126 − 26,376 = 87,62 · 3x de 80,00
+  assert.equal(card.total, 240); assert.equal(card.installmentValue, 80); assert.equal(card.analysis.contribution, 87.62)
+  assert.equal(card.label, 'Cartão em até 3x sem juros'); assert.equal(pix.label, 'Pix à vista com 5% de desconto')
+  const off = conditionOptions([{ qty: 1, unit_price: 100, unit_cost: 50 }], 0, P(), OFF, readPaymentConditions({ card: { enabled: false } }))
+  assert.equal(off.length, 1)
 })

@@ -9,12 +9,12 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { saveRetailPricing, setRetailProductPrice } from '@/lib/actions/retail-pricing'
+import { saveRetailPricing, setRetailProductPrice, lookupCnpj, type CnpjInfo } from '@/lib/actions/retail-pricing'
 import { effectivePrice, parseMoney } from '@/lib/retail/products'
 import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
 import {
-  analyzePrice, breakEvenRevenue, loyaltyCostPct, referencePrice, readLoyalty, readPricing, regimeAt, simplesAnexoIRate,
-  TAX_REGIMES, type LoyaltyMode, type LoyaltySettings, type LoyaltyUnit, type PricingSettings, type TaxRegime, type TaxRegimeId,
+  analyzePrice, breakEvenRevenue, loyaltyCostPct, referencePrice, readLoyalty, readPricing, regimeAt, regimeTax, simplesAnexoIRate,
+  TAX_REGIMES, MEI_DAS_2026, MEI_ANNUAL_LIMIT, readPaymentConditions, type PaymentConditions, type LoyaltyMode, type LoyaltySettings, type LoyaltyUnit, type PricingSettings, type TaxRegime, type TaxRegimeId,
 } from '@/lib/retail/margin'
 
 export type PricedProduct = { id: string; code: string; name: string; cost: number | null; price: number; promo: number | null; status: string; stock: number }
@@ -170,8 +170,8 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
   )
 }
 
-export function PricingForm({ pricing, loyalty, regimes: initialRegimes, products, avgTicket, avgCount, avgPieces, readOnly }: {
-  pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; products: PricedProduct[]
+export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, conditions: initialConditions, products, avgTicket, avgCount, avgPieces, readOnly }: {
+  pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; rbt12: number; conditions: PaymentConditions; products: PricedProduct[]
   avgTicket: number; avgCount: number; avgPieces: number; readOnly: boolean
 }) {
   const router = useRouter()
@@ -185,17 +185,24 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
     tiers: loyalty.tiers.map(t => ({ min: toStr(t.min), pct: toStr(t.pct) })),
   })
   const [regimes, setRegimes] = useState<TaxRegime[]>(initialRegimes)
-  const [newReg, setNewReg] = useState<{ regime: TaxRegimeId; rate: string; since: string } | null>(initialRegimes.length ? null : { regime: 'simples', rate: '', since: todayBR() })
-  const [rbt12, setRbt12] = useState('')
+  const [cond, setCond] = useState({
+    pixOn: initialConditions.pix.enabled, pixDisc: toStr(initialConditions.pix.discount_pct), pixFee: toStr(initialConditions.pix.fee_pct),
+    cardOn: initialConditions.card.enabled, cardN: String(initialConditions.card.max_installments), cardFee: toStr(initialConditions.card.fee_pct),
+  })
+  const [newReg, setNewReg] = useState<{ regime: TaxRegimeId; rate: string; since: string; das: string; outside: string } | null>(initialRegimes.length ? null : { regime: 'simples', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })
+  const [cnpj, setCnpj] = useState('')
+  const [cnpjInfo, setCnpjInfo] = useState<CnpjInfo | null>(null)
+  const [cnpjBusy, setCnpjBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const setPf = (k: keyof typeof p) => (v: string) => setP(prev => ({ ...prev, [k]: v }))
 
   const current = regimeAt(regimes, new Date())
+  const curTax = current ? regimeTax(current, rbt12) : null
   const P: PricingSettings = useMemo(() => readPricing({
-    tax_pct: current ? current.rate_pct : pctNum(p.tax_pct), card_pct: pctNum(p.card_pct), other_pct: pctNum(p.other_pct), per_piece: toNum(p.per_piece),
-    target_margin_pct: pctNum(p.target_margin_pct), fixed_monthly: toNum(p.fixed_monthly), avg_ticket: toNum(p.avg_ticket), avg_pieces: pctNum(p.avg_pieces),
-  }), [p, current])
+    tax_pct: curTax ? curTax.tax_pct : pctNum(p.tax_pct), card_pct: pctNum(p.card_pct), other_pct: pctNum(p.other_pct), per_piece: toNum(p.per_piece),
+    target_margin_pct: pctNum(p.target_margin_pct), fixed_monthly: toNum(p.fixed_monthly) + (curTax?.fixed_extra ?? 0), avg_ticket: toNum(p.avg_ticket), avg_pieces: pctNum(p.avg_pieces),
+  }), [p, curTax])
   const L: LoyaltySettings = useMemo(() => readLoyalty({
     enabled: l.enabled, mode: l.mode, cashback_pct: pctNum(l.cashback_pct), cashback_days: Number(l.cashback_days),
     every_unit: l.every_unit, every_amount: l.every_unit === 'valor' ? toNum(l.every_amount) : pctNum(l.every_amount), every_pct: pctNum(l.every_pct),
@@ -204,21 +211,24 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
 
   const loyaltyPct = loyaltyCostPct(L, P.avg_ticket, P.avg_pieces)
   const monthRevenue = breakEvenRevenue(P.fixed_monthly, P.target_margin_pct)
-  const simples = simplesAnexoIRate(toNum(rbt12))
   const unit = UNITS.find(u => u.id === l.every_unit)!
 
   function addRegime() {
     if (!newReg) return
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newReg.since)) { setMsg({ ok: false, text: 'Informe a data de início do regime.' }); return }
     if (regimes.some(r => r.since === newReg.since)) { setMsg({ ok: false, text: 'Já existe um regime começando nessa data.' }); return }
-    const rate = newReg.regime === 'mei' && !newReg.rate ? 0 : pctNum(newReg.rate)
-    setRegimes(prev => [...prev, { regime: newReg.regime, rate_pct: rate, since: newReg.since }].sort((a, b) => a.since.localeCompare(b.since)))
+    const r: TaxRegime = newReg.regime === 'mei' ? { regime: 'mei', rate_pct: 0, since: newReg.since, das_monthly: toNum(newReg.das) || MEI_DAS_2026.comercio }
+      : newReg.regime === 'simples' ? { regime: 'simples', rate_pct: 0, since: newReg.since, outside_revenue_12m: toNum(newReg.outside) }
+      : { regime: newReg.regime, rate_pct: pctNum(newReg.rate), since: newReg.since }
+    if ((r.regime === 'presumido' || r.regime === 'outro') && !(r.rate_pct > 0)) { setMsg({ ok: false, text: 'Informe o percentual de impostos sobre a venda.' }); return }
+    setRegimes(prev => [...prev, r].sort((a, b) => a.since.localeCompare(b.since)))
     setNewReg(null); setMsg(null)
   }
 
   async function save() {
     setBusy(true); setMsg(null)
-    const r = await saveRetailPricing({ pricing: P, loyalty: L, regimes })
+    const conditions = readPaymentConditions({ pix: { enabled: cond.pixOn, discount_pct: pctNum(cond.pixDisc), fee_pct: pctNum(cond.pixFee) }, card: { enabled: cond.cardOn, max_installments: Number(cond.cardN) || 1, fee_pct: pctNum(cond.cardFee) } })
+    const r = await saveRetailPricing({ pricing: P, loyalty: L, regimes, conditions })
     setBusy(false)
     if (!r.ok) { setMsg({ ok: false, text: r.error }); return }
     setMsg({ ok: true, text: 'Salvo. Peças, pedidos e o painel já usam estes valores.' }); router.refresh()
@@ -233,11 +243,16 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Impostos da loja</h2>
-          <p className="text-sm text-gray-600">O regime vale para todas as peças. Mudou de regime? Cadastre o novo com a data: as vendas antigas continuam com o imposto da época.</p>
+          <p className="text-sm text-gray-600">MEI e Simples são calculados pelo faturado da loja, não por peça. Mudou de regime? Cadastre o novo com a data: as vendas antigas continuam com o regime da época.</p>
         </div>
-        {current ? (
-          <div className="rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
-            Hoje: <strong>{regimeLabel(current.regime)}</strong>, {fmtPct(current.rate_pct)} sobre a venda, desde {fmtDay(current.since)}.
+        {current && curTax ? (
+          <div className="space-y-1 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
+            <p>Hoje: <strong>{regimeLabel(current.regime)}</strong>, desde {fmtDay(current.since)}.</p>
+            {current.regime === 'mei' && <p>Imposto fixo (DAS) de <strong>{fmtBRL(curTax.fixed_extra)} por mês</strong>, já somado aos custos fixos. Nas vendas: 0%.</p>}
+            {current.regime === 'simples' && <p>Faturamento dos últimos 12 meses: {fmtBRL(curTax.rbt12)} ({fmtBRL(rbt12)} vendido no Drone{current.outside_revenue_12m ? ` + ${fmtBRL(current.outside_revenue_12m)} fora` : ''}). Alíquota efetiva: <strong>{fmtPct(curTax.tax_pct)}</strong>, recalculada sozinha.</p>}
+            {(current.regime === 'presumido' || current.regime === 'outro') && <p>{fmtPct(curTax.tax_pct)} sobre cada venda.</p>}
+            {current.regime === 'mei' && curTax.overLimit && <p className="text-warn-700">As vendas dos últimos 12 meses passaram de {fmtBRL(MEI_ANNUAL_LIMIT)}, o limite do MEI. Fale com o contador.</p>}
+            {current.regime === 'simples' && curTax.overLimit && <p className="text-warn-700">Faturamento acima de R$ 4.800.000,00: fora do Simples. Fale com o contador.</p>}
           </div>
         ) : (
           <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">
@@ -248,7 +263,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
           <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 text-sm">
             {[...regimes].reverse().map(r => (
               <li key={r.since} className="flex items-center justify-between gap-2 px-3 py-2">
-                <span>{regimeLabel(r.regime)} · {fmtPct(r.rate_pct)} · a partir de {fmtDay(r.since)}{current?.since === r.since ? <span className="ml-2 rounded bg-positive-100 px-1.5 py-0.5 text-[11px] text-positive-700">em vigor</span> : null}</span>
+                <span>{regimeLabel(r.regime)}{r.regime === 'mei' ? ` · DAS ${fmtBRL(r.das_monthly)}/mês` : r.regime === 'simples' ? ' · pelo faturamento' : ` · ${fmtPct(r.rate_pct)}`} · a partir de {fmtDay(r.since)}{current?.since === r.since ? <span className="ml-2 rounded bg-positive-100 px-1.5 py-0.5 text-[11px] text-positive-700">em vigor</span> : null}</span>
                 {!readOnly && <button type="button" onClick={() => setRegimes(prev => prev.filter(x => x.since !== r.since))} className="text-xs text-negative-700 hover:underline">Tirar</button>}
               </li>
             ))}
@@ -256,37 +271,56 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
         )}
         {!readOnly && (newReg ? (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1"><Field label="CNPJ da loja (opcional)" value={cnpj} onChange={setCnpj} help="Buscamos na Receita o CNAE e se a empresa é MEI ou Simples." /></div>
+              <button type="button" disabled={cnpjBusy || cnpj.replace(/\D/g, '').length !== 14} onClick={async () => { setCnpjBusy(true); const r = await lookupCnpj(cnpj); setCnpjBusy(false); if (!r.ok) { setMsg({ ok: false, text: r.error }); return } setCnpjInfo(r.info); if (r.info.suggested) setNewReg(prev => prev && { ...prev, regime: r.info.suggested! }) }}
+                className="mb-5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 disabled:opacity-40">{cnpjBusy ? 'Buscando…' : 'Buscar'}</button>
+            </div>
+            {cnpjInfo && (
+              <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                <p><strong>{cnpjInfo.name}</strong>{cnpjInfo.uf ? ` · ${cnpjInfo.uf}` : ''}</p>
+                {cnpjInfo.cnae && <p>CNAE {cnpjInfo.cnae}{cnpjInfo.cnaeText ? ` · ${cnpjInfo.cnaeText}` : ''}</p>}
+                <p>{cnpjInfo.mei === true ? 'Optante pelo MEI.' : cnpjInfo.simples === true ? 'Optante pelo Simples Nacional.' : cnpjInfo.simples === false ? 'Não optante pelo Simples (provavelmente Lucro Presumido ou Real).' : 'A Receita não informou a opção pelo Simples/MEI.'}{cnpjInfo.retail ? ' Comércio varejista: no Simples, tabela do comércio (Anexo I).' : ''}</p>
+                <p className="text-gray-500">O CNAE diz o tipo de atividade, não o valor do imposto: no Lucro Presumido o percentual depende do estado (ICMS) e de cada produto. Confirme com o contador.</p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {TAX_REGIMES.map(r => (
-                <button key={r.id} type="button" onClick={() => setNewReg(prev => prev && { ...prev, regime: r.id, rate: r.id === 'mei' ? '0' : prev.rate })}
+                <button key={r.id} type="button" onClick={() => setNewReg(prev => prev && { ...prev, regime: r.id })}
                   className={`rounded-lg border px-2 py-2 text-sm ${newReg.regime === r.id ? 'border-brand-700 bg-brand-100/50 font-medium' : 'border-gray-200'}`}>{r.label}</button>
               ))}
             </div>
             <p className={hint}>{TAX_REGIMES.find(r => r.id === newReg.regime)?.hint}</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Imposto sobre a venda" suffix="%" value={newReg.rate} onChange={v => setNewReg(prev => prev && { ...prev, rate: v })} />
+              {newReg.regime === 'mei' && (
+                <div>
+                  <Field label="DAS do mês" prefix="R$" value={newReg.das} onChange={v => setNewReg(prev => prev && { ...prev, das: v })} />
+                  <div className="mt-1 flex flex-wrap gap-1 text-xs">
+                    {([['Comércio', MEI_DAS_2026.comercio], ['Serviços', MEI_DAS_2026.servicos], ['Comércio e serviços', MEI_DAS_2026.ambos]] as [string, number][]).map(([l, v]) => (
+                      <button key={l} type="button" onClick={() => setNewReg(prev => prev && { ...prev, das: toStr(v) })} className="rounded-full border border-gray-300 px-2 py-0.5">{l}: {fmtBRL(v)}</button>
+                    ))}
+                  </div>
+                  <p className={hint}>Valores de 2026 (5% do salário mínimo de R$ 1.621,00 + ICMS/ISS). Mudam todo ano com o salário mínimo.</p>
+                </div>
+              )}
+              {newReg.regime === 'simples' && (
+                <div>
+                  <Field label="Vendas fora do Drone nos últimos 12 meses" prefix="R$" value={newReg.outside} onChange={v => setNewReg(prev => prev && { ...prev, outside: v })} />
+                  <p className={hint}>Loja física, outro sistema ou antes de começar a usar o Drone. Junto com o que já foi vendido aqui ({fmtBRL(rbt12)}), dá o faturamento de 12 meses.</p>
+                  {(() => { const r = simplesAnexoIRate(rbt12 + toNum(newReg.outside)); return r ? <p className="mt-1 text-sm text-gray-700">{r.faixa}ª faixa: alíquota efetiva de <strong>{fmtPct(r.effective)}</strong> (nominal {fmtPct(r.nominal)}, menos {fmtBRL(r.deduct)}).</p> : rbt12 + toNum(newReg.outside) > 0 ? <p className="mt-1 text-sm text-warn-700">Acima de R$ 4.800.000,00: fora do Simples.</p> : <p className="mt-1 text-sm text-gray-700">Sem faturamento ainda: começa na 1ª faixa (4,0%).</p> })()}
+                </div>
+              )}
+              {(newReg.regime === 'presumido' || newReg.regime === 'outro') && <Field label="Imposto sobre a venda" suffix="%" value={newReg.rate} onChange={v => setNewReg(prev => prev && { ...prev, rate: v })} help="O total que o contador informar." />}
               <Field label="Vale a partir de" type="date" value={newReg.since} onChange={v => setNewReg(prev => prev && { ...prev, since: v })} />
             </div>
-            {newReg.regime === 'simples' && (
-              <div className="rounded-lg bg-gray-50 p-3">
-                <p className="text-sm font-medium text-gray-800">Calcular a alíquota do Simples (comércio, Anexo I)</p>
-                <div className="mt-2 max-w-xs"><Field label="Quanto a loja faturou nos últimos 12 meses" prefix="R$" value={rbt12} onChange={setRbt12} /></div>
-                {toNum(rbt12) > 0 && (simples ? (
-                  <p className="mt-2 text-sm text-gray-700">
-                    {simples.faixa}ª faixa: alíquota efetiva de <strong>{fmtPct(simples.effective)}</strong> (nominal {fmtPct(simples.nominal)}, menos {fmtBRL(simples.deduct)}).{' '}
-                    <button type="button" onClick={() => setNewReg(prev => prev && { ...prev, rate: (Math.round(simples.effective * 100) / 100).toString().replace('.', ',') })} className="text-brand-700 hover:underline">Usar</button>
-                  </p>
-                ) : <p className="mt-2 text-sm text-warn-700">Acima de R$ 4.800.000,00 em 12 meses a empresa sai do Simples.</p>)}
-                <p className={hint}>Conta da LC 123/2006: (faturamento × alíquota nominal − parcela a deduzir) ÷ faturamento. Não considera ICMS por substituição tributária nem outras particularidades: confirme com o contador.</p>
-              </div>
-            )}
+            {newReg.regime === 'simples' && <p className={hint}>Conta da LC 123/2006, Anexo I (comércio): (faturamento × alíquota nominal − parcela a deduzir) ÷ faturamento. Não considera ICMS por substituição tributária nem outras particularidades: confirme com o contador.</p>}
             <div className="flex gap-2">
               <button type="button" onClick={addRegime} className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white">Incluir regime</button>
               {regimes.length > 0 && <button type="button" onClick={() => setNewReg(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700">Cancelar</button>}
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => setNewReg({ regime: current?.regime ?? 'simples', rate: '', since: todayBR() })} className="text-sm text-brand-700 hover:underline">+ Mudei de regime (ou a alíquota mudou)</button>
+          <button type="button" onClick={() => setNewReg({ regime: current?.regime ?? 'simples', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })} className="text-sm text-brand-700 hover:underline">+ Mudei de regime</button>
         ))}
       </section>
 
@@ -304,12 +338,31 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, product
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
+          <h2 className="text-base font-semibold text-gray-900">Condições de pagamento da proposta</h2>
+          <p className="text-sm text-gray-600">Aparecem na proposta para a cliente escolher. A taxa de cada uma muda o seu ganho, e o pedido mostra o ganho em cada condição.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className={`space-y-3 rounded-lg border p-3 ${cond.pixOn ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-900"><input type="checkbox" checked={cond.pixOn} disabled={readOnly} onChange={e => setCond(c => ({ ...c, pixOn: e.target.checked }))} /> Pix à vista</label>
+            <Field label="Desconto no Pix" suffix="%" value={cond.pixDisc} onChange={v => setCond(c => ({ ...c, pixDisc: v }))} disabled={readOnly} />
+            <Field label="Taxa do Pix" suffix="%" value={cond.pixFee} onChange={v => setCond(c => ({ ...c, pixFee: v }))} disabled={readOnly} help="Se o banco ou o link cobrar. Em geral, 0%." />
+          </div>
+          <div className={`space-y-3 rounded-lg border p-3 ${cond.cardOn ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-900"><input type="checkbox" checked={cond.cardOn} disabled={readOnly} onChange={e => setCond(c => ({ ...c, cardOn: e.target.checked }))} /> Cartão</label>
+            <Field label="Parcelas sem juros (até)" suffix="x" value={cond.cardN} onChange={v => setCond(c => ({ ...c, cardN: v.replace(/\D/g, '') }))} disabled={readOnly} />
+            <Field label="Taxa do cartão nesse parcelamento" suffix="%" value={cond.cardFee} onChange={v => setCond(c => ({ ...c, cardFee: v }))} disabled={readOnly} help="O que a maquininha ou o link cobra para parcelar sem juros para a cliente." />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+        <div>
           <h2 className="text-base font-semibold text-gray-900">Quanto você quer ganhar</h2>
           <p className="text-sm text-gray-600"><strong>Margem</strong> é quanto sobra do <strong>preço de venda</strong> depois de pagar a peça e os custos da venda. <strong>Markup</strong> é quanto você multiplica o <strong>custo</strong>. Não são a mesma coisa.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Margem desejada" suffix="%" value={p.target_margin_pct} onChange={setPf('target_margin_pct')} disabled={readOnly} help="O que sobra para pagar as contas do mês e dar lucro." />
-          <Field label="Custos fixos do mês" prefix="R$" value={p.fixed_monthly} onChange={setPf('fixed_monthly')} disabled={readOnly} help={`Aluguel, salários, contador, sistemas${current?.regime === 'mei' ? ' e o DAS do MEI' : ''}.`} />
+          <Field label="Custos fixos do mês" prefix="R$" value={p.fixed_monthly} onChange={setPf('fixed_monthly')} disabled={readOnly} help={`Aluguel, salários, contador, sistemas.${curTax?.fixed_extra ? ` O DAS do MEI (${fmtBRL(curTax.fixed_extra)}) já entra sozinho.` : ''}`} />
         </div>
         {monthRevenue !== null && (
           <p className="rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">

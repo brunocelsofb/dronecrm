@@ -8,7 +8,7 @@ import { CUSTOMER_STATUS, birthdayInfo, birthdayMessage, customerStatus, formatP
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { CustomerForm, type CustomerData } from '@/components/retail/customer-form'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { analyzeLines, analyzeOrder, loyaltyMessage, loyaltyUnitText, pricingAt, round2 } from '@/lib/retail/margin'
+import { analyzeLines, analyzeOrder, loyaltyMessage, loyaltyUnitText, pricingAt, readPricing, round2 } from '@/lib/retail/margin'
 import { fmtPct } from '@/lib/format'
 import { PAID_STATUSES } from '@/lib/retail/customers'
 
@@ -56,7 +56,7 @@ export default async function RetailCustomerPage({ params }: { params: Promise<{
   let piecesBought = 0, revenue = 0, gain = 0, missingCost = 0
   const boughtLines: { key: string; order: number; orderId: string; when: string | null; label: string; qty: number; price: number; gain: number | null }[] = []
   for (const o of paidOrders) {
-    const p = pricingAt(cfg.pricing, cfg.regimes, o.paid_at ?? new Date())
+    const p = pricingAt(readPricing(cfg.raw.pricing), cfg.regimes, o.paid_at ?? new Date(), cfg.rbt12)
     const lines = o.retail_order_items.map(lineOf)
     const a = analyzeOrder(lines, Number(o.discount) + Number(o.loyalty_discount ?? 0), p, cfg.loyalty)
     revenue += a.revenue; gain += a.contribution; missingCost += a.missingCost

@@ -5,20 +5,34 @@
 import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { PAID_STATUSES } from '@/lib/retail/customers'
 import {
-  readLoyalty, readPricing, readTaxRegimes, pricingAt, cashbackBalance, everyRewards, tierFor, round2,
-  type LoyaltySettings, type PricingSettings, type CashbackEntry, type TaxRegime,
+  readLoyalty, readPricing, readTaxRegimes, readPaymentConditions, pricingAt, cashbackBalance, everyRewards, tierFor, round2,
+  type LoyaltySettings, type PricingSettings, type CashbackEntry, type TaxRegime, type PaymentConditions,
 } from '@/lib/retail/margin'
 
 type Db = Awaited<ReturnType<typeof createScopedAdmin>>
 
 // pricing já vem com o imposto do regime em vigor hoje; para uma venda antiga use pricingAt(pricing, regimes, data)
-export type RetailPricingConfig = { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; raw: Record<string, unknown> }
+// rbt12 = vendas pagas no Drone nos últimos 12 meses (peças, sem frete): base do Simples e do limite do MEI
+export type RetailPricingConfig = { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; rbt12: number; conditions: PaymentConditions; raw: Record<string, unknown> }
 
 export async function loadPricingConfig(db: Db, tenantId: string): Promise<RetailPricingConfig> {
   const { data } = await db.from('organization_settings').select('retail_settings').eq('tenant_id', tenantId).maybeSingle()
   const raw = ((data as { retail_settings?: Record<string, unknown> } | null)?.retail_settings ?? {}) as Record<string, unknown>
   const regimes = readTaxRegimes(raw.tax_regimes)
-  return { pricing: pricingAt(readPricing(raw.pricing), regimes, new Date()), loyalty: readLoyalty(raw.loyalty), regimes, raw }
+  const rbt12 = regimes.length ? await revenue12m(db) : 0
+  return { pricing: pricingAt(readPricing(raw.pricing), regimes, new Date(), rbt12), loyalty: readLoyalty(raw.loyalty), regimes, rbt12, conditions: readPaymentConditions(raw.payment_conditions), raw }
+}
+
+// Vendas pagas nos últimos 12 meses (valor das peças menos descontos, sem frete)
+export async function revenue12m(db: Db, now = new Date()): Promise<number> {
+  const from = new Date(now.getTime() - 365 * 86_400_000).toISOString()
+  let total = 0
+  for (let i = 0; ; i += 1000) {
+    const { data } = await db.from('retail_orders').select('subtotal, discount, loyalty_discount').in('status', PAID_STATUSES).gte('paid_at', from).range(i, i + 999)
+    for (const o of data ?? []) total += Math.max(0, Number(o.subtotal) - Number(o.discount) - Number(o.loyalty_discount ?? 0))
+    if (!data || data.length < 1000) break
+  }
+  return round2(total)
 }
 
 export type CustomerLoyalty =
