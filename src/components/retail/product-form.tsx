@@ -252,21 +252,6 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
             </div>
             <p className={hint}>O código da etiqueta, se você já usa. Não usa? Toque em &quot;Criar um&quot;.</p>
           </div>
-          <div>
-            <label className={lbl} htmlFor="p-price">Preço *</label>
-            <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
-              <span className="pl-3 text-sm text-gray-500">R$</span>
-              <input id="p-price" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.price} onChange={set('price')} placeholder="157,90" />
-            </div>
-          </div>
-          <div>
-            <label className={lbl} htmlFor="p-promo">Preço de promoção</label>
-            <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
-              <span className="pl-3 text-sm text-gray-500">R$</span>
-              <input id="p-promo" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.promo_price} onChange={set('promo_price')} placeholder="deixe vazio se não estiver em promoção" />
-            </div>
-            <p className={hint}>Na vitrine aparece o preço normal riscado ao lado.</p>
-          </div>
           <div className="sm:col-span-2">
             <label className={lbl} htmlFor="p-cat">Categoria</label>
             <input id="p-cat" className={inp} value={f.category} onChange={set('category')} list="retail-categories" placeholder="ex.: Calças, Vestidos, Blusas" />
@@ -274,7 +259,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
             <p className={hint}>Agrupa as peças na vitrine. Comece a digitar para reaproveitar uma que já existe.</p>
           </div>
         </div>
-        <PricePanel f={f} setPrice={v => setF(prev => ({ ...prev, price: v }))} setCost={v => setF(prev => ({ ...prev, cost_price: v }))} pricing={pricing} loyalty={loyalty} />
+        <PricePanel f={f} setPrice={v => setF(prev => ({ ...prev, price: v }))} setPromo={v => setF(prev => ({ ...prev, promo_price: v }))} setCost={v => setF(prev => ({ ...prev, cost_price: v }))} pricing={pricing} loyalty={loyalty} />
         <details className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium text-brand-700">Detalhes para a vitrine (opcional, ajuda a vender)</summary>
           <div className="mt-3 space-y-3">
@@ -475,8 +460,8 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
 }
 
 // Custo da peça e o que o preço deixa de ganho (só no CRM; nunca vai para a vitrine)
-function PricePanel({ f, setPrice, setCost, pricing, loyalty }: {
-  f: { price: string; promo_price: string; cost_price: string }; setPrice: (v: string) => void; setCost: (v: string) => void
+function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
+  f: { price: string; promo_price: string; cost_price: string }; setPrice: (v: string) => void; setPromo: (v: string) => void; setCost: (v: string) => void
   pricing: PricingSettings; loyalty: LoyaltySettings
 }) {
   const cost = parseMoney(f.cost_price) ?? 0
@@ -487,26 +472,48 @@ function PricePanel({ f, setPrice, setCost, pricing, loyalty }: {
   const a = selling !== null && cost > 0 ? analyzePrice(selling, cost, pricing, loyalty) : null
   const configured = pricing.tax_pct + pricing.card_pct + pricing.other_pct + pricing.per_piece + pricing.fixed_monthly > 0
   const tone = !a ? '' : a.contribution < 0 ? 'border-negative-600/40 bg-negative-100/50' : a.marginPct + 1e-9 < pricing.target_margin_pct ? 'border-warn-600/40 bg-warn-100/50' : 'border-positive-600/40 bg-positive-100/50'
+  const refText = ref.ok && cost > 0 ? ref.price.toFixed(2).replace('.', ',') : ''
+  // Custo primeiro: com o preço vazio, o preço de referência entra sozinho (dá para ajustar)
+  const fillFromCost = () => { if (!f.price.trim() && refText) setPrice(refText) }
   return (
     <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+      <p className="text-sm font-semibold text-gray-900">Custo e preço</p>
       <div className="max-w-xs">
-        <label className={lbl} htmlFor="p-cost">Custo da peça</label>
+        <label className={lbl} htmlFor="p-cost">1. Custo da peça</label>
         <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
           <span className="pl-3 text-sm text-gray-500">R$</span>
-          <input id="p-cost" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.cost_price} onChange={e => setCost(e.target.value)} placeholder="quanto você pagou" />
+          <input id="p-cost" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.cost_price} onChange={e => setCost(e.target.value)} onBlur={fillFromCost} placeholder="quanto você pagou" />
         </div>
-        <p className={hint}>Só você vê. Nunca aparece na vitrine.</p>
+        <p className={hint}>Só você vê. Nunca aparece na vitrine. Com o custo, o Drone sugere o preço pelo seu markup e margem.</p>
+      </div>
+      {cost > 0 && (ref.ok ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
+          <span>Preço de referência para {fmtPct(pricing.target_margin_pct)} de margem: <strong>{fmtBRL(ref.price)}</strong> (markup {fmtNum1(ref.markup)})</span>
+          <button type="button" onClick={() => setPrice(refText)} className="rounded-lg border border-brand-700 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">Usar este preço</button>
+        </div>
+      ) : <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">{ref.reason}</p>)}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className={lbl} htmlFor="p-price">2. Preço de venda *</label>
+          <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
+            <span className="pl-3 text-sm text-gray-500">R$</span>
+            <input id="p-price" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.price} onChange={e => setPrice(e.target.value)} placeholder={refText || '157,90'} />
+          </div>
+          {cost > 0 && refText && f.price.trim() === refText && <p className={hint}>Preço de referência. Ajuste se quiser.</p>}
+        </div>
+        <div>
+          <label className={lbl} htmlFor="p-promo">Preço de promoção</label>
+          <div className="flex items-center rounded-lg border border-gray-300 focus-within:border-brand-700">
+            <span className="pl-3 text-sm text-gray-500">R$</span>
+            <input id="p-promo" className="w-full rounded-lg px-2 py-2 text-sm focus:outline-none" inputMode="decimal" value={f.promo_price} onChange={e => setPromo(e.target.value)} placeholder="vazio se não estiver em promoção" />
+          </div>
+          <p className={hint}>Na vitrine aparece o preço normal riscado ao lado.</p>
+        </div>
       </div>
       {cost <= 0 ? (
-        <p className="text-sm text-gray-500">Informe o custo para ver o preço de referência e quanto cada venda deixa para você.</p>
+        <p className="text-sm text-gray-500">Informe o custo para ver o preço sugerido e quanto cada venda deixa para você.</p>
       ) : (
         <>
-          {ref.ok ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
-              <span>Preço de referência para {fmtPct(pricing.target_margin_pct)} de margem: <strong>{fmtBRL(ref.price)}</strong> (markup {fmtNum1(ref.markup)})</span>
-              <button type="button" onClick={() => setPrice(ref.price.toFixed(2).replace('.', ','))} className="rounded-lg border border-brand-700 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">Usar este preço</button>
-            </div>
-          ) : <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">{ref.reason}</p>}
           {a && (
             <div className={`rounded-lg border px-3 py-2 text-sm ${tone}`}>
               <p className="font-medium text-gray-900">Vendendo a {fmtBRL(a.price)}{promo !== null && price !== null && promo < price ? ' (preço de promoção)' : ''}:</p>
