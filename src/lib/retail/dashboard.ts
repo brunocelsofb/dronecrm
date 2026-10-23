@@ -5,14 +5,14 @@ import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { PAID_STATUSES, birthdayInfo, customerStatus, mergeStats, type BirthdayInfo } from '@/lib/retail/customers'
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { analyzeOrder, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { analyzeOrder, pricingAt, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
 import { breakEvenProgress, changePct, monthBounds, summarizeSales, type BreakEvenProgress, type MonthBounds, type SalesSummary } from '@/lib/retail/dashboard-calc'
 import type { DashboardBlockId } from '@/lib/retail/dashboard-blocks'
 
 type Db = Awaited<ReturnType<typeof createScopedAdmin>>
 
 type ItemRow = { qty: number; unit_price: number; unit_cost: number | null; name: string; product_id: string | null; retail_products: { cost_price: number | null } | null }
-type PaidRow = { id: string; discount: number; loyalty_discount: number; retail_order_items: ItemRow[] }
+type PaidRow = { id: string; discount: number; loyalty_discount: number; paid_at: string | null; retail_order_items: ItemRow[] }
 
 const n = (v: unknown) => Number(v ?? 0)
 const lineOf = (i: ItemRow): OrderLine => ({
@@ -24,7 +24,7 @@ async function paidBetween(db: Db, from: string, to: string): Promise<PaidRow[]>
   const out: PaidRow[] = []
   for (let i = 0; ; i += 1000) {
     const { data } = await db.from('retail_orders')
-      .select('id, discount, loyalty_discount, retail_order_items(qty, unit_price, unit_cost, name, product_id, retail_products(cost_price))')
+      .select('id, discount, loyalty_discount, paid_at, retail_order_items(qty, unit_price, unit_cost, name, product_id, retail_products(cost_price))')
       .in('status', PAID_STATUSES).gte('paid_at', from).lt('paid_at', to).order('paid_at').range(i, i + 999)
     out.push(...((data ?? []) as unknown as PaidRow[]))
     if (!data || data.length < 1000) return out
@@ -52,7 +52,7 @@ export type RetailDashboard = {
 export async function loadRetailDashboard(db: Db, tenantId: string, blocks: DashboardBlockId[], now = new Date()): Promise<RetailDashboard> {
   const has = (b: DashboardBlockId) => blocks.includes(b)
   const month = monthBounds(now)
-  const { pricing, loyalty } = await loadPricingConfig(db, tenantId)
+  const { pricing, loyalty, regimes } = await loadPricingConfig(db, tenantId)
   const out: RetailDashboard = { month, pricing, loyalty }
   const tasks: Promise<void>[] = []
 
@@ -62,7 +62,8 @@ export async function loadRetailDashboard(db: Db, tenantId: string, blocks: Dash
       const elapsed = now.getTime() - Date.parse(month.start)
       const prevTo = new Date(Math.min(Date.parse(month.prevStart) + elapsed, Date.parse(month.start))).toISOString()
       const [cur, prev] = await Promise.all([paidBetween(db, month.start, month.end), has('vendas') ? paidBetween(db, month.prevStart, prevTo) : Promise.resolve([])])
-      const analyze = (o: PaidRow) => analyzeOrder(o.retail_order_items.map(lineOf), n(o.discount) + n(o.loyalty_discount), pricing, loyalty)
+      // cada venda com o imposto do regime em vigor na data em que foi paga
+      const analyze = (o: PaidRow) => analyzeOrder(o.retail_order_items.map(lineOf), n(o.discount) + n(o.loyalty_discount), pricingAt(pricing, regimes, o.paid_at ?? now), loyalty)
       const s = summarizeSales(cur.map(analyze))
       const p = summarizeSales(prev.map(analyze))
       out.sales = { ...s, prevRevenue: p.revenue, prevOrders: p.orders, revenueChange: changePct(s.revenue, p.revenue) }
@@ -155,23 +156,27 @@ export async function loadRetailDashboard(db: Db, tenantId: string, blocks: Dash
         }
         return
       }
-      const { data } = await db.from('retail_orders').select('customer_id, status, loyalty_base, loyalty_kind, loyalty_discount, paid_at').neq('status', 'cancelado').not('customer_id', 'is', null).limit(20000)
-      const per = new Map<string, { spent: number; spent12: number; used: number }>()
+      const { data } = await db.from('retail_orders').select('customer_id, status, loyalty_base, loyalty_kind, loyalty_discount, paid_at, created_at, retail_order_items(qty)').neq('status', 'cancelado').not('customer_id', 'is', null).limit(20000)
+      const rows = (data ?? []) as unknown as { customer_id: string; status: string; loyalty_base: number; loyalty_kind: string | null; loyalty_discount: number; paid_at: string | null; created_at: string; retail_order_items: { qty: number }[] }[]
+      // mesma contagem da ficha da cliente (loyalty-server.customerLoyalty)
+      const per = new Map<string, { counted: number; spent12: number; used: number }>()
       const since = now.getTime() - 365 * 86_400_000
+      const from = loyalty.changed_at ?? ''
       let given = 0
-      for (const o of data ?? []) {
-        const c = per.get(o.customer_id as string) ?? { spent: 0, spent12: 0, used: 0 }
-        if (PAID_STATUSES.includes(o.status as never)) {
-          c.spent += n(o.loyalty_base)
-          if (o.paid_at && Date.parse(o.paid_at as string) >= since) c.spent12 += n(o.loyalty_base)
+      for (const o of rows) {
+        const c = per.get(o.customer_id) ?? { counted: 0, spent12: 0, used: 0 }
+        const counts = PAID_STATUSES.includes(o.status as never) && n(o.loyalty_base) > 0
+        if (counts && o.paid_at && Date.parse(o.paid_at) >= since) c.spent12 += n(o.loyalty_base)
+        if (counts && (!from || (o.paid_at ?? '') >= from)) {
+          c.counted += loyalty.every_unit === 'pecas' ? o.retail_order_items.reduce((s, i) => s + i.qty, 0) : loyalty.every_unit === 'compras' ? 1 : n(o.loyalty_base)
         }
         if (o.loyalty_kind === loyalty.mode && n(o.loyalty_discount) > 0) {
-          if (loyalty.mode === 'cada_x') c.used++
-          if (o.paid_at && (o.paid_at as string) >= month.start && (o.paid_at as string) < month.end) given += n(o.loyalty_discount)
+          if (loyalty.mode === 'cada_x' && (!from || o.created_at >= from)) c.used++
+          if (o.paid_at && o.paid_at >= month.start && o.paid_at < month.end) given += n(o.loyalty_discount)
         }
-        per.set(o.customer_id as string, c)
+        per.set(o.customer_id, c)
       }
-      const withBenefit = [...per.values()].filter(c => loyalty.mode === 'cada_x' ? everyRewards(c.spent, c.used, loyalty).available > 0 : tierFor(c.spent12, loyalty).pct > 0).length
+      const withBenefit = [...per.values()].filter(c => loyalty.mode === 'cada_x' ? everyRewards(c.counted, c.used, loyalty).available > 0 : tierFor(c.spent12, loyalty).pct > 0).length
       out.loyaltyStats = { mode: loyalty.mode, withBenefit, given: round2(given) }
     })())
   }

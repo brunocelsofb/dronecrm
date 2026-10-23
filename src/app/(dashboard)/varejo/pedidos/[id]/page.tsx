@@ -8,6 +8,7 @@ import { OrderPanel } from '@/components/retail/order-panel'
 import { NegotiationPanel } from '@/components/retail/negotiation-panel'
 import { requireTenantId } from '@/lib/tenant/context'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
+import { pricingAt } from '@/lib/retail/margin'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -43,7 +44,12 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   }, fmtBRL)
   const wa = whatsappLink(o.retail_customers?.phone, message)
   const st = ORDER_STATUSES.find(s => s.id === o.status)
-  const { pricing, loyalty } = await loadPricingConfig(db, tenantId)
+  const cfg = await loadPricingConfig(db, tenantId)
+  // imposto do regime em vigor na data da venda (pedido pago) ou hoje (em aberto)
+  const pricing = pricingAt(cfg.pricing, cfg.regimes, o.paid_at ?? new Date())
+  const loyalty = cfg.loyalty
+  const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
+  const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
   const custLoyalty = o.customer_id ? await customerLoyalty(db, o.customer_id, loyalty, o.id) : { mode: 'off' as const }
   // custo gravado na venda; pedidos antigos (sem custo gravado) usam o custo atual da peça
   const lines = o.retail_order_items.map(i => ({
@@ -93,7 +99,9 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
       </section>
 
       <NegotiationPanel
-        orderId={o.id} lines={lines}
+        orderId={o.id} lines={lines} storeName={storeName}
+        labels={o.retail_order_items.map(i => `${i.name}${[i.color, i.size].filter(Boolean).length ? ` · ${[i.color, i.size].filter(Boolean).join(' / ')}` : ''}`)}
+        customer={o.retail_customers ? { name: o.retail_customers.name, phone: o.retail_customers.phone } : null}
         payment={{ discount: n(o.discount), shipping: n(o.shipping), payment_method: o.payment_method, payment_condition: o.payment_condition, payment_link: o.payment_link, notes: o.notes }}
         loyaltyDiscount={n(o.loyalty_discount)} loyaltyKind={o.loyalty_kind}
         pricing={pricing} loyalty={loyalty} customerLoyalty={custLoyalty}

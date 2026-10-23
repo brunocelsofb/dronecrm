@@ -9,7 +9,8 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { readLoyalty, readPricing, round2, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
+import { readLoyalty, readPricing, readTaxRegimes, regimeAt, round2, loyaltyUnitText, type LoyaltySettings, type PricingSettings, type TaxRegime } from '@/lib/retail/margin'
+import { parseMoney } from '@/lib/retail/products'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
 import { readDashboardBlocks } from '@/lib/retail/dashboard-blocks'
 
@@ -23,10 +24,15 @@ async function guard(adminOnly = false): Promise<{ tenantId: string } | { error:
   return { tenantId: await requireTenantId() }
 }
 
-export async function saveRetailPricing(input: { pricing: PricingSettings; loyalty: LoyaltySettings }): Promise<Result> {
+export async function saveRetailPricing(input: { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[] }): Promise<Result> {
   const g = await guard(true)
   if ('error' in g) return { ok: false, error: g.error }
-  const pricing = readPricing(input.pricing)
+  const regimes = readTaxRegimes(input.regimes)
+  if (regimes.length !== (input.regimes ?? []).length) return { ok: false, error: 'Confira os regimes de imposto: cada um precisa de tipo e data de início.' }
+  if (new Set(regimes.map(r => r.since)).size !== regimes.length) return { ok: false, error: 'Dois regimes começando na mesma data. Ajuste a data de um deles.' }
+  // imposto em vigor hoje vem do regime (sem regime cadastrado, fica o percentual informado)
+  const current = regimeAt(regimes, new Date())
+  const pricing = readPricing({ ...input.pricing, tax_pct: current ? current.rate_pct : input.pricing.tax_pct })
   const loyalty = readLoyalty(input.loyalty)
   if (pricing.tax_pct + pricing.card_pct + pricing.other_pct + pricing.target_margin_pct >= 100) {
     return { ok: false, error: 'Impostos + taxas + margem desejada passam de 100%: não existe preço que feche essa conta.' }
@@ -38,7 +44,9 @@ export async function saveRetailPricing(input: { pricing: PricingSettings; loyal
   const merged = {
     ...raw,
     pricing,
-    loyalty: { ...loyalty, changed_at: prev.enabled !== loyalty.enabled || prev.mode !== loyalty.mode ? new Date().toISOString() : (raw.loyalty as Record<string, unknown> | undefined)?.changed_at ?? null },
+    tax_regimes: regimes,
+    // mudou a regra do "a cada X": a contagem recomeça agora (compras antigas não viram prêmio na regra nova)
+    loyalty: { ...loyalty, changed_at: prev.enabled !== loyalty.enabled || prev.mode !== loyalty.mode || prev.every_unit !== loyalty.every_unit || prev.every_amount !== loyalty.every_amount ? new Date().toISOString() : prev.changed_at ?? null },
   }
   const { error } = await db.from('organization_settings').update({ retail_settings: merged }).eq('tenant_id', g.tenantId)
   if (error) return { ok: false, error: error.message }
@@ -77,7 +85,7 @@ export async function applyOrderLoyalty(orderId: string): Promise<Result<{ amoun
     const { error } = await db.from('retail_loyalty_entries').insert({ customer_id: o.customer_id, order_id: orderId, kind: 'uso', amount })
     if (error) return { ok: false, error: error.message }
   } else if (st.mode === 'cada_x') {
-    if (st.available < 1) return { ok: false, error: `Faltam ${st.missing.toFixed(2).replace('.', ',')} em compras para ela ganhar o desconto.` }
+    if (st.available < 1) return { ok: false, error: `Ainda falta${st.missing === 1 && st.unit !== 'valor' ? '' : 'm'} ${loyaltyUnitText(st.missing, st.unit, v => `R$ ${v.toFixed(2).replace('.', ',')}`)} para ela ganhar o desconto.` }
     amount = round2(base * st.pct / 100)
   } else if (st.mode === 'progressivo') {
     if (st.pct <= 0) return { ok: false, error: 'A cliente ainda não chegou ao primeiro nível do desconto progressivo.' }
@@ -117,5 +125,19 @@ export async function saveRetailDashboard(blocks: string[]): Promise<Result> {
   const { error } = await db.from('organization_settings').update({ retail_settings: { ...raw, dashboard: list } }).eq('tenant_id', g.tenantId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/varejo/painel')
+  return { ok: true }
+}
+
+// Aplica um preço na peça direto da tela de precificação (ex.: o preço de referência)
+export async function setRetailProductPrice(productId: string, price: string | number): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const value = parseMoney(price)
+  if (value === null || value <= 0) return { ok: false, error: 'Preço inválido.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data, error } = await db.from('retail_products').update({ price: value, updated_at: new Date().toISOString() }).eq('id', productId).select('id').maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: 'Peça não encontrada.' }
+  revalidatePath('/varejo/precificacao'); revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${productId}`)
   return { ok: true }
 }

@@ -13,6 +13,8 @@
 // Percentuais entram como número de 0 a 100 (ex.: 6 = 6%).
 
 export type LoyaltyMode = 'cashback' | 'cada_x' | 'progressivo'
+// "A cada X": em reais comprados, em peças compradas ou em número de compras
+export type LoyaltyUnit = 'valor' | 'pecas' | 'compras'
 export type LoyaltyTier = { min: number; pct: number }
 
 export type LoyaltySettings = {
@@ -20,9 +22,11 @@ export type LoyaltySettings = {
   mode: LoyaltyMode
   cashback_pct: number      // % da compra que vira crédito em roupas
   cashback_days: number     // validade do crédito, em dias
-  every_amount: number      // a cada R$ X em compras…
+  every_unit: LoyaltyUnit   // o que conta: R$, peças ou compras
+  every_amount: number      // a cada X (R$, peças ou compras)…
   every_pct: number         // …ganha Y% de desconto na próxima
   tiers: LoyaltyTier[]      // progressivo: comprou ≥ R$ min nos últimos 12 meses → pct%
+  changed_at?: string | null // regra do "a cada X" mudou: a contagem recomeça desta data
 }
 
 export type PricingSettings = {
@@ -33,11 +37,12 @@ export type PricingSettings = {
   target_margin_pct: number // margem de contribuição desejada
   fixed_monthly: number     // custos fixos do mês: aluguel, salários, sistemas…
   avg_ticket: number        // valor médio de uma compra (usado no "a cada R$ X")
+  avg_pieces: number        // peças por compra, em média (usado no "a cada X peças")
 }
 
-export const DEFAULT_PRICING: PricingSettings = { tax_pct: 0, card_pct: 0, other_pct: 0, per_piece: 0, target_margin_pct: 30, fixed_monthly: 0, avg_ticket: 0 }
+export const DEFAULT_PRICING: PricingSettings = { tax_pct: 0, card_pct: 0, other_pct: 0, per_piece: 0, target_margin_pct: 30, fixed_monthly: 0, avg_ticket: 0, avg_pieces: 0 }
 export const DEFAULT_LOYALTY: LoyaltySettings = {
-  enabled: false, mode: 'cashback', cashback_pct: 5, cashback_days: 90, every_amount: 1000, every_pct: 10,
+  enabled: false, mode: 'cashback', cashback_pct: 5, cashback_days: 90, every_unit: 'valor', every_amount: 1000, every_pct: 10,
   tiers: [{ min: 500, pct: 5 }, { min: 1500, pct: 8 }, { min: 3000, pct: 10 }],
 }
 
@@ -51,7 +56,7 @@ export function readPricing(raw: unknown): PricingSettings {
   return {
     tax_pct: num(r.tax_pct, 0, 99, 0), card_pct: num(r.card_pct, 0, 99, 0), other_pct: num(r.other_pct, 0, 99, 0),
     per_piece: num(r.per_piece, 0, 100000, 0), target_margin_pct: num(r.target_margin_pct, 0, 95, DEFAULT_PRICING.target_margin_pct),
-    fixed_monthly: num(r.fixed_monthly, 0, 1e9, 0), avg_ticket: num(r.avg_ticket, 0, 1e7, 0),
+    fixed_monthly: num(r.fixed_monthly, 0, 1e9, 0), avg_ticket: num(r.avg_ticket, 0, 1e7, 0), avg_pieces: num(r.avg_pieces, 0, 1000, 0),
   }
 }
 
@@ -67,9 +72,13 @@ export function readLoyalty(raw: unknown): LoyaltySettings {
     enabled: r.enabled === true, mode,
     cashback_pct: num(r.cashback_pct, 0.1, 50, DEFAULT_LOYALTY.cashback_pct),
     cashback_days: Math.round(num(r.cashback_days, 7, 730, DEFAULT_LOYALTY.cashback_days)),
-    every_amount: num(r.every_amount, 1, 1e7, DEFAULT_LOYALTY.every_amount),
+    every_unit: r.every_unit === 'pecas' || r.every_unit === 'compras' ? r.every_unit : 'valor',
+    every_amount: r.every_unit === 'pecas' || r.every_unit === 'compras'
+      ? Math.round(num(r.every_amount, 1, 1000, 5))
+      : num(r.every_amount, 1, 1e7, DEFAULT_LOYALTY.every_amount),
     every_pct: num(r.every_pct, 0.1, 90, DEFAULT_LOYALTY.every_pct),
     tiers,
+    changed_at: typeof r.changed_at === 'string' ? r.changed_at : null,
   }
 }
 
@@ -78,20 +87,26 @@ export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 10
 export const ceil2 = (n: number) => Math.ceil(n * 100 - 1e-6) / 100
 
 // Quanto a fidelidade custa, em % do preço, para reservar na precificação.
+// A compra que usa o desconto também conta para o próximo prêmio.
 // - cashback: o crédito dado (considera que toda cliente usa; é o cenário mais caro)
-// - a cada R$ X ganha Y%: desconto Y sobre a compra seguinte (ticket médio T)
-//     → custo ≈ Y × T ÷ (X + T)   (sem ticket médio, considera T = X)
+// - a cada R$ X ganha Y% na compra seguinte (compra média T): custo ≈ Y × T ÷ X
+// - a cada X peças (k peças por compra, em média): custo ≈ Y × k ÷ X
+// - a cada X compras: custo ≈ Y ÷ X
+//   (nunca mais que Y: com compras grandes, toda compra teria o desconto)
 // - progressivo: o maior desconto da escada (cenário mais caro)
-export function loyaltyCostPct(l: LoyaltySettings, avgTicket = 0): number {
+export function loyaltyCostPct(l: LoyaltySettings, avgTicket = 0, avgPieces = 0): number {
   if (!l.enabled) return 0
   if (l.mode === 'cashback') return l.cashback_pct
   if (l.mode === 'progressivo') return l.tiers.reduce((m, t) => Math.max(m, t.pct), 0)
-  const X = l.every_amount, T = avgTicket > 0 ? avgTicket : X
-  return (l.every_pct * T) / (X + T)
+  const X = l.every_amount, Y = l.every_pct
+  const share = l.every_unit === 'compras' ? 1 / X
+    : l.every_unit === 'pecas' ? (avgPieces > 0 ? avgPieces : 1) / X
+    : (avgTicket > 0 ? avgTicket : X) / X
+  return Y * Math.min(1, share)
 }
 
 export function variablePct(p: PricingSettings, l: LoyaltySettings): number {
-  return p.tax_pct + p.card_pct + p.other_pct + loyaltyCostPct(l, p.avg_ticket)
+  return p.tax_pct + p.card_pct + p.other_pct + loyaltyCostPct(l, p.avg_ticket, p.avg_pieces)
 }
 
 export type PriceSuggestion = { ok: true; price: number; markup: number } | { ok: false; reason: string }
@@ -211,10 +226,11 @@ export function cashbackBalance(entries: CashbackEntry[], now = new Date()): { b
   }
 }
 
-// "A cada R$ X em compras, ganha Y%": prêmios conquistados − prêmios já usados
-export function everyRewards(spent: number, used: number, l: LoyaltySettings): { available: number; progress: number; missing: number } {
-  const earned = Math.floor((spent + 1e-6) / l.every_amount)
-  const progress = spent - earned * l.every_amount
+// "A cada X ganha Y%": prêmios conquistados − prêmios já usados.
+// counted = o que já conta (R$ pagos, peças ou compras, conforme every_unit)
+export function everyRewards(counted: number, used: number, l: LoyaltySettings): { available: number; progress: number; missing: number } {
+  const earned = Math.floor((counted + 1e-6) / l.every_amount)
+  const progress = counted - earned * l.every_amount
   return { available: Math.max(0, earned - used), progress: round2(progress), missing: round2(l.every_amount - progress) }
 }
 
@@ -224,4 +240,112 @@ export function tierFor(spent12m: number, l: LoyaltySettings): { pct: number; ne
   for (const t of l.tiers) if (spent12m + 1e-6 >= t.min) pct = t.pct
   const next = l.tiers.find(t => spent12m + 1e-6 < t.min) ?? null
   return { pct, next, missing: next ? round2(next.min - spent12m) : null }
+}
+
+// ─── Impostos por regime (com data a partir de quando vale) ───────────────────
+export type TaxRegimeId = 'mei' | 'simples' | 'presumido' | 'outro'
+export type TaxRegime = { regime: TaxRegimeId; rate_pct: number; since: string; note?: string | null }
+
+export const TAX_REGIMES: { id: TaxRegimeId; label: string; hint: string }[] = [
+  { id: 'mei', label: 'MEI', hint: 'O imposto é o DAS fixo do mês: coloque o valor nos custos fixos e deixe 0% aqui.' },
+  { id: 'simples', label: 'Simples Nacional', hint: 'Use a alíquota efetiva (a calculadora abaixo ajuda). Confirme com o seu contador.' },
+  { id: 'presumido', label: 'Lucro Presumido', hint: 'Some os impostos sobre a venda (PIS, COFINS, ICMS…) que o contador informar.' },
+  { id: 'outro', label: 'Outro', hint: 'Informe o percentual total de impostos sobre a venda.' },
+]
+
+export function readTaxRegimes(raw: unknown): TaxRegime[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(r => r as Partial<TaxRegime>)
+    .filter(r => (r.regime === 'mei' || r.regime === 'simples' || r.regime === 'presumido' || r.regime === 'outro') && typeof r.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.since))
+    .map(r => ({ regime: r.regime as TaxRegimeId, rate_pct: num(r.rate_pct, 0, 60, 0), since: r.since as string, note: typeof r.note === 'string' ? r.note.slice(0, 200) : null }))
+    .sort((a, b) => a.since.localeCompare(b.since))
+    .slice(-24)
+}
+
+// Data (aaaa-mm-dd) de um instante, no fuso de Brasília
+export function dateBR(iso: string | Date): string {
+  const t = typeof iso === 'string' ? Date.parse(iso.length === 10 ? `${iso}T12:00:00-03:00` : iso) : iso.getTime()
+  return new Date(t - 3 * 3_600_000).toISOString().slice(0, 10)
+}
+
+// Regime que valia numa data (a venda usa o imposto da época)
+export function regimeAt(regimes: TaxRegime[], when: string | Date): TaxRegime | null {
+  const d = dateBR(when)
+  let found: TaxRegime | null = null
+  for (const r of regimes) if (r.since <= d) found = r
+  return found
+}
+
+// Precificação com o imposto do regime em vigor na data (sem regime cadastrado, usa tax_pct)
+export function pricingAt(p: PricingSettings, regimes: TaxRegime[], when: string | Date): PricingSettings {
+  const r = regimeAt(regimes, when)
+  return r ? { ...p, tax_pct: r.rate_pct } : p
+}
+
+// Simples Nacional, Anexo I (comércio) — LC 123/2006 com a redação da LC 155/2016.
+// Alíquota efetiva = (RBT12 × nominal − parcela a deduzir) ÷ RBT12
+export const SIMPLES_ANEXO_I = [
+  { upTo: 180_000, nominal: 4.0, deduct: 0 },
+  { upTo: 360_000, nominal: 7.3, deduct: 5_940 },
+  { upTo: 720_000, nominal: 9.5, deduct: 13_860 },
+  { upTo: 1_800_000, nominal: 10.7, deduct: 22_500 },
+  { upTo: 3_600_000, nominal: 14.3, deduct: 87_300 },
+  { upTo: 4_800_000, nominal: 19.0, deduct: 378_000 },
+]
+
+export function simplesAnexoIRate(rbt12: number): { faixa: number; nominal: number; deduct: number; effective: number } | null {
+  if (!(rbt12 > 0)) return null
+  const i = SIMPLES_ANEXO_I.findIndex(f => rbt12 <= f.upTo + 1e-9)
+  if (i < 0) return null // acima de R$ 4,8 milhões: fora do Simples
+  const f = SIMPLES_ANEXO_I[i]
+  return { faixa: i + 1, nominal: f.nominal, deduct: f.deduct, effective: ((rbt12 * f.nominal) / 100 - f.deduct) / rbt12 * 100 }
+}
+
+// ─── Ganho por item da venda (preço de tabela, antes do desconto do pedido) ───
+export type LineResult = { revenue: number; cost: number | null; variableCost: number; contribution: number | null; marginPct: number | null; unitContribution: number | null }
+
+export function analyzeLines(lines: OrderLine[], p: PricingSettings, l: LoyaltySettings): LineResult[] {
+  const v = orderVariablePct(p, l) / 100
+  return lines.map(i => {
+    const revenue = i.qty * i.unit_price
+    const variableCost = revenue * v
+    if (i.unit_cost === null || i.unit_cost === undefined) return { revenue: round2(revenue), cost: null, variableCost: round2(variableCost), contribution: null, marginPct: null, unitContribution: null }
+    const cost = i.qty * (i.unit_cost + p.per_piece)
+    const contribution = revenue - cost - variableCost
+    return {
+      revenue: round2(revenue), cost: round2(cost), variableCost: round2(variableCost), contribution: round2(contribution),
+      marginPct: revenue > 0 ? (contribution / revenue) * 100 : 0, unitContribution: i.qty > 0 ? round2(contribution / i.qty) : null,
+    }
+  })
+}
+
+// Frase da fidelidade para mandar à cliente
+export function loyaltyMessage(firstName: string, storeName: string, l: LoyaltySettings, st:
+  | { mode: 'cashback'; balance: number; nextExpiry: string | null }
+  | { mode: 'cada_x'; available: number; progress: number; missing: number }
+  | { mode: 'progressivo'; pct: number; nextPct: number | null; missing: number | null }, fmt: (n: number) => string): string | null {
+  const hi = `Oi, ${firstName}! `
+  if (st.mode === 'cashback') {
+    if (st.balance <= 0) return null
+    const exp = st.nextExpiry ? ` Ele vale até ${st.nextExpiry.slice(8, 10)}/${st.nextExpiry.slice(5, 7)}.` : ''
+    return `${hi}Você tem ${fmt(st.balance)} de crédito na ${storeName} para usar em roupas.${exp}`
+  }
+  if (st.mode === 'cada_x') {
+    const pct = `${String(l.every_pct).replace('.', ',')}% de desconto`
+    if (st.available > 0) return `${hi}Você ganhou ${pct} na sua próxima compra na ${storeName}!`
+    const unit = (n: number) => l.every_unit === 'valor' ? fmt(n) : l.every_unit === 'pecas' ? `${n} peça${n === 1 ? '' : 's'}` : `${n} compra${n === 1 ? '' : 's'}`
+    const done = l.every_unit === 'valor' ? `Você já comprou ${fmt(st.progress)}` : l.every_unit === 'pecas' ? `Você já comprou ${unit(st.progress)}` : `Você já fez ${unit(st.progress)}`
+    return `${hi}${done} na ${storeName}. Falta${st.missing === 1 || l.every_unit === 'valor' ? '' : 'm'} ${unit(st.missing)} para ganhar ${pct}.`
+  }
+  if (st.pct > 0 && st.nextPct === null) return `${hi}Você está no nosso nível máximo: ${String(st.pct).replace('.', ',')}% de desconto nas compras na ${storeName}.`
+  if (st.nextPct !== null && st.missing !== null) return `${hi}${st.pct > 0 ? `Você tem ${String(st.pct).replace('.', ',')}% de desconto na ${storeName}. ` : ''}Faltam ${fmt(st.missing)} em compras para passar para ${String(st.nextPct).replace('.', ',')}%.`
+  return null
+}
+
+// "3 peças", "1 compra", "R$ 150,00"
+export function loyaltyUnitText(n: number, unit: LoyaltyUnit, fmt: (v: number) => string): string {
+  if (unit === 'valor') return fmt(n)
+  const k = Math.round(n)
+  return unit === 'pecas' ? `${k} peça${k === 1 ? '' : 's'}` : `${k} compra${k === 1 ? '' : 's'}`
 }

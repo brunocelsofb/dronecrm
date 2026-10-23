@@ -7,7 +7,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fmtBRL, fmtPct } from '@/lib/format'
-import { analyzeOrder, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { analyzeLines, analyzeOrder, loyaltyMessage, loyaltyUnitText, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { whatsappLink } from '@/lib/retail/customers'
 import { parseMoney } from '@/lib/retail/products'
 import { updateRetailOrderPayment } from '@/lib/actions/retail-orders'
 import { applyOrderLoyalty, removeOrderLoyalty } from '@/lib/actions/retail-pricing'
@@ -17,8 +18,8 @@ type Payment = { discount: number; shipping: number; payment_method: string | nu
 
 const fmtDay = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—')
 
-export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loyaltyKind, pricing, loyalty, customerLoyalty, editable, hasCustomer }: {
-  orderId: string; lines: OrderLine[]; payment: Payment; loyaltyDiscount: number; loyaltyKind: string | null
+export function NegotiationPanel({ orderId, lines, labels, customer, storeName, payment, loyaltyDiscount, loyaltyKind, pricing, loyalty, customerLoyalty, editable, hasCustomer }: {
+  orderId: string; lines: OrderLine[]; labels: string[]; customer: { name: string; phone: string | null } | null; storeName: string; payment: Payment; loyaltyDiscount: number; loyaltyKind: string | null
   pricing: PricingSettings; loyalty: LoyaltySettings; customerLoyalty: CustomerLoyalty; editable: boolean; hasCustomer: boolean
 }) {
   const router = useRouter()
@@ -29,6 +30,9 @@ export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loy
 
   const subtotal = lines.reduce((s, l) => s + l.qty * l.unit_price, 0)
   const now = analyzeOrder(lines, payment.discount + loyaltyDiscount, pricing, loyalty)
+  const perLine = analyzeLines(lines, pricing, loyalty)
+  const lMsg = customer && customerLoyalty.mode !== 'off' ? loyaltyMessage(customer.name.split(' ')[0], storeName, loyalty, customerLoyalty, fmtBRL) : null
+  const lWa = lMsg ? whatsappLink(customer?.phone, lMsg) : null
   const raw = parseMoney(sim) ?? 0
   const extra = simMode === 'pct' ? (now.revenue * Math.min(raw, 100)) / 100 : raw
   const simA = raw > 0 ? analyzeOrder(lines, payment.discount + loyaltyDiscount + extra, pricing, loyalty) : null
@@ -52,7 +56,7 @@ export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loy
     <section className="space-y-4 rounded-xl border border-brand-700/30 bg-white p-4">
       <div>
         <h2 className="text-base font-semibold text-gray-900">Negociação</h2>
-        <p className="text-xs text-gray-500">Só a equipe vê. Considera o custo das peças, impostos, taxas{loyalty.enabled && loyalty.mode === 'cashback' ? ' e o cashback que a cliente vai ganhar' : ''}. Frete fica de fora.</p>
+        <p className="text-xs text-gray-500">Só a equipe vê. Considera o custo das peças, impostos e taxas{loyalty.enabled && loyalty.mode === 'cashback' ? ', e o cashback que a cliente vai ganhar' : ''}. Frete fica de fora.</p>
       </div>
 
       {now.missingCost > 0 && (
@@ -78,6 +82,33 @@ export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loy
           <p className="text-xs text-gray-600">desconto máximo: {fmtBRL(now.maxDiscount)}</p>
         </div>
       </div>
+      {lines.length > 0 && (
+        <div>
+          <p className="mb-1 text-sm font-medium text-gray-900">Ganho por peça</p>
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 text-sm">
+            {lines.map((l, i) => {
+              const r = perLine[i]
+              return (
+                <li key={i} className="grid grid-cols-[1fr_auto] gap-2 px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="block truncate">{labels[i] ?? 'Peça'}</span>
+                    <span className="block text-xs text-gray-500">{l.qty} × {fmtBRL(l.unit_price)}{l.unit_cost !== null ? ` · custo ${fmtBRL(l.unit_cost)} cada` : ' · sem custo cadastrado'}</span>
+                  </span>
+                  <span className="text-right">
+                    {r.contribution === null ? <span className="text-xs text-gray-400">—</span> : (
+                      <>
+                        <span className={`block font-medium ${tone(r.contribution, r.marginPct ?? 0)}`}>{fmtBRL(r.contribution)}</span>
+                        <span className="block text-xs text-gray-500">{fmtPct(r.marginPct)}{l.qty > 1 ? ` · ${fmtBRL(r.unitContribution)} cada` : ''}</span>
+                      </>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          <p className="mt-1 text-xs text-gray-500">Por peça, no preço de tabela. O desconto do pedido entra no total acima.</p>
+        </div>
+      )}
       <p className="text-xs text-gray-500">Valores das peças, sem frete. Hoje: {fmtBRL(subtotal)} em peças{payment.discount + loyaltyDiscount > 0 ? ` − ${fmtBRL(payment.discount + loyaltyDiscount)} de desconto = ${fmtBRL(now.revenue)}` : ''}.</p>
 
       {editable && (
@@ -121,7 +152,7 @@ export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loy
                 : 'Sem crédito de cashback válido.')}
               {customerLoyalty.mode === 'cada_x' && (customerLoyalty.available > 0
                 ? <>Ganhou <strong>{fmtPct(customerLoyalty.pct)} de desconto</strong> neste pedido.</>
-                : <>Faltam {fmtBRL(customerLoyalty.missing)} em compras para ganhar {fmtPct(customerLoyalty.pct)}.</>)}
+                : <>Já tem {loyaltyUnitText(customerLoyalty.progress, customerLoyalty.unit, fmtBRL)}; falta{customerLoyalty.missing === 1 && customerLoyalty.unit !== 'valor' ? '' : 'm'} {loyaltyUnitText(customerLoyalty.missing, customerLoyalty.unit, fmtBRL)} para ganhar {fmtPct(customerLoyalty.pct)}.</>)}
               {customerLoyalty.mode === 'progressivo' && (customerLoyalty.pct > 0
                 ? <>Nível atual: <strong>{fmtPct(customerLoyalty.pct)} de desconto</strong> ({fmtBRL(customerLoyalty.spent12m)} em 12 meses).</>
                 : <>Ainda sem desconto ({fmtBRL(customerLoyalty.spent12m)} em 12 meses).</>)}
@@ -130,6 +161,13 @@ export function NegotiationPanel({ orderId, lines, payment, loyaltyDiscount, loy
             {editable && ((customerLoyalty.mode === 'cashback' && customerLoyalty.balance > 0) || (customerLoyalty.mode === 'cada_x' && customerLoyalty.available > 0) || (customerLoyalty.mode === 'progressivo' && customerLoyalty.pct > 0)) && (
               <button type="button" disabled={busy} onClick={() => run(() => applyOrderLoyalty(orderId), 'Benefício aplicado no pedido.')} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">Usar no pedido</button>
             )}
+          </div>
+        )}
+        {lMsg && (
+          <div className="rounded-lg bg-gray-50 px-3 py-2">
+            <p className="text-xs text-gray-500">Para avisar a cliente:</p>
+            <p className="text-sm text-gray-800">{lMsg}</p>
+            {lWa && <a href={lWa} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-medium text-brand-700 hover:underline">Mandar no WhatsApp</a>}
           </div>
         )}
         {loyalty.enabled && loyalty.mode === 'cashback' && <p className="text-xs text-gray-500">Ao marcar Pago, a cliente ganha {fmtPct(loyalty.cashback_pct)} em crédito (válido por {loyalty.cashback_days} dias). Cancelar desfaz.</p>}

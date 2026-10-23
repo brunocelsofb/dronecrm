@@ -5,24 +5,26 @@
 import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { PAID_STATUSES } from '@/lib/retail/customers'
 import {
-  readLoyalty, readPricing, cashbackBalance, everyRewards, tierFor, round2,
-  type LoyaltySettings, type PricingSettings, type CashbackEntry,
+  readLoyalty, readPricing, readTaxRegimes, pricingAt, cashbackBalance, everyRewards, tierFor, round2,
+  type LoyaltySettings, type PricingSettings, type CashbackEntry, type TaxRegime,
 } from '@/lib/retail/margin'
 
 type Db = Awaited<ReturnType<typeof createScopedAdmin>>
 
-export type RetailPricingConfig = { pricing: PricingSettings; loyalty: LoyaltySettings; raw: Record<string, unknown> }
+// pricing já vem com o imposto do regime em vigor hoje; para uma venda antiga use pricingAt(pricing, regimes, data)
+export type RetailPricingConfig = { pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; raw: Record<string, unknown> }
 
 export async function loadPricingConfig(db: Db, tenantId: string): Promise<RetailPricingConfig> {
   const { data } = await db.from('organization_settings').select('retail_settings').eq('tenant_id', tenantId).maybeSingle()
   const raw = ((data as { retail_settings?: Record<string, unknown> } | null)?.retail_settings ?? {}) as Record<string, unknown>
-  return { pricing: readPricing(raw.pricing), loyalty: readLoyalty(raw.loyalty), raw }
+  const regimes = readTaxRegimes(raw.tax_regimes)
+  return { pricing: pricingAt(readPricing(raw.pricing), regimes, new Date()), loyalty: readLoyalty(raw.loyalty), regimes, raw }
 }
 
 export type CustomerLoyalty =
   | { mode: 'off' }
   | { mode: 'cashback'; balance: number; nextExpiry: string | null; expiringAmount: number; pct: number }
-  | { mode: 'cada_x'; available: number; progress: number; missing: number; every: number; pct: number }
+  | { mode: 'cada_x'; available: number; progress: number; missing: number; every: number; unit: LoyaltySettings['every_unit']; pct: number }
   | { mode: 'progressivo'; pct: number; spent12m: number; nextMin: number | null; nextPct: number | null; missing: number | null }
 
 // Situação da cliente no programa (ignora o pedido informado, para não contar ele mesmo)
@@ -35,15 +37,21 @@ export async function customerLoyalty(db: Db, customerId: string, l: LoyaltySett
     const entries: CashbackEntry[] = (data ?? []).map(e => ({ kind: e.kind as 'credito' | 'uso', amount: Number(e.amount), at: e.created_at as string, expires_at: e.expires_at as string | null }))
     return { mode: 'cashback', pct: l.cashback_pct, ...cashbackBalance(entries, now) }
   }
-  let q = db.from('retail_orders').select('id, status, loyalty_base, loyalty_kind, loyalty_discount, paid_at').eq('customer_id', customerId).neq('status', 'cancelado')
+  let q = db.from('retail_orders').select('id, status, loyalty_base, loyalty_kind, loyalty_discount, paid_at, created_at, retail_order_items(qty)').eq('customer_id', customerId).neq('status', 'cancelado')
   if (exceptOrderId) q = q.neq('id', exceptOrderId)
   const { data } = await q.limit(5000)
-  const orders = data ?? []
-  const paid = orders.filter(o => PAID_STATUSES.includes(o.status as never))
+  const orders = (data ?? []) as unknown as { id: string; status: string; loyalty_base: number; loyalty_kind: string | null; loyalty_discount: number; paid_at: string | null; created_at: string; retail_order_items: { qty: number }[] }[]
+  // compras que contam: pagas enquanto a fidelidade estava ligada (loyalty_base > 0)
+  const paid = orders.filter(o => PAID_STATUSES.includes(o.status as never) && Number(o.loyalty_base ?? 0) > 0)
   if (l.mode === 'cada_x') {
-    const spent = paid.reduce((s, o) => s + Number(o.loyalty_base ?? 0), 0)
-    const used = orders.filter(o => o.loyalty_kind === 'cada_x' && Number(o.loyalty_discount) > 0).length
-    return { mode: 'cada_x', every: l.every_amount, pct: l.every_pct, ...everyRewards(spent, used, l) }
+    const from = l.changed_at ?? ''
+    const inRule = (iso: string | null) => !from || (iso ?? '') >= from
+    const counted = paid.filter(o => inRule(o.paid_at))
+    const value = l.every_unit === 'pecas' ? counted.reduce((s, o) => s + o.retail_order_items.reduce((t, i) => t + i.qty, 0), 0)
+      : l.every_unit === 'compras' ? counted.length
+      : counted.reduce((s, o) => s + Number(o.loyalty_base ?? 0), 0)
+    const used = orders.filter(o => o.loyalty_kind === 'cada_x' && Number(o.loyalty_discount) > 0 && inRule(o.created_at)).length
+    return { mode: 'cada_x', every: l.every_amount, unit: l.every_unit, pct: l.every_pct, ...everyRewards(value, used, l) }
   }
   const since = now.getTime() - 365 * 86_400_000
   const spent12m = round2(paid.filter(o => o.paid_at && Date.parse(o.paid_at as string) >= since).reduce((s, o) => s + Number(o.loyalty_base ?? 0), 0))
@@ -78,8 +86,13 @@ export async function onRetailOrderCancelled(db: Db, orderId: string): Promise<v
 }
 
 // Média das compras pagas (sugestão para o "ticket médio" da precificação)
-export async function averagePaidTicket(db: Db): Promise<{ avg: number; count: number }> {
-  const { data } = await db.from('retail_orders').select('subtotal, discount, loyalty_discount').in('status', PAID_STATUSES).order('created_at', { ascending: false }).limit(500)
-  const list = (data ?? []).map(o => Number(o.subtotal) - Number(o.discount) - Number(o.loyalty_discount ?? 0)).filter(v => v > 0)
-  return { avg: list.length ? round2(list.reduce((s, v) => s + v, 0) / list.length) : 0, count: list.length }
+export async function averagePaidTicket(db: Db): Promise<{ avg: number; count: number; avgPieces: number }> {
+  const { data } = await db.from('retail_orders').select('subtotal, discount, loyalty_discount, retail_order_items(qty)').in('status', PAID_STATUSES).order('created_at', { ascending: false }).limit(500)
+  const rows = (data ?? []) as unknown as { subtotal: number; discount: number; loyalty_discount: number | null; retail_order_items: { qty: number }[] }[]
+  const list = rows.map(o => Number(o.subtotal) - Number(o.discount) - Number(o.loyalty_discount ?? 0)).filter(v => v > 0)
+  const pieces = rows.map(o => o.retail_order_items.reduce((s, i) => s + i.qty, 0)).filter(v => v > 0)
+  return {
+    avg: list.length ? round2(list.reduce((s, v) => s + v, 0) / list.length) : 0, count: list.length,
+    avgPieces: pieces.length ? Math.round((pieces.reduce((s, v) => s + v, 0) / pieces.length) * 10) / 10 : 0,
+  }
 }

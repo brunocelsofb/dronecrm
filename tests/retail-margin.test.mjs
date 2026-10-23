@@ -4,11 +4,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   referencePrice, analyzePrice, analyzeOrder, loyaltyCostPct, breakEvenRevenue, cashbackBalance, everyRewards, tierFor,
-  readLoyalty, readPricing, DEFAULT_LOYALTY,
+  readLoyalty, readPricing, DEFAULT_LOYALTY, readTaxRegimes, regimeAt, pricingAt, simplesAnexoIRate, analyzeLines, loyaltyMessage,
 } from '../src/lib/retail/margin.ts'
 
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} ≠ ${b}`)
-const P = (o = {}) => ({ tax_pct: 6, card_pct: 4, other_pct: 0, per_piece: 3, target_margin_pct: 20, fixed_monthly: 5000, avg_ticket: 0, ...o })
+const P = (o = {}) => ({ tax_pct: 6, card_pct: 4, other_pct: 0, per_piece: 3, target_margin_pct: 20, fixed_monthly: 5000, avg_ticket: 0, avg_pieces: 0, ...o })
 const L = (o = {}) => ({ ...DEFAULT_LOYALTY, enabled: true, mode: 'cashback', cashback_pct: 5, ...o })
 const OFF = { ...DEFAULT_LOYALTY, enabled: false }
 
@@ -61,20 +61,75 @@ test('custo da fidelidade nos 3 formatos', () => {
   assert.equal(loyaltyCostPct(OFF), 0)
   assert.equal(loyaltyCostPct(L({ cashback_pct: 7 })), 7)
   assert.equal(loyaltyCostPct(L({ mode: 'progressivo' })), 10) // maior degrau da escada padrão
-  // a cada R$ 1000 ganha 10%, ticket médio 250: 10 × 250 ÷ 1250 = 2%
-  close(loyaltyCostPct(L({ mode: 'cada_x', every_amount: 1000, every_pct: 10 }), 250), 2)
-  // sem ticket médio, considera ticket = 1000: 10 × 1000 ÷ 2000 = 5%
-  close(loyaltyCostPct(L({ mode: 'cada_x', every_amount: 1000, every_pct: 10 })), 5)
+  // a cada R$ 1000 ganha 10%, compra média 250 (a compra com desconto também conta): 10 × 250 ÷ 1000 = 2,5%
+  close(loyaltyCostPct(L({ mode: 'cada_x', every_unit: 'valor', every_amount: 1000, every_pct: 10 }), 250), 2.5)
+  // sem compra média, considera compra = X → todo prêmio a cada compra: 10%
+  close(loyaltyCostPct(L({ mode: 'cada_x', every_unit: 'valor', every_amount: 1000, every_pct: 10 })), 10)
+  // a cada 4 peças ganha 10%, 2 peças por compra: 10 × 2 ÷ 4 = 5%; a cada 5 compras: 10 ÷ 5 = 2%
+  close(loyaltyCostPct(L({ mode: 'cada_x', every_unit: 'pecas', every_amount: 4, every_pct: 10 }), 0, 2), 5)
+  close(loyaltyCostPct(L({ mode: 'cada_x', every_unit: 'compras', every_amount: 5, every_pct: 10 })), 2)
+  // nunca mais que o próprio desconto
+  close(loyaltyCostPct(L({ mode: 'cada_x', every_unit: 'pecas', every_amount: 2, every_pct: 10 }), 0, 5), 10)
 })
 
-test('fidelidade "a cada R$ X": simulação de compras confere com a fórmula', () => {
-  // Cliente compra sempre R$ 250 (preço cheio). Ao juntar R$ 1000 pagos cheios, a compra seguinte tem 10%.
-  let fullVolume = 0, discount = 0, acc = 0
-  for (let i = 0; i < 5000; i++) {
-    fullVolume += 250
-    if (acc >= 1000) { discount += 25; acc = 0 } else acc += 250
+test('fidelidade "a cada X": simulação de compras confere com as fórmulas (a compra com desconto também conta)', () => {
+  // valor: compras de R$ 250, a cada R$ 1000 pagos ganha 10% na seguinte
+  const sim = (unitOf, every, buys) => {
+    let full = 0, disc = 0, counted = 0, earned = 0, used = 0
+    for (let i = 0; i < 20000; i++) {
+      const t = buys(i), price = t.value
+      full += price
+      let paid = price
+      if (Math.floor(counted / every) - used > 0) { paid = price * 0.9; disc += price * 0.1; used++ }
+      counted += unitOf({ ...t, paid })
+    }
+    return (disc / full) * 100
   }
-  close((discount / fullVolume) * 100, 2, 0.01) // ≈ 2% (fórmula: 10 × 250 ÷ 1250)
+  close(sim(t => t.paid, 1000, () => ({ value: 250, pieces: 1 })), 10 * 250 / 1000, 0.15)       // ≈ 2,5% (a compra com desconto conta menos)
+  close(sim(t => t.pieces, 4, () => ({ value: 200, pieces: 2 })), 10 * 2 / 4, 0.01)            // 5%
+  close(sim(() => 1, 5, () => ({ value: 180, pieces: 1 })), 10 / 5, 0.01)                         // 2%
+})
+
+test('regime de imposto pela data da venda e Simples Nacional (Anexo I)', () => {
+  const regimes = readTaxRegimes([
+    { regime: 'simples', rate_pct: 4, since: '2026-01-01' },
+    { regime: 'presumido', rate_pct: 11.5, since: '2026-11-01' },
+    { regime: 'xyz', rate_pct: 1, since: '2026-05-01' },
+  ])
+  assert.equal(regimes.length, 2)
+  assert.equal(regimeAt(regimes, '2025-12-31'), null)
+  assert.equal(regimeAt(regimes, '2026-10-31').rate_pct, 4)
+  assert.equal(regimeAt(regimes, '2026-11-01T02:30:00Z').rate_pct, 4)   // 31/10 23:30 em Brasília
+  assert.equal(regimeAt(regimes, '2026-11-01T03:00:00Z').rate_pct, 11.5) // 01/11 00:00 em Brasília
+  assert.equal(pricingAt(P(), regimes, '2026-12-10').tax_pct, 11.5)
+  assert.equal(pricingAt(P(), [], '2026-12-10').tax_pct, 6) // sem regime: usa o valor da tela
+  // (370.000,01 × 9,5% − 13.860) ÷ 370.000,01 = 5,754% (exemplo publicado da 3ª faixa)
+  const r = simplesAnexoIRate(370000.01)
+  assert.equal(r.faixa, 3); close(r.effective, 5.754, 0.001)
+  close(simplesAnexoIRate(100000).effective, 4)
+  close(simplesAnexoIRate(180000).effective, 4)                      // limite da 1ª faixa
+  close(simplesAnexoIRate(360000).effective, (360000 * 0.073 - 5940) / 360000 * 100)
+  close(simplesAnexoIRate(4800000).effective, (4800000 * 0.19 - 378000) / 4800000 * 100)
+  assert.equal(simplesAnexoIRate(4800000.01), null)
+  assert.equal(simplesAnexoIRate(0), null)
+})
+
+test('ganho por item e frase da fidelidade', () => {
+  const lines = analyzeLines([{ qty: 2, unit_price: 120, unit_cost: 60 }, { qty: 1, unit_price: 100, unit_cost: null }], P(), L())
+  // 240 − 2×(60+3) − 15% × 240 = 240 − 126 − 36 = 78 → 39 por peça
+  assert.equal(lines[0].contribution, 78); assert.equal(lines[0].unitContribution, 39); close(lines[0].marginPct, 32.5)
+  assert.equal(lines[1].contribution, null)
+  const fmt = n => `R$ ${n.toFixed(2).replace('.', ',')}`
+  const lp = L({ mode: 'cada_x', every_unit: 'pecas', every_amount: 4, every_pct: 10 })
+  assert.equal(loyaltyMessage('Maria', 'AMARÁS', lp, { mode: 'cada_x', available: 0, progress: 3, missing: 1 }, fmt),
+    'Oi, Maria! Você já comprou 3 peças na AMARÁS. Falta 1 peça para ganhar 10% de desconto.')
+  assert.equal(loyaltyMessage('Maria', 'AMARÁS', lp, { mode: 'cada_x', available: 1, progress: 0, missing: 4 }, fmt),
+    'Oi, Maria! Você ganhou 10% de desconto na sua próxima compra na AMARÁS!')
+  assert.equal(loyaltyMessage('Ana', 'Loja', L({ mode: 'cada_x', every_unit: 'compras', every_amount: 5, every_pct: 15 }), { mode: 'cada_x', available: 0, progress: 3, missing: 2 }, fmt),
+    'Oi, Ana! Você já fez 3 compras na Loja. Faltam 2 compras para ganhar 15% de desconto.')
+  assert.equal(loyaltyMessage('Ana', 'Loja', L(), { mode: 'cashback', balance: 12.5, nextExpiry: '2026-12-01T12:00:00Z' }, fmt),
+    'Oi, Ana! Você tem R$ 12,50 de crédito na Loja para usar em roupas. Ele vale até 01/12.')
+  assert.equal(loyaltyMessage('Ana', 'Loja', L(), { mode: 'cashback', balance: 0, nextExpiry: null }, fmt), null)
 })
 
 test('pedido: margem real, desconto máximo e mínimo com a margem desejada', () => {
@@ -108,7 +163,7 @@ test('cashback: usa primeiro o crédito que vence antes; vencido some; nunca neg
 })
 
 test('a cada R$ X e progressivo', () => {
-  const l = L({ mode: 'cada_x', every_amount: 1000, every_pct: 10 })
+  const l = L({ mode: 'cada_x', every_unit: 'valor', every_amount: 1000, every_pct: 10 })
   assert.deepEqual(everyRewards(2350, 1, l), { available: 1, progress: 350, missing: 650 })
   assert.deepEqual(everyRewards(999.99, 0, l), { available: 0, progress: 999.99, missing: 0.01 })
   const t = L({ mode: 'progressivo' })
