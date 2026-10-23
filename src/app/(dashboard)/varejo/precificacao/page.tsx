@@ -35,7 +35,7 @@ export default async function RetailPricingPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Preço e fidelidade</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Custos e preço</h1>
         <p className="mt-1 text-sm text-gray-500">Suas peças com a conta completa, os impostos da loja, a margem que você quer e a fidelidade. Toda peça cadastrada entra aqui sozinha.</p>
       </div>
       <PricingForm pricing={readPricing(raw.pricing)} loyalty={loyalty} regimes={regimes} rbt12={rbt12} conditions={conditions} products={products} avgTicket={avg.avg} avgCount={avg.count} avgPieces={avg.avgPieces} readOnly={!access.isAdmin || !!support} />

@@ -136,7 +136,7 @@ export function NegotiationPanel({ orderId, lines, labels, customer, storeName, 
       <div className="space-y-2 border-t border-gray-100 pt-3">
         <p className="text-sm font-medium text-gray-900">Fidelidade da cliente</p>
         {!loyalty.enabled ? (
-          <p className="text-sm text-gray-500">Fidelidade desligada. Ligue em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Preço e fidelidade</Link>.</p>
+          <p className="text-sm text-gray-500">Fidelidade desligada. Ligue em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Custos e preço</Link>.</p>
         ) : !hasCustomer ? (
           <p className="text-sm text-gray-500">Pedido sem cliente ligada.</p>
         ) : loyaltyDiscount > 0 ? (

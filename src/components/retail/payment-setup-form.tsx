@@ -37,9 +37,9 @@ export function PaymentSetupForm({ setup, mpLast4, ipTokenSet, readOnly }: { set
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+    <section id="recebimento" className="scroll-mt-20 space-y-4 rounded-xl border border-gray-200 bg-white p-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Recebimento: link de pagamento</h2>
+        <h2 className="text-base font-semibold text-gray-900">7. Recebimento: link de pagamento</h2>
         <p className="text-xs text-gray-500">Quem gera o link quando a cliente escolhe Pix ou cartão em &quot;Finalizar compra&quot;. Com InfinitePay ou Mercado Pago, o Drone cria o link com o valor certo e, quando o pagamento é aprovado, o pedido vira Pago sozinho (o Drone confere no serviço antes).</p>
       </div>
 

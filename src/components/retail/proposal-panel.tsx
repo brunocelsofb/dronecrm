@@ -53,7 +53,7 @@ export function ProposalPanel({ orderId, previews, targetMargin, url, sentAt, ch
       {!payment.paid && choiceLabel && <p className="text-xs text-gray-600">A cliente escolheu: <strong>{choiceLabel}</strong>.</p>}
 
       {previews.length === 0 ? (
-        <p className="text-sm text-warn-700">Ligue o Pix ou o cartão em Varejo → Preço e fidelidade.</p>
+        <p className="text-sm text-warn-700">Ligue o Pix ou o cartão em Varejo → Custos e preço.</p>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {previews.map(o => (
@@ -69,7 +69,7 @@ export function ProposalPanel({ orderId, previews, targetMargin, url, sentAt, ch
       {editable && !payment.paid && previews.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-gray-500">
-            Pix: <strong>{label(providers.pix)}</strong> · Cartão: <strong>{label(providers.card)}</strong> (muda em Preço e fidelidade).
+            Pix: <strong>{label(providers.pix)}</strong> · Cartão: <strong>{label(providers.card)}</strong> (muda em Custos e preço).
           </p>
           {(manualPix || manualCard) && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

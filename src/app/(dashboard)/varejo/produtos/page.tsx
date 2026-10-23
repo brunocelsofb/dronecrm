@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { requireTenantId } from '@/lib/tenant/context'
+import { RetailSetupGuide } from '@/components/retail/setup-guide'
 import { fmtBRL } from '@/lib/format'
 import { PRODUCT_STATUSES, effectivePrice, retailPhotoUrl, totalStock } from '@/lib/retail/products'
 import { ProductImport } from '@/components/retail/product-import'
@@ -38,6 +40,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
 
   return (
     <div className="space-y-5">
+      <RetailSetupGuide db={db} tenantId={await requireTenantId()} only="produtos" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Produtos</h1>

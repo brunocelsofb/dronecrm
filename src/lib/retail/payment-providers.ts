@@ -75,7 +75,7 @@ export async function createProviderLink(i: CreateLinkInput): Promise<{ ok: true
       const url = [r.body?.url, r.body?.payment_url, r.body?.checkout_url, r.body?.link].find(v => typeof v === 'string' && /^https:\/\//.test(v as string)) as string | undefined
       if (r.status >= 200 && r.status < 300 && url) return { ok: true, url }
       console.error('[varejo-pagamento] InfinitePay recusou o link:', r.status, JSON.stringify(r.body ?? {}).slice(0, 300))
-      return { ok: false, error: `A InfinitePay não gerou o link (${r.status}). Confira a InfiniteTag em Preço e fidelidade.` }
+      return { ok: false, error: `A InfinitePay não gerou o link (${r.status}). Confira a InfiniteTag em Custos e preço.` }
     }
     if (!i.accounts.mpToken) return { ok: false, error: 'Chave do Mercado Pago não configurada.' }
     const r = await call(`${MP_API}/checkout/preferences`, {
@@ -93,7 +93,7 @@ export async function createProviderLink(i: CreateLinkInput): Promise<{ ok: true
     const url = r.body?.init_point
     if (r.status >= 200 && r.status < 300 && typeof url === 'string') return { ok: true, url }
     console.error('[varejo-pagamento] Mercado Pago recusou o link:', r.status, JSON.stringify(r.body ?? {}).slice(0, 300))
-    return { ok: false, error: r.status === 401 ? 'A chave do Mercado Pago foi recusada. Confira em Preço e fidelidade.' : `O Mercado Pago não gerou o link (${r.status}).` }
+    return { ok: false, error: r.status === 401 ? 'A chave do Mercado Pago foi recusada. Confira em Custos e preço.' : `O Mercado Pago não gerou o link (${r.status}).` }
   } catch (e) {
     console.error('[varejo-pagamento] falha ao gerar link:', e instanceof Error ? e.message : e)
     return { ok: false, error: 'O serviço de pagamento não respondeu. Tente de novo em instantes.' }

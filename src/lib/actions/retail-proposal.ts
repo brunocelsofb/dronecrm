@@ -54,7 +54,7 @@ export async function createRetailProposal(orderId: string, links: { pix?: strin
   if (!o.retail_order_items.length) return { ok: false, error: 'O pedido não tem peças.' }
 
   const cfg = await loadPricingConfig(db, tenantId)
-  if (!cfg.conditions.pix.enabled && !cfg.conditions.card.enabled) return { ok: false, error: 'Ligue ao menos uma condição de pagamento em Varejo → Preço e fidelidade.' }
+  if (!cfg.conditions.pix.enabled && !cfg.conditions.card.enabled) return { ok: false, error: 'Ligue ao menos uma condição de pagamento em Varejo → Custos e preço.' }
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
   const proposal = buildProposal({
     number: o.number,

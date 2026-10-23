@@ -69,7 +69,7 @@ export async function applyOrderLoyalty(orderId: string): Promise<Result<{ amoun
   if ('error' in g) return { ok: false, error: g.error }
   const db = await createScopedAdmin(g.tenantId)
   const { loyalty } = await loadPricingConfig(db, g.tenantId)
-  if (!loyalty.enabled) return { ok: false, error: 'A fidelidade está desligada em Varejo → Preço e fidelidade.' }
+  if (!loyalty.enabled) return { ok: false, error: 'A fidelidade está desligada em Varejo → Custos e preço.' }
   const { data: o } = await db.from('retail_orders').select('id, status, customer_id, subtotal, discount, stock_applied, loyalty_discount').eq('id', orderId).maybeSingle()
   if (!o) return { ok: false, error: 'Pedido não encontrado.' }
   if (!o.customer_id) return { ok: false, error: 'Ligue uma cliente ao pedido para usar a fidelidade.' }
@@ -152,28 +152,44 @@ export async function lookupCnpj(raw: string): Promise<Result<{ info: CnpjInfo }
   if ('error' in g) return { ok: false, error: g.error }
   const cnpj = String(raw ?? '').replace(/\D/g, '')
   if (cnpj.length !== 14) return { ok: false, error: 'CNPJ precisa ter 14 números.' }
-  let d: Record<string, unknown>
-  try {
-    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
-    if (res.status === 404) return { ok: false, error: 'CNPJ não encontrado na Receita.' }
-    if (!res.ok) return { ok: false, error: 'A consulta do CNPJ não respondeu agora. Tente de novo ou escolha o regime à mão.' }
-    d = await res.json() as Record<string, unknown>
-  } catch {
-    return { ok: false, error: 'A consulta do CNPJ não respondeu agora. Tente de novo ou escolha o regime à mão.' }
-  }
+  // 1º BrasilAPI; se não responder, ReceitaWS (gratuita, poucas consultas por minuto)
   const bool = (v: unknown) => (v === true || v === false ? v : null)
-  const cnae = d.cnae_fiscal !== undefined && d.cnae_fiscal !== null ? String(d.cnae_fiscal).padStart(7, '0') : null
-  const simples = bool(d.opcao_pelo_simples), mei = bool(d.opcao_pelo_mei)
+  const fromBrasil = async (): Promise<CnpjInfo | 'nao_encontrado' | null> => {
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000), headers: { Accept: 'application/json', 'User-Agent': 'DroneCRM/1.0' } })
+      if (res.status === 404) return 'nao_encontrado'
+      if (!res.ok) { console.error('[cnpj] BrasilAPI', res.status); return null }
+      const d = await res.json() as Record<string, unknown>
+      const cnae = d.cnae_fiscal !== undefined && d.cnae_fiscal !== null ? String(d.cnae_fiscal).replace(/\D/g, '').padStart(7, '0') : null
+      return makeInfo(String(d.nome_fantasia || d.razao_social || 'Empresa'), typeof d.uf === 'string' ? d.uf : null, cnae,
+        typeof d.cnae_fiscal_descricao === 'string' ? d.cnae_fiscal_descricao : null, bool(d.opcao_pelo_simples), bool(d.opcao_pelo_mei))
+    } catch (e) { console.error('[cnpj] BrasilAPI falhou:', e instanceof Error ? e.message : e); return null }
+  }
+  const fromReceitaWs = async (): Promise<CnpjInfo | 'nao_encontrado' | null> => {
+    try {
+      const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000), headers: { Accept: 'application/json' } })
+      if (!res.ok) { console.error('[cnpj] ReceitaWS', res.status); return null }
+      const d = await res.json() as Record<string, unknown>
+      if (d.status === 'ERROR') return /inv[aá]lido|n[aã]o encontrado/i.test(String(d.message ?? '')) ? 'nao_encontrado' : null
+      const at = Array.isArray(d.atividade_principal) ? (d.atividade_principal[0] as Record<string, unknown> | undefined) : undefined
+      const cnae = at?.code ? String(at.code).replace(/\D/g, '').padStart(7, '0') : null
+      const opt = (v: unknown) => (v && typeof v === 'object' ? bool((v as Record<string, unknown>).optante) : null)
+      return makeInfo(String(d.fantasia || d.nome || 'Empresa'), typeof d.uf === 'string' ? d.uf : null, cnae,
+        typeof at?.text === 'string' ? at.text : null, opt(d.simples), opt(d.simei))
+    } catch (e) { console.error('[cnpj] ReceitaWS falhou:', e instanceof Error ? e.message : e); return null }
+  }
+  let info = await fromBrasil()
+  if (info === null) info = await fromReceitaWs()
+  if (info === 'nao_encontrado') return { ok: false, error: 'CNPJ não encontrado na Receita. Confira os números.' }
+  if (!info) return { ok: false, error: 'A consulta do CNPJ não respondeu agora. Tente de novo em 1 minuto ou escolha o regime abaixo (o contador sabe).' }
+  return { ok: true, info }
+}
+
+function makeInfo(name: string, uf: string | null, cnae: string | null, cnaeText: string | null, simples: boolean | null, mei: boolean | null): CnpjInfo {
   return {
-    ok: true,
-    info: {
-      name: String(d.nome_fantasia || d.razao_social || 'Empresa'),
-      uf: typeof d.uf === 'string' ? d.uf : null,
-      cnae: cnae ? `${cnae.slice(0, 4)}-${cnae.slice(4, 5)}/${cnae.slice(5)}` : null,
-      cnaeText: typeof d.cnae_fiscal_descricao === 'string' ? d.cnae_fiscal_descricao : null,
-      simples, mei,
-      retail: !!cnae && cnae.startsWith('47'), // divisão 47: comércio varejista
-      suggested: mei === true ? 'mei' : simples === true ? 'simples' : simples === false ? 'presumido' : null,
-    },
+    name, uf, cnaeText, simples, mei,
+    cnae: cnae && cnae.length === 7 ? `${cnae.slice(0, 4)}-${cnae.slice(4, 5)}/${cnae.slice(5)}` : null,
+    retail: !!cnae && cnae.startsWith('47'), // divisão 47: comércio varejista
+    suggested: mei === true ? 'mei' : simples === true ? 'simples' : simples === false ? 'presumido' : null,
   }
 }

@@ -8,6 +8,7 @@ import { loadRetailDashboard } from '@/lib/retail/dashboard'
 import { readDashboardBlocks } from '@/lib/retail/dashboard-blocks'
 import { RetailDashboardView } from '@/components/retail/dashboard-view'
 import { DashboardPicker } from '@/components/retail/dashboard-picker'
+import { RetailSetupGuide } from '@/components/retail/setup-guide'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,7 @@ export default async function RetailDashboardPage() {
 
   return (
     <div className="space-y-5">
+      <RetailSetupGuide db={db} tenantId={tenantId} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Painel da loja</h1>

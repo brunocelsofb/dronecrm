@@ -41,7 +41,7 @@ export function RetailDashboardView({ d, blocks, storeName, now = new Date() }: 
     equilibrio: () => (
       <Card key="equilibrio" title="Ponto de equilíbrio do mês" href="/varejo/precificacao" hrefLabel="Ajustar custos">
         {!d.breakEven ? (
-          <Empty>Informe os custos fixos do mês em Preço e fidelidade para ver quanto falta vender para pagar as contas.</Empty>
+          <Empty>Informe os custos fixos do mês em Custos e preço para ver quanto falta vender para pagar as contas.</Empty>
         ) : (
           <>
             <div className="h-3 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuenow={Math.round(d.breakEven.pct)} aria-valuemin={0} aria-valuemax={100}>
@@ -67,7 +67,7 @@ export function RetailDashboardView({ d, blocks, storeName, now = new Date() }: 
         <p className="mt-1 text-sm text-gray-600">margem {fmtPct(d.sales.marginPct)} · desejada {fmtPct(d.pricing.target_margin_pct)}</p>
         <p className="mt-2 text-xs text-gray-500">O que sobrou das vendas depois do custo das peças, impostos, taxas e fidelidade. Paga os custos fixos e o resto é lucro.</p>
         {d.sales.missingCostUnits > 0 && <p className="mt-2 text-xs text-warn-700">{d.sales.missingCostUnits} peça(s) vendida(s) sem custo cadastrado: o ganho real é menor.</p>}
-        {!pricingSet && <p className="mt-2 text-xs text-gray-500">Impostos e taxas ainda não informados em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Preço e fidelidade</Link>.</p>}
+        {!pricingSet && <p className="mt-2 text-xs text-gray-500">Impostos e taxas ainda não informados em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Custos e preço</Link>.</p>}
       </Card>
     ),
     pedidos_abertos: () => d.open && (

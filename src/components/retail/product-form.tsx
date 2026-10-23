@@ -528,7 +528,7 @@ function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
           )}
         </>
       )}
-      {!configured && <p className="text-xs text-gray-500">Para a conta ficar completa, informe impostos, taxas e custos fixos em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Preço e fidelidade</Link>.</p>}
+      {!configured && <p className="text-xs text-gray-500">Para a conta ficar completa, informe impostos, taxas e custos fixos em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Custos e preço</Link>.</p>}
     </div>
   )
 }

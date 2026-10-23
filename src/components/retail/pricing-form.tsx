@@ -1,6 +1,6 @@
 'use client'
 
-// Varejo → Preço e fidelidade
+// Varejo → Custos e preço
 // 1. Suas peças: toda peça cadastrada entra aqui sozinha, com a precificação completa (busca por código)
 // 2. Impostos: regime da loja (vale para todas as peças), com histórico por data
 // 3. Custos de cada venda · 4. Margem e custos fixos · 5. Fidelidade
@@ -39,13 +39,13 @@ const UNITS: { id: LoyaltyUnit; label: string; amountLabel: string }[] = [
   { id: 'valor', label: 'Valor comprado', amountLabel: 'A cada (R$ em compras)' },
 ]
 
-function Field({ label, value, onChange, suffix, prefix, help, disabled, type }: { label: string; value: string; onChange: (v: string) => void; suffix?: string; prefix?: string; help?: string; disabled?: boolean; type?: string }) {
+function Field({ label, value, onChange, suffix, prefix, help, disabled, type, placeholder, inputMode }: { label: string; value: string; onChange: (v: string) => void; suffix?: string; prefix?: string; help?: string; disabled?: boolean; type?: string; placeholder?: string; inputMode?: 'decimal' | 'numeric' }) {
   return (
     <div>
       <label className={lbl}>{label}</label>
       <div className="flex items-center rounded-lg border border-gray-300 bg-white focus-within:border-brand-700">
         {prefix && <span className="pl-3 text-sm text-gray-500">{prefix}</span>}
-        <input type={type ?? 'text'} className="w-full rounded-lg px-2.5 py-2 text-sm focus:outline-none disabled:bg-gray-50" inputMode={type ? undefined : 'decimal'} value={value} disabled={disabled} onChange={e => onChange(e.target.value)} placeholder="0" />
+        <input type={type ?? 'text'} className="w-full rounded-lg px-2.5 py-2 text-sm focus:outline-none disabled:bg-gray-50" inputMode={inputMode ?? (type ? undefined : 'decimal')} value={value} disabled={disabled} onChange={e => onChange(e.target.value)} placeholder={placeholder ?? '0'} />
         {suffix && <span className="whitespace-nowrap pr-3 text-sm text-gray-500">{suffix}</span>}
       </div>
       {help && <p className={hint}>{help}</p>}
@@ -93,7 +93,7 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
   return (
     <section className="space-y-3 rounded-xl border border-brand-700/30 bg-white p-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Suas peças</h2>
+        <h2 className="text-base font-semibold text-gray-900">6. Suas peças (confira o resultado)</h2>
         <p className="text-sm text-gray-600">Toda peça cadastrada aparece aqui com a conta completa. Digite o código para ver uma peça.</p>
       </div>
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Código ou nome da peça (ex.: PC682)" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-700 focus:outline-none" />
@@ -189,7 +189,8 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
     pixOn: initialConditions.pix.enabled, pixDisc: toStr(initialConditions.pix.discount_pct), pixFee: toStr(initialConditions.pix.fee_pct),
     cardOn: initialConditions.card.enabled, cardN: String(initialConditions.card.max_installments), cardFee: toStr(initialConditions.card.fee_pct),
   })
-  const [newReg, setNewReg] = useState<{ regime: TaxRegimeId; rate: string; since: string; das: string; outside: string } | null>(initialRegimes.length ? null : { regime: 'simples', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })
+  const [newReg, setNewReg] = useState<{ regime: TaxRegimeId | ''; rate: string; since: string; das: string; outside: string } | null>(initialRegimes.length ? null : { regime: '', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })
+  const [cnpjErr, setCnpjErr] = useState<string | null>(null)
   const [cnpj, setCnpj] = useState('')
   const [cnpjInfo, setCnpjInfo] = useState<CnpjInfo | null>(null)
   const [cnpjBusy, setCnpjBusy] = useState(false)
@@ -197,7 +198,9 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const setPf = (k: keyof typeof p) => (v: string) => setP(prev => ({ ...prev, [k]: v }))
 
-  const current = regimeAt(regimes, new Date())
+  const pending = pendingRegime()
+  const allRegimes = pending.r ? [...regimes, pending.r].sort((a, b) => a.since.localeCompare(b.since)) : regimes
+  const current = regimeAt(allRegimes, new Date())
   const curTax = current ? regimeTax(current, rbt12) : null
   const P: PricingSettings = useMemo(() => readPricing({
     tax_pct: curTax ? curTax.tax_pct : pctNum(p.tax_pct), card_pct: pctNum(p.card_pct), other_pct: pctNum(p.other_pct), per_piece: toNum(p.per_piece),
@@ -213,24 +216,26 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
   const monthRevenue = breakEvenRevenue(P.fixed_monthly, P.target_margin_pct)
   const unit = UNITS.find(u => u.id === l.every_unit)!
 
-  function addRegime() {
-    if (!newReg) return
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(newReg.since)) { setMsg({ ok: false, text: 'Informe a data de início do regime.' }); return }
-    if (regimes.some(r => r.since === newReg.since)) { setMsg({ ok: false, text: 'Já existe um regime começando nessa data.' }); return }
+  // Regime escolhido e ainda não salvo: entra junto no "Salvar" (não precisa de outro botão)
+  function pendingRegime(): { r: TaxRegime | null; error: string | null } {
+    if (!newReg || !newReg.regime) return { r: null, error: null }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newReg.since)) return { r: null, error: 'Informe a data de início do regime.' }
+    if (regimes.some(r => r.since === newReg.since)) return { r: null, error: 'Já existe um regime começando nessa data. Mude a data ou tire o outro.' }
     const r: TaxRegime = newReg.regime === 'mei' ? { regime: 'mei', rate_pct: 0, since: newReg.since, das_monthly: toNum(newReg.das) || MEI_DAS_2026.comercio }
       : newReg.regime === 'simples' ? { regime: 'simples', rate_pct: 0, since: newReg.since, outside_revenue_12m: toNum(newReg.outside) }
       : { regime: newReg.regime, rate_pct: pctNum(newReg.rate), since: newReg.since }
-    if ((r.regime === 'presumido' || r.regime === 'outro') && !(r.rate_pct > 0)) { setMsg({ ok: false, text: 'Informe o percentual de impostos sobre a venda.' }); return }
-    setRegimes(prev => [...prev, r].sort((a, b) => a.since.localeCompare(b.since)))
-    setNewReg(null); setMsg(null)
+    if ((r.regime === 'presumido' || r.regime === 'outro') && !(r.rate_pct > 0)) return { r: null, error: 'Informe o percentual de impostos sobre a venda.' }
+    return { r, error: null }
   }
 
   async function save() {
     setBusy(true); setMsg(null)
     const conditions = readPaymentConditions({ pix: { enabled: cond.pixOn, discount_pct: pctNum(cond.pixDisc), fee_pct: pctNum(cond.pixFee) }, card: { enabled: cond.cardOn, max_installments: Number(cond.cardN) || 1, fee_pct: pctNum(cond.cardFee) } })
-    const r = await saveRetailPricing({ pricing: P, loyalty: L, regimes, conditions })
+    if (pending.error) { setBusy(false); setMsg({ ok: false, text: `Impostos: ${pending.error}` }); return }
+    const r = await saveRetailPricing({ pricing: P, loyalty: L, regimes: allRegimes, conditions })
     setBusy(false)
     if (!r.ok) { setMsg({ ok: false, text: r.error }); return }
+    if (pending.r) { setRegimes(allRegimes); setNewReg(null) }
     setMsg({ ok: true, text: 'Salvo. Peças, pedidos e o painel já usam estes valores.' }); router.refresh()
   }
 
@@ -238,11 +243,10 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
     <div className="space-y-4">
       {readOnly && <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">Só o administrador da empresa altera estes valores.</p>}
 
-      <PiecesPricing products={products} P={P} L={L} readOnly={readOnly} />
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Impostos da loja</h2>
+          <h2 className="text-base font-semibold text-gray-900">1. Impostos da loja</h2>
           <p className="text-sm text-gray-600">MEI e Simples são calculados pelo faturado da loja, não por peça. Mudou de regime? Cadastre o novo com a data: as vendas antigas continuam com o regime da época.</p>
         </div>
         {current && curTax ? (
@@ -272,10 +276,11 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
         {!readOnly && (newReg ? (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3">
             <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1"><Field label="CNPJ da loja (opcional)" value={cnpj} onChange={setCnpj} help="Buscamos na Receita o CNAE e se a empresa é MEI ou Simples." /></div>
-              <button type="button" disabled={cnpjBusy || cnpj.replace(/\D/g, '').length !== 14} onClick={async () => { setCnpjBusy(true); const r = await lookupCnpj(cnpj); setCnpjBusy(false); if (!r.ok) { setMsg({ ok: false, text: r.error }); return } setCnpjInfo(r.info); if (r.info.suggested) setNewReg(prev => prev && { ...prev, regime: r.info.suggested! }) }}
+              <div className="min-w-0 flex-1"><Field label="CNPJ da loja (opcional)" value={cnpj} onChange={setCnpj} placeholder="00.000.000/0000-00" inputMode="numeric" help="Buscamos na Receita o CNAE e se a empresa é MEI ou Simples." /></div>
+              <button type="button" disabled={cnpjBusy || cnpj.replace(/\D/g, '').length !== 14} onClick={async () => { setCnpjBusy(true); setCnpjErr(null); setCnpjInfo(null); const r = await lookupCnpj(cnpj); setCnpjBusy(false); if (!r.ok) { setCnpjErr(r.error); return } setCnpjInfo(r.info); if (r.info.suggested) setNewReg(prev => prev && { ...prev, regime: r.info.suggested! }) }}
                 className="mb-5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 disabled:opacity-40">{cnpjBusy ? 'Buscando…' : 'Buscar'}</button>
             </div>
+            {cnpjErr && <p role="alert" className="rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">{cnpjErr}</p>}
             {cnpjInfo && (
               <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
                 <p><strong>{cnpjInfo.name}</strong>{cnpjInfo.uf ? ` · ${cnpjInfo.uf}` : ''}</p>
@@ -290,7 +295,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
                   className={`rounded-lg border px-2 py-2 text-sm ${newReg.regime === r.id ? 'border-brand-700 bg-brand-100/50 font-medium' : 'border-gray-200'}`}>{r.label}</button>
               ))}
             </div>
-            <p className={hint}>{TAX_REGIMES.find(r => r.id === newReg.regime)?.hint}</p>
+            <p className={hint}>{newReg.regime ? TAX_REGIMES.find(r => r.id === newReg.regime)?.hint : 'Toque no regime da loja (o contador sabe; ou busque pelo CNPJ acima).'}</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {newReg.regime === 'mei' && (
                 <div>
@@ -314,19 +319,19 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
               <Field label="Vale a partir de" type="date" value={newReg.since} onChange={v => setNewReg(prev => prev && { ...prev, since: v })} />
             </div>
             {newReg.regime === 'simples' && <p className={hint}>Conta da LC 123/2006, Anexo I (comércio): (faturamento × alíquota nominal − parcela a deduzir) ÷ faturamento. Não considera ICMS por substituição tributária nem outras particularidades: confirme com o contador.</p>}
-            <div className="flex gap-2">
-              <button type="button" onClick={addRegime} className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white">Incluir regime</button>
+            <div className="flex flex-wrap items-center gap-2">
+              {newReg.regime && <p className="text-xs text-brand-800">{pending.error ? <span className="text-warn-700">{pending.error}</span> : <>Pronto: o regime entra quando você tocar em <strong>Salvar</strong>, no fim da tela.</>}</p>}
               {regimes.length > 0 && <button type="button" onClick={() => setNewReg(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700">Cancelar</button>}
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => setNewReg({ regime: current?.regime ?? 'simples', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })} className="text-sm text-brand-700 hover:underline">+ Mudei de regime</button>
+          <button type="button" onClick={() => setNewReg({ regime: '', rate: '', since: todayBR(), das: toStr(MEI_DAS_2026.comercio), outside: '' })} className="text-sm text-brand-700 hover:underline">+ Mudei de regime</button>
         ))}
       </section>
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Outros custos de cada venda</h2>
+          <h2 className="text-base font-semibold text-gray-900">2. Outros custos de cada venda</h2>
           <p className="text-sm text-gray-600">Acontecem toda vez que uma peça é vendida.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -338,8 +343,8 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Condições de pagamento da proposta</h2>
-          <p className="text-sm text-gray-600">Aparecem na proposta para a cliente escolher. A taxa de cada uma muda o seu ganho, e o pedido mostra o ganho em cada condição.</p>
+          <h2 className="text-base font-semibold text-gray-900">3. Formas de pagamento</h2>
+          <p className="text-sm text-gray-600">Aparecem em "Finalizar compra" para a cliente escolher. A taxa de cada uma muda o seu ganho, e o pedido mostra o ganho em cada forma.</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className={`space-y-3 rounded-lg border p-3 ${cond.pixOn ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
@@ -357,7 +362,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Quanto você quer ganhar</h2>
+          <h2 className="text-base font-semibold text-gray-900">4. Quanto você quer ganhar</h2>
           <p className="text-sm text-gray-600"><strong>Margem</strong> é quanto sobra do <strong>preço de venda</strong> depois de pagar a peça e os custos da venda. <strong>Markup</strong> é quanto você multiplica o <strong>custo</strong>. Não são a mesma coisa.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -374,7 +379,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Fidelidade</h2>
+            <h2 className="text-base font-semibold text-gray-900">5. Fidelidade</h2>
             <p className="text-sm text-gray-600">Cada venda paga fica gravada na cliente. Dá para desligar num mês e religar depois: desligada, ninguém ganha nem usa benefício.</p>
           </div>
           <label className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-300 px-3 py-1.5 text-sm">
@@ -452,10 +457,12 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
         </div>
       </section>
 
+      <PiecesPricing products={products} P={P} L={L} readOnly={readOnly} />
+
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}</p>}
       {!readOnly && (
         <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-white/95 py-3">
-          <span className="text-xs text-gray-500">A lista de peças já mostra o efeito antes de salvar.</span>
+          <span className="text-xs text-gray-500">Preencha de 1 a 5 e toque em Salvar. A lista de peças (6) já mostra o efeito antes.</span>
           <button type="button" onClick={save} disabled={busy} className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar'}</button>
         </div>
       )}
