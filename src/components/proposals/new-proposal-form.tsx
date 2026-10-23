@@ -79,7 +79,7 @@ export function NewProposalForm({
 
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label className="block text-xs font-medium text-gray-600">Moeda</label>
           <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none">
@@ -98,7 +98,7 @@ export function NewProposalForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
           <label className="block text-xs font-medium text-gray-600">Desconto</label>
           <select value={discountType} onChange={(e) => setDiscountType(e.target.value as '' | 'percentage' | 'fixed')} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none">
@@ -166,7 +166,7 @@ export function NewProposalForm({
               </div>
             )}
 
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div>
                 <label className="block text-[10px] text-gray-500">Quantidade</label>
                 <input type="number" value={it.quantity} onChange={(e) => updateItem(i, { quantity: Number(e.target.value) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />
@@ -195,7 +195,7 @@ export function NewProposalForm({
               <input value={it.characteristics} onChange={(e) => updateItem(i, { characteristics: e.target.value })} placeholder="Ex: escopo de manutenção e metrologia" className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div>
                 <label className="block text-[10px] text-gray-500">Valor unitário (R$)</label>
                 <input type="number" value={it.unit_value} onChange={(e) => updateItem(i, { unit_value: Number(e.target.value) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-700 focus:outline-none" />

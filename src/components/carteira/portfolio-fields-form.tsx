@@ -189,8 +189,6 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
 
   const inp: React.CSSProperties = { width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }
   const lbl: React.CSSProperties = { display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 4 }
-  const g3: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }
-  const g2: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }
   const sec: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#1a1f36', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px', paddingTop: 8 }
   const ABC_STYLE: Record<string, { bg: string; color: string }> = {
     A: { bg: '#f6e9ea', color: '#8e4550' }, B: { bg: '#fbeee5', color: '#c2683d' }, C: { bg: '#f1f3f8', color: '#52514e' },
@@ -214,7 +212,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
 
       {/* Identificação */}
       <p style={sec}>Identificação</p>
-      <div style={g3}>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {show('contract_number') && <div><label style={lbl}>Nº Contrato</label><input style={inp} value={data.contract_number ?? ''} onChange={e => set('contract_number', e.target.value)} placeholder="CT-2024-001" /></div>}
         {show('sankhya_code') && <div><label style={lbl}>Cód. Sankhya</label><input style={inp} value={data.sankhya_code ?? ''} onChange={e => set('sankhya_code', e.target.value)} /></div>}
         {show('cnpj_billing') &&
@@ -246,7 +244,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
 
       {/* Tipo e Valor */}
       <p style={sec}>Tipo e Valor</p>
-      <div style={g3}>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label style={lbl}>Tipo de Contrato</label>
           <select style={{ ...inp, cursor: 'pointer' }} value={data.contract_type ?? ''} onChange={e => set('contract_type', e.target.value || null)}>
@@ -322,14 +320,14 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
 
       {/* Responsáveis */}
       <p style={sec}>Responsáveis</p>
-      <div style={g2}>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div><label style={lbl}>Coordenador</label><input style={inp} value={data.coordinator_name ?? ''} onChange={e => set('coordinator_name', e.target.value)} placeholder="Nome do coordenador" /></div>
         <div><label style={lbl}>Engenheiro</label><input style={inp} value={data.engineer_name ?? ''} onChange={e => set('engineer_name', e.target.value)} placeholder="Nome do engenheiro" /></div>
       </div>
 
       {/* Localização — UF preenche Região automaticamente */}
       <p style={sec}>Localização</p>
-      <div style={g2}>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div><label style={lbl}>Município</label><input style={inp} value={data.municipality ?? ''} onChange={e => set('municipality', e.target.value)} placeholder="Goiânia" /></div>
       </div>
       <div style={{ marginBottom: 12 }}>
@@ -361,7 +359,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
         <p style={{ fontSize: 10, color: '#b0b8c8', marginBottom: 12 }}>
           {isHospitalar ? 'Eng. Hospitalar' : 'Eng. Clínica'}: A ≥ {cfg.curve_a_min} · B ≥ {cfg.curve_b_min} · C &lt; {cfg.curve_b_min}
         </p>
-        <div style={g3}>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label style={lbl}>Faturamento</label>
             <select style={{ ...inp, cursor: 'pointer' }} value={fatNota} onChange={e => setFatNota(Number(e.target.value))}>

@@ -36,7 +36,7 @@ export function ValidityPeriodInput({
           <span style={{ fontSize: 12, color: '#c2683d' }}>⚠ Preencha a vigência — obrigatório para contratos ativos.</span>
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
         <div>
           <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>
             Vigência — início {required && <span style={{ color: '#8e4550' }}>*</span>}

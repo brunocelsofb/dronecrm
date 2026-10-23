@@ -104,6 +104,14 @@ export function WhatsAppClientShell({
     })
   }
 
+  // Celular: volta da conversa para a lista
+  function handleBackToList() {
+    setSelectedPhone(null)
+    setSelectedInstance(null)
+    setConvData(null)
+    router.push('/whatsapp', { scroll: false } as any)
+  }
+
   function handleArchived() {
     setSelectedPhone(null)
     setSelectedInstance(null)
@@ -118,18 +126,19 @@ export function WhatsAppClientShell({
 
   return (
     <div
-      className="grid w-full h-full min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm"
-      style={{ gridTemplateColumns: `${sidebarWidth}px 4px 1fr` }}
+      // Celular: uma coluna (lista OU conversa); a partir de md, lista + divisor + conversa
+      className="grid w-full h-full min-h-0 grid-cols-1 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm md:[grid-template-columns:var(--wa-sb)_4px_1fr]"
+      style={{ '--wa-sb': `${sidebarWidth}px` } as React.CSSProperties}
     >
       <WhatsAppInboxRealtimeWatcher />
 
       {/* Sidebar — largura imposta pela 1ª coluna do Grid */}
-      <div className="flex flex-col min-h-0 min-w-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden">
+      <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col min-h-0 min-w-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden`}>
         <div className="p-2 shrink-0 border-b border-gray-100 min-w-0">
           <button
             onClick={() => setShowNewConv(true)}
             title="Nova Conversa"
-            className="w-[220px] mx-auto rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-sm"
+            className="w-full max-w-[220px] mx-auto rounded-lg bg-[#1B556B] py-2 px-2 text-sm font-semibold text-white hover:bg-[#164659] flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-sm"
           >
             ✏️ Nova Conversa
           </button>
@@ -153,12 +162,18 @@ export function WhatsAppClientShell({
       {/* Dragger — ocupa a 2ª coluna do Grid (4px fixos) */}
       <div
         onMouseDown={onDraggerMouseDown}
-        className="w-full h-full bg-gray-200 hover:bg-[#1B556B]/40 active:bg-[#1B556B]/60 cursor-col-resize transition-colors duration-150 select-none z-10 shrink-0"
+        className="hidden md:block w-full h-full bg-gray-200 hover:bg-[#1B556B]/40 active:bg-[#1B556B]/60 cursor-col-resize transition-colors duration-150 select-none z-10 shrink-0"
         title="Arraste para redimensionar"
       />
 
       {/* Painel de chat — ocupa o resto */}
-      <div className="flex flex-col min-w-0 min-h-0 bg-white relative flex-1">
+      <div className={`${selectedPhone ? 'flex' : 'hidden md:flex'} flex-col min-w-0 min-h-0 bg-white relative flex-1`}>
+        {selectedPhone && (
+          <button type="button" onClick={handleBackToList}
+            className="flex shrink-0 items-center gap-1 border-b border-gray-100 px-3 py-2 text-left text-sm font-medium text-[#1B556B] md:hidden">
+            ‹ Conversas
+          </button>
+        )}
         {selectedPhone ? (
           loadingConv ? <ConvSkeleton /> : convData ? (
             <WhatsAppConversationPanel

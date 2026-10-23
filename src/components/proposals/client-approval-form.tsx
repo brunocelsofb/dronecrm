@@ -62,7 +62,7 @@ export function ClientApprovalForm({ token, contractId, currentStatus }: {
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
           <div>
             <label style={{ display: 'block', fontSize: 11, color: '#8892a4', marginBottom: 4 }}>Nome completo *</label>
             <input value={name} onChange={e => setName(e.target.value)} style={inp} placeholder="João da Silva" />

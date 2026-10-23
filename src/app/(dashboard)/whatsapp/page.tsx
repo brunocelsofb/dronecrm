@@ -120,7 +120,7 @@ export default async function WhatsAppInboxPage({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-4rem)] overflow-hidden">
       <div className="flex items-center justify-between px-1 py-2 flex-shrink-0">
         <div>
           <h1 className="text-base font-semibold text-gray-900">Central de Atendimento</h1>

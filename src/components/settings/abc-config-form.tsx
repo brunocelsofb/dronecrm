@@ -37,7 +37,7 @@ function Section({ title, emoji, data, onSave }: {
 
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 500, color: '#1a1f36', marginBottom: 10 }}>Faixas de Faturamento (Peso 50%)</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
           <div>
             <label style={lbl}>Nota 1 — até (R$)</label>
             <input type="number" value={d.billing_tier1_max} onChange={e => setD(prev => ({ ...prev, billing_tier1_max: Number(e.target.value) }))} style={inp} />
@@ -53,7 +53,7 @@ function Section({ title, emoji, data, onSave }: {
 
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 500, color: '#1a1f36', marginBottom: 10 }}>Thresholds da Curva</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 12 }}>
           <div>
             <label style={lbl}>Curva A — mínimo</label>
             <input type="number" step="0.01" value={d.curve_a_min} onChange={e => setD(prev => ({ ...prev, curve_a_min: Number(e.target.value) }))} style={inp} />

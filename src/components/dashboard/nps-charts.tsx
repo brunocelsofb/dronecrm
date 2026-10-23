@@ -73,7 +73,7 @@ export function NpsCharts({ nps, promoters, passives, detractors, total, history
   }, [nps, promoters, passives, detractors, total, history])
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 12 }}>
+    <div className="grid grid-cols-1 md:[grid-template-columns:1fr_1.6fr]" style={{ gap: 12 }}>
       {/* Score e Donut */}
       <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>
         <p style={{ fontSize: 10, color: '#8892a4', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 12 }}>NPS do período</p>

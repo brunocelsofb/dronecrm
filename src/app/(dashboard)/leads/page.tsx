@@ -65,7 +65,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           { label: 'Total de leads', value: String(totalLeads), sub: 'captados até hoje' },
           { label: 'Qualificados', value: String(qualificados), sub: 'prontos pra converter' },

@@ -74,7 +74,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
         </Link>
       )}
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           { label: 'Total de empresas', value: String(total), sub: 'na base de clientes', alert: false },
           { label: 'Com contratos', value: String(comContratos), sub: 'clientes ativos', alert: false },

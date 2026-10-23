@@ -66,7 +66,7 @@ export function NewCompanyForm({ segments }: { segments: string[] }) {
         <CnpjLookupField onFound={onCnpjFound} />
 
         {/* Razão Social e Nome Fantasia */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
           <div>
             <label style={labelStyle}>Razão Social <span style={{ color: '#8e4550' }}>*</span></label>
             <input name="name" required value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
@@ -123,7 +123,7 @@ export function NewCompanyForm({ segments }: { segments: string[] }) {
             <div><label style={labelStyle}>Logradouro</label><input name="street" value={street} onChange={e => setStreet(e.target.value)} style={inputStyle} /></div>
             <div style={{ width: 80 }}><label style={labelStyle}>Número</label><input name="street_number" value={streetNumber} onChange={e => setStreetNumber(e.target.value)} style={inputStyle} /></div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 80px', gap: 8 }}>
+          <div className="grid grid-cols-2 sm:[grid-template-columns:1fr_1fr_80px_80px]" style={{ gap: 8 }}>
             <div><label style={labelStyle}>Bairro</label><input name="neighborhood" value={neighborhood} onChange={e => setNeighborhood(e.target.value)} style={inputStyle} /></div>
             <div><label style={labelStyle}>Município</label><input name="city" value={city} onChange={e => setCity(e.target.value)} style={inputStyle} /></div>
             <div><label style={labelStyle}>UF</label><input name="state" value={uf} onChange={e => setUf(e.target.value)} style={inputStyle} maxLength={2} /></div>
@@ -132,13 +132,13 @@ export function NewCompanyForm({ segments }: { segments: string[] }) {
         </div>
 
         {/* Contato */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
           <div><label style={labelStyle}>Telefone</label><input name="phone" value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} placeholder="(00) 00000-0000" /></div>
           <div><label style={labelStyle}>E-mail</label><input name="email" type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} /></div>
         </div>
 
         {/* Dados Receita */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
           <div>
             <label style={labelStyle}>Capital Social (R$)</label>
             <input name="capital_social" type="number" value={capitalSocial} onChange={e => setCapitalSocial(e.target.value)} style={inputStyle} />

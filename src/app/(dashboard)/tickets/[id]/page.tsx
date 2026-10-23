@@ -53,9 +53,9 @@ export default async function TicketDetailPage({
         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${SLA_STYLES[sla]}`}>{SLA_LABELS[sla]}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Coluna principal: conversa */}
-        <div className="col-span-2 space-y-4">
+        <div className="space-y-4 lg:col-span-2">
           <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
             <p className="mb-1 text-xs font-semibold uppercase text-gray-400">Conversa</p>
             {messages?.map((m) => (

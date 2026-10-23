@@ -113,7 +113,7 @@ export function CreateActivityModal({ onClose, onCreated, contractId, companyId,
             <textarea value={content} onChange={e => setContent(e.target.value)} rows={3} placeholder="Detalhes, observações, resultado..." style={{ ...inp, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: 10 }}>
+          <div className="grid grid-cols-2 sm:[grid-template-columns:1fr_1fr_120px]" style={{ gap: 10 }}>
             <div><label style={lbl}>Data</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} /></div>
             <div><label style={lbl}>Hora</label><input type="time" value={time} onChange={e => setTime(e.target.value)} style={inp} /></div>
             <div><label style={lbl}>Duração (min)</label><input type="number" value={duration ?? ''} onChange={e => setDuration(e.target.value ? Number(e.target.value) : null)} min={0} placeholder="30" style={inp} /></div>

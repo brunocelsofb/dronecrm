@@ -125,7 +125,7 @@ export default async function TicketsDashboardPage({
 
       <PeriodSelector from={from} to={to} basePath="/tickets/dashboard" />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-2 lg:grid-cols-5" style={{ gap: 12 }}>
         {[
           { label: 'Total de tickets', value: String(total), sub: 'no período' },
           { label: 'Resolvidos', value: String(resolved.length), sub: total > 0 ? `${fmtPct((resolved.length / total) * 100)} do total` : '—' },
@@ -146,7 +146,7 @@ export default async function TicketsDashboardPage({
         <TicketTrendChart data={trendData} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>
           <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', marginBottom: 14 }}>Por categoria</p>
           {categoryData.length > 0 ? <TicketBreakdownChart data={categoryData} /> : <p style={{ fontSize: 12, color: '#8892a4' }}>Sem dados no período.</p>}
@@ -157,7 +157,7 @@ export default async function TicketsDashboardPage({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-2 lg:grid-cols-4" style={{ gap: 12 }}>
         {(['nao_critica', 'pouco_critica', 'critica', 'muito_critica'] as const).map((p) => {
           const count = (tickets ?? []).filter((t) => t.priority === p).length
           const isCrit = p === 'critica' || p === 'muito_critica'

@@ -264,7 +264,7 @@ export function StageBar({
 
             {!isAvulso && (<>
             <p style={{ fontSize: 10, fontWeight: 600, color: '#1a1f36', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 10 }}>Vigência</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12, marginBottom: 10 }}>
               <div><label style={lbl}>Início <span style={{ color: '#8e4550' }}>*</span></label>
                 <input type="date" value={validFrom} onChange={e => setValidFrom(e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Fim <span style={{ color: '#8e4550' }}>*</span></label>
@@ -295,7 +295,7 @@ export function StageBar({
                       <input value={cnpjBilling} onChange={e => setCnpjBilling(e.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="Somente números" style={inp} />
                     )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 12 }}>
                     <div>
                       <label style={lbl}>Tipo de contrato <span style={{ color: '#8e4550' }}>*</span></label>
                       <select value={contractType} onChange={e => setContractType(e.target.value)} style={{ ...inp, cursor: 'pointer' }}>
@@ -384,8 +384,8 @@ export function StageBar({
 
       {/* Modal de Perda — motivo obrigatório */}
       {showLostModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: '#1a1f36', margin: '0 0 4px' }}>Marcar como {lostLabel}</p>
             <p style={{ fontSize: 12, color: '#8892a4', margin: '0 0 16px' }}>Selecione o motivo oficial para registrar esta perda.</p>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#52514e', display: 'block', marginBottom: 6 }}>

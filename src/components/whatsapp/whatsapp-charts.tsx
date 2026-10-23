@@ -86,7 +86,7 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div className="grid grid-cols-2 lg:grid-cols-5" style={{ gap: 12 }}>
         {[
           { label: 'Entradas totais', value: totalEntradas, sub: 'conversas iniciadas', color: '#1a1f36' },
           { label: 'Viraram leads', value: totalLeads, sub: `${fmtPct(conversionRate)} de conversão`, color: '#524e9c' },
@@ -103,7 +103,7 @@ export function WhatsAppCharts({ totalEntradas, totalLeads, totalConvertidos, to
       </div>
 
       {/* Gráficos */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
+      <div className="grid grid-cols-1 md:[grid-template-columns:1fr_1.4fr]" style={{ gap: 12 }}>
         <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: 20 }}>
           <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: 0, marginBottom: 4 }}>Funil de conversão WhatsApp</p>
           <p style={{ fontSize: 11, color: '#8892a4', marginBottom: 14 }}>Da entrada ao fechamento</p>

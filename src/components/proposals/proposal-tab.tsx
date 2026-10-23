@@ -385,8 +385,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', overflow: 'visible' }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: '140px 2fr 1fr 1fr 100px',
+          <div className="hidden md:grid md:[grid-template-columns:140px_2fr_1fr_1fr_100px]" style={{
             padding: '10px 20px', background: '#f8f9fb', borderBottom: '0.5px solid #e8edf5',
             borderRadius: '12px 12px 0 0',
           }}>
@@ -399,8 +398,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             const wStatus = p.workflow_status ?? 'rascunho'
             const s = STATUS_LABEL[wStatus] ?? STATUS_LABEL['rascunho']
             return (
-              <div key={p.id} style={{
-                display: 'grid', gridTemplateColumns: '140px 2fr 1fr 1fr 100px',
+              <div key={p.id} className="grid grid-cols-2 gap-2 md:gap-0 md:[grid-template-columns:140px_2fr_1fr_1fr_100px]" style={{
                 padding: '14px 20px', borderBottom: '0.5px solid #f1f3f8', overflow: 'visible',
               }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#1a1f36', fontFamily: 'monospace', display: 'flex', alignItems: 'center' }}>
@@ -441,7 +439,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
           position: 'fixed', inset: 0, zIndex: 9999,
           background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: '#1a1f36', margin: '0 0 4px' }}>Declinar proposta</p>
             <p style={{ fontSize: 12, color: '#8892a4', margin: '0 0 16px' }}>{declineModal.proposal.control_code}</p>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#52514e', display: 'block', marginBottom: 6 }}>

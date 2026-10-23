@@ -261,7 +261,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+      <div className="grid grid-cols-1 lg:[grid-template-columns:1fr_320px]" style={{ gap: 16 }}>
         {/* Coluna principal: abas da conta */}
         <div style={{ background: '#fff', borderRadius: 12, border: '0.5px solid #e8edf5', padding: '12px 16px 16px' }}>
           <ContractTabs tabs={[

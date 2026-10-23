@@ -238,7 +238,7 @@ function NewContactFields({
 }) {
   const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: 10, borderRadius: 8, border: '0.5px solid #e8edf5', background: '#f8f9fb' }}>
+    <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 8, padding: 10, borderRadius: 8, border: '0.5px solid #e8edf5', background: '#f8f9fb' }}>
       <div style={{ gridColumn: '1/-1' }}>
         <input name="new_contact_name" required placeholder="Nome *" value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
       </div>

@@ -398,8 +398,8 @@ export function WhatsAppConversationPanel({
       )}
 
       <div className="flex-shrink-0 rounded-lg border border-gray-200 bg-white p-3 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {profilePicUrl ? (
               <img src={profilePicUrl} alt="" className="h-9 w-9 rounded-full object-cover flex-shrink-0"
                 onError={() => setProfilePicUrl(null)} />

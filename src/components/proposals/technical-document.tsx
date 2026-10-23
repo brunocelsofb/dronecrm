@@ -81,7 +81,7 @@ export function TechnicalDocument({ snapshot, showFinancials, isHospitalar = fal
       {!isHospitalar && dim && dim.totalEquipamentos > 0 && (
         <div style={card}>
           <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36', margin: '0 0 14px' }}>📊 Dimensionamento</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 8, marginBottom: 14 }}>
             <div style={{ background: '#f8f9fb', borderRadius: 8, padding: '10px 12px' }}>
               <p style={muted}>Total de equipamentos</p>
               <p style={{ fontSize: 20, fontWeight: 600, color: '#1a1f36', margin: '2px 0 0' }}>{dim.totalEquipamentos}</p>

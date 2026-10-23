@@ -107,7 +107,7 @@ export async function GoalVsBillingSection({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
           <p className="text-xs text-gray-500">Meta do mês</p>
           <p className="text-2xl font-semibold text-gray-900">{fmt(currentTarget)}</p>

@@ -197,7 +197,7 @@ export default async function CarteiraPage({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
           { label: 'Valor mensal total', value: fmt(totalValorMensal), sub: `${filtered.length} contratos ativos` },
           { label: 'Fixos', value: String(fixos), sub: 'receita previsível' },
@@ -252,7 +252,7 @@ export default async function CarteiraPage({
       )}
 
       {/* ABC + Rankings */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: 'auto 1fr 1fr' }}>
+      <div className="grid grid-cols-1 gap-4 lg:[grid-template-columns:auto_1fr_1fr]">
         {/* Curva ABC resumo */}
         <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)] min-w-[160px]">
           <p className="text-sm font-semibold text-[#1B556B] mb-4">Curva ABC</p>

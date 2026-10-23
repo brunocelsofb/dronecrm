@@ -223,10 +223,17 @@ body {
 
 /* ── Celular ─────────────────────────────────────────────────────────────────
    1) Campos com fonte < 16px fazem o iPhone dar zoom ao tocar; no celular, 16px.
-   2) Tabela larga rola dentro do próprio espaço, sem empurrar a tela para o lado. */
+   2) Tabela larga rola dentro do próprio espaço, sem empurrar a tela para o lado.
+   3) Janela (modal) mais alta que a tela rola em vez de cortar o botão de salvar.
+   4) Nada empurra a tela para o lado; toque sem o "flash" cinza do Android/iPhone. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 @media (max-width: 767px) {
-  main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-  main select,
-  main textarea { font-size: 16px !important; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea { font-size: 16px !important; }
   main table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  html, body { overflow-x: clip; }
+  a, button, [role="button"], summary, label { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .fixed.inset-0.items-center { align-items: flex-start; overflow-y: auto; overscroll-behavior: contain; }
+  .fixed.inset-0.items-center > * { margin-block: auto; }
 }

@@ -126,7 +126,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
 
         {/* Card em destaque: Ganhos */}
         <div className="rounded-3xl p-5 shadow-[0_4px_24px_rgba(27,85,107,0.18)] bg-gradient-to-br from-[#1B556B] to-[#0e3a4a] col-span-1">

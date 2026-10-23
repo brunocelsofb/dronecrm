@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,6 +10,13 @@ export const metadata: Metadata = {
       'AqPkROuMdsFqF1dyK70O6tACN6O0-AZOabWeGxBLuvw',
     ],
   },
+};
+
+// Celular: largura do aparelho, sem travar o zoom (acessibilidade); cor da barra do navegador
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#153b49",
 };
 
 export default function RootLayout({
