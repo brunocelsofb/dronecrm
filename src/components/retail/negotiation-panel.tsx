@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fmtBRL, fmtPct } from '@/lib/format'
-import { analyzeLines, analyzeOrder, loyaltyMessage, loyaltyUnitText, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { analyzeLines, analyzeOrder, requiredMarginPct, loyaltyMessage, loyaltyUnitText, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
 import { whatsappLink } from '@/lib/retail/customers'
 import { parseMoney } from '@/lib/retail/products'
 import { updateRetailOrderPayment } from '@/lib/actions/retail-orders'
@@ -37,7 +37,7 @@ export function NegotiationPanel({ orderId, lines, labels, customer, storeName, 
   const extra = simMode === 'pct' ? (now.revenue * Math.min(raw, 100)) / 100 : raw
   const simA = raw > 0 ? analyzeOrder(lines, payment.discount + loyaltyDiscount + extra, pricing, loyalty) : null
   const tone = (contribution: number, marginPct: number) =>
-    contribution < 0 ? 'text-negative-700' : marginPct + 1e-9 < pricing.target_margin_pct ? 'text-warn-700' : 'text-positive-700'
+    contribution < 0 ? 'text-negative-700' : marginPct + 1e-9 < requiredMarginPct(pricing) ? 'text-warn-700' : 'text-positive-700'
 
   async function run(fn: () => Promise<{ ok: boolean; error?: string }>, okText: string) {
     setBusy(true); setMsg(null)
@@ -72,7 +72,7 @@ export function NegotiationPanel({ orderId, lines, labels, customer, storeName, 
           <p className="text-xs text-gray-600">de ganho · margem {fmtPct(now.marginPct)}</p>
         </div>
         <div className="rounded-lg border border-gray-200 p-3">
-          <p className="text-xs text-gray-500">Mínimo mantendo sua margem ({fmtPct(pricing.target_margin_pct)})</p>
+          <p className="text-xs text-gray-500">Mínimo mantendo seu lucro ({fmtPct(pricing.target_margin_pct)}, depois dos fixos)</p>
           <p className="mt-1 text-lg font-semibold text-gray-900">{fmtBRL(now.minRevenueTarget)}</p>
           <p className="text-xs text-gray-600">{now.minRevenueTarget !== null && now.revenue > now.minRevenueTarget ? `dá para dar até ${fmtBRL(now.revenue - now.minRevenueTarget)} de desconto` : 'já está no limite da margem'}</p>
         </div>
@@ -126,7 +126,7 @@ export function NegotiationPanel({ orderId, lines, labels, customer, storeName, 
               <p>Com mais {fmtBRL(extra)} de desconto, as peças saem por {fmtBRL(simA.revenue)} e você ganha <strong className={tone(simA.contribution, simA.marginPct)}>{fmtBRL(simA.contribution)}</strong> (margem {fmtPct(simA.marginPct)}).</p>
               {simA.contribution < 0
                 ? <p className="mt-1 font-medium text-negative-700">Prejuízo: abaixo do preço mínimo.</p>
-                : simA.marginPct + 1e-9 < pricing.target_margin_pct ? <p className="mt-1 text-warn-700">Ainda tem ganho, mas abaixo da sua margem desejada.</p> : null}
+                : simA.marginPct + 1e-9 < requiredMarginPct(pricing) ? <p className="mt-1 text-warn-700">Ainda tem ganho, mas abaixo da sua margem desejada.</p> : null}
               <button type="button" disabled={busy || simA.revenue <= 0} onClick={applyDiscount} className="mt-2 rounded-lg border border-brand-700 bg-white px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">Aplicar este desconto no pedido</button>
             </div>
           )}

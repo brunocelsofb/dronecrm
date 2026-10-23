@@ -229,3 +229,29 @@ test('condições de pagamento: Pix com desconto e cartão com taxa', () => {
   const off = conditionOptions([{ qty: 1, unit_price: 100, unit_cost: 50 }], 0, P(), OFF, readPaymentConditions({ card: { enabled: false } }))
   assert.equal(off.length, 1)
 })
+
+import { fixedPct, requiredMarginPct, priceMemory } from '../src/lib/retail/margin.ts'
+
+test('custos fixos entram no preço pelo faturamento (markup do SEBRAE)', () => {
+  // Fixos R$ 3.000 ÷ faturamento R$ 20.000 = 15%. Impostos 6% + cartão 4% + outros 0% + fixos 15% + lucro 20% = 45%
+  const p = readPricing({ tax_pct: 6, card_pct: 4, per_piece: 2, target_margin_pct: 20, fixed_monthly: 3000, expected_revenue: 20000 })
+  const l = readLoyalty({ enabled: false })
+  assert.equal(fixedPct(p), 15)
+  assert.equal(requiredMarginPct(p), 35)
+  // (80 + 2) ÷ (1 − 0,45) = 149,0909… → 149,10 (para cima no centavo)
+  const ref = referencePrice(80, p, l)
+  assert.ok(ref.ok); assert.equal(ref.price, 149.1)
+  const m = priceMemory(80, p, l)
+  assert.equal(m.price, 149.1); assert.equal(m.direct, 82); close(m.totalPct, 45); close(m.divisor, 0.55)
+  // vendendo a 149,10: lucro = 149,10 − 82 − 10% − 15% = 149,10 × 0,75 − 82 = 29,825 → 20% do preço
+  const a = analyzePrice(149.1, 80, p, l)
+  close(a.fixedShare, 22.365); close(a.profit, 29.825); close(a.profitPct, 20.0033, 1e-3)
+})
+
+test('sem faturamento médio, os fixos ficam fora e a memória avisa', () => {
+  const p = readPricing({ target_margin_pct: 50, fixed_monthly: 1000 })
+  const l = readLoyalty({ enabled: false })
+  assert.equal(fixedPct(p), 0)
+  const m = priceMemory(100, p, l)
+  assert.equal(m.fixedMissingRevenue, true); assert.equal(m.price, 200)
+})

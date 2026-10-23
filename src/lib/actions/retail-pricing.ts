@@ -9,7 +9,7 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { readLoyalty, readPricing, readTaxRegimes, readPaymentConditions, regimeAt, round2, loyaltyUnitText, type PaymentConditions, type LoyaltySettings, type PricingSettings, type TaxRegime } from '@/lib/retail/margin'
+import { readLoyalty, readPricing, readTaxRegimes, readPaymentConditions, regimeAt, round2, requiredMarginPct, pricingAt, loyaltyUnitText, type PaymentConditions, type LoyaltySettings, type PricingSettings, type TaxRegime } from '@/lib/retail/margin'
 import { parseMoney } from '@/lib/retail/products'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
 import { readDashboardBlocks } from '@/lib/retail/dashboard-blocks'
@@ -34,8 +34,8 @@ export async function saveRetailPricing(input: { pricing: PricingSettings; loyal
   const current = regimeAt(regimes, new Date())
   const pricing = readPricing({ ...input.pricing, tax_pct: current ? current.rate_pct : input.pricing.tax_pct })
   const loyalty = readLoyalty(input.loyalty)
-  if (pricing.tax_pct + pricing.card_pct + pricing.other_pct + pricing.target_margin_pct >= 100) {
-    return { ok: false, error: 'Impostos + taxas + margem desejada passam de 100%: não existe preço que feche essa conta.' }
+  if (pricing.tax_pct + pricing.card_pct + pricing.other_pct + requiredMarginPct(pricingAt(pricing, regimes, new Date())) >= 100) {
+    return { ok: false, error: 'Impostos + taxas + custos fixos + lucro desejado passam de 100%: não existe preço que feche essa conta. Reduza o lucro ou confira o faturamento médio.' }
   }
   if (loyalty.enabled && loyalty.mode === 'progressivo' && !loyalty.tiers.length) return { ok: false, error: 'Cadastre ao menos um degrau do desconto progressivo.' }
   const db = await createScopedAdmin(g.tenantId)

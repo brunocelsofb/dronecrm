@@ -6,6 +6,7 @@ import { fmtBRL, fmtPct } from '@/lib/format'
 import { birthdayLabel, birthdayMessage, formatPhone, orderStatusLabel, whatsappLink } from '@/lib/retail/customers'
 import type { RetailDashboard } from '@/lib/retail/dashboard'
 import type { DashboardBlockId } from '@/lib/retail/dashboard-blocks'
+import { requiredMarginPct } from '@/lib/retail/margin'
 
 const fmtDay = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—')
 const daysAgo = (iso: string, now: Date) => Math.max(0, Math.floor((now.getTime() - Date.parse(iso)) / 86_400_000))
@@ -64,7 +65,7 @@ export function RetailDashboardView({ d, blocks, storeName, now = new Date() }: 
     ganho: () => d.sales && (
       <Card key="ganho" title="Ganho e margem do mês">
         <p className={`text-3xl font-semibold ${d.sales.contribution < 0 ? 'text-negative-700' : 'text-gray-900'}`}>{fmtBRL(d.sales.contribution)}</p>
-        <p className="mt-1 text-sm text-gray-600">margem {fmtPct(d.sales.marginPct)} · desejada {fmtPct(d.pricing.target_margin_pct)}</p>
+        <p className="mt-1 text-sm text-gray-600">margem {fmtPct(d.sales.marginPct)} · necessária {fmtPct(requiredMarginPct(d.pricing))} (fixos + lucro)</p>
         <p className="mt-2 text-xs text-gray-500">O que sobrou das vendas depois do custo das peças, impostos, taxas e fidelidade. Paga os custos fixos e o resto é lucro.</p>
         {d.sales.missingCostUnits > 0 && <p className="mt-2 text-xs text-warn-700">{d.sales.missingCostUnits} peça(s) vendida(s) sem custo cadastrado: o ganho real é menor.</p>}
         {!pricingSet && <p className="mt-2 text-xs text-gray-500">Impostos e taxas ainda não informados em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Custos e preço</Link>.</p>}

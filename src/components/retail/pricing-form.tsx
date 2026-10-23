@@ -13,7 +13,7 @@ import { saveRetailPricing, setRetailProductPrice, lookupCnpj, type CnpjInfo } f
 import { effectivePrice, parseMoney } from '@/lib/retail/products'
 import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
 import {
-  analyzePrice, breakEvenRevenue, loyaltyCostPct, referencePrice, readLoyalty, readPricing, regimeAt, regimeTax, simplesAnexoIRate,
+  analyzePrice, breakEvenRevenue, fixedPct, requiredMarginPct, loyaltyCostPct, referencePrice, readLoyalty, readPricing, regimeAt, regimeTax, simplesAnexoIRate,
   TAX_REGIMES, MEI_DAS_2026, MEI_ANNUAL_LIMIT, readPaymentConditions, type PaymentConditions, type LoyaltyMode, type LoyaltySettings, type LoyaltyUnit, type PricingSettings, type TaxRegime, type TaxRegimeId,
 } from '@/lib/retail/margin'
 
@@ -69,7 +69,7 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
     const cost = p.cost ?? 0
     const a = p.cost !== null && p.cost > 0 ? analyzePrice(selling, cost, P, L) : null
     const ref = p.cost !== null && p.cost > 0 ? referencePrice(cost, P, L) : null
-    const state: Filter = !a ? 'sem_custo' : a.contribution < 0 ? 'prejuizo' : a.marginPct + 1e-9 < P.target_margin_pct ? 'abaixo' : 'todas'
+    const state: Filter = !a ? 'sem_custo' : a.contribution < 0 ? 'prejuizo' : a.marginPct + 1e-9 < requiredMarginPct(P) ? 'abaixo' : 'todas'
     return { p, selling, a, ref, state }
   }), [products, P, L])
 
@@ -112,7 +112,7 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
         <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
           {list.slice(0, 200).map(({ p, selling, a, ref }) => {
             const isOpen = shown === p.id
-            const tone = !a ? 'text-gray-400' : a.contribution < 0 ? 'text-negative-700' : a.marginPct + 1e-9 < P.target_margin_pct ? 'text-warn-700' : 'text-positive-700'
+            const tone = !a ? 'text-gray-400' : a.contribution < 0 ? 'text-negative-700' : a.marginPct + 1e-9 < requiredMarginPct(P) ? 'text-warn-700' : 'text-positive-700'
             return (
               <li key={p.id}>
                 <button type="button" onClick={() => setOpen(isOpen ? null : p.id)} className="grid w-full grid-cols-[1fr_auto] items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50">
@@ -140,7 +140,7 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
                         {a.breakEvenUnits !== null && <p className="text-gray-700">{a.breakEvenUnits} peças como esta pagam os custos fixos do mês.</p>}
                         {ref?.ok && (
                           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
-                            <span>Preço de referência para {fmtPct(P.target_margin_pct)} de margem: <strong>{fmtBRL(ref.price)}</strong></span>
+                            <span>Preço de referência (todos os custos + {fmtPct(P.target_margin_pct)} de lucro): <strong>{fmtBRL(ref.price)}</strong></span>
                             {!readOnly && Math.abs(ref.price - p.price) >= 0.01 && (
                               <button type="button" disabled={busy === p.id} onClick={() => applyPrice(p.id, ref.price)} className="rounded-lg border border-brand-700 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">{busy === p.id ? 'Aplicando…' : 'Usar este preço na peça'}</button>
                             )}
@@ -170,14 +170,15 @@ function PiecesPricing({ products, P, L, readOnly }: { products: PricedProduct[]
   )
 }
 
-export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, conditions: initialConditions, products, avgTicket, avgCount, avgPieces, readOnly }: {
+export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, conditions: initialConditions, products, avgTicket, avgCount, avgPieces, monthlyAvg = 0, readOnly }: {
+  monthlyAvg?: number
   pricing: PricingSettings; loyalty: LoyaltySettings; regimes: TaxRegime[]; rbt12: number; conditions: PaymentConditions; products: PricedProduct[]
   avgTicket: number; avgCount: number; avgPieces: number; readOnly: boolean
 }) {
   const router = useRouter()
   const [p, setP] = useState({
     tax_pct: toStr(pricing.tax_pct), card_pct: toStr(pricing.card_pct), other_pct: toStr(pricing.other_pct), per_piece: toStr(pricing.per_piece),
-    target_margin_pct: toStr(pricing.target_margin_pct), fixed_monthly: toStr(pricing.fixed_monthly), avg_ticket: toStr(pricing.avg_ticket), avg_pieces: toStr(pricing.avg_pieces),
+    target_margin_pct: toStr(pricing.target_margin_pct), fixed_monthly: toStr(pricing.fixed_monthly), expected_revenue: toStr(pricing.expected_revenue), avg_ticket: toStr(pricing.avg_ticket), avg_pieces: toStr(pricing.avg_pieces),
   })
   const [l, setL] = useState({
     enabled: loyalty.enabled, mode: loyalty.mode, cashback_pct: toStr(loyalty.cashback_pct), cashback_days: String(loyalty.cashback_days),
@@ -204,7 +205,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
   const curTax = current ? regimeTax(current, rbt12) : null
   const P: PricingSettings = useMemo(() => readPricing({
     tax_pct: curTax ? curTax.tax_pct : pctNum(p.tax_pct), card_pct: pctNum(p.card_pct), other_pct: pctNum(p.other_pct), per_piece: toNum(p.per_piece),
-    target_margin_pct: pctNum(p.target_margin_pct), fixed_monthly: toNum(p.fixed_monthly) + (curTax?.fixed_extra ?? 0), avg_ticket: toNum(p.avg_ticket), avg_pieces: pctNum(p.avg_pieces),
+    target_margin_pct: pctNum(p.target_margin_pct), fixed_monthly: toNum(p.fixed_monthly) + (curTax?.fixed_extra ?? 0), expected_revenue: toNum(p.expected_revenue), avg_ticket: toNum(p.avg_ticket), avg_pieces: pctNum(p.avg_pieces),
   }), [p, curTax])
   const L: LoyaltySettings = useMemo(() => readLoyalty({
     enabled: l.enabled, mode: l.mode, cashback_pct: pctNum(l.cashback_pct), cashback_days: Number(l.cashback_days),
@@ -213,7 +214,8 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
   }), [l, loyalty.changed_at])
 
   const loyaltyPct = loyaltyCostPct(L, P.avg_ticket, P.avg_pieces)
-  const monthRevenue = breakEvenRevenue(P.fixed_monthly, P.target_margin_pct)
+  const monthRevenue = breakEvenRevenue(P.fixed_monthly, requiredMarginPct(P))
+  const fixedShare = fixedPct(P)
   const unit = UNITS.find(u => u.id === l.every_unit)!
 
   // Regime escolhido e ainda não salvo: entra junto no "Salvar" (não precisa de outro botão)
@@ -232,7 +234,7 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
     setBusy(true); setMsg(null)
     const conditions = readPaymentConditions({ pix: { enabled: cond.pixOn, discount_pct: pctNum(cond.pixDisc), fee_pct: pctNum(cond.pixFee) }, card: { enabled: cond.cardOn, max_installments: Number(cond.cardN) || 1, fee_pct: pctNum(cond.cardFee) } })
     if (pending.error) { setBusy(false); setMsg({ ok: false, text: `Impostos: ${pending.error}` }); return }
-    const r = await saveRetailPricing({ pricing: P, loyalty: L, regimes: allRegimes, conditions })
+    const r = await saveRetailPricing({ pricing: { ...P, fixed_monthly: toNum(p.fixed_monthly) }, loyalty: L, regimes: allRegimes, conditions }) // o DAS do MEI entra pelo regime, não fica gravado aqui
     setBusy(false)
     if (!r.ok) { setMsg({ ok: false, text: r.error }); return }
     if (pending.r) { setRegimes(allRegimes); setNewReg(null) }
@@ -362,17 +364,25 @@ export function PricingForm({ pricing, loyalty, regimes: initialRegimes, rbt12, 
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">4. Quanto você quer ganhar</h2>
-          <p className="text-sm text-gray-600"><strong>Margem</strong> é quanto sobra do <strong>preço de venda</strong> depois de pagar a peça e os custos da venda. <strong>Markup</strong> é quanto você multiplica o <strong>custo</strong>. Não são a mesma coisa.</p>
+          <h2 className="text-base font-semibold text-gray-900">4. Custos fixos e lucro</h2>
+          <p className="text-sm text-gray-600">O preço de cada peça paga um pedaço dos custos fixos do mês, na proporção do que a loja fatura (método do markup). O <strong>lucro</strong> é o que sobra limpo depois de pagar tudo. <strong>Markup</strong> é quanto você multiplica o custo da peça.</p>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Margem desejada" suffix="%" value={p.target_margin_pct} onChange={setPf('target_margin_pct')} disabled={readOnly} help="O que sobra para pagar as contas do mês e dar lucro." />
-          <Field label="Custos fixos do mês" prefix="R$" value={p.fixed_monthly} onChange={setPf('fixed_monthly')} disabled={readOnly} help={`Aluguel, salários, contador, sistemas.${curTax?.fixed_extra ? ` O DAS do MEI (${fmtBRL(curTax.fixed_extra)}) já entra sozinho.` : ''}`} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field label="Custos fixos do mês" prefix="R$" value={p.fixed_monthly} onChange={setPf('fixed_monthly')} disabled={readOnly} help={`Aluguel, salários, contador, sistemas, internet.${curTax?.fixed_extra ? ` O DAS do MEI (${fmtBRL(curTax.fixed_extra)}) entra sozinho: não some aqui.` : ''}`} />
+          <div>
+            <Field label="Faturamento médio do mês" prefix="R$" value={p.expected_revenue} onChange={setPf('expected_revenue')} disabled={readOnly} help="Quanto a loja vende por mês, em média. Divide os custos fixos entre as vendas." />
+            {monthlyAvg > 0 && !readOnly && <button type="button" onClick={() => setP(prev => ({ ...prev, expected_revenue: toStr(monthlyAvg) }))} className="mt-1 text-xs text-brand-700 hover:underline">Usar a média vendida no Drone: {fmtBRL(monthlyAvg)}</button>}
+          </div>
+          <Field label="Lucro desejado" suffix="%" value={p.target_margin_pct} onChange={setPf('target_margin_pct')} disabled={readOnly} help="Do preço de venda, depois de pagar a peça, impostos, taxas e custos fixos." />
         </div>
-        {monthRevenue !== null && (
+        {P.fixed_monthly > 0 && P.expected_revenue > 0 && (
           <p className="rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
-            Para pagar {fmtBRL(P.fixed_monthly)} de custos fixos com margem de {fmtPct(P.target_margin_pct)}, a loja precisa vender <strong>{fmtBRL(monthRevenue)} por mês</strong>. Acima disso, é lucro.
+            Custos fixos de {fmtBRL(P.fixed_monthly)} ÷ faturamento de {fmtBRL(P.expected_revenue)} = <strong>{fmtPct(fixedShare)} de cada venda</strong>, que já entram no preço.
+            {monthRevenue !== null && <> Para pagar os fixos, a loja precisa vender ao menos {fmtBRL(monthRevenue)} no mês.</>}
           </p>
+        )}
+        {P.fixed_monthly > 0 && !(P.expected_revenue > 0) && (
+          <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">Informe o faturamento médio do mês: sem ele, os custos fixos ({fmtBRL(P.fixed_monthly)}) ficam fora do preço das peças.</p>
         )}
       </section>
 

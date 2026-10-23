@@ -13,7 +13,7 @@ import { isProposal } from '@/lib/retail/proposal'
 import { appBaseUrl } from '@/lib/whatsapp/webhook-token'
 import { requireTenantId } from '@/lib/tenant/context'
 import { customerLoyalty, loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { pricingAt, readPricing, conditionOptions } from '@/lib/retail/margin'
+import { pricingAt, readPricing, conditionOptions, requiredMarginPct } from '@/lib/retail/margin'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -115,7 +115,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
           installmentValue: Math.round(((c.total + n(o.shipping)) / c.installments) * 100) / 100, contribution: c.analysis.contribution, marginPct: c.analysis.marginPct,
         }))
         return (
-          <ProposalPanel orderId={o.id} previews={previews} targetMargin={pricing.target_margin_pct}
+          <ProposalPanel orderId={o.id} previews={previews} targetMargin={requiredMarginPct(pricing)}
             url={o.proposal_token ? `${appBaseUrl()}/loja/proposta/${o.proposal_token}` : null} sentAt={o.proposal_sent_at}
             choiceLabel={prop?.options.find(x => x.id === o.proposal_choice)?.label ?? null}
             links={{ pix: prop?.options.find(x => x.id === 'pix')?.link ?? null, card: prop?.options.find(x => x.id === 'card')?.link ?? null }}

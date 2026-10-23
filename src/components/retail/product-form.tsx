@@ -11,7 +11,7 @@ import {
   saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto,
 } from '@/lib/actions/retail-products'
 import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, effectivePrice, parseMoney, retailPhotoUrl, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
-import { analyzePrice, referencePrice, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
+import { analyzePrice, priceMemory, referencePrice, requiredMarginPct, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
 import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
 import Link from 'next/link'
 
@@ -471,7 +471,7 @@ function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
   const ref = referencePrice(cost, pricing, loyalty)
   const a = selling !== null && cost > 0 ? analyzePrice(selling, cost, pricing, loyalty) : null
   const configured = pricing.tax_pct + pricing.card_pct + pricing.other_pct + pricing.per_piece + pricing.fixed_monthly > 0
-  const tone = !a ? '' : a.contribution < 0 ? 'border-negative-600/40 bg-negative-100/50' : a.marginPct + 1e-9 < pricing.target_margin_pct ? 'border-warn-600/40 bg-warn-100/50' : 'border-positive-600/40 bg-positive-100/50'
+  const tone = !a ? '' : a.contribution < 0 ? 'border-negative-600/40 bg-negative-100/50' : a.marginPct + 1e-9 < requiredMarginPct(pricing) ? 'border-warn-600/40 bg-warn-100/50' : 'border-positive-600/40 bg-positive-100/50'
   const refText = ref.ok && cost > 0 ? ref.price.toFixed(2).replace('.', ',') : ''
   // Custo primeiro: com o preço vazio, o preço de referência entra sozinho (dá para ajustar)
   const fillFromCost = () => { if (!f.price.trim() && refText) setPrice(refText) }
@@ -488,10 +488,11 @@ function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
       </div>
       {cost > 0 && (ref.ok ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
-          <span>Preço de referência para {fmtPct(pricing.target_margin_pct)} de margem: <strong>{fmtBRL(ref.price)}</strong> (markup {fmtNum1(ref.markup)})</span>
+          <span>Preço de referência (todos os custos + {fmtPct(pricing.target_margin_pct)} de lucro): <strong>{fmtBRL(ref.price)}</strong> (markup {fmtNum1(ref.markup)})</span>
           <button type="button" onClick={() => setPrice(refText)} className="rounded-lg border border-brand-700 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">Usar este preço</button>
         </div>
       ) : <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">{ref.reason}</p>)}
+      {cost > 0 && <PriceMemoryBox cost={cost} pricing={pricing} loyalty={loyalty} selling={selling} />}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className={lbl} htmlFor="p-price">2. Preço de venda *</label>
@@ -518,11 +519,12 @@ function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
             <div className={`rounded-lg border px-3 py-2 text-sm ${tone}`}>
               <p className="font-medium text-gray-900">Vendendo a {fmtBRL(a.price)}{promo !== null && price !== null && promo < price ? ' (preço de promoção)' : ''}:</p>
               <ul className="mt-1 space-y-0.5 text-gray-700">
-                <li>Sobra {fmtBRL(a.contribution)} por peça · margem {fmtPct(a.marginPct)} · markup {fmtNum1(a.markup)} ({fmtPct(a.markupPct)} sobre o custo)</li>
+                <li>Lucro de <strong>{fmtBRL(a.profit)}</strong> por peça ({fmtPct(a.profitPct)} do preço), depois da peça, impostos, taxas e custos fixos</li>
+                <li>Sobra {fmtBRL(a.contribution)} antes dos fixos (margem {fmtPct(a.marginPct)}) · markup {fmtNum1(a.markup)}</li>
                 <li>Abaixo de {fmtBRL(a.minPrice)} a venda dá prejuízo</li>
                 {a.breakEvenUnits !== null && <li>{a.breakEvenUnits} peças como esta pagam os custos fixos do mês</li>}
                 {a.contribution < 0 && <li className="font-medium text-negative-700">Este preço não cobre o custo e as despesas da venda.</li>}
-                {a.contribution >= 0 && a.marginPct + 1e-9 < pricing.target_margin_pct && <li className="text-warn-700">Abaixo da sua margem desejada de {fmtPct(pricing.target_margin_pct)}.</li>}
+                {a.contribution >= 0 && a.marginPct + 1e-9 < requiredMarginPct(pricing) && <li className="text-warn-700">Abaixo do seu lucro desejado de {fmtPct(pricing.target_margin_pct)} (depois dos custos fixos).</li>}
               </ul>
             </div>
           )}
@@ -530,5 +532,52 @@ function PricePanel({ f, setPrice, setPromo, setCost, pricing, loyalty }: {
       )}
       {!configured && <p className="text-xs text-gray-500">Para a conta ficar completa, informe impostos, taxas e custos fixos em <Link href="/varejo/precificacao" className="text-brand-700 hover:underline">Custos e preço</Link>.</p>}
     </div>
+  )
+}
+
+// Memória de cálculo: de onde sai o preço de referência e para onde vai o dinheiro da venda
+function PriceMemoryBox({ cost, pricing, loyalty, selling }: { cost: number; pricing: PricingSettings; loyalty: LoyaltySettings; selling: number | null }) {
+  const m = priceMemory(cost, pricing, loyalty)
+  const base = selling ?? m.price
+  const pct = (v: number) => fmtPct(v)
+  return (
+    <details className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm" open>
+      <summary className="cursor-pointer font-medium text-gray-900">Memória de cálculo</summary>
+      <div className="mt-2 space-y-3 text-gray-700">
+        <table className="w-full text-sm">
+          <tbody>
+            <tr><td className="py-0.5">Custo da peça</td><td className="py-0.5 text-right">{fmtBRL(m.cost)}</td></tr>
+            <tr><td className="py-0.5">+ Custo por peça (embalagem, etiqueta)</td><td className="py-0.5 text-right">{fmtBRL(m.perPiece)}</td></tr>
+            <tr className="border-t border-gray-200 font-medium"><td className="py-0.5">= Custo direto</td><td className="py-0.5 text-right">{fmtBRL(m.direct)}</td></tr>
+          </tbody>
+        </table>
+        <div>
+          <p className="text-xs font-medium uppercase text-gray-500">Sai de cada venda (% do preço)</p>
+          <table className="mt-1 w-full text-sm">
+            <tbody>
+              {m.pcts.map(x => (
+                <tr key={x.key}>
+                  <td className="py-0.5">{x.label}{x.key === 'fixed' && x.pct > 0 ? <span className="text-xs text-gray-500"> ({fmtBRL(pricing.fixed_monthly)} ÷ {fmtBRL(pricing.expected_revenue)})</span> : null}</td>
+                  <td className="py-0.5 text-right">{pct(x.pct)}</td>
+                  {base ? <td className="py-0.5 pl-3 text-right text-gray-500">{fmtBRL(base * x.pct / 100)}</td> : null}
+                </tr>
+              ))}
+              <tr className="border-t border-gray-200 font-medium"><td className="py-0.5">Total</td><td className="py-0.5 text-right">{pct(m.totalPct)}</td>{base ? <td className="py-0.5 pl-3 text-right">{fmtBRL(base * m.totalPct / 100)}</td> : null}</tr>
+            </tbody>
+          </table>
+        </div>
+        {m.price !== null ? (
+          <p className="rounded bg-white px-2 py-1.5">
+            Divisor = 1 − {pct(m.totalPct)} = <strong>{fmtNum1(m.divisor * 100)}%</strong> · Preço = {fmtBRL(m.direct)} ÷ {fmtNum1(m.divisor * 100)}% = <strong>{fmtBRL(m.price)}</strong> (arredondado para cima no centavo) · markup {fmtNum1(m.markup ?? 0)}
+          </p>
+        ) : <p className="text-warn-700">Os percentuais somam 100% ou mais: não existe preço que feche a conta.</p>}
+        {selling !== null && m.price !== null && Math.abs(selling - m.price) > 0.009 && (
+          <p className="text-xs text-gray-500">Os valores em R$ acima usam o seu preço de venda ({fmtBRL(selling)}), não o de referência.</p>
+        )}
+        {m.fixedMissingRevenue && <p className="text-xs text-warn-700">Os custos fixos ({fmtBRL(pricing.fixed_monthly)}) ficaram fora: informe o faturamento médio do mês em <Link href="/varejo/precificacao" className="underline">Custos e preço</Link>.</p>}
+        {pricing.tax_pct === 0 && pricing.fixed_monthly === 0 && pricing.card_pct === 0 && <p className="text-xs text-warn-700">Impostos, taxas e custos fixos estão em zero. Preencha em <Link href="/varejo/precificacao" className="underline">Custos e preço</Link> para o preço ficar completo.</p>}
+        <p className="text-xs text-gray-500">MEI: o imposto é o DAS fixo do mês, que entra nos custos fixos (0% por venda). Simples: alíquota do faturamento de 12 meses.</p>
+      </div>
+    </details>
   )
 }

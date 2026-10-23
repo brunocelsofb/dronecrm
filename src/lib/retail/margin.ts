@@ -34,13 +34,14 @@ export type PricingSettings = {
   card_pct: number          // taxa média da maquininha / link de pagamento
   other_pct: number         // comissão, marketing por venda etc.
   per_piece: number         // R$ por peça: embalagem, etiqueta, sacola
-  target_margin_pct: number // margem de contribuição desejada
-  fixed_monthly: number     // custos fixos do mês: aluguel, salários, sistemas…
+  target_margin_pct: number // lucro desejado (% do preço, depois de todos os custos, inclusive os fixos)
+  fixed_monthly: number     // custos fixos do mês: aluguel, salários, sistemas… (com o DAS do MEI)
+  expected_revenue: number  // faturamento médio do mês: base para ratear os custos fixos no preço (método do markup)
   avg_ticket: number        // valor médio de uma compra (usado no "a cada R$ X")
   avg_pieces: number        // peças por compra, em média (usado no "a cada X peças")
 }
 
-export const DEFAULT_PRICING: PricingSettings = { tax_pct: 0, card_pct: 0, other_pct: 0, per_piece: 0, target_margin_pct: 30, fixed_monthly: 0, avg_ticket: 0, avg_pieces: 0 }
+export const DEFAULT_PRICING: PricingSettings = { tax_pct: 0, card_pct: 0, other_pct: 0, per_piece: 0, target_margin_pct: 30, fixed_monthly: 0, expected_revenue: 0, avg_ticket: 0, avg_pieces: 0 }
 export const DEFAULT_LOYALTY: LoyaltySettings = {
   enabled: false, mode: 'cashback', cashback_pct: 5, cashback_days: 90, every_unit: 'valor', every_amount: 1000, every_pct: 10,
   tiers: [{ min: 500, pct: 5 }, { min: 1500, pct: 8 }, { min: 3000, pct: 10 }],
@@ -58,7 +59,7 @@ export function readPricing(raw: unknown): PricingSettings {
   return {
     tax_pct: num(r.tax_pct, 0, 99, 0), card_pct: num(r.card_pct, 0, 99, 0), other_pct: num(r.other_pct, 0, 99, 0),
     per_piece: num(r.per_piece, 0, 100000, 0), target_margin_pct: num(r.target_margin_pct, 0, 95, DEFAULT_PRICING.target_margin_pct),
-    fixed_monthly: num(r.fixed_monthly, 0, 1e9, 0), avg_ticket: num(r.avg_ticket, 0, 1e7, 0), avg_pieces: num(r.avg_pieces, 0, 1000, 0),
+    fixed_monthly: num(r.fixed_monthly, 0, 1e9, 0), expected_revenue: num(r.expected_revenue, 0, 1e10, 0), avg_ticket: num(r.avg_ticket, 0, 1e7, 0), avg_pieces: num(r.avg_pieces, 0, 1000, 0),
   }
 }
 
@@ -111,16 +112,52 @@ export function variablePct(p: PricingSettings, l: LoyaltySettings): number {
   return p.tax_pct + p.card_pct + p.other_pct + loyaltyCostPct(l, p.avg_ticket, p.avg_pieces)
 }
 
+// Custos fixos como % do preço (método do markup): fixos do mês ÷ faturamento médio do mês.
+// Sem faturamento informado, não dá para ratear: 0% (o preço avisa).
+export function fixedPct(p: PricingSettings): number {
+  return p.fixed_monthly > 0 && p.expected_revenue > 0 ? (p.fixed_monthly / p.expected_revenue) * 100 : 0
+}
+
+// Margem de contribuição que a peça precisa ter: custos fixos rateados + lucro desejado
+export function requiredMarginPct(p: PricingSettings): number {
+  return fixedPct(p) + p.target_margin_pct
+}
+
 export type PriceSuggestion = { ok: true; price: number; markup: number } | { ok: false; reason: string }
 
-// Preço de referência para a margem desejada
-export function referencePrice(cost: number, p: PricingSettings, l: LoyaltySettings, marginPct = p.target_margin_pct): PriceSuggestion {
+// Preço de referência (markup divisor): (custo + custo por peça) ÷ (1 − impostos − taxas − outros − fidelidade − fixos − lucro)
+export function referencePrice(cost: number, p: PricingSettings, l: LoyaltySettings, marginPct = requiredMarginPct(p)): PriceSuggestion {
   if (!(cost > 0)) return { ok: false, reason: 'Informe o custo da peça.' }
   const v = variablePct(p, l)
   const denom = 1 - (v + marginPct) / 100
-  if (denom <= 0.0001) return { ok: false, reason: `Custos variáveis (${v.toFixed(1)}%) + margem desejada (${marginPct.toFixed(1)}%) chegam a 100% ou mais: não existe preço que feche essa conta. Reduza a margem ou os custos.` }
+  if (denom <= 0.0001) return { ok: false, reason: `Impostos, taxas e fidelidade (${v.toFixed(1).replace('.', ',')}%) + custos fixos e lucro (${marginPct.toFixed(1).replace('.', ',')}%) chegam a 100% ou mais: não existe preço que feche essa conta. Reduza o lucro desejado ou os custos.` }
   const price = ceil2((cost + p.per_piece) / denom)
   return { ok: true, price, markup: price / cost }
+}
+
+// Memória de cálculo do preço de referência (o que entra e de onde vem cada número)
+export type PriceMemory = {
+  cost: number; perPiece: number; direct: number
+  pcts: { key: 'tax' | 'card' | 'other' | 'loyalty' | 'fixed' | 'profit'; label: string; pct: number; detail: string | null }[]
+  totalPct: number; divisor: number; price: number | null; markup: number | null
+  fixedMissingRevenue: boolean // tem custo fixo, mas sem faturamento médio para ratear
+}
+export function priceMemory(cost: number, p: PricingSettings, l: LoyaltySettings): PriceMemory {
+  const loyalty = loyaltyCostPct(l, p.avg_ticket, p.avg_pieces)
+  const fixed = fixedPct(p)
+  const pcts: PriceMemory['pcts'] = [
+    { key: 'tax', label: 'Impostos', pct: p.tax_pct, detail: null },
+    { key: 'card', label: 'Taxa do cartão / link', pct: p.card_pct, detail: null },
+    { key: 'other', label: 'Outros por venda', pct: p.other_pct, detail: null },
+    { key: 'loyalty', label: 'Fidelidade', pct: loyalty, detail: null },
+    { key: 'fixed', label: 'Custos fixos do mês', pct: fixed, detail: fixed > 0 ? `${p.fixed_monthly.toFixed(2)} ÷ ${p.expected_revenue.toFixed(2)}` : null },
+    { key: 'profit', label: 'Lucro desejado', pct: p.target_margin_pct, detail: null },
+  ]
+  const totalPct = pcts.reduce((s, x) => s + x.pct, 0)
+  const divisor = 1 - totalPct / 100
+  const direct = cost + p.per_piece
+  const price = cost > 0 && divisor > 0.0001 ? ceil2(direct / divisor) : null
+  return { cost, perPiece: p.per_piece, direct, pcts, totalPct, divisor, price, markup: price && cost > 0 ? price / cost : null, fixedMissingRevenue: p.fixed_monthly > 0 && !(p.expected_revenue > 0) }
 }
 
 export type PriceAnalysis = {
@@ -130,6 +167,9 @@ export type PriceAnalysis = {
   variableCost: number           // R$ de impostos, taxas e fidelidade nesta venda
   contribution: number           // R$ que sobra para pagar os custos fixos e dar lucro
   marginPct: number              // contribuição ÷ preço
+  fixedShare: number             // R$ dos custos fixos que esta venda paga (rateio pelo faturamento)
+  profit: number                 // R$ de lucro depois dos custos fixos rateados
+  profitPct: number              // lucro ÷ preço
   minPrice: number | null        // abaixo disto, a venda dá prejuízo (contribuição < 0)
   breakEvenUnits: number | null  // peças iguais a esta para pagar os custos fixos do mês
 }
@@ -146,6 +186,9 @@ export function analyzePrice(price: number, cost: number, p: PricingSettings, l:
     variableCost,
     contribution,
     marginPct: price > 0 ? (contribution / price) * 100 : 0,
+    fixedShare: price * fixedPct(p) / 100,
+    profit: contribution - price * fixedPct(p) / 100,
+    profitPct: price > 0 ? ((contribution - price * fixedPct(p) / 100) / price) * 100 : 0,
     minPrice,
     breakEvenUnits: p.fixed_monthly > 0 && contribution > 0 ? Math.ceil(p.fixed_monthly / contribution - 1e-9) : null,
   }
@@ -187,7 +230,7 @@ export function analyzeOrder(lines: OrderLine[], discounts: number, p: PricingSe
   const variableCost = revenue * v
   const contribution = revenue - cost - variableCost
   const minRevenue = v < 1 ? ceil2(cost / (1 - v)) : null
-  const t = 1 - v - p.target_margin_pct / 100
+  const t = 1 - v - requiredMarginPct(p) / 100
   const minRevenueTarget = t > 0 ? ceil2(cost / t) : null
   return {
     revenue: round2(revenue), cost: round2(cost), variableCost: round2(variableCost), contribution: round2(contribution),

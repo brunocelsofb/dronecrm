@@ -5,7 +5,7 @@ import type { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { PAID_STATUSES, birthdayInfo, customerStatus, mergeStats, type BirthdayInfo } from '@/lib/retail/customers'
 import { loadCustomerOrderStats, loadRetailSettings } from '@/lib/retail/queries'
 import { loadPricingConfig } from '@/lib/retail/loyalty-server'
-import { analyzeOrder, pricingAt, readPricing, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
+import { analyzeOrder, pricingAt, requiredMarginPct, readPricing, cashbackBalance, everyRewards, tierFor, round2, type CashbackEntry, type LoyaltySettings, type OrderLine, type PricingSettings } from '@/lib/retail/margin'
 import { breakEvenProgress, changePct, monthBounds, summarizeSales, type BreakEvenProgress, type MonthBounds, type SalesSummary } from '@/lib/retail/dashboard-calc'
 import type { DashboardBlockId } from '@/lib/retail/dashboard-blocks'
 
@@ -68,7 +68,7 @@ export async function loadRetailDashboard(db: Db, tenantId: string, blocks: Dash
       const s = summarizeSales(cur.map(analyze))
       const p = summarizeSales(prev.map(analyze))
       out.sales = { ...s, prevRevenue: p.revenue, prevOrders: p.orders, revenueChange: changePct(s.revenue, p.revenue) }
-      out.breakEven = breakEvenProgress(pricing.fixed_monthly, s, pricing.target_margin_pct, month.day, month.days)
+      out.breakEven = breakEvenProgress(pricing.fixed_monthly, s, requiredMarginPct(pricing), month.day, month.days)
       const top = new Map<string, { name: string; qty: number; revenue: number }>()
       for (const o of cur) for (const i of o.retail_order_items) {
         const k = i.product_id ?? i.name
