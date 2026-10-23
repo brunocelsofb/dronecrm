@@ -35,7 +35,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 </div>
                 <div className="text-right flex-1">
                   <h1 className="text-xl font-bold text-[#1B556B]">Entrar</h1>
-                  <p className="text-xs font-medium text-[#32AF9D] mt-0.5">Acesse o CRM de Contratos</p>
                 </div>
               </div>
             </div>

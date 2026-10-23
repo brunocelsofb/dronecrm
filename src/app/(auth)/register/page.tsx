@@ -90,7 +90,6 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Criar conta</h1>
-          <p className="text-sm text-gray-500">Cadastre-se no CRM de Contratos</p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
