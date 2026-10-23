@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { WallpaperManager } from '@/components/settings/wallpaper-manager'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { isPlatformOwner } from '@/lib/auth/platform-owner'
 
 export default async function WallpapersPage() {
   const supabase = await createClient()
@@ -20,14 +21,18 @@ export default async function WallpapersPage() {
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
+  // Fundo do login comum é da plataforma: só o Super Admin, na própria conta, vê e muda
+  const platformOwner = await isPlatformOwner()
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Papéis de Parede</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Gerencie as imagens de fundo das telas públicas e do login. Exclusivo para administradores.</p>
+        <p className="mt-0.5 text-sm text-gray-500">{platformOwner ? 'Imagens de fundo das telas públicas e da tela de login (a tela de login vale para todas as empresas).' : 'Imagens de fundo das telas públicas da sua empresa. A tela de login é a mesma para todas as empresas e é definida pela plataforma.'}</p>
       </div>
       <WallpaperManager
         loginBgUrl={(s as any)?.login_bg_url ?? null}
+        showLogin={platformOwner}
         supportBgUrl={(s as any)?.support_bg_url ?? null}
         npsBgUrl={(s as any)?.nps_bg_url ?? null}
         clinicaBgUrl={(s as any)?.survey_clinica_bg_url ?? null}

@@ -12,7 +12,7 @@ type WallpaperField = {
 }
 
 const FIELDS: WallpaperField[] = [
-  { key: 'login',       label: 'Tela de Login',              description: 'Fundo da página de autenticação (/login)',           bucketPath: 'login-bg',        column: 'login_bg_url',              initial: '' },
+  { key: 'login',       label: 'Tela de Login',              description: 'Fundo da tela de login de todas as empresas (/login)',           bucketPath: 'login-bg',        column: 'login_bg_url',              initial: '' },
   { key: 'support',     label: 'Formulário de Suporte',      description: 'Fundo da página /suporte',                          bucketPath: 'support-bg',      column: 'support_bg_url',            initial: '' },
   { key: 'nps',         label: 'Pesquisa NPS',               description: 'Fundo da página /nps/[token]',                      bucketPath: 'nps-bg',          column: 'nps_bg_url',                initial: '' },
   { key: 'clinica',     label: 'Pesquisa — Eng. Clínica',    description: 'Fundo da pesquisa de Engenharia Clínica',           bucketPath: 'survey-clinica',  column: 'survey_clinica_bg_url',     initial: '' },
@@ -103,6 +103,7 @@ function WallpaperCard({ field, initialUrl }: { field: WallpaperField; initialUr
 
 export function WallpaperManager(props: {
   loginBgUrl: string | null
+  showLogin: boolean
   supportBgUrl: string | null
   npsBgUrl: string | null
   clinicaBgUrl: string | null
@@ -122,7 +123,7 @@ export function WallpaperManager(props: {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {FIELDS.map(field => (
+        {FIELDS.filter(f => f.key !== 'login' || props.showLogin).map(field => (
           <WallpaperCard key={field.key} field={field} initialUrl={initialUrls[field.key] ?? null} />
         ))}
       </div>

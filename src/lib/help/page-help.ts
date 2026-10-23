@@ -76,7 +76,7 @@ const RULES: { test: RegExp; help: PageHelp }[] = [
   { test: /^\/settings\/carteira/, help: { title: 'Campos da carteira', text: 'Quais campos aparecem na Gestão de Carteira.' } },
   { test: /^\/settings\/curva-abc/, help: { title: 'Curva ABC', text: 'Faixas de valor que classificam os clientes em A, B e C.' } },
   { test: /^\/settings\/forms/, help: { title: 'Formulários', text: 'Formulários públicos de captura e pesquisa.' } },
-  { test: /^\/settings\/wallpapers/, help: { title: 'Fundos de tela', text: 'Imagens de fundo das páginas públicas (login, suporte, pesquisas).' } },
+  { test: /^\/settings\/wallpapers/, help: { title: 'Fundos de tela', text: 'Imagens de fundo das páginas públicas da empresa (suporte, pesquisas, formulário de leads).', tips: ['A tela de login é a mesma para todas as empresas: o fundo dela é definido pela plataforma.'] } },
   { test: /^\/settings\/price-users/, help: { title: 'Usuários do Price', text: 'Quem acessa a precificação integrada.' } },
   { test: /^\/settings/, help: { title: 'Configurações', text: 'Tudo o que é da sua empresa, organizado em quadros por assunto: empresa, equipe, funis, leads, contratos, propostas, assinatura, e-mail, WhatsApp, IA, integrações, pesquisas e sistema.', tips: ['Só administradores da conta alteram.', 'Cada quadro é um assunto; clique no item para abrir a tela dele.', 'Use a pesquisa no topo (ex.: renovação): os quadros e itens que batem ficam destacados; Enter abre o primeiro.', 'Resetar CRM fica em Sistema → Zona de risco.'] } },
 

@@ -5,12 +5,17 @@ import { LoginForm } from './login-form'
 
 export const dynamic = 'force-dynamic'
 
-// Login comum mostra a marca do produto; ?empresa=<slug> mostra a marca daquela empresa.
+// Login comum mostra a marca do produto; ?empresa=<slug> mostra o logo e o nome daquela empresa.
+// O fundo é sempre o da plataforma (definido pelo Super Admin em Papéis de Parede).
 // Depois de entrar, o CRM usa sempre a empresa do usuário (não depende deste link).
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
   const { empresa } = await searchParams
   const tenantId = empresa ? await tenantIdForSlug(empresa) : null
-  const { wallpaperUrl, loginBgUrl, bgColor, logoUrl, companyName } = tenantId ? await getPublicBranding(tenantId) : await getPlatformBranding()
+  // Fundo e cor do login são sempre da plataforma (Super Admin); ?empresa só troca logo e nome
+  const platform = await getPlatformBranding()
+  const brand = tenantId ? await getPublicBranding(tenantId) : platform
+  const { wallpaperUrl, loginBgUrl, bgColor } = platform
+  const { logoUrl, companyName } = brand
 
   const bgStyle = {
     backgroundColor: bgColor,
