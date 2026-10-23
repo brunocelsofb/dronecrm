@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { lostReasonLabel } from '@/lib/retail/funnel'
 import { notFound, redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -20,7 +21,7 @@ type Order = {
   id: string; number: number; status: string; payment_method: string | null; payment_condition: string | null; payment_link: string | null
   subtotal: number; discount: number; shipping: number; total: number; loyalty_discount: number; loyalty_kind: string | null; loyalty_earned: number; source: string; notes: string | null; stock_applied: boolean
   delivery: { method?: string | null; cep?: string | null; address?: string | null } | null
-  paid_at: string | null; created_at: string; customer_id: string | null
+  paid_at: string | null; created_at: string; customer_id: string | null; lost_reason: string | null
   proposal_token: string | null; proposal: unknown; proposal_sent_at: string | null; proposal_choice: string | null; proposal_accepted_at: string | null
   retail_customers: { id: string; name: string; phone: string | null } | null
   retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number; unit_cost: number | null; retail_products: { cost_price: number | null } | null }[]
@@ -35,7 +36,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -69,7 +70,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
           <h1 className="text-xl font-semibold text-gray-900">Pedido nº {o.number}</h1>
           <p className="text-sm text-gray-500">{fmtDT(o.created_at)} · {o.source === 'vitrine' ? 'veio da vitrine' : 'lançado pela equipe'}{o.paid_at ? ` · pago em ${fmtDT(o.paid_at)}` : ''}</p>
         </div>
-        <span className={`rounded px-2 py-1 text-xs ${st?.style ?? ''}`}>{st?.label ?? o.status}</span>
+        <span className={`rounded px-2 py-1 text-xs ${st?.style ?? ''}`}>{st?.label ?? o.status}{o.status === 'cancelado' && o.lost_reason ? ` · ${lostReasonLabel(o.lost_reason)}` : ''}</span>
       </div>
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 text-sm">

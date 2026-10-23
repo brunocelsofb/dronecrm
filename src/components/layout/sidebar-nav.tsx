@@ -16,6 +16,7 @@ import {
   LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3,
   Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset, Bot,
   ShoppingBag, Package, Calculator,
+  SquareKanban,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
@@ -60,6 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: 'varejo', label: 'Varejo', icon: ShoppingBag, items: [
       { href: '/varejo/painel', label: 'Painel da loja', icon: Gauge, feature: 'varejo' },
+      { href: '/varejo/funil', label: 'Funil da loja', icon: SquareKanban, feature: 'varejo' },
       { href: '/varejo/pedidos', label: 'Pedidos', icon: Receipt, feature: 'varejo' },
       { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo' },
       { href: '/varejo/produtos', label: 'Produtos', icon: Package, feature: 'varejo' },

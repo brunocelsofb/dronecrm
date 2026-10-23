@@ -98,7 +98,7 @@ export async function acceptRetailProposal(token: string, choice: string): Promi
   const total = round2(Number(o.subtotal) - discount - Number(o.loyalty_discount ?? 0) + Number(o.shipping))
   const { error } = await admin.from('retail_orders').update({
     proposal_choice: choice, proposal_accepted_at: new Date().toISOString(),
-    status: o.status === 'enviado_atendimento' ? 'aguardando_pagamento' : o.status,
+    status: o.status === 'enviado_atendimento' || o.status === 'carrinho' ? 'aguardando_pagamento' : o.status,
     discount, total,
     payment_method: choice === 'pix' ? 'pix' : 'cartao',
     payment_condition: opt.label,

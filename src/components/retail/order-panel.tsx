@@ -13,6 +13,7 @@ const money = (n: number) => (n ? n.toFixed(2).replace('.', ',') : '')
 
 // Próximos passos possíveis a partir da situação atual
 const NEXT: Record<string, string[]> = {
+  carrinho: ['enviado_atendimento', 'aguardando_pagamento', 'pago', 'cancelado'],
   enviado_atendimento: ['aguardando_pagamento', 'pago', 'cancelado'],
   aguardando_pagamento: ['pago', 'cancelado'],
   pago: ['enviado', 'entregue', 'cancelado'],

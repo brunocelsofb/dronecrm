@@ -20,6 +20,7 @@ export const CUSTOMER_STATUS = {
 export type CustomerStatus = keyof typeof CUSTOMER_STATUS
 
 export const ORDER_STATUSES = [
+  { id: 'carrinho', label: 'Carrinho', style: 'bg-gray-100 text-gray-700' },
   { id: 'enviado_atendimento', label: 'Enviado para atendimento', style: 'bg-brand-100 text-brand-800' },
   { id: 'aguardando_pagamento', label: 'Aguardando pagamento', style: 'bg-warn-100 text-warn-700' },
   { id: 'pago', label: 'Pago', style: 'bg-positive-100 text-positive-700' },

@@ -81,7 +81,7 @@ export async function loadRetailDashboard(db: Db, tenantId: string, blocks: Dash
 
   if (has('pedidos_abertos')) {
     tasks.push((async () => {
-      const open = ['enviado_atendimento', 'aguardando_pagamento']
+      const open = ['carrinho', 'enviado_atendimento', 'aguardando_pagamento']
       const [{ count }, { data }] = await Promise.all([
         db.from('retail_orders').select('id', { count: 'exact', head: true }).in('status', open),
         db.from('retail_orders').select('id, number, status, total, created_at, retail_customers(name)').in('status', open).order('created_at', { ascending: true }).limit(6),

@@ -17,7 +17,7 @@ export default async function RetailOrdersPage({ searchParams }: { searchParams:
   if (isOrderStatus(situacao)) q = q.eq('status', situacao)
   const [{ data }, { data: open }] = await Promise.all([
     q,
-    db.from('retail_orders').select('status, total').in('status', ['enviado_atendimento', 'aguardando_pagamento']),
+    db.from('retail_orders').select('status, total').in('status', ['carrinho', 'enviado_atendimento', 'aguardando_pagamento']),
   ])
   const list = (data ?? []) as unknown as Row[]
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
@@ -31,11 +31,14 @@ export default async function RetailOrdersPage({ searchParams }: { searchParams:
           <h1 className="text-xl font-semibold text-gray-900">Pedidos</h1>
           <p className="mt-1 text-sm text-gray-500">Pedidos da vitrine e vendas lançadas pela equipe. O estoque baixa quando o pedido vira pago.</p>
         </div>
+        <div className="flex gap-2">
+        <Link href="/varejo/funil" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Ver funil</Link>
         <Link href="/varejo/pedidos/novo" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Novo pedido</Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Stat label="Em atendimento" value={String((open ?? []).filter(o => o.status === 'enviado_atendimento').length)} />
+        <Stat label="Carrinho e atendimento" value={String((open ?? []).filter(o => o.status === 'carrinho' || o.status === 'enviado_atendimento').length)} />
         <Stat label="Aguardando pagamento" value={`${(open ?? []).filter(o => o.status === 'aguardando_pagamento').length} · ${fmtBRL(sum((open ?? []).filter(o => o.status === 'aguardando_pagamento') as { total: number }[]))}`} />
         <Stat label="Vendido no mês (pago)" value={fmtBRL(sum(paidMonth as { total: number }[] | null))} />
       </div>
