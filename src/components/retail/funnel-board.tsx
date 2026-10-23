@@ -95,7 +95,7 @@ export function FunnelBoard({ cards, settings, canEdit, isAdmin }: { cards: Funn
 function StageHeader({ tab, cards, settings, compact }: { tab: Tab; cards: FunnelCard[]; settings: FunnelSettings; compact?: boolean }) {
   const st = FUNNEL_STAGES.find(s => s.id === tab)
   const total = cards.reduce((s, c) => s + c.total, 0)
-  const limit: Partial<Record<FunnelStage, number>> = { carrinho: settings.carrinho_h, atendimento: settings.atendimento_h, proposta: settings.proposta_h, pagamento: settings.pagamento_h }
+  const limit: Partial<Record<FunnelStage, number>> = { carrinho: settings.carrinho_h, atendimento: settings.atendimento_h, pagamento: settings.pagamento_h }
   const h = st ? limit[st.id] : undefined
   return (
     <div className={compact ? '' : 'mb-2'}>
@@ -179,7 +179,7 @@ function Card({ c, canEdit }: { c: FunnelCard; canEdit: boolean }) {
           )}
           {isOpen && !c.whatsappUrl && <span className="text-[11px] text-gray-400">Sem telefone</span>}
           {c.stage === 'atendimento' && (
-            <Link href={`/varejo/pedidos/${c.id}`} className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50">Gerar proposta</Link>
+            <Link href={`/varejo/pedidos/${c.id}`} className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50">Gerar link de pagamento</Link>
           )}
           {moves.length > 0 && (
             <select disabled={busy} value="" aria-label="Mover para"
@@ -219,21 +219,20 @@ function SettingsForm({ settings }: { settings: FunnelSettings }) {
   const router = useRouter()
   const [f, setF] = useState<Record<keyof FunnelSettings, string>>({
     carrinho_h: String(settings.carrinho_h), atendimento_h: String(settings.atendimento_h),
-    proposta_h: String(settings.proposta_h), pagamento_h: String(settings.pagamento_h), lost_suggest_days: String(settings.lost_suggest_days),
+    pagamento_h: String(settings.pagamento_h), lost_suggest_days: String(settings.lost_suggest_days),
   })
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const fields: { k: keyof FunnelSettings; label: string; unit: string }[] = [
-    { k: 'carrinho_h', label: 'Carrinho sem conversa', unit: 'horas' },
+    { k: 'carrinho_h', label: 'Novo pedido sem conversa', unit: 'horas' },
     { k: 'atendimento_h', label: 'Em atendimento sem resposta', unit: 'horas' },
-    { k: 'proposta_h', label: 'Proposta sem aceite', unit: 'horas' },
-    { k: 'pagamento_h', label: 'Aguardando pagamento', unit: 'horas' },
+    { k: 'pagamento_h', label: 'Link enviado sem pagamento', unit: 'horas' },
     { k: 'lost_suggest_days', label: 'Sugerir "perdido" depois de', unit: 'dias' },
   ]
   async function save() {
     setBusy(true); setMsg(null)
     const r = await saveRetailFunnelSettings({
-      carrinho_h: Number(f.carrinho_h), atendimento_h: Number(f.atendimento_h), proposta_h: Number(f.proposta_h),
+      carrinho_h: Number(f.carrinho_h), atendimento_h: Number(f.atendimento_h),
       pagamento_h: Number(f.pagamento_h), lost_suggest_days: Number(f.lost_suggest_days),
     })
     setBusy(false)
@@ -244,7 +243,7 @@ function SettingsForm({ settings }: { settings: FunnelSettings }) {
     <details className="rounded-xl border border-gray-200 bg-white p-4">
       <summary className="cursor-pointer text-sm font-semibold text-gray-900">Prazos para avisar (administrador)</summary>
       <p className="mt-1 text-xs text-gray-500">Depois de quanto tempo na etapa o pedido fica laranja e entra em "Recuperar hoje". Vale para toda a equipe. Nenhum pedido vira perdido sozinho.</p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {fields.map(x => (
           <label key={x.k} className="block text-xs font-medium text-gray-600">{x.label}
             <span className="mt-1 flex items-center gap-1">

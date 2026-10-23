@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { lostReasonLabel } from '@/lib/retail/funnel'
+import { providerLabel, readPaymentSetup } from '@/lib/retail/payments'
 import { notFound, redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -22,6 +23,7 @@ type Order = {
   subtotal: number; discount: number; shipping: number; total: number; loyalty_discount: number; loyalty_kind: string | null; loyalty_earned: number; source: string; notes: string | null; stock_applied: boolean
   delivery: { method?: string | null; cep?: string | null; address?: string | null } | null
   paid_at: string | null; created_at: string; customer_id: string | null; lost_reason: string | null
+  payment_provider: string | null; payment_paid_method: string | null; payment_paid_amount: number | null; payment_receipt_url: string | null; payment_alert: string | null
   proposal_token: string | null; proposal: unknown; proposal_sent_at: string | null; proposal_choice: string | null; proposal_accepted_at: string | null
   retail_customers: { id: string; name: string; phone: string | null } | null
   retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number; unit_cost: number | null; retail_products: { cost_price: number | null } | null }[]
@@ -36,7 +38,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, payment_provider, payment_paid_method, payment_paid_amount, payment_receipt_url, payment_alert, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -53,6 +55,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   // imposto do regime em vigor na data da venda (pedido pago) ou hoje (em aberto)
   const pricing = pricingAt(readPricing(cfg.raw.pricing), cfg.regimes, o.paid_at ?? new Date(), cfg.rbt12)
   const loyalty = cfg.loyalty
+  const paySetup = readPaymentSetup(cfg.raw.payments)
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
   const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
   const custLoyalty = o.customer_id ? await customerLoyalty(db, o.customer_id, loyalty, o.id) : { mode: 'off' as const }
@@ -113,11 +116,17 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
         }))
         return (
           <ProposalPanel orderId={o.id} previews={previews} targetMargin={pricing.target_margin_pct}
-            url={o.proposal_token ? `${appBaseUrl()}/loja/proposta/${o.proposal_token}` : null} sentAt={o.proposal_sent_at} acceptedAt={o.proposal_accepted_at}
+            url={o.proposal_token ? `${appBaseUrl()}/loja/proposta/${o.proposal_token}` : null} sentAt={o.proposal_sent_at}
             choiceLabel={prop?.options.find(x => x.id === o.proposal_choice)?.label ?? null}
             links={{ pix: prop?.options.find(x => x.id === 'pix')?.link ?? null, card: prop?.options.find(x => x.id === 'card')?.link ?? null }}
             customer={o.retail_customers ? { name: o.retail_customers.name, phone: o.retail_customers.phone } : null} storeName={storeName}
-            editable={o.status !== 'cancelado' && !o.stock_applied} />
+            editable={o.status !== 'cancelado' && !o.stock_applied}
+            providers={{ pix: paySetup.pix_provider, card: paySetup.card_provider }}
+            payment={{
+              paid: !!o.stock_applied,
+              via: o.payment_provider && o.payment_provider !== 'manual' ? `${o.payment_paid_method === 'pix' ? 'Pix' : o.payment_paid_method === 'card' ? 'cartão' : 'pagamento'} via ${providerLabel(o.payment_provider)}${o.payment_paid_amount ? `, ${fmtBRL(n(o.payment_paid_amount))}` : ''}` : null,
+              alert: o.payment_alert, receiptUrl: o.payment_receipt_url,
+            }} />
         )
       })()}
 

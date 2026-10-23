@@ -26,5 +26,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     logo, brandColor: (org?.proposal_brand_color as string | null) ?? '#1B556B',
     acceptUrl: `${appBaseUrl()}/loja/proposta/${token}`, chosen: (o.proposal_choice as string | null) ?? null,
   })
-  return new NextResponse(Buffer.from(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="proposta-${o.proposal.number}.pdf"`, 'Cache-Control': 'no-store' } })
+  return new NextResponse(Buffer.from(pdf), { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="pedido-${o.proposal.number}.pdf"`, 'Cache-Control': 'no-store' } })
 }

@@ -9,7 +9,7 @@ const at = iso => new Date(iso)
 test('etapa vem da situação do pedido e da proposta', () => {
   assert.equal(stageOf({ status: 'carrinho' }), 'carrinho')
   assert.equal(stageOf({ status: 'enviado_atendimento', proposal_sent_at: null }), 'atendimento')
-  assert.equal(stageOf({ status: 'enviado_atendimento', proposal_sent_at: 'x', proposal_accepted_at: null }), 'proposta')
+  assert.equal(stageOf({ status: 'enviado_atendimento', proposal_sent_at: 'x', proposal_accepted_at: null }), 'atendimento')
   assert.equal(stageOf({ status: 'aguardando_pagamento', proposal_sent_at: 'x', proposal_accepted_at: 'y' }), 'pagamento')
   assert.equal(stageOf({ status: 'pago' }), 'pago')
   assert.equal(stageOf({ status: 'enviado' }), 'entrega')
@@ -23,10 +23,10 @@ test('carrinho fica parado depois de 2 h (padrão)', () => {
   assert.equal(followUp(o, FUNNEL_DEFAULTS, at('2026-10-23T12:00:00Z')).overdue, true)
 })
 
-test('proposta conta a partir do envio, não da criação', () => {
-  const o = { ...base, status: 'enviado_atendimento', proposal_sent_at: '2026-10-24T10:00:00Z' }
-  const r = followUp(o, FUNNEL_DEFAULTS, at('2026-10-25T10:00:00Z')) // 24 h depois do envio; prazo 48 h
-  assert.equal(r.stage, 'proposta'); assert.equal(r.overdue, false); assert.equal(r.hoursInStage, 24)
+test('aguardando pagamento conta a partir do último link enviado', () => {
+  const o = { ...base, status: 'aguardando_pagamento', stage_at: '2026-10-24T10:00:00Z', proposal_sent_at: '2026-10-25T10:00:00Z' }
+  const r = followUp(o, FUNNEL_DEFAULTS, at('2026-10-26T09:00:00Z')) // 23 h depois do novo link; prazo 24 h
+  assert.equal(r.stage, 'pagamento'); assert.equal(r.overdue, false); assert.equal(r.hoursInStage, 23)
   assert.equal(followUp(o, FUNNEL_DEFAULTS, at('2026-10-26T10:00:00Z')).overdue, true)
 })
 
@@ -46,8 +46,8 @@ test('pago e perdido nunca ficam "parados"', () => {
 })
 
 test('prazos: valores fora da faixa voltam ao padrão', () => {
-  assert.deepEqual(readFunnel({ carrinho_h: 0, atendimento_h: '12', proposta_h: 9999, pagamento_h: 'x', lost_suggest_days: 30 }),
-    { carrinho_h: 2, atendimento_h: 12, proposta_h: 48, pagamento_h: 24, lost_suggest_days: 30 })
+  assert.deepEqual(readFunnel({ carrinho_h: 0, atendimento_h: '12', pagamento_h: 9999, lost_suggest_days: 30 }),
+    { carrinho_h: 2, atendimento_h: 12, pagamento_h: 24, lost_suggest_days: 30 })
   assert.deepEqual(readFunnel(null), FUNNEL_DEFAULTS)
 })
 
@@ -61,8 +61,8 @@ test('texto das peças e primeiro nome', () => {
 test('mensagens de recuperação por etapa', () => {
   const d = { store: 'Loja X', customer: 'ana souza', number: 12, items: ['Saia'], proposalUrl: 'https://a/p', validUntil: '2026-10-30', paymentLink: 'https://pay' }
   assert.match(nudgeMessage('carrinho', d), /^Oi, Ana! Aqui é da Loja X\. Vi que você separou Saia/)
-  assert.match(nudgeMessage('proposta', d), /pedido nº 12 continua disponível até 30\/10\/2026\. Quer que eu ajuste alguma coisa\? O link é este: https:\/\/a\/p$/)
-  assert.match(nudgeMessage('pagamento', d), /O link para pagar é este: https:\/\/pay/)
+  assert.match(nudgeMessage('pagamento', d), /pedido nº 12 estão separadas até 30\/10\/2026\. Para finalizar, é só abrir, escolher Pix ou cartão e pagar: https:\/\/a\/p$/)
+  assert.match(nudgeMessage('pagamento', { ...d, proposalUrl: null }), /O link para pagar é este: https:\/\/pay$/)
   assert.equal(nudgeMessage('pago', d), null)
   assert.match(nudgeMessage('atendimento', { ...d, customer: null }), /^Oi! /)
 })

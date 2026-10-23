@@ -16,7 +16,7 @@ function hexToRgb(hex: string) {
 
 export async function buildProposalPdf(p: RetailProposal, opts: { logo: Uint8Array | null; brandColor: string; acceptUrl: string; chosen: string | null }): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
-  doc.setTitle(safe(`Proposta ${p.number} — ${p.store}`))
+  doc.setTitle(safe(`Pedido ${p.number} — ${p.store}`))
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
   const brand = hexToRgb(opts.brandColor)
@@ -41,7 +41,7 @@ export async function buildProposalPdf(p: RetailProposal, opts: { logo: Uint8Arr
     } catch { logoH = 0 }
   }
   if (!logoH) { text(p.store, M, y - 18, 18, bold, brand); logoH = 24 }
-  right('PROPOSTA', W - M, y - 12, 9, bold, gray)
+  right('RESUMO DO PEDIDO', W - M, y - 12, 9, bold, gray)
   right(`Nº ${p.number}`, W - M, y - 30, 16, bold, brand)
   right(`${day(p.created_at)} · válida até ${day(p.valid_until)}`, W - M, y - 46, 9, font, gray)
   y -= Math.max(logoH, 50) + 22
@@ -88,7 +88,7 @@ export async function buildProposalPdf(p: RetailProposal, opts: { logo: Uint8Arr
   }
   y -= 4
   ensure(60)
-  text(opts.chosen ? 'Condição aceita. Obrigado!' : 'Para aceitar, abra o link e escolha a condição:', M, y, 10, bold); y -= 15
+  text(opts.chosen ? 'Forma de pagamento escolhida. Obrigado!' : 'Para finalizar, abra o link, escolha Pix ou cartão e pague:', M, y, 10, bold); y -= 15
   if (!opts.chosen) { text(opts.acceptUrl, M, y, 9, font, brand); y -= 14 }
   text('Disponibilidade das peças confirmada pelo atendimento. Valores válidos até a data acima.', M, y, 8.5, font, gray)
 
