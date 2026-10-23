@@ -59,6 +59,8 @@ export type FunnelOrder = {
   proposal_sent_at: string | null
   proposal_accepted_at: string | null
   last_nudge_at: string | null
+  custom_stage?: string | null     // etapa própria da loja (dentro da etapa fixa)
+  custom_stage_at?: string | null
 }
 
 export function stageOf(o: Pick<FunnelOrder, 'status' | 'proposal_sent_at' | 'proposal_accepted_at'>): FunnelStage {
@@ -90,16 +92,20 @@ export function limitHours(stage: FunnelStage, s: FunnelSettings): number | null
 
 const H = 3_600_000
 // Parado = passou do prazo desde que entrou na etapa (ou desde o último lembrete, se for depois)
-export function followUp(o: FunnelOrder, s: FunnelSettings, now = new Date()): { stage: FunnelStage; hoursInStage: number; overdue: boolean; suggestLost: boolean } {
+export function followUp(o: FunnelOrder, s: FunnelSettings, now = new Date(), layout?: FunnelLayout): { stage: FunnelStage; hoursInStage: number; hoursInColumn: number; overdue: boolean; suggestLost: boolean } {
   const stage = stageOf(o)
-  const since = Date.parse(stageSince(o))
-  const hoursInStage = Math.max(0, (now.getTime() - since) / H)
-  const limit = limitHours(stage, s)
-  if (limit === null) return { stage, hoursInStage, overdue: false, suggestLost: false }
+  const custom = layout ? customOf(o, layout) : null
+  // Etapa própria: conta desde que entrou nela; prazo próprio ou o da etapa fixa
+  const since = Date.parse(custom && o.custom_stage_at ? o.custom_stage_at : stageSince(o))
+  const hoursInStage = Math.max(0, (now.getTime() - Date.parse(stageSince(o))) / H)
+  const hoursInColumn = Math.max(0, (now.getTime() - since) / H)
+  const baseLimit = limitHours(stage, s)
+  const limit = baseLimit === null ? null : custom?.hours ?? baseLimit
+  if (limit === null) return { stage, hoursInStage, hoursInColumn, overdue: false, suggestLost: false }
   const nudge = o.last_nudge_at ? Date.parse(o.last_nudge_at) : 0
   const base = Math.max(since, nudge)
   return {
-    stage, hoursInStage,
+    stage, hoursInStage, hoursInColumn,
     overdue: now.getTime() - base >= limit * H,
     suggestLost: hoursInStage >= s.lost_suggest_days * 24,
   }
@@ -156,4 +162,79 @@ export function nextMoves(stage: FunnelStage): { status: string; label: string }
     case 'entrega': return [{ status: 'entregue', label: 'Entregue' }]
     default: return []
   }
+}
+
+// ─── Etapas editáveis ─────────────────────────────────────────────────────────
+// As etapas fixas têm automações (estoque, fidelidade, link, pagamento) e não saem
+// do lugar: a loja pode renomear e esconder as opcionais. Etapas próprias ficam
+// "dentro" de uma etapa fixa (mesma situação do pedido) e não têm automação. Quando
+// uma automação muda a situação, o pedido sai da etapa própria sozinho.
+
+export const STAGE_LOCKS: Record<FunnelStage, string> = {
+  carrinho: 'Entra sozinho quando a cliente faz o pedido pela vitrine.',
+  atendimento: 'Pedidos lançados pela equipe começam aqui.',
+  pagamento: 'Entra sozinho ao gerar o link "Finalizar compra". Sai sozinho quando o pagamento é aprovado (InfinitePay ou Mercado Pago).',
+  pago: 'Ao entrar, baixa o estoque e gera a fidelidade (uma vez só).',
+  entrega: 'O estoque já foi baixado. Só acompanha a entrega.',
+  perdido: 'Ao marcar, cancela o pedido, devolve o estoque e desfaz a fidelidade.',
+}
+export const OPTIONAL_STAGES: FunnelStage[] = ['carrinho', 'entrega']
+export const CUSTOM_BASES: FunnelStage[] = ['carrinho', 'atendimento', 'pagamento', 'pago', 'entrega']
+export const MAX_CUSTOM_STAGES = 8
+
+export type CustomStage = { id: string; name: string; base: FunnelStage; hours: number | null }
+export type FunnelLayout = { labels: Partial<Record<FunnelStage, string>>; hidden: FunnelStage[]; custom: CustomStage[] }
+export const EMPTY_LAYOUT: FunnelLayout = { labels: {}, hidden: [], custom: [] }
+
+const cleanName = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
+const isStage = (v: unknown): v is FunnelStage => FUNNEL_STAGES.some(st => st.id === v)
+
+export function readFunnelLayout(raw: unknown): FunnelLayout {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const labels: Partial<Record<FunnelStage, string>> = {}
+  const rl = (r.labels && typeof r.labels === 'object' ? r.labels : {}) as Record<string, unknown>
+  for (const st of FUNNEL_STAGES) { const n = cleanName(rl[st.id]); if (n && n !== st.label) labels[st.id] = n }
+  const hidden = (Array.isArray(r.hidden) ? r.hidden : []).filter((h): h is FunnelStage => isStage(h) && OPTIONAL_STAGES.includes(h))
+  const seen = new Set<string>()
+  const custom: CustomStage[] = []
+  for (const c of Array.isArray(r.custom) ? r.custom : []) {
+    const x = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>
+    const id = String(x.id ?? '')
+    const name = cleanName(x.name)
+    if (!/^c_[a-z0-9]{4,12}$/.test(id) || seen.has(id) || !name || !isStage(x.base) || !CUSTOM_BASES.includes(x.base)) continue
+    const h = Number(x.hours)
+    const hours = x.hours === null || x.hours === undefined || x.hours === '' || !Number.isFinite(h) || h < 1 || h > 720 ? null : Math.round(h)
+    seen.add(id); custom.push({ id, name, base: x.base, hours })
+    if (custom.length >= MAX_CUSTOM_STAGES) break
+  }
+  return { labels, hidden: [...new Set(hidden)], custom }
+}
+
+export function stageLabel(stage: FunnelStage, layout: FunnelLayout): string {
+  return layout.labels[stage] ?? FUNNEL_STAGES.find(s => s.id === stage)?.label ?? stage
+}
+
+// Etapa própria válida para o pedido (só vale enquanto ele estiver na etapa fixa dela)
+export function customOf(o: Pick<FunnelOrder, 'status' | 'proposal_sent_at' | 'proposal_accepted_at' | 'custom_stage'>, layout: FunnelLayout): CustomStage | null {
+  if (!o.custom_stage) return null
+  const c = layout.custom.find(x => x.id === o.custom_stage)
+  return c && c.base === stageOf(o) ? c : null
+}
+
+export type FunnelColumn = { key: string; base: FunnelStage; label: string; fixed: boolean; lock: string | null; hint: string; custom: CustomStage | null; optional: boolean; hidden: boolean }
+
+// Ordem: cada etapa fixa seguida das etapas próprias dela; Perdido no fim
+export function funnelColumns(layout: FunnelLayout): FunnelColumn[] {
+  const out: FunnelColumn[] = []
+  for (const st of FUNNEL_STAGES) {
+    out.push({ key: st.id, base: st.id, label: stageLabel(st.id, layout), fixed: true, lock: STAGE_LOCKS[st.id], hint: st.hint, custom: null, optional: OPTIONAL_STAGES.includes(st.id), hidden: layout.hidden.includes(st.id) })
+    for (const c of layout.custom.filter(x => x.base === st.id)) {
+      out.push({ key: c.id, base: st.id, label: c.name, fixed: false, lock: null, hint: `Etapa da loja dentro de "${stageLabel(st.id, layout)}"`, custom: c, optional: true, hidden: false })
+    }
+  }
+  return out
+}
+
+export function columnOf(o: Pick<FunnelOrder, 'status' | 'proposal_sent_at' | 'proposal_accepted_at' | 'custom_stage'>, layout: FunnelLayout): string {
+  return customOf(o, layout)?.id ?? stageOf(o)
 }

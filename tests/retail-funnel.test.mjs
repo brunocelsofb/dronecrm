@@ -72,3 +72,41 @@ test('próximos passos não voltam etapa', () => {
   assert.ok(!nextMoves('atendimento').some(m => m.status === 'carrinho'))
   assert.deepEqual(nextMoves('perdido'), [])
 })
+
+import { readFunnelLayout, funnelColumns, columnOf, customOf, stageLabel } from '../src/lib/retail/funnel.ts'
+
+test('etapas: renomear, esconder só as opcionais, etapas próprias válidas', () => {
+  const l = readFunnelLayout({
+    labels: { atendimento: '  Conversando  ', pago: 'Pago' },
+    hidden: ['carrinho', 'pago'],
+    custom: [
+      { id: 'c_abc123', name: 'Separando peças', base: 'pago', hours: '' },
+      { id: 'c_abc123', name: 'Repetida', base: 'pago' },          // id repetido: sai
+      { id: 'c_zzzz99', name: '', base: 'atendimento' },            // sem nome: sai
+      { id: 'c_foto01', name: 'Aguardando foto', base: 'atendimento', hours: 12 },
+      { id: 'c_lost01', name: 'Nada', base: 'perdido' },            // perdido não aceita etapa própria
+    ],
+  })
+  assert.deepEqual(l.labels, { atendimento: 'Conversando' })       // igual ao padrão não é guardado
+  assert.deepEqual(l.hidden, ['carrinho'])                          // Pago não pode ser escondido
+  assert.deepEqual(l.custom.map(c => [c.id, c.base, c.hours]), [['c_abc123', 'pago', null], ['c_foto01', 'atendimento', 12]])
+  assert.equal(stageLabel('atendimento', l), 'Conversando')
+  assert.deepEqual(funnelColumns(l).map(c => c.key), ['carrinho', 'atendimento', 'c_foto01', 'pagamento', 'pago', 'c_abc123', 'entrega', 'perdido'])
+  assert.ok(funnelColumns(l).filter(c => c.fixed).every(c => c.lock))
+})
+
+test('etapa própria só vale enquanto o pedido está na etapa fixa dela', () => {
+  const l = readFunnelLayout({ custom: [{ id: 'c_abc123', name: 'Separando', base: 'pago' }] })
+  const paid = { status: 'pago', proposal_sent_at: null, proposal_accepted_at: null, custom_stage: 'c_abc123' }
+  assert.equal(columnOf(paid, l), 'c_abc123')
+  assert.equal(columnOf({ ...paid, status: 'enviado' }, l), 'entrega')   // automação mudou: sai sozinho
+  assert.equal(customOf({ ...paid, custom_stage: 'c_naoexiste' }, l), null)
+})
+
+test('etapa própria com prazo próprio conta desde que entrou nela', () => {
+  const l = readFunnelLayout({ custom: [{ id: 'c_foto01', name: 'Aguardando foto', base: 'atendimento', hours: 4 }] })
+  const o = { ...base, status: 'enviado_atendimento', custom_stage: 'c_foto01', custom_stage_at: '2026-10-23T20:00:00Z' }
+  assert.equal(followUp(o, FUNNEL_DEFAULTS, at('2026-10-23T23:59:00Z'), l).overdue, false)
+  assert.equal(followUp(o, FUNNEL_DEFAULTS, at('2026-10-24T00:00:00Z'), l).overdue, true)
+  assert.equal(followUp(o, FUNNEL_DEFAULTS, at('2026-10-24T00:00:00Z'), l).hoursInColumn, 4)
+})

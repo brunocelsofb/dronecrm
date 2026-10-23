@@ -7,7 +7,7 @@ import { getSupportSession } from '@/lib/tenant/support'
 import { appBaseUrl } from '@/lib/whatsapp/webhook-token'
 import { whatsappLink } from '@/lib/retail/customers'
 import { isProposal } from '@/lib/retail/proposal'
-import { followUp, nudgeMessage, readFunnel, stageOf, type FunnelOrder } from '@/lib/retail/funnel'
+import { columnOf, followUp, nudgeMessage, readFunnel, readFunnelLayout, stageOf, type FunnelOrder } from '@/lib/retail/funnel'
 import { FunnelBoard, type FunnelCard } from '@/components/retail/funnel-board'
 
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ type Row = FunnelOrder & {
   retail_order_items: { name: string }[]
 }
 
-const COLS = 'id, number, status, total, created_at, stage_at, proposal_sent_at, proposal_accepted_at, last_nudge_at, nudge_count, lost_reason, payment_link, proposal_token, proposal, retail_customers(name, phone), retail_order_items(name)'
+const COLS = 'id, number, status, total, created_at, stage_at, proposal_sent_at, proposal_accepted_at, last_nudge_at, nudge_count, lost_reason, custom_stage, custom_stage_at, payment_link, proposal_token, proposal, retail_customers(name, phone), retail_order_items(name)'
 
 export default async function RetailFunnelPage() {
   const access = await hasFeature('varejo')
@@ -37,14 +37,16 @@ export default async function RetailFunnelPage() {
     db.from('retail_orders').select(COLS).eq('status', 'cancelado').gte('stage_at', days(90)).order('stage_at', { ascending: false }).limit(500),
     getSupportSession(),
   ])
-  const settings = readFunnel((org?.retail_settings as Record<string, unknown> | null)?.funnel)
+  const funnelRaw = (org?.retail_settings as Record<string, unknown> | null)?.funnel
+  const settings = readFunnel(funnelRaw)
+  const layout = readFunnelLayout(funnelRaw)
   const store = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
   const base = appBaseUrl()
 
   const rows = [open, paid, delivered, lost].flatMap(r => (r.data ?? []) as unknown as Row[])
   const lostSince30 = days(30)
   const cards: FunnelCard[] = rows.map(o => {
-    const f = followUp(o, settings, now)
+    const f = followUp(o, settings, now, layout)
     const prop = isProposal(o.proposal) ? o.proposal : null
     const text = nudgeMessage(f.stage, {
       store, customer: o.retail_customers?.name ?? null, number: o.number, items: o.retail_order_items.map(i => i.name),
@@ -54,7 +56,7 @@ export default async function RetailFunnelPage() {
     return {
       id: o.id, number: o.number, status: o.status, stage: stageOf(o), total: Number(o.total),
       customer: o.retail_customers?.name ?? null, items: o.retail_order_items.map(i => i.name),
-      hoursInStage: f.hoursInStage, overdue: f.overdue, suggestLost: f.suggestLost,
+      column: columnOf(o, layout), hoursInStage: f.hoursInColumn, overdue: f.overdue, suggestLost: f.suggestLost,
       nudgeCount: Number(o.nudge_count ?? 0), lastNudgeHours: o.last_nudge_at ? (now.getTime() - Date.parse(o.last_nudge_at)) / 3_600_000 : null,
       whatsappUrl: text ? whatsappLink(o.retail_customers?.phone, text) : null,
       lostReason: o.lost_reason,
@@ -75,7 +77,7 @@ export default async function RetailFunnelPage() {
           <Link href="/varejo/pedidos/novo" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Novo pedido</Link>
         </div>
       </div>
-      <FunnelBoard cards={cards} settings={settings} canEdit={!support} isAdmin={!!access.isAdmin && !support} />
+      <FunnelBoard cards={cards} settings={settings} layout={layout} canEdit={!support} isAdmin={!!access.isAdmin && !support} />
     </div>
   )
 }
