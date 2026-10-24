@@ -81,7 +81,7 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
               <p className="font-medium text-gray-800">Como deve ser a foto</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                <li><strong>Computador:</strong> vertical, <strong>1200 × 1500 px</strong> (4 : 5). Fica à direita, ao lado do título.</li>
+                <li><strong>Computador:</strong> foto em pé, <strong>1600 × 2000 px</strong> (4 : 5; mínimo 1200 × 1500). Fica à direita do título. Em telas largas corta um pouco em cima e embaixo: deixe a pessoa no centro, com a cabeça no terço de cima e folga nas bordas. Sem texto ou logo na foto.</li>
                 <li><strong>Celular:</strong> quase quadrada, <strong>1200 × 1260 px</strong>. Fica no topo, acima do título. Sem ela, o celular usa a do computador cortada.</li>
                 <li>O nome da loja, a frase e o botão ficam <strong>embaixo, à esquerda</strong>, sobre uma sombra: deixe essa área mais limpa e a peça ou o rosto no centro ou à direita.</li>
                 <li>JPG, PNG ou WEBP. O Drone reduz o arquivo sozinho para a vitrine abrir rápido.</li>
