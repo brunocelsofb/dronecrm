@@ -8,7 +8,8 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { cleanLongText, cleanText } from '@/lib/retail/products'
+import { cleanLongText, cleanText, RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
+import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { cleanDomain, cleanSlug, phoneBR, readOccasions, readTheme, STOREFRONT_LIMITS, type Occasion, type StorefrontTheme } from '@/lib/retail/storefront'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
@@ -24,7 +25,7 @@ async function guard(adminOnly = false): Promise<{ tenantId: string } | { error:
 
 export type StorefrontInput = {
   enabled: boolean; slug: string; domains: string[]; whatsapp: string
-  title: string; tagline: string; about: string; hero_photo: string | null
+  title: string; tagline: string; about: string; hero_photo: string | null; hero_photo_mobile: string | null
   occasions: Occasion[]; theme: StorefrontTheme
 }
 
@@ -45,12 +46,13 @@ export async function saveRetailStorefront(input: StorefrontInput): Promise<Resu
   if (input.whatsapp?.trim() && !whatsapp) return { ok: false, error: 'WhatsApp da loja inválido: use DDD + número.' }
   if (input.enabled && !whatsapp) return { ok: false, error: 'Para ligar a vitrine, informe o WhatsApp da loja (é para onde a cliente vai depois do pedido).' }
   const occasions = readOccasions(input.occasions)
-  const hero = input.hero_photo && /^https:\/\//.test(input.hero_photo) ? input.hero_photo.slice(0, 600) : null
+  const httpsOnly = (v: string | null | undefined) => (v && /^https:\/\//.test(v) ? v.slice(0, 600) : null)
+  const hero = httpsOnly(input.hero_photo)
   const db = await createScopedAdmin(g.tenantId)
   const row = {
     slug, domains, enabled: !!input.enabled, whatsapp,
     title: cleanText(input.title, 80), tagline: cleanText(input.tagline, 160), about: cleanLongText(input.about, 1500),
-    hero_photo: hero, occasions, theme: readTheme(input.theme), updated_at: new Date().toISOString(),
+    hero_photo: hero, hero_photo_mobile: httpsOnly(input.hero_photo_mobile), occasions, theme: readTheme(input.theme), updated_at: new Date().toISOString(),
   }
   const { data: existing } = await db.from('retail_storefronts').select('id').eq('tenant_id', g.tenantId).maybeSingle()
   const { error } = existing
@@ -128,4 +130,18 @@ export async function moveRetailLook(id: string, dir: -1 | 1): Promise<Result> {
   for (const [k, l] of list.entries()) if (k !== i && k !== j && l.position !== k) await db.from('retail_looks').update({ position: k }).eq('id', l.id)
   revalidatePath('/varejo/vitrine')
   return { ok: true }
+}
+
+// Envio da foto de capa (computador ou celular): prepara o envio direto do aparelho para o armazenamento
+const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+export async function createRetailStorefrontUpload(fileName: string, contentType: string): Promise<Result<{ path: string; token: string; url: string }>> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!COVER_TYPES.includes(contentType)) return { ok: false, error: 'Use foto JPG, PNG ou WEBP.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const path = `${g.tenantId}/vitrine/${Date.now()}-${sanitizeStorageFileName(fileName).slice(-80)}`
+  const { data, error } = await db.storage.from(RETAIL_MEDIA_BUCKET).createSignedUploadUrl(path)
+  if (error || !data) return { ok: false, error: error?.message ?? 'Não foi possível preparar o envio.' }
+  const finalPath = data.path ?? path
+  return { ok: true, path: finalPath, token: data.token, url: retailPhotoUrl(finalPath) }
 }

@@ -6,7 +6,9 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { saveRetailStorefront, saveRetailLook, deleteRetailLook, moveRetailLook, type StorefrontInput } from '@/lib/actions/retail-storefront'
+import { saveRetailStorefront, saveRetailLook, deleteRetailLook, moveRetailLook, createRetailStorefrontUpload, type StorefrontInput } from '@/lib/actions/retail-storefront'
+import { createClient } from '@/lib/supabase/client'
+import { RETAIL_MEDIA_BUCKET } from '@/lib/retail/products'
 import type { Occasion } from '@/lib/retail/storefront'
 
 export type ProductOption = { id: string; code: string; name: string; published: boolean; photo: string | null; occasions: string[] }
@@ -72,19 +74,38 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
           <div className="sm:col-span-2"><label className={lbl}>Frase de destaque</label><input className={inp} value={f.tagline} disabled={ro} maxLength={160} placeholder="ex.: Moda feminina para cada momento da sua semana" onChange={e => set('tagline', e.target.value)} /></div>
           <div className="sm:col-span-2"><label className={lbl}>Sobre a loja</label><textarea className={inp} rows={3} value={f.about} disabled={ro} maxLength={1500} onChange={e => set('about', e.target.value)} /></div>
         </div>
-        <div>
-          <label className={lbl}>Foto de capa</label>
-          {photos.length === 0 ? <p className={hint}>Cadastre peças com fotos para escolher a capa. Sem escolha, usa a foto da peça mais nova.</p> : (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button type="button" disabled={ro} onClick={() => set('hero_photo', null)} className={`flex h-20 w-16 shrink-0 items-center justify-center rounded-lg border text-center text-[11px] ${!f.hero_photo ? 'border-brand-700 text-brand-800' : 'border-gray-300 text-gray-500'}`}>Peça mais nova</button>
-              {photos.slice(0, 40).map(p => (
-                <button key={p.url} type="button" disabled={ro} onClick={() => set('hero_photo', p.url)} title={p.name} className={`h-20 w-16 shrink-0 overflow-hidden rounded-lg border-2 ${f.hero_photo === p.url ? 'border-brand-700' : 'border-transparent'}`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.name} className="h-full w-full object-cover" />
-                </button>
-              ))}
+        <div className="space-y-3">
+          <div>
+            <p className={lbl}>Foto de capa</p>
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              <p className="font-medium text-gray-800">Como deve ser a foto</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                <li><strong>Computador:</strong> horizontal, <strong>1920 × 800 px</strong> (faixa larga, 2,4 : 1). Mínimo 1600 px de largura.</li>
+                <li><strong>Celular:</strong> vertical, <strong>1080 × 1440 px</strong> (3 : 4). Sem ela, o celular corta as laterais da foto do computador.</li>
+                <li>O nome da loja, a frase e o botão ficam <strong>embaixo, à esquerda</strong>, sobre uma sombra: deixe essa área mais limpa e a peça ou o rosto no centro ou à direita.</li>
+                <li>JPG, PNG ou WEBP. O Drone reduz o arquivo sozinho para a vitrine abrir rápido.</li>
+              </ul>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <CoverSlot label="Computador (horizontal)" ratio="aspect-[12/5]" url={f.hero_photo} disabled={ro} maxSide={2400} onChange={u => set('hero_photo', u)} fallback="Sem foto: usa a peça mais nova" />
+            <CoverSlot label="Celular (vertical)" ratio="aspect-[3/4] max-w-[12rem]" url={f.hero_photo_mobile} disabled={ro} maxSide={1600} onChange={u => set('hero_photo_mobile', u)} fallback="Sem foto: usa a do computador" />
+          </div>
+          {photos.length > 0 && !ro && (
+            <div>
+              <p className={hint}>Ou use a foto de uma peça na capa do computador:</p>
+              <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
+                {photos.slice(0, 40).map(p => (
+                  <button key={p.url} type="button" onClick={() => set('hero_photo', p.url)} title={p.name} className={`h-16 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${f.hero_photo === p.url ? 'border-brand-700' : 'border-transparent'}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={p.name} className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+              <p className={hint}>Fotos de peça são verticais: no computador, a capa corta em cima e embaixo.</p>
             </div>
           )}
+          <p className={hint}>Depois de trocar a foto, toque em <strong>Salvar vitrine</strong>.</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
@@ -275,5 +296,60 @@ function LooksManager({ looks, products, occasions, canEdit }: { looks: LookRow[
         })}
       </ul>
     </section>
+  )
+}
+
+// Reduz a foto no aparelho (lado maior até maxSide, JPEG 85%) antes de enviar
+async function shrink(file: File, maxSide: number): Promise<File> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale)
+    canvas.getContext('2d')?.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85))
+    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file
+  } catch { return file }
+}
+
+function CoverSlot({ label, ratio, url, disabled, maxSide, onChange, fallback }: { label: string; ratio: string; url: string | null; disabled: boolean; maxSide: number; onChange: (u: string | null) => void; fallback: string }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [dims, setDims] = useState<string | null>(null)
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const original = e.target.files?.[0]
+    e.target.value = ''
+    if (!original) return
+    setBusy(true); setErr(null)
+    try {
+      const bmp = await createImageBitmap(original).catch(() => null)
+      if (bmp) setDims(`${bmp.width} × ${bmp.height} px`)
+      const file = await shrink(original, maxSide)
+      const prep = await createRetailStorefrontUpload(file.name, file.type || 'image/jpeg')
+      if (!prep.ok) { setErr(prep.error); return }
+      const up = await createClient().storage.from(RETAIL_MEDIA_BUCKET).uploadToSignedUrl(prep.path, prep.token, file, { contentType: file.type || 'image/jpeg' })
+      if (up.error) { setErr(`Falha ao enviar: ${up.error.message}`); return }
+      onChange(prep.url)
+    } finally { setBusy(false) }
+  }
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-gray-700">{label}</p>
+      <div className={`relative w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50 ${ratio}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <span className="absolute inset-0 flex items-center justify-center p-2 text-center text-xs text-gray-400">{fallback}</span>}
+      </div>
+      {!disabled && (
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <label className={`cursor-pointer rounded-lg border border-brand-700 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
+            {busy ? 'Enviando…' : url ? 'Trocar foto' : 'Enviar foto'}
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={pick} />
+          </label>
+          {url && <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-500 underline">Tirar</button>}
+        </div>
+      )}
+      {dims && <p className="mt-1 text-[11px] text-gray-500">Foto enviada: {dims}</p>}
+      {err && <p role="alert" className="mt-1 text-xs text-negative-700">{err}</p>}
+    </div>
   )
 }

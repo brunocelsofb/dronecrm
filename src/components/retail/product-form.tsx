@@ -402,6 +402,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
           <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-600">As fotos entram logo depois de criar a peça. Toque em <strong>Criar peça</strong> lá embaixo; a tela volta aqui.</p>
         ) : (
           <>
+            <p className="text-xs text-gray-500">Foto <strong>vertical 3 : 4</strong>, de preferência <strong>1200 × 1600 px</strong>, com a peça inteira e fundo limpo. É o formato dos cartões da vitrine; fotos de outro formato são cortadas.</p>
             <p className="text-sm text-gray-600">Até {MAX_PHOTOS} fotos, direto da galeria do celular. A <strong>primeira</strong> é a capa na vitrine; use as setas para mudar a ordem.</p>
             {photos.length > 0 && (
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">

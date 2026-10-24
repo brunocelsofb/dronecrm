@@ -88,7 +88,7 @@
     const prods = visibleProducts()
     app.innerHTML = `
       <section class="hero" id="inicio">
-        ${s.hero ? `<img src="${esc(s.hero)}" alt="">` : ''}
+        ${s.hero ? `<picture>${s.hero_mobile ? `<source media="(max-width: 859px)" srcset="${esc(s.hero_mobile)}">` : ''}<img src="${esc(s.hero)}" alt="" fetchpriority="high"></picture>` : ''}
         <div class="wrap">
           <h1>${esc(s.name)}</h1>
           ${s.tagline ? `<p>${esc(s.tagline)}</p>` : ''}

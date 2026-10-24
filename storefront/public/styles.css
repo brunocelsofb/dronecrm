@@ -35,6 +35,8 @@ header.top { position: sticky; top: 0; z-index: 30; background: rgba(250,248,245
 /* Capa */
 .hero { position: relative; min-height: 62vh; min-height: 62svh; display: grid; align-items: end; color: #fff; background: var(--brand); overflow: hidden; }
 .hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Computador: faixa larga 12:5 (foto 1920 × 800); celular: 62% da tela (foto vertical 3:4) */
+@media (min-width: 860px) { .hero { min-height: 0; aspect-ratio: 12 / 5; max-height: 78vh; } }
 .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,.55) 100%); }
 .hero .wrap { width: 100%; position: relative; z-index: 1; padding-top: 40px; padding-bottom: 34px; }
 .hero h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(38px, 9vw, 68px); line-height: 1.02; margin: 0 0 10px; }

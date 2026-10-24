@@ -15,7 +15,7 @@ export default async function RetailStorefrontPage() {
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const [{ data: sf }, { data: org }, { data: prods }, { data: looks }, support] = await Promise.all([
-    db.from('retail_storefronts').select('enabled, slug, domains, whatsapp, title, tagline, about, hero_photo, occasions, theme').eq('tenant_id', tenantId).maybeSingle(),
+    db.from('retail_storefronts').select('enabled, slug, domains, whatsapp, title, tagline, about, hero_photo, hero_photo_mobile, occasions, theme').eq('tenant_id', tenantId).maybeSingle(),
     db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle(),
     db.from('retail_products').select('id, code, name, status, photos, occasions').neq('status', 'arquivado').order('name').limit(2000),
     db.from('retail_looks').select('id, name, occasion, description, product_ids, cover_photo, active, position').order('position').order('created_at').limit(200),
@@ -37,7 +37,7 @@ export default async function RetailStorefrontPage() {
         initial={{
           enabled: !!sf?.enabled, slug: (sf?.slug as string | undefined) ?? cleanSlug(company) ?? '', domains: (sf?.domains as string[] | undefined) ?? [],
           whatsapp: (sf?.whatsapp as string | null) ?? '', title: (sf?.title as string | null) ?? company, tagline: (sf?.tagline as string | null) ?? '',
-          about: (sf?.about as string | null) ?? '', hero_photo: (sf?.hero_photo as string | null) ?? null,
+          about: (sf?.about as string | null) ?? '', hero_photo: (sf?.hero_photo as string | null) ?? null, hero_photo_mobile: (sf?.hero_photo_mobile as string | null) ?? null,
           occasions: readOccasions(sf?.occasions), theme: readTheme(sf?.theme),
         }}
         saved={!!sf}
