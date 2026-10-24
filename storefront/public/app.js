@@ -139,6 +139,11 @@
     $('#faq').parentElement.hidden = !faq.length
     $('#faq').innerHTML = faq.map(f => `<details class="faq"><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')
 
+    // Políticas (rodapé): sem texto mostra "em breve"
+    const pols = c.policies || []
+    $('#footPolBox').hidden = !pols.length
+    $('#footPolicies').innerHTML = pols.map((p, i) => `<li><button class="lnk" type="button" data-policy="${i}">${esc(p.title)}</button></li>`).join('')
+
     // Menus
     $('#ocasioes').hidden = !OCCASIONS.length
     $('#categorias').hidden = CATS.length < 2
@@ -465,6 +470,15 @@
     }
   }
 
+  function openPolicy(i) {
+    const p = (STORE.content?.policies || [])[i]; if (!p) return
+    $('#polTitle').textContent = p.title
+    $('#polBody').innerHTML = p.text
+      ? String(p.text).split(/\n+/).map(t => `<p style="margin:0 0 12px;color:var(--muted)">${esc(t)}</p>`).join('')
+      : `<p style="color:var(--muted)">Em breve publicaremos esta política aqui.${WA ? ' Enquanto isso, fale com o atendimento pelo WhatsApp.' : ''}</p>${WA ? `<button class="btn btn-wa btn-block" type="button" data-wa-talk><svg viewBox="0 0 24 24" aria-hidden="true">${WA_SVG}</svg>Falar no WhatsApp</button>` : ''}`
+    openSheet('#policySheet')
+  }
+
   // ── Gavetas e eventos ───────────────────────────────────────────────────────
   let lastFocus = null
   function openSheet(sel) {
@@ -482,6 +496,7 @@
   document.addEventListener('click', e => {
     if (!STORE) return
     if (e.target.closest('[data-close]') || e.target.id === 'scrim' || e.target.closest('[data-close-nav]')) closeSheets()
+    const pol = e.target.closest('[data-policy]'); if (pol) { openPolicy(Number(pol.dataset.policy)); return }
     const fav = e.target.closest('[data-fav]'); if (fav) { toggleFav(fav.dataset.fav); return }
     const look = e.target.closest('[data-look]'); if (look) { openLook(look.dataset.look); return }
     const go = e.target.closest('[data-goto-occ]'); if (go) { goOcc(go.dataset.gotoOcc); return }

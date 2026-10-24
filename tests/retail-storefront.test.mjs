@@ -42,12 +42,14 @@ test('mensagem do WhatsApp', () => {
   assert.match(t, /^Oi! Sou Ana e acabei de fazer o pedido nº 7 na vitrine da Loja X:\n• 1x Saia \(Preto \/ M\)\nTotal das peças: R\$ 99,90/)
 })
 
-import { readContent, DEFAULT_FAQ } from '../src/lib/retail/storefront.ts'
+import { readContent, DEFAULT_FAQ, DEFAULT_POLICIES } from '../src/lib/retail/storefront.ts'
 test('textos da vitrine: limpa, aceita só https e usa as perguntas padrão', () => {
   const c = readContent({ hero_title: '  Elegância  ', instagram: 'http://x.com', city: '', faq: undefined })
   assert.equal(c.hero_title, 'Elegância'); assert.equal(c.instagram, null); assert.equal(c.city, null)
   assert.deepEqual(c.faq, DEFAULT_FAQ)
   assert.deepEqual(readContent({ faq: [{ q: 'A?', a: 'B' }, { q: '', a: 'x' }] }).faq, [{ q: 'A?', a: 'B' }])
   assert.deepEqual(readContent({ faq: [] }).faq, [])
+  assert.deepEqual(readContent({}).policies, DEFAULT_POLICIES)
+  assert.deepEqual(readContent({ policies: [{ title: ' Trocas ', text: '' }, { title: '', text: 'x' }] }).policies, [{ title: 'Trocas', text: '' }])
   assert.equal(readOccasions([{ name: 'Igreja', text: ' Delicadeza ' }])[0].text, 'Delicadeza')
 })

@@ -42,7 +42,10 @@ export type StorefrontContent = {
   instagram: string | null; city: string | null; contact_text: string | null
   local_delivery: string | null // cidade da retirada/entrega local (ex.: "Goiânia"); vazio = só envio
   faq: StorefrontFaq[]
+  policies: StorefrontPolicy[] // rodapé "Políticas"; texto vazio = "em breve" na vitrine
 }
+export type StorefrontPolicy = { title: string; text: string }
+export const DEFAULT_POLICIES: StorefrontPolicy[] = [{ title: 'Trocas e devoluções', text: '' }, { title: 'Entregas', text: '' }]
 export const DEFAULT_FAQ: StorefrontFaq[] = [
   { q: 'Como sei se a peça está disponível?', a: 'A vitrine mostra o que tem em estoque em cada cor e tamanho. Ao receber o pedido, o atendimento confirma antes de cobrar.' },
   { q: 'Quais são as formas de pagamento?', a: 'Pix e cartão. As condições são informadas pelo atendimento no WhatsApp.' },
@@ -57,11 +60,16 @@ export function readContent(raw: unknown): StorefrontContent {
     .map(x => (x && typeof x === 'object' ? x as Record<string, unknown> : {}))
     .map(x => ({ q: String(x.q ?? '').trim().slice(0, 160), a: String(x.a ?? '').trim().slice(0, 600) }))
     .filter(x => x.q && x.a).slice(0, 10)
+  const policies: StorefrontPolicy[] = (Array.isArray(r.policies) ? r.policies : [])
+    .map(x => (x && typeof x === 'object' ? x as Record<string, unknown> : {}))
+    .map(x => ({ title: String(x.title ?? '').trim().slice(0, 60), text: String(x.text ?? '').replace(/\r\n/g, '\n').trim().slice(0, 4000) }))
+    .filter(x => x.title).slice(0, 6)
   return {
     hero_title: t('hero_title', 80), hero_text: t('hero_text', 300), about_quote: t('about_quote', 200),
     feature_title: t('feature_title', 80), feature_text: t('feature_text', 400), feature_category: t('feature_category', 80), feature_photo: url('feature_photo'),
     instagram: url('instagram'), city: t('city', 120), contact_text: t('contact_text', 200), local_delivery: t('local_delivery', 60),
     faq: Array.isArray(r.faq) ? faq : DEFAULT_FAQ,
+    policies: Array.isArray(r.policies) ? policies : DEFAULT_POLICIES,
   }
 }
 

@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { saveRetailStorefront, saveRetailLook, deleteRetailLook, moveRetailLook, createRetailStorefrontUpload, type StorefrontInput } from '@/lib/actions/retail-storefront'
 import { createClient } from '@/lib/supabase/client'
 import { RETAIL_MEDIA_BUCKET } from '@/lib/retail/products'
-import { DEFAULT_FAQ, type Occasion, type StorefrontContent } from '@/lib/retail/storefront'
+import { DEFAULT_FAQ, DEFAULT_POLICIES, type Occasion, type StorefrontContent } from '@/lib/retail/storefront'
 
 export type ProductOption = { id: string; code: string; name: string; category?: string | null; published: boolean; photo: string | null; occasions: string[] }
 export type LookRow = { id: string; name: string; occasion: string | null; description: string | null; product_ids: string[]; cover_photo: string | null; active: boolean; position: number }
@@ -402,6 +402,25 @@ function ContentEditor({ content, onChange, categories, disabled }: { content: S
           <div className="mt-2 flex flex-wrap gap-3 text-sm">
             {content.faq.length < 10 && <button type="button" onClick={() => set('faq', [...content.faq, { q: '', a: '' }])} className="text-brand-700 hover:underline">+ Pergunta</button>}
             <button type="button" onClick={() => set('faq', DEFAULT_FAQ)} className="text-gray-500 underline">Voltar às perguntas padrão</button>
+          </div>
+        )}
+      </div>
+      <div>
+        <p className={lbl}>Políticas (rodapé da vitrine)</p>
+        <p className={hint}>Ex.: trocas e devoluções, entregas. Sem texto, a vitrine mostra “Em breve” e indica o WhatsApp.</p>
+        <div className="mt-2 space-y-2">
+          {content.policies.map((pol, i) => (
+            <div key={i} className="space-y-1 rounded-lg border border-gray-200 p-2">
+              <input className={inp} value={pol.title} disabled={disabled} maxLength={60} placeholder="Título (ex.: Trocas e devoluções)" onChange={e => set('policies', content.policies.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+              <textarea className={inp} rows={4} value={pol.text} disabled={disabled} maxLength={4000} placeholder="Texto da política (prazo, condições, como pedir)" onChange={e => set('policies', content.policies.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
+              {!disabled && <button type="button" onClick={() => set('policies', content.policies.filter((_, j) => j !== i))} className="text-xs text-gray-500 underline">Tirar</button>}
+            </div>
+          ))}
+        </div>
+        {!disabled && (
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            {content.policies.length < 6 && <button type="button" onClick={() => set('policies', [...content.policies, { title: '', text: '' }])} className="text-brand-700 hover:underline">+ Política</button>}
+            {content.policies.length === 0 && <button type="button" onClick={() => set('policies', DEFAULT_POLICIES)} className="text-gray-500 underline">Voltar às políticas padrão</button>}
           </div>
         )}
       </div>
