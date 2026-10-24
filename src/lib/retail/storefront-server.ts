@@ -11,17 +11,17 @@ import { effectivePrice, retailPhotoUrl } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
-import { cleanDomain, cleanSlug, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
+import { cleanDomain, cleanSlug, readContent, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontContent, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
 
 export type StorefrontRow = {
   id: string; tenant_id: string; slug: string; domains: string[]; enabled: boolean; whatsapp: string | null
-  title: string | null; tagline: string | null; about: string | null; hero_photo: string | null; hero_photo_mobile: string | null; occasions: unknown; theme: unknown
+  title: string | null; tagline: string | null; about: string | null; hero_photo: string | null; hero_photo_mobile: string | null; content: unknown; occasions: unknown; theme: unknown
 }
 
 // Loja pelo domínio (ex.: amaras.com.br) ou pelo endereço de teste (?loja=amaras). Só vitrines ligadas.
 export async function findStorefront(q: { host?: string | null; slug?: string | null }): Promise<StorefrontRow | null> {
   const admin = createAdminClient()
-  const cols = 'id, tenant_id, slug, domains, enabled, whatsapp, title, tagline, about, hero_photo, hero_photo_mobile, occasions, theme'
+  const cols = 'id, tenant_id, slug, domains, enabled, whatsapp, title, tagline, about, hero_photo, hero_photo_mobile, content, occasions, theme'
   const slug = cleanSlug(q.slug)
   if (slug) {
     const { data } = await admin.from('retail_storefronts').select(cols).eq('slug', slug).eq('enabled', true).maybeSingle()
@@ -42,7 +42,7 @@ export type PublicProduct = {
 }
 export type PublicLook = { id: string; name: string; occasion: string | null; description: string | null; cover: string | null; product_ids: string[] }
 export type PublicCatalog = {
-  store: { name: string; slug: string; tagline: string | null; about: string | null; logo: string | null; hero: string | null; hero_mobile: string | null; whatsapp: string | null; theme: StorefrontTheme; occasions: Occasion[] }
+  store: { name: string; slug: string; tagline: string | null; about: string | null; logo: string | null; hero: string | null; hero_mobile: string | null; whatsapp: string | null; theme: StorefrontTheme; occasions: Occasion[]; content: StorefrontContent }
   categories: string[]
   products: PublicProduct[]
   looks: PublicLook[]
@@ -84,7 +84,7 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
     store: {
       name: (sf.title || branding.companyName || 'Loja').trim(), slug: sf.slug, tagline: sf.tagline, about: sf.about,
       logo: branding.logoUrl, hero: photoUrl(sf.hero_photo) ?? products[0]?.photos[0] ?? null, hero_mobile: photoUrl(sf.hero_photo_mobile),
-      whatsapp: sf.whatsapp, theme: readTheme(sf.theme), occasions: readOccasions(sf.occasions),
+      whatsapp: sf.whatsapp, theme: readTheme(sf.theme), occasions: readOccasions(sf.occasions), content: readContent(sf.content),
     },
     categories, products, looks: publicLooks, updated_at: new Date().toISOString(),
   }

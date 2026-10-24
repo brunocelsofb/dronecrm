@@ -18,7 +18,7 @@ export function cleanDomain(v: unknown): string | null {
   return /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/.test(s) ? s : null
 }
 
-export type Occasion = { id: string; name: string }
+export type Occasion = { id: string; name: string; text?: string }
 export function readOccasions(raw: unknown): Occasion[] {
   const out: Occasion[] = []
   const seen = new Set<string>()
@@ -26,17 +26,50 @@ export function readOccasions(raw: unknown): Occasion[] {
     const name = String((x && typeof x === 'object' ? (x as Record<string, unknown>).name : x) ?? '').replace(/\s+/g, ' ').trim().slice(0, 30)
     const id = cleanSlug((x && typeof x === 'object' ? (x as Record<string, unknown>).id : null) ?? name) ?? cleanSlug(`${name}-x`)
     if (!name || !id || seen.has(id)) continue
-    seen.add(id); out.push({ id, name })
+    const text = String((x && typeof x === 'object' ? (x as Record<string, unknown>).text : '') ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)
+    seen.add(id); out.push(text ? { id, name, text } : { id, name })
     if (out.length >= STOREFRONT_LIMITS.occasions) break
   }
   return out
+}
+
+// Textos da vitrine (todos opcionais; vazio = a vitrine usa o texto padrão ou esconde o bloco)
+export type StorefrontFaq = { q: string; a: string }
+export type StorefrontContent = {
+  hero_title: string | null; hero_text: string | null
+  about_quote: string | null
+  feature_title: string | null; feature_text: string | null; feature_category: string | null; feature_photo: string | null
+  instagram: string | null; city: string | null; contact_text: string | null
+  local_delivery: string | null // cidade da retirada/entrega local (ex.: "Goiânia"); vazio = só envio
+  faq: StorefrontFaq[]
+}
+export const DEFAULT_FAQ: StorefrontFaq[] = [
+  { q: 'Como sei se a peça está disponível?', a: 'A vitrine mostra o que tem em estoque em cada cor e tamanho. Ao receber o pedido, o atendimento confirma antes de cobrar.' },
+  { q: 'Quais são as formas de pagamento?', a: 'Pix e cartão. As condições são informadas pelo atendimento no WhatsApp.' },
+  { q: 'Como funciona a entrega?', a: 'O frete é calculado pelo CEP e confirmado no atendimento, junto com o prazo.' },
+  { q: 'Como escolher o tamanho?', a: 'Cada peça traz as medidas. Em dúvida, o atendimento ajuda pelo caimento que você prefere.' },
+]
+export function readContent(raw: unknown): StorefrontContent {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const t = (k: string, max: number) => { const v = String(r[k] ?? '').replace(/\r\n/g, '\n').trim().slice(0, max); return v || null }
+  const url = (k: string) => { const v = t(k, 300); return v && /^https:\/\/[^\s]+$/.test(v) ? v : null }
+  const faq: StorefrontFaq[] = (Array.isArray(r.faq) ? r.faq : [])
+    .map(x => (x && typeof x === 'object' ? x as Record<string, unknown> : {}))
+    .map(x => ({ q: String(x.q ?? '').trim().slice(0, 160), a: String(x.a ?? '').trim().slice(0, 600) }))
+    .filter(x => x.q && x.a).slice(0, 10)
+  return {
+    hero_title: t('hero_title', 80), hero_text: t('hero_text', 300), about_quote: t('about_quote', 200),
+    feature_title: t('feature_title', 80), feature_text: t('feature_text', 400), feature_category: t('feature_category', 80), feature_photo: url('feature_photo'),
+    instagram: url('instagram'), city: t('city', 120), contact_text: t('contact_text', 200), local_delivery: t('local_delivery', 60),
+    faq: Array.isArray(r.faq) ? faq : DEFAULT_FAQ,
+  }
 }
 
 export type StorefrontTheme = { primary: string; accent: string }
 const HEX = /^#[0-9a-f]{6}$/i
 export function readTheme(raw: unknown): StorefrontTheme {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  return { primary: HEX.test(String(r.primary)) ? String(r.primary) : '#1B556B', accent: HEX.test(String(r.accent)) ? String(r.accent) : '#E98C5F' }
+  return { primary: HEX.test(String(r.primary)) ? String(r.primary) : '#3D2314', accent: HEX.test(String(r.accent)) ? String(r.accent) : '#A47D43' }
 }
 
 // Pedido que chega da vitrine

@@ -17,7 +17,7 @@ test('ocasiões: nome limpo, id estável, sem repetir', () => {
     { id: 'trabalho', name: 'Trabalho' }, { id: 'igreja', name: 'Igreja' }, { id: 'festa', name: 'Festa' },
   ])
   assert.deepEqual(readOccasions([{ id: 'dia-a-dia', name: 'Dia a dia' }]), [{ id: 'dia-a-dia', name: 'Dia a dia' }])
-  assert.equal(readTheme({ primary: 'red' }).primary, '#1B556B')
+  assert.equal(readTheme({ primary: 'red' }).primary, '#3D2314')
 })
 
 test('telefone do Brasil', () => {
@@ -40,4 +40,14 @@ test('pedido da vitrine: valida e recusa robô', () => {
 test('mensagem do WhatsApp', () => {
   const t = storefrontWhatsappText({ store: 'Loja X', number: 7, name: 'Ana Lima', items: [{ name: 'Saia', color: 'Preto', size: 'M', qty: 1 }], total: 'R$ 99,90' })
   assert.match(t, /^Oi! Sou Ana e acabei de fazer o pedido nº 7 na vitrine da Loja X:\n• 1x Saia \(Preto \/ M\)\nTotal das peças: R\$ 99,90/)
+})
+
+import { readContent, DEFAULT_FAQ } from '../src/lib/retail/storefront.ts'
+test('textos da vitrine: limpa, aceita só https e usa as perguntas padrão', () => {
+  const c = readContent({ hero_title: '  Elegância  ', instagram: 'http://x.com', city: '', faq: undefined })
+  assert.equal(c.hero_title, 'Elegância'); assert.equal(c.instagram, null); assert.equal(c.city, null)
+  assert.deepEqual(c.faq, DEFAULT_FAQ)
+  assert.deepEqual(readContent({ faq: [{ q: 'A?', a: 'B' }, { q: '', a: 'x' }] }).faq, [{ q: 'A?', a: 'B' }])
+  assert.deepEqual(readContent({ faq: [] }).faq, [])
+  assert.equal(readOccasions([{ name: 'Igreja', text: ' Delicadeza ' }])[0].text, 'Delicadeza')
 })

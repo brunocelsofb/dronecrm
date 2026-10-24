@@ -10,7 +10,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { cleanLongText, cleanText, RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
-import { cleanDomain, cleanSlug, phoneBR, readOccasions, readTheme, STOREFRONT_LIMITS, type Occasion, type StorefrontTheme } from '@/lib/retail/storefront'
+import { cleanDomain, cleanSlug, phoneBR, readContent, readOccasions, readTheme, STOREFRONT_LIMITS, type Occasion, type StorefrontContent, type StorefrontTheme } from '@/lib/retail/storefront'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -25,7 +25,7 @@ async function guard(adminOnly = false): Promise<{ tenantId: string } | { error:
 
 export type StorefrontInput = {
   enabled: boolean; slug: string; domains: string[]; whatsapp: string
-  title: string; tagline: string; about: string; hero_photo: string | null; hero_photo_mobile: string | null
+  title: string; tagline: string; about: string; hero_photo: string | null; hero_photo_mobile: string | null; content: StorefrontContent
   occasions: Occasion[]; theme: StorefrontTheme
 }
 
@@ -52,7 +52,7 @@ export async function saveRetailStorefront(input: StorefrontInput): Promise<Resu
   const row = {
     slug, domains, enabled: !!input.enabled, whatsapp,
     title: cleanText(input.title, 80), tagline: cleanText(input.tagline, 160), about: cleanLongText(input.about, 1500),
-    hero_photo: hero, hero_photo_mobile: httpsOnly(input.hero_photo_mobile), occasions, theme: readTheme(input.theme), updated_at: new Date().toISOString(),
+    hero_photo: hero, hero_photo_mobile: httpsOnly(input.hero_photo_mobile), content: readContent(input.content), occasions, theme: readTheme(input.theme), updated_at: new Date().toISOString(),
   }
   const { data: existing } = await db.from('retail_storefronts').select('id').eq('tenant_id', g.tenantId).maybeSingle()
   const { error } = existing

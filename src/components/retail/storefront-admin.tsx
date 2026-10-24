@@ -9,9 +9,9 @@ import Link from 'next/link'
 import { saveRetailStorefront, saveRetailLook, deleteRetailLook, moveRetailLook, createRetailStorefrontUpload, type StorefrontInput } from '@/lib/actions/retail-storefront'
 import { createClient } from '@/lib/supabase/client'
 import { RETAIL_MEDIA_BUCKET } from '@/lib/retail/products'
-import type { Occasion } from '@/lib/retail/storefront'
+import { DEFAULT_FAQ, type Occasion, type StorefrontContent } from '@/lib/retail/storefront'
 
-export type ProductOption = { id: string; code: string; name: string; published: boolean; photo: string | null; occasions: string[] }
+export type ProductOption = { id: string; code: string; name: string; category?: string | null; published: boolean; photo: string | null; occasions: string[] }
 export type LookRow = { id: string; name: string; occasion: string | null; description: string | null; product_ids: string[]; cover_photo: string | null; active: boolean; position: number }
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none disabled:bg-gray-50'
@@ -32,6 +32,7 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
   const ro = !isAdmin
   const set = <K extends keyof StorefrontInput>(k: K, v: StorefrontInput[K]) => setF(p => ({ ...p, [k]: v }))
   const photos = useMemo(() => products.filter(p => p.photo).map(p => ({ url: p.photo!, name: p.name })), [products])
+  const categories = useMemo(() => [...new Set(products.map(p => p.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [products])
   const testUrl = storefrontBase && f.slug ? `${storefrontBase}/?loja=${f.slug}` : null
 
   function addOccasion(name: string) {
@@ -80,16 +81,16 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
             <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
               <p className="font-medium text-gray-800">Como deve ser a foto</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                <li><strong>Computador:</strong> horizontal, <strong>1920 × 800 px</strong> (faixa larga, 2,4 : 1). Mínimo 1600 px de largura.</li>
-                <li><strong>Celular:</strong> vertical, <strong>1080 × 1440 px</strong> (3 : 4). Sem ela, o celular corta as laterais da foto do computador.</li>
+                <li><strong>Computador:</strong> vertical, <strong>1200 × 1500 px</strong> (4 : 5). Fica à direita, ao lado do título.</li>
+                <li><strong>Celular:</strong> quase quadrada, <strong>1200 × 1260 px</strong>. Fica no topo, acima do título. Sem ela, o celular usa a do computador cortada.</li>
                 <li>O nome da loja, a frase e o botão ficam <strong>embaixo, à esquerda</strong>, sobre uma sombra: deixe essa área mais limpa e a peça ou o rosto no centro ou à direita.</li>
                 <li>JPG, PNG ou WEBP. O Drone reduz o arquivo sozinho para a vitrine abrir rápido.</li>
               </ul>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <CoverSlot label="Computador (horizontal)" ratio="aspect-[12/5]" url={f.hero_photo} disabled={ro} maxSide={2400} onChange={u => set('hero_photo', u)} fallback="Sem foto: usa a peça mais nova" />
-            <CoverSlot label="Celular (vertical)" ratio="aspect-[3/4] max-w-[12rem]" url={f.hero_photo_mobile} disabled={ro} maxSide={1600} onChange={u => set('hero_photo_mobile', u)} fallback="Sem foto: usa a do computador" />
+            <CoverSlot label="Computador (vertical 4:5)" ratio="aspect-[4/5] max-w-[14rem]" url={f.hero_photo} disabled={ro} maxSide={2400} onChange={u => set('hero_photo', u)} fallback="Sem foto: usa a peça mais nova" />
+            <CoverSlot label="Celular (quase quadrada)" ratio="aspect-[20/21] max-w-[14rem]" url={f.hero_photo_mobile} disabled={ro} maxSide={1600} onChange={u => set('hero_photo_mobile', u)} fallback="Sem foto: usa a do computador" />
           </div>
           {photos.length > 0 && !ro && (
             <div>
@@ -119,17 +120,21 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
         </div>
       </section>
 
+      <ContentEditor content={f.content} onChange={c => set('content', c)} categories={categories} disabled={ro} />
+
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">2. Ocasiões</h2>
           <p className="text-sm text-gray-600">Como a cliente filtra a vitrine. Marque as ocasiões em cada peça (passo 4 do cadastro) e nos looks.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {f.occasions.map((o, i) => (
-            <span key={`${o.id}-${i}`} className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-sm text-brand-800">
-              {o.name}
-              {!ro && <button type="button" aria-label={`Tirar ${o.name}`} onClick={() => set('occasions', f.occasions.filter((_, j) => j !== i))} className="hover:text-negative-700">×</button>}
-            </span>
+            <div key={`${o.id}-${i}`} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 p-2">
+              <span className="rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-800">{o.name}</span>
+              <input className={`${inp} min-w-0 flex-1`} value={o.text ?? ''} maxLength={120} disabled={ro} placeholder="Frase curta (ex.: Elegante sem esforço, das 8h às 18h.)"
+                onChange={e => set('occasions', f.occasions.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
+              {!ro && <button type="button" aria-label={`Tirar ${o.name}`} onClick={() => set('occasions', f.occasions.filter((_, j) => j !== i))} className="px-1 text-sm text-gray-500 hover:text-negative-700">×</button>}
+            </div>
           ))}
           {f.occasions.length === 0 && <span className="text-sm text-gray-500">Nenhuma ainda.</span>}
         </div>
@@ -351,5 +356,56 @@ function CoverSlot({ label, ratio, url, disabled, maxSide, onChange, fallback }:
       {dims && <p className="mt-1 text-[11px] text-gray-500">Foto enviada: {dims}</p>}
       {err && <p role="alert" className="mt-1 text-xs text-negative-700">{err}</p>}
     </div>
+  )
+}
+
+// Textos da vitrine: abertura, destaque, sobre, contato e perguntas frequentes
+function ContentEditor({ content, onChange, categories, disabled }: { content: StorefrontContent; onChange: (c: StorefrontContent) => void; categories: string[]; disabled: boolean }) {
+  const set = <K extends keyof StorefrontContent>(k: K, v: StorefrontContent[K]) => onChange({ ...content, [k]: v })
+  const txt = (k: keyof StorefrontContent) => (content[k] as string | null) ?? ''
+  return (
+    <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">Textos da vitrine</h2>
+        <p className="text-sm text-gray-600">O que a cliente lê em cada parte. Campo vazio usa um texto padrão ou esconde o bloco.</p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2"><label className={lbl}>Título da abertura</label><input className={inp} value={txt('hero_title')} disabled={disabled} maxLength={80} placeholder="ex.: Elegância para a vida real" onChange={e => set('hero_title', e.target.value)} /><p className={hint}>Vazio: usa a frase de destaque.</p></div>
+        <div className="sm:col-span-2"><label className={lbl}>Texto da abertura</label><textarea className={inp} rows={2} value={txt('hero_text')} disabled={disabled} maxLength={300} placeholder="ex.: Moda feminina versátil e atemporal, para o trabalho, a igreja e o dia a dia." onChange={e => set('hero_text', e.target.value)} /></div>
+        <div className="sm:col-span-2"><label className={lbl}>Frase do “Sobre”</label><input className={inp} value={txt('about_quote')} disabled={disabled} maxLength={200} placeholder="ex.: uma frase que representa a loja" onChange={e => set('about_quote', e.target.value)} /></div>
+        <div><label className={lbl}>Destaque: título</label><input className={inp} value={txt('feature_title')} disabled={disabled} maxLength={80} placeholder="ex.: Tons da estação" onChange={e => set('feature_title', e.target.value)} /><p className={hint}>Vazio: o bloco de destaque não aparece.</p></div>
+        <div>
+          <label className={lbl}>Destaque: leva para a categoria</label>
+          <select className={inp} value={txt('feature_category')} disabled={disabled} onChange={e => set('feature_category', e.target.value || null)}>
+            <option value="">Todas as peças</option>
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="sm:col-span-2"><label className={lbl}>Destaque: texto</label><textarea className={inp} rows={2} value={txt('feature_text')} disabled={disabled} maxLength={400} onChange={e => set('feature_text', e.target.value)} /></div>
+        <div><label className={lbl}>Instagram (link)</label><input className={inp} value={txt('instagram')} disabled={disabled} placeholder="https://www.instagram.com/sualoja/" autoCapitalize="none" onChange={e => set('instagram', e.target.value)} /></div>
+        <div><label className={lbl}>Cidade e alcance</label><input className={inp} value={txt('city')} disabled={disabled} maxLength={120} placeholder="ex.: Goiânia, GO · vendas para todo o Brasil" onChange={e => set('city', e.target.value)} /></div>
+        <div><label className={lbl}>Retirada e entrega local em</label><input className={inp} value={txt('local_delivery')} disabled={disabled} maxLength={60} placeholder="ex.: Goiânia" onChange={e => set('local_delivery', e.target.value)} /><p className={hint}>Vazio: a cliente só escolhe envio pelo CEP.</p></div>
+        <div><label className={lbl}>Texto do contato</label><input className={inp} value={txt('contact_text')} disabled={disabled} maxLength={200} placeholder="ex.: Ajudamos a escolher tamanho, cor e composição." onChange={e => set('contact_text', e.target.value)} /></div>
+      </div>
+      <div>
+        <p className={lbl}>Perguntas frequentes</p>
+        <div className="space-y-2">
+          {content.faq.map((f, i) => (
+            <div key={i} className="space-y-1 rounded-lg border border-gray-200 p-2">
+              <input className={inp} value={f.q} disabled={disabled} maxLength={160} placeholder="Pergunta" onChange={e => set('faq', content.faq.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)))} />
+              <textarea className={inp} rows={2} value={f.a} disabled={disabled} maxLength={600} placeholder="Resposta" onChange={e => set('faq', content.faq.map((x, j) => (j === i ? { ...x, a: e.target.value } : x)))} />
+              {!disabled && <button type="button" onClick={() => set('faq', content.faq.filter((_, j) => j !== i))} className="text-xs text-gray-500 underline">Tirar</button>}
+            </div>
+          ))}
+        </div>
+        {!disabled && (
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            {content.faq.length < 10 && <button type="button" onClick={() => set('faq', [...content.faq, { q: '', a: '' }])} className="text-brand-700 hover:underline">+ Pergunta</button>}
+            <button type="button" onClick={() => set('faq', DEFAULT_FAQ)} className="text-gray-500 underline">Voltar às perguntas padrão</button>
+          </div>
+        )}
+      </div>
+      <p className={hint}>Depois de mudar, toque em <strong>Salvar vitrine</strong>.</p>
+    </section>
   )
 }

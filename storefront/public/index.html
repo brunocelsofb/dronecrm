@@ -12,26 +12,164 @@
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+
 <header class="top">
-  <div class="wrap top-row">
-    <a href="#inicio" class="brand" id="brand" aria-label="Início"></a>
-    <button class="bag-btn" id="bagBtn" type="button" aria-label="Abrir sacola">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
-      <span class="badge" id="bagCount" hidden>0</span>
-    </button>
+  <div class="wrap">
+    <div class="nav-left">
+      <button class="icon-btn menu-toggle" type="button" id="openMenu" aria-label="Abrir menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav class="menu-links" id="menuLinks" aria-label="Categorias"></nav>
+    </div>
+    <a class="brand" href="#inicio" data-brand aria-label="Início"></a>
+    <div class="nav-right">
+      <button class="icon-btn" type="button" id="openSearch" aria-label="Buscar peças"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+      <button class="icon-btn wa-top" type="button" data-wa-talk aria-label="Falar no WhatsApp"><svg class="fill" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 1c.3.1.5.2.5.3.1.2.1.6-.1 1.2Z"/></svg></button>
+      <button class="icon-btn" type="button" id="openFavs" aria-label="Favoritos"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg><span class="badge" id="favCount" hidden>0</span></button>
+      <button class="icon-btn" type="button" id="openBag" aria-label="Abrir sacola"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span class="badge" id="bagCount" hidden>0</span></button>
+    </div>
   </div>
 </header>
 
-<main id="app" aria-live="polite">
-  <div class="loading wrap"><span class="spinner" aria-hidden="true"></span> Carregando a loja…</div>
+<div class="state" id="state"><p><span class="spinner" aria-hidden="true"></span>Carregando a loja…</p></div>
+
+<main id="inicio" hidden>
+  <section class="hero">
+    <div class="ph" id="heroPhoto"></div>
+    <div class="copy">
+      <h1 class="reveal" id="heroTitle"></h1>
+      <p class="reveal d2" id="heroText"></p>
+      <div class="reveal d3"><a class="btn btn-primary" href="#ocasioes">Escolher por ocasião</a> <a class="btn btn-line" href="#novidades" style="margin-left:6px">Novidades</a></div>
+    </div>
+  </section>
+
+  <section class="block" id="ocasioes">
+    <div class="wrap">
+      <div class="head-row"><div><h2 class="h2">Compre por ocasião</h2><p class="sub">Para onde você vai? Veja os looks e as peças certas para cada momento.</p></div></div>
+      <div class="cats" id="occCards"></div>
+    </div>
+  </section>
+
+  <section class="block" id="categorias" style="padding-top:0">
+    <div class="wrap">
+      <div class="head-row"><div><h2 class="h2">Categorias</h2></div></div>
+      <div class="cats" id="cats"></div>
+    </div>
+  </section>
+
+  <section class="block" id="novidades" style="padding-top:0">
+    <div class="wrap">
+      <div class="head-row">
+        <div><h2 class="h2" id="gridTitle">Novidades</h2><p class="sub">Escolha a cor e o tamanho e finalize pelo WhatsApp com o nosso atendimento.</p></div>
+      </div>
+      <div class="search-bar" id="searchBar"><label><span class="sr">Buscar</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Buscar por nome da peça" autocomplete="off"></label></div>
+      <div class="chips" role="group" aria-label="Filtrar por categoria" id="chips"></div>
+      <div class="grid" id="grid" aria-live="polite"></div>
+      <div id="seenBox" hidden><h3 class="row-title">Vistos recentemente</h3><div class="mini-row" id="seenRow"></div></div>
+    </div>
+  </section>
+
+  <section class="feature" id="destaque">
+    <div class="ph" id="featurePhoto"></div>
+    <div class="copy">
+      <h2 class="h2" id="featureTitle"></h2>
+      <p id="featureText"></p>
+      <div><button class="btn btn-line" type="button" id="featureCta">Ver as peças</button></div>
+    </div>
+  </section>
+
+  <section class="block" id="looks">
+    <div class="wrap">
+      <div class="head-row"><div><h2 class="h2" id="looksTitle">Looks por ocasião</h2><p class="sub">Escolha o look inteiro de uma vez ou só a peça que faltava no seu guarda-roupa.</p></div></div>
+      <div class="chips occ-chips" role="group" aria-label="Filtrar looks por ocasião" id="occChips"></div>
+      <div class="looks" id="lookList"></div>
+      <div class="occ-more" id="occMore" hidden><h3 id="occMoreTitle"></h3><div class="grid" id="occGrid"></div></div>
+    </div>
+  </section>
+
+  <section class="about" id="sobre">
+    <div class="wrap">
+      <div>
+        <h2 id="aboutTitle">Sobre a loja</h2>
+        <blockquote id="aboutQuote"></blockquote>
+      </div>
+      <div id="aboutText"></div>
+    </div>
+  </section>
+
+  <section class="block" id="como-comprar">
+    <div class="wrap">
+      <div class="head-row"><div><h2 class="h2">Como comprar</h2><p class="sub">Sem cadastro e sem aplicativo.</p></div></div>
+      <ol class="steps">
+        <li><strong>Escolha as peças</strong><span>Cor, tamanho e quantidade, direto do celular.</span></li>
+        <li><strong>Envie o pedido</strong><span>Informe nome e WhatsApp e diga como prefere pagar e receber.</span></li>
+        <li><strong>Confirme com o atendimento</strong><span>Conferimos a disponibilidade e enviamos o valor final e a forma de pagamento.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="block" id="contato" style="padding-top:0">
+    <div class="wrap contact">
+      <div>
+        <h2 class="h2">Dúvidas</h2>
+        <div id="faq" style="margin-top:14px"></div>
+      </div>
+      <div class="contact-card">
+        <h2 class="h2" style="font-size:32px">Fale com a gente</h2>
+        <p id="contactText"></p>
+        <button class="btn btn-wa" type="button" data-wa-talk><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 1c.3.1.5.2.5.3.1.2.1.6-.1 1.2Z"/></svg>Falar no WhatsApp</button>
+        <a class="btn btn-line" id="igLink" target="_blank" rel="noopener noreferrer">Instagram</a>
+      </div>
+    </div>
+  </section>
 </main>
 
-<div class="scrim" id="scrim" hidden></div>
-<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
-  <button class="sheet-close" id="sheetClose" type="button" aria-label="Fechar">×</button>
-  <div id="sheetBody"></div>
-</aside>
+<footer id="foot" hidden>
+  <div class="wrap cols">
+    <div>
+      <div class="foot-brand" data-brand></div>
+      <p style="margin:0" id="footCity"></p>
+    </div>
+    <div><h4>Navegação</h4><ul id="footNav"></ul></div>
+  </div>
+</footer>
+
+<div class="sticky" id="stickyBar" hidden>
+  <button class="btn btn-wa" type="button" data-wa-talk><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 1c.3.1.5.2.5.3.1.2.1.6-.1 1.2Z"/></svg>Atendimento</button>
+  <button class="btn btn-primary" type="button" id="stickyBag">Sacola</button>
+</div>
+<button class="wa-float" id="waFloat" hidden type="button" data-wa-talk aria-label="Falar no WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 1c.3.1.5.2.5.3.1.2.1.6-.1 1.2Z"/></svg></button>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="scrim" id="scrim"></div>
+
+<div class="sheet sheet-left drawer-menu" id="menuSheet" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="sheet-head"><span class="brand" data-brand></span><button class="icon-btn" type="button" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body"><nav id="mobileNav"></nav></div>
+</div>
+
+<div class="sheet sheet-bottom" id="productSheet" role="dialog" aria-modal="true" aria-labelledby="pdTitle">
+  <div class="sheet-head"><h2 id="pdTitle" class="sr">Peça</h2><span></span><button class="icon-btn" type="button" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="pdBody"></div>
+  <div class="sheet-foot">
+    <button class="btn btn-primary btn-block" type="button" id="addBtn">Adicionar à sacola</button>
+    <button class="btn btn-line btn-block" type="button" id="askBtn">Tirar dúvida sobre esta peça no WhatsApp</button>
+  </div>
+</div>
+
+<div class="sheet sheet-bottom" id="lookSheet" role="dialog" aria-modal="true" aria-labelledby="lkTitle">
+  <div class="sheet-head"><h2 id="lkTitle">Look</h2><button class="icon-btn" type="button" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="lkBody"></div>
+  <div class="sheet-foot"><button class="btn btn-primary btn-block" type="button" id="lkAdd">Adicionar o look à sacola</button><p class="note" id="lkNote" style="margin:0;text-align:center"></p></div>
+</div>
+
+<div class="sheet sheet-side" id="favSheet" role="dialog" aria-modal="true" aria-labelledby="favTitle">
+  <div class="sheet-head"><h2 id="favTitle">Favoritos</h2><button class="icon-btn" type="button" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="favBody"></div>
+</div>
+
+<div class="sheet sheet-side" id="bagSheet" role="dialog" aria-modal="true" aria-labelledby="bagTitle">
+  <div class="sheet-head"><h2 id="bagTitle">Sacola</h2><button class="icon-btn" type="button" data-close aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="sheet-body" id="bagBody"></div>
+  <div class="sheet-foot" id="bagFoot"></div>
+</div>
 
 <script src="/app.js" defer></script>
 </body>
