@@ -5,7 +5,16 @@
   'use strict'
 
   const qs = new URLSearchParams(location.search)
-  const loja = (qs.get('loja') || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
+  // Endereço de teste (?loja=). No endereço da Cloudflare (*.workers.dev), lembra a última loja aberta
+  const testHost = /\.workers\.dev$/.test(location.hostname)
+  let loja = (qs.get('loja') || '').toLowerCase().replace(/[^a-z0-9-]/g, '')
+  if (testHost) {
+    try {
+      if (loja) localStorage.setItem('vitrine-loja', loja)
+      else loja = (localStorage.getItem('vitrine-loja') || '').replace(/[^a-z0-9-]/g, '')
+    } catch { /* sem armazenamento: segue sem lembrar */ }
+    if (loja && !qs.get('loja')) history.replaceState(null, '', `${location.pathname}?loja=${loja}${location.hash}`)
+  }
   const api = (path) => `/api/${path}${loja ? `?loja=${encodeURIComponent(loja)}` : ''}`
   const $ = (s, el = document) => el.querySelector(s)
   const app = $('#app')
@@ -308,7 +317,12 @@
   async function start() {
     try {
       const r = await fetch(api('catalogo'), { headers: { Accept: 'application/json' } })
-      if (r.status === 404) { app.innerHTML = '<p class="empty wrap">Loja não encontrada. Confira o endereço.</p>'; return }
+      if (r.status === 404) {
+        app.innerHTML = testHost && !loja
+          ? '<p class="empty wrap">Falta o nome da loja no link. Use o <b>link de teste</b> que aparece no Drone em Varejo → Vitrine (termina com <code>?loja=nome-da-loja</code>).</p>'
+          : `<p class="empty wrap">Loja não encontrada${loja ? ` (“${esc(loja)}”)` : ''}. Confira se a vitrine está <b>No ar</b> e salva em Varejo → Vitrine e se o endereço está certo.</p>`
+        return
+      }
       if (!r.ok) throw new Error(String(r.status))
       data = await r.json()
       applyStore(data.store)

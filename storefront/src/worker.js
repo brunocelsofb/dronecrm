@@ -3,7 +3,7 @@
 // a vitrine (?host=) ou o endereço de teste (?loja=). Assim cada loja usa o seu domínio
 // sem nada fixo aqui: quem decide qual loja é o Drone (Varejo → Vitrine).
 
-const CATALOG_TTL = 60 // segundos de cache do catálogo na Cloudflare
+const CATALOG_TTL = 30 // segundos de cache do catálogo na Cloudflare (mudança no Drone aparece em até ~1 min)
 
 export default {
   async fetch(request, env, ctx) {

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!sf) return json({ error: 'Loja não encontrada.' }, 404)
   try {
     const catalog = await loadCatalog(sf)
-    return json(catalog, 200, { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' })
+    return json(catalog, 200, { 'Cache-Control': 'public, s-maxage=30' })
   } catch (e) {
     console.error('[vitrine] catálogo:', e instanceof Error ? e.message : e)
     return json({ error: 'Catálogo indisponível agora.' }, 500)
