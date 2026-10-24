@@ -10,7 +10,7 @@ import { seedTenantDefaults } from './seed'
 // Ordem respeita as referências entre tabelas (filhas antes das mães)
 const RESET_TABLES = [
   // filhas primeiro (dependem de contratos, propostas, chamados, leads, funis)
-  'retail_loyalty_entries', 'retail_order_items', 'retail_orders', 'retail_customers', 'retail_product_variants', 'retail_products',
+  'retail_looks', 'retail_storefronts', 'retail_loyalty_entries', 'retail_order_items', 'retail_orders', 'retail_customers', 'retail_product_variants', 'retail_products',
   'action_plan_items', 'assistant_action_log', 'automation_rule_triggers', 'contract_contacts', 'contract_custom_field_values', 'contract_emails', 'contract_files', 'contract_tags', 'dimensioning_reviews', 'transfer_requests', 'proposal_status', 'company_tags', 'lead_activities', 'stage_history', 'pipeline_field_configs', 'proposal_approvals', 'proposal_items', 'proposal_content_blocks', 'ticket_messages', 'task_comments', 'implementation_tasks', 'implementation_template_tasks',
   'activities', 'notifications', 'contract_whatsapp_messages', 'whatsapp_conversation_status',
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
@@ -31,7 +31,7 @@ const EXPORT_TABLES = [
   'proposals', 'tickets', 'contract_whatsapp_messages', 'nps_surveys', 'custom_surveys', 'billing_records',
   'contract_renewals', 'contract_measurements', 'implementation_schedules', 'tags', 'lost_reasons', 'custom_fields', 'email_templates', 'automation_rules',
   'marketing_campaigns', 'marketing_campaign_costs', 'sdr_conversations', 'renewal_ruler_runs', 'action_plans', 'action_plan_items',
-  'retail_products', 'retail_product_variants', 'retail_customers', 'retail_orders', 'retail_order_items', 'retail_loyalty_entries',
+  'retail_products', 'retail_product_variants', 'retail_customers', 'retail_orders', 'retail_order_items', 'retail_loyalty_entries', 'retail_storefronts', 'retail_looks',
 ] as const
 
 // Nunca exportar segredos

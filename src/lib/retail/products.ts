@@ -38,6 +38,7 @@ export type RetailProduct = {
   status: ProductStatus
   photos: string[]
   weight_g: number | null
+  occasions?: string[]
   variants: RetailVariant[]
 }
 

@@ -15,7 +15,8 @@ type PricedItem = {
 }
 
 // Preço e dados de cada item vindos do banco (variação ativa, peça não arquivada)
-export async function priceItems(db: Db, items: OrderItemInput[]): Promise<{ ok: true; items: PricedItem[]; subtotal: number } | { ok: false; error: string }> {
+// opts.storefront: vitrine pública — só peças publicadas e com saldo
+export async function priceItems(db: Db, items: OrderItemInput[], opts: { storefront?: boolean } = {}): Promise<{ ok: true; items: PricedItem[]; subtotal: number } | { ok: false; error: string }> {
   const merged = new Map<string, number>()
   for (const it of items ?? []) {
     const qty = Math.floor(Number(it?.qty))
@@ -25,16 +26,17 @@ export async function priceItems(db: Db, items: OrderItemInput[]): Promise<{ ok:
   if (!merged.size) return { ok: false, error: 'Adicione ao menos uma peça.' }
   if (merged.size > 50) return { ok: false, error: 'Máximo de 50 itens por pedido.' }
   const { data } = await db.from('retail_product_variants')
-    .select('id, sku, color, size, active, product_id, retail_products(id, code, name, price, promo_price, status, cost_price)')
+    .select('id, sku, color, size, active, stock, product_id, retail_products(id, code, name, price, promo_price, status, cost_price)')
     .in('id', [...merged.keys()])
-  type V = { id: string; sku: string; color: string | null; size: string | null; active: boolean; product_id: string; retail_products: { id: string; code: string; name: string; price: number; promo_price: number | null; status: string; cost_price: number | null } | null }
+  type V = { id: string; sku: string; color: string | null; size: string | null; active: boolean; stock: number; product_id: string; retail_products: { id: string; code: string; name: string; price: number; promo_price: number | null; status: string; cost_price: number | null } | null }
   const byId = new Map(((data ?? []) as unknown as V[]).map(v => [v.id, v]))
   const out: PricedItem[] = []
   for (const [variantId, qty] of merged) {
     const v = byId.get(variantId)
     const p = v?.retail_products
     if (!v || !p) return { ok: false, error: 'Uma das peças não existe mais.' }
-    if (!v.active || p.status === 'arquivado') return { ok: false, error: `${p.name} (${[v.color, v.size].filter(Boolean).join(' / ')}) não está disponível.` }
+    if (!v.active || p.status === 'arquivado' || (opts.storefront && p.status !== 'publicado')) return { ok: false, error: `${p.name} (${[v.color, v.size].filter(Boolean).join(' / ')}) não está disponível.` }
+    if (opts.storefront && Number(v.stock) < qty) return { ok: false, error: Number(v.stock) > 0 ? `${p.name} (${[v.color, v.size].filter(Boolean).join(' / ')}): só temos ${v.stock}.` : `${p.name} (${[v.color, v.size].filter(Boolean).join(' / ')}) esgotou.` }
     const unit = round2(effectivePrice({ price: Number(p.price), promo_price: p.promo_price === null ? null : Number(p.promo_price) }))
     out.push({ product_id: p.id, variant_id: v.id, code: p.code, name: p.name, sku: v.sku, color: v.color, size: v.size, qty, unit_price: unit, total: round2(unit * qty), unit_cost: p.cost_price === null || p.cost_price === undefined ? null : Number(p.cost_price) })
   }

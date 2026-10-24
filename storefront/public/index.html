@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Loja</title>
+<meta name="description" content="Escolha suas peças e finalize pelo WhatsApp da loja.">
+<meta name="theme-color" content="#FAF8F5">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-row">
+    <a href="#inicio" class="brand" id="brand" aria-label="Início"></a>
+    <button class="bag-btn" id="bagBtn" type="button" aria-label="Abrir sacola">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+      <span class="badge" id="bagCount" hidden>0</span>
+    </button>
+  </div>
+</header>
+
+<main id="app" aria-live="polite">
+  <div class="loading wrap"><span class="spinner" aria-hidden="true"></span> Carregando a loja…</div>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <button class="sheet-close" id="sheetClose" type="button" aria-label="Fechar">×</button>
+  <div id="sheetBody"></div>
+</aside>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/app.js" defer></script>
+</body>
+</html>

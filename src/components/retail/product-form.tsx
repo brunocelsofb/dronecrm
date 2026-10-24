@@ -77,7 +77,7 @@ function Step({ n, title, done, children, id }: { n: number; title: string; done
   )
 }
 
-export function ProductForm({ product, categories, justCreated, pricing, loyalty }: { product: RetailProduct | null; categories: string[]; justCreated?: boolean; pricing: PricingSettings; loyalty: LoyaltySettings }) {
+export function ProductForm({ product, categories, justCreated, pricing, loyalty, occasions = [] }: { product: RetailProduct | null; categories: string[]; justCreated?: boolean; pricing: PricingSettings; loyalty: LoyaltySettings; occasions?: { id: string; name: string }[] }) {
   const router = useRouter()
   const [f, setF] = useState({
     code: product?.code ?? '', name: product?.name ?? '', category: product?.category ?? '',
@@ -86,6 +86,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
     description: product?.description ?? '', composition: product?.composition ?? '', care: product?.care ?? '',
     measures: product?.measures ?? '', weight_g: product?.weight_g?.toString() ?? '',
   })
+  const [occ, setOcc] = useState<string[]>(product?.occasions ?? [])
   const init = useMemo(() => initialGrid(product), [product])
   const [colors, setColors] = useState<string[]>(init.colors)
   const [sizes, setSizes] = useState<string[]>(init.sizes)
@@ -175,7 +176,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
       document.getElementById('estoque')?.scrollIntoView({ behavior: 'smooth' })
       return
     }
-    const r = await saveRetailProduct({ id: product?.id ?? null, ...f, variants })
+    const r = await saveRetailProduct({ id: product?.id ?? null, ...f, occasions: occ, variants })
     setBusy(false)
     if (!r.ok) { setError(r.error); return }
     if (!product) { router.replace(`/varejo/produtos/${r.id}?criada=1#fotos`); return }
@@ -440,6 +441,21 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
               <span className="mt-1 block text-xs text-gray-500">{v.text}</span>
             </label>
           ))}
+        </div>
+        <div className="rounded-lg border border-gray-200 p-3">
+          <p className="text-sm font-medium text-gray-900">Para quais ocasiões? <span className="font-normal text-gray-500">(a cliente filtra a vitrine por ocasião)</span></p>
+          {occasions.length === 0 ? (
+            <p className="mt-1 text-xs text-gray-500">Nenhuma ocasião cadastrada. Crie em <Link href="/varejo/vitrine" className="text-brand-700 hover:underline">Varejo → Vitrine</Link> (ex.: Trabalho, Igreja, Festa).</p>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {occasions.map(o => (
+                <label key={o.id} className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${occ.includes(o.id) ? 'border-brand-700 bg-brand-100/50 text-brand-800' : 'border-gray-300 text-gray-700'}`}>
+                  <input type="checkbox" className="h-3.5 w-3.5" checked={occ.includes(o.id)} onChange={e => setOcc(prev => e.target.checked ? [...prev, o.id] : prev.filter(x => x !== o.id))} />
+                  {o.name}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
         {f.status === 'publicado' && missing.length > 0 && (
           <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">Pode publicar assim, mas ainda falta: {missing.join(', ')}.</p>

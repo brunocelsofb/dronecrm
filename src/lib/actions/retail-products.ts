@@ -40,6 +40,7 @@ export type ProductInput = {
   cost_price?: string | number | null
   status: ProductStatus
   weight_g?: string | number | null
+  occasions?: string[] | null // ids das ocasiões da vitrine
   variants: { id?: string | null; sku?: string | null; color?: string | null; size?: string | null; stock: string | number; active: boolean }[]
 }
 
@@ -92,6 +93,7 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
     care: cleanLongText(input.care, 1000),
     measures: cleanLongText(input.measures, 2000),
     price, promo_price: promo, cost_price: cost, status: input.status, weight_g: weight,
+    occasions: [...new Set((Array.isArray(input.occasions) ? input.occasions : []).map(o => String(o)).filter(o => /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(o)))].slice(0, 12),
     updated_at: new Date().toISOString(),
   }
 

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vitrine do Varejo (projeto separado, publicado na Cloudflare)
+    "storefront/**",
   ]),
 ]);
 
