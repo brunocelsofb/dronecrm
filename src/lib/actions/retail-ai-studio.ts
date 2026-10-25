@@ -102,3 +102,28 @@ export async function publishAiImage(id: string, target: { look?: string | null;
   revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')
   return { ok: true }
 }
+
+// Lançar no site em um passo: cria o look da vitrine com esta foto de capa e as peças usadas nela
+export async function createLookFromAiImage(id: string, input: { name: string; occasion: string | null }): Promise<Result<{ lookId: string }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!UUID.test(id)) return { ok: false, error: 'Imagem inválida.' }
+  const name = String(input.name ?? '').trim().slice(0, 80)
+  if (!name) return { ok: false, error: 'Dê um nome ao look.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: img } = await db.from('retail_ai_images').select('path, kind, inputs').eq('id', id).maybeSingle()
+  if (!img || img.kind !== 'look') return { ok: false, error: 'Escolha uma foto de look.' }
+  const pieces = ((img.inputs as { pieces?: { product_id?: string }[] } | null)?.pieces ?? []).map(p => String(p.product_id ?? '')).filter(x => UUID.test(x))
+  const ids = [...new Set(pieces)].slice(0, 12)
+  const { data: found } = ids.length ? await db.from('retail_products').select('id').in('id', ids) : { data: [] }
+  const productIds = ids.filter(x => (found ?? []).some(f => f.id === x))
+  if (!productIds.length) return { ok: false, error: 'As peças desta foto não existem mais. Use "Capa de um look" e escolha as peças na Vitrine.' }
+  const occ = input.occasion && /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(input.occasion) ? input.occasion : null
+  const { data: last } = await db.from('retail_looks').select('position').order('position', { ascending: false }).limit(1).maybeSingle()
+  const { data, error } = await db.from('retail_looks').insert({
+    name, occasion: occ, description: null, product_ids: productIds, cover_photo: retailPhotoUrl(img.path as string), active: true, position: Number(last?.position ?? 0) + 1,
+  }).select('id').single()
+  if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar o look.' }
+  revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')
+  return { ok: true, lookId: data.id as string }
+}

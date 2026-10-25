@@ -32,6 +32,25 @@ export const validModel = (p: AiProvider, m: unknown) => AI_PROVIDERS.find(x => 
 
 export const MAX_LOOK_PIECES = 8
 
+// Tamanho padrão das fotos para a vitrine: look em pé 4:5 (1600 × 2000), que serve nos
+// cartões de look e na capa do computador. Modelo e cenário são referência (2:3).
+export const IMAGE_FORMAT = {
+  look: { openai: '1600x2000', gemini: '4:5', label: '1600 × 2000 px (4:5, vertical)' },
+  modelo: { openai: '1024x1536', gemini: '2:3', label: '1024 × 1536 px (2:3)' },
+  cenario: { openai: '1024x1536', gemini: '2:3', label: '1024 × 1536 px (2:3)' },
+} as const
+
+// Poses: com 2 fotos, cada uma sai numa pose diferente
+export const POSES = [
+  'em pé de frente, corpo inteiro, uma mão na cintura e sorriso leve',
+  'em três quartos (levemente de lado), caminhando, olhar para a câmera',
+  'de lado, olhando por cima do ombro, mostrando as costas e o caimento da peça',
+  'em pé de frente, mãos relaxadas ao lado do corpo, postura confiante',
+  'encostada levemente numa parede ou móvel do cenário, pernas cruzadas na altura dos tornozelos',
+  'sentada de forma elegante, mostrando o caimento da roupa sentada',
+] as const
+export const isPose = (v: unknown): v is string => typeof v === 'string' && (POSES as readonly string[]).includes(v)
+
 // Modelo virtual: descrição → prompt (pessoa fictícia, foto de catálogo neutra para reusar)
 export type ModelSpec = { age: string; body: string; skin: string; hair: string; style: string; extra: string }
 export function modelPrompt(s: ModelSpec): string {

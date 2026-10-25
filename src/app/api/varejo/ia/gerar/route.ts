@@ -8,11 +8,11 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { decryptSecret } from '@/lib/ai/tenant-key'
 import { generateImage } from '@/lib/retail/ai-providers'
-import { defaultModel, isAiKind, isAiProvider, MAX_LOOK_PIECES, validModel } from '@/lib/retail/ai-studio'
+import { defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, validModel } from '@/lib/retail/ai-studio'
 import { RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120 // geração em 1600×2000 pode passar de 1 minuto
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status })
@@ -28,8 +28,11 @@ export async function POST(req: NextRequest) {
   const provider = b.provider, kind = b.kind
   if (!isAiProvider(provider)) return bad('Escolha Gemini ou ChatGPT.')
   if (!isAiKind(kind)) return bad('Tipo de imagem inválido.')
-  const prompt = String(b.prompt ?? '').trim().slice(0, 6000)
-  if (prompt.length < 10) return bad('Escreva o pedido para a IA.')
+  const base = String(b.prompt ?? '').trim().slice(0, 6000)
+  if (base.length < 10) return bad('Escreva o pedido para a IA.')
+  // Pose escolhida (com 2 fotos, cada pedido vem com uma pose diferente)
+  const pose = kind === 'look' && isPose(b.pose) ? String(b.pose) : null
+  const prompt = pose ? `${base}\nPose da modelo nesta foto: ${pose}.` : base
   const title = String(b.title ?? '').trim().slice(0, 80) || null
 
   const db = await createScopedAdmin(tenantId)
@@ -65,10 +68,11 @@ export async function POST(req: NextRequest) {
       images.push(/^https:\/\//.test(photo) ? photo : retailPhotoUrl(photo))
     }
     if (sc) images.push(retailPhotoUrl(sc.path as string))
-    Object.assign(inputs, { model_image_id: modelId, scene_image_id: sc?.id ?? null, pieces })
+    Object.assign(inputs, { model_image_id: modelId, scene_image_id: sc?.id ?? null, pieces, pose })
   }
 
-  const r = await generateImage({ provider, key, model, prompt, images })
+  const fmt = IMAGE_FORMAT[kind]
+  const r = await generateImage({ provider, key, model, prompt, images, size: fmt.openai, aspect: fmt.gemini })
   if (!r.ok) return bad(r.error, 502)
   const ext = r.mime.includes('png') ? 'png' : r.mime.includes('webp') ? 'webp' : 'jpg'
   const path = `${tenantId}/ia/${kind}-${randomUUID()}.${ext}`
@@ -76,5 +80,5 @@ export async function POST(req: NextRequest) {
   if (upErr) return bad(`A imagem foi gerada, mas não consegui guardar: ${upErr.message}`, 500)
   const { data: row, error } = await db.from('retail_ai_images').insert({ kind, title, path, provider, model, prompt, inputs, created_by: access.userId }).select('id').single()
   if (error || !row) return bad(error?.message ?? 'Falha ao registrar a imagem.', 500)
-  return NextResponse.json({ id: row.id, url: retailPhotoUrl(path) })
+  return NextResponse.json({ id: row.id, url: retailPhotoUrl(path), kind })
 }

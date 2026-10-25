@@ -4,7 +4,7 @@
 
 import type { AiProvider } from '@/lib/retail/ai-studio'
 
-export type GenInput = { provider: AiProvider; key: string; model: string; prompt: string; images: string[] /* URLs públicas */ }
+export type GenInput = { provider: AiProvider; key: string; model: string; prompt: string; images: string[] /* URLs públicas */; size: string; aspect: string }
 export type GenResult = { ok: true; data: Buffer; mime: string } | { ok: false; error: string }
 
 async function fetchAsBase64(url: string): Promise<{ data: string; mime: string }> {
@@ -49,7 +49,7 @@ export async function generateImage(g: GenInput): Promise<GenResult> {
         body: JSON.stringify({
           model: g.model,
           input: [{ type: 'text', text: g.prompt }, ...imgs.map(i => ({ type: 'image', mime_type: i.mime, data: i.data }))],
-          response_format: { type: 'image', aspect_ratio: '3:4', image_size: '2K' },
+          response_format: { type: 'image', aspect_ratio: g.aspect, image_size: '2K' },
         }),
       })
       const text = await r.text()
@@ -61,7 +61,7 @@ export async function generateImage(g: GenInput): Promise<GenResult> {
       return { ok: true, data: Buffer.from(img.data, 'base64'), mime: img.mime }
     }
     // OpenAI: sem foto de referência gera do zero; com fotos, edita/combina as fotos
-    const common = { model: g.model, prompt: g.prompt, size: '1024x1536', quality: 'medium', n: 1, output_format: 'jpeg' }
+    const common = { model: g.model, prompt: g.prompt, size: g.size, quality: 'medium', n: 1, output_format: 'jpeg' }
     const r = await fetch(g.images.length ? 'https://api.openai.com/v1/images/edits' : 'https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${g.key}` },

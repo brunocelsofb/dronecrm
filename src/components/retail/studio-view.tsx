@@ -5,12 +5,13 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { deleteAiImage, publishAiImage, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
-import { AI_PROVIDERS, MAX_LOOK_PIECES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
+import { createLookFromAiImage, deleteAiImage, publishAiImage, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
+import { AI_PROVIDERS, IMAGE_FORMAT, MAX_LOOK_PIECES, POSES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
 
 export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; title: string | null; url: string; provider: string; created_at: string }
 export type StudioProduct = { id: string; code: string; name: string; photos: string[] }
 type Conn = { provider: AiProvider; last4: string | null; model: string | null }
+type Opt = { id: string; name: string }
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none'
 const lbl = 'mb-1 block text-xs font-medium text-gray-600'
@@ -18,7 +19,7 @@ const btn = 'rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white ho
 const btnLine = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50'
 type Tab = 'look' | 'modelo' | 'cenario' | 'banco'
 
-export function StudioView({ connections, images, products, looks }: { connections: Conn[]; images: StudioImage[]; products: StudioProduct[]; looks: { id: string; name: string }[] }) {
+export function StudioView({ connections, images, products, looks, occasions }: { connections: Conn[]; images: StudioImage[]; products: StudioProduct[]; looks: Opt[]; occasions: Opt[] }) {
   const [tab, setTab] = useState<Tab>('look')
   const connected = connections.map(c => c.provider)
   return (
@@ -30,10 +31,10 @@ export function StudioView({ connections, images, products, looks }: { connectio
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-full px-4 py-1.5 text-sm ${tab === t ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>{l}</button>
         ))}
       </div>
-      {tab === 'look' && <LookTab images={images} products={products} connected={connected} goTo={setTab} />}
+      {tab === 'look' && <LookTab images={images} products={products} connected={connected} goTo={setTab} looks={looks} occasions={occasions} />}
       {tab === 'modelo' && <ModelTab images={images.filter(i => i.kind === 'modelo')} connected={connected} />}
       {tab === 'cenario' && <SceneTab images={images.filter(i => i.kind === 'cenario')} connected={connected} />}
-      {tab === 'banco' && <BankTab images={images} looks={looks} />}
+      {tab === 'banco' && <BankTab images={images} looks={looks} occasions={occasions} />}
     </div>
   )
 }
@@ -96,21 +97,23 @@ function AccountSection({ connections }: { connections: Conn[] }) {
 }
 
 // ── Gerar (chamada comum) ─────────────────────────────────────────────────────
+type Made = { id: string; url: string; kind: StudioImage['kind'] }
 function useGenerate() {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [last, setLast] = useState<string[]>([])
-  async function run(body: Record<string, unknown>, times = 1) {
+  const [last, setLast] = useState<Made[]>([])
+  // Um pedido por foto (com 2 fotos, cada pedido leva uma pose diferente)
+  async function run(bodies: Record<string, unknown>[]) {
     setBusy(true); setErr(null)
-    const results = await Promise.all(Array.from({ length: times }, () => fetch('/api/varejo/ia/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(async r => { const j = await r.json().catch(() => ({})); return r.ok ? { url: j.url as string } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
+    const results = await Promise.all(bodies.map(body => fetch('/api/varejo/ia/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(async r => { const j = await r.json().catch(() => ({})); return r.ok ? { id: j.id as string, url: j.url as string, kind: j.kind as Made['kind'] } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
       .catch(() => ({ error: 'Sem conexão. Tente de novo.' }))))
     setBusy(false)
-    const ok = results.filter((x): x is { url: string } => 'url' in x)
+    const ok = results.filter((x): x is Made => 'url' in x)
     const bad = results.find((x): x is { error: string } => 'error' in x)
     if (bad) setErr(bad.error)
-    if (ok.length) { setLast(ok.map(o => o.url)); router.refresh() }
+    if (ok.length) { setLast(ok); router.refresh() }
   }
   return { busy, err, last, run }
 }
@@ -125,12 +128,20 @@ function ProviderPick({ connected, value, onChange }: { connected: AiProvider[];
   )
 }
 
-function Results({ urls }: { urls: string[] }) {
-  if (!urls.length) return null
+function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occasions?: Opt[] }) {
+  if (!made.length) return null
   return (
     <div className="space-y-2 rounded-lg bg-positive-100/50 p-3">
-      <p className="text-sm font-medium text-positive-700">Pronto! Guardado no banco de imagens.</p>
-      <div className="flex flex-wrap gap-2">{urls.map(u => /* eslint-disable-next-line @next/next/no-img-element */ <a key={u} href={u} target="_blank" rel="noopener noreferrer"><img src={u} alt="Imagem gerada" className="h-48 w-auto rounded-lg object-cover" /></a>)}</div>
+      <p className="text-sm font-medium text-positive-700">Pronto! {made.length > 1 ? 'As fotos ficaram guardadas' : 'A foto ficou guardada'} no Banco de imagens{made[0].kind === 'look' ? '. Para colocar no site, use os botões abaixo da foto.' : '.'}</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {made.map(m => (
+          <div key={m.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <a href={m.url} target="_blank" rel="noopener noreferrer"><img src={m.url} alt="Imagem gerada" className="aspect-[4/5] w-full object-cover" /></a>
+            {m.kind === 'look' && looks && occasions && <ImageActions id={m.id} kind="look" url={m.url} looks={looks} occasions={occasions} />}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -151,7 +162,7 @@ function Pickable({ url, selected, label, onClick, badge }: { url: string; selec
 }
 
 // ── Foto do look ──────────────────────────────────────────────────────────────
-function LookTab({ images, products, connected, goTo }: { images: StudioImage[]; products: StudioProduct[]; connected: AiProvider[]; goTo: (t: Tab) => void }) {
+function LookTab({ images, products, connected, goTo, looks, occasions }: { images: StudioImage[]; products: StudioProduct[]; connected: AiProvider[]; goTo: (t: Tab) => void; looks: Opt[]; occasions: Opt[] }) {
   const models = images.filter(i => i.kind === 'modelo'), scenes = images.filter(i => i.kind === 'cenario')
   const [model, setModel] = useState<string | null>(models[0]?.id ?? null)
   const [scene, setScene] = useState<string | null>(null)
@@ -161,6 +172,7 @@ function LookTab({ images, products, connected, goTo }: { images: StudioImage[];
   const [provider, setProvider] = useState<AiProvider | ''>(connected[0] ?? '')
   const [custom, setCustom] = useState<string | null>(null)
   const [times, setTimes] = useState(1)
+  const [pose, setPose] = useState<string>('auto')
   const g = useGenerate()
   const auto = lookPrompt(Math.max(1, picked.length), !!scene)
   const prompt = custom ?? auto
@@ -204,18 +216,88 @@ function LookTab({ images, products, connected, goTo }: { images: StudioImage[];
         <div><label className={lbl} htmlFor="lk-title">Nome da foto (opcional)</label><input id="lk-title" className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="ex.: Reunião de segunda" /></div>
         <div><div className="flex items-baseline justify-between"><label className={lbl} htmlFor="lk-prompt">Pedido para a IA</label>{custom !== null && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setCustom(null)}>Voltar ao texto padrão</button>}</div>
           <textarea id="lk-prompt" className={inp} rows={8} value={prompt} onChange={e => setCustom(e.target.value)} /></div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ProviderPick connected={connected} value={provider || connected[0] || ''} onChange={setProvider} />
-          <div><label className={lbl} htmlFor="lk-n">Quantas opções</label><select id="lk-n" className={inp} value={times} onChange={e => setTimes(Number(e.target.value))}><option value={1}>1 foto</option><option value={2}>2 fotos (cobra 2)</option></select></div>
+          <div><label className={lbl} htmlFor="lk-n">Quantas fotos</label><select id="lk-n" className={inp} value={times} onChange={e => setTimes(Number(e.target.value))}><option value={1}>1 foto</option><option value={2}>2 fotos, poses diferentes (cobra 2)</option></select></div>
+          <div><label className={lbl} htmlFor="lk-pose">Pose</label><select id="lk-pose" className={inp} value={pose} onChange={e => setPose(e.target.value)} disabled={times > 1}>
+            <option value="auto">{times > 1 ? 'Uma pose diferente em cada foto' : 'A IA escolhe'}</option>{POSES.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
         </div>
+        <p className="text-xs text-gray-500">Tamanho: {IMAGE_FORMAT.look.label}, o padrão da vitrine (cartão do look e capa do computador).</p>
         <button type="button" className={btn} disabled={g.busy || !(provider || connected[0]) || !model || !picked.length}
-          onClick={() => g.run({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked }, times)}>Gerar foto do look</button>
+          onClick={() => {
+            const start = Math.floor(Math.random() * POSES.length)
+            const poses = times > 1 ? [POSES[start], POSES[(start + 1 + Math.floor(Math.random() * (POSES.length - 1))) % POSES.length]] : [pose === 'auto' ? POSES[start] : pose]
+            g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p })))
+          }}>Gerar foto do look</button>
         {!picked.length && <p className="text-xs text-gray-500">Escolha a modelo e ao menos uma peça.</p>}
         <Waiting busy={g.busy} />
         {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
-        <Results urls={g.last} />
+        <Results made={g.last} looks={looks} occasions={occasions} />
       </div>
+      <LookGallery images={images.filter(i => i.kind === 'look')} looks={looks} occasions={occasions} />
     </section>
+  )
+}
+
+function LookGallery({ images, looks, occasions }: { images: StudioImage[]; looks: Opt[]; occasions: Opt[] }) {
+  const [open, setOpen] = useState<string | null>(null)
+  if (!images.length) return null
+  return (
+    <div className="space-y-2 border-t border-gray-100 pt-4">
+      <h3 className="text-sm font-semibold text-gray-900">Fotos de look já criadas ({images.length})</h3>
+      <p className="text-xs text-gray-500">Toque na foto para colocar no site.</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {images.map(i => (
+          <div key={i.id} className={`overflow-hidden rounded-lg border ${open === i.id ? 'border-brand-700' : 'border-gray-200'}`}>
+            <button type="button" onClick={() => setOpen(open === i.id ? null : i.id)} className="block w-full text-left">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={i.url} alt={i.title ?? 'Look'} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
+              <span className="block truncate px-2 py-1 text-xs text-gray-700">{i.title ?? 'Look'}</span>
+            </button>
+            {open === i.id && <ImageActions id={i.id} kind="look" url={i.url} looks={looks} occasions={occasions} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Publicar uma imagem: criar look na vitrine, capa de look existente, capa da vitrine, excluir
+function ImageActions({ id, kind, url, looks, occasions }: { id: string; kind: StudioImage['kind']; url: string; looks: Opt[]; occasions: Opt[] }) {
+  const router = useRouter()
+  const [name, setName] = useState('')
+  const [occ, setOcc] = useState('')
+  const [look, setLook] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  async function act(f: () => Promise<{ ok: true } | { ok: false; error: string }>, okText: string) {
+    setBusy(true); setMsg(null)
+    const r = await f()
+    setBusy(false)
+    setMsg(r.ok ? { ok: true, text: okText } : { ok: false, text: r.error })
+    if (r.ok) router.refresh()
+  }
+  return (
+    <div className="space-y-2 border-t border-gray-100 p-2">
+      {kind === 'look' && (
+        <div className="space-y-1.5 rounded-md bg-brand-100/40 p-2">
+          <p className="text-[11px] font-medium text-gray-700">Criar look na vitrine com esta foto (já com as peças dela)</p>
+          <input className={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Nome do look (ex.: Reunião)" aria-label="Nome do look" />
+          {occasions.length > 0 && <select className={inp} value={occ} onChange={e => setOcc(e.target.value)} aria-label="Ocasião"><option value="">Sem ocasião</option>{occasions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>}
+          <button type="button" className={`${btn} w-full`} disabled={busy || !name.trim()} onClick={() => act(() => createLookFromAiImage(id, { name, occasion: occ || null }), 'Look criado e publicado na vitrine.')}>Criar look no site</button>
+        </div>
+      )}
+      {kind === 'look' && looks.length > 0 && (
+        <div className="space-y-1.5">
+          <select className={inp} value={look} onChange={e => setLook(e.target.value)} aria-label="Look existente"><option value="">Ou trocar a capa de um look…</option>{looks.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+          {look && <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { look }), 'Capa do look trocada.')}>Usar como capa deste look</button>}
+        </div>
+      )}
+      <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'desktop' }), 'Capa da vitrine (computador) trocada.')}>Capa da vitrine (computador)</button>
+      <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'mobile' }), 'Capa da vitrine (celular) trocada.')}>Capa da vitrine (celular)</button>
+      <div className="flex justify-between text-xs"><a href={url} target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Abrir grande</a><button type="button" className="text-negative-700" disabled={busy} onClick={() => { if (confirm('Excluir esta imagem do banco?')) void act(() => deleteAiImage(id), 'Excluída.') }}>Excluir</button></div>
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded px-2 py-1 text-xs ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}{msg.ok ? ' A vitrine atualiza em até 1 minuto.' : ''}</p>}
+    </div>
   )
 }
 
@@ -243,10 +325,10 @@ function ModelTab({ images, connected }: { images: StudioImage[]; connected: AiP
       <div><div className="flex items-baseline justify-between"><label className={lbl} htmlFor="mo-prompt">Pedido para a IA</label>{custom !== null && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setCustom(null)}>Voltar ao texto padrão</button>}</div>
         <textarea id="mo-prompt" className={inp} rows={5} value={prompt} onChange={e => setCustom(e.target.value)} /></div>
       <ProviderPick connected={connected} value={provider || connected[0] || ''} onChange={setProvider} />
-      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0])} onClick={() => g.run({ kind: 'modelo', provider: provider || connected[0], prompt, title: title || 'Modelo' })}>Criar modelo</button>
+      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0])} onClick={() => g.run([{ kind: 'modelo', provider: provider || connected[0], prompt, title: title || 'Modelo' }])}>Criar modelo</button>
       <Waiting busy={g.busy} />
       {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
-      <Results urls={g.last} />
+      <Results made={g.last} />
       <Gallery images={images} />
     </section>
   )
@@ -274,10 +356,10 @@ function SceneTab({ images, connected }: { images: StudioImage[]; connected: AiP
       <div><div className="flex items-baseline justify-between"><label className={lbl} htmlFor="sc-prompt">Pedido para a IA</label>{custom !== null && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setCustom(null)}>Voltar ao texto padrão</button>}</div>
         <textarea id="sc-prompt" className={inp} rows={4} value={prompt} onChange={e => setCustom(e.target.value)} /></div>
       <ProviderPick connected={connected} value={provider || connected[0] || ''} onChange={setProvider} />
-      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0])} onClick={() => g.run({ kind: 'cenario', provider: provider || connected[0], prompt, title: title || place })}>Criar cenário</button>
+      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0])} onClick={() => g.run([{ kind: 'cenario', provider: provider || connected[0], prompt, title: title || place }])}>Criar cenário</button>
       <Waiting busy={g.busy} />
       {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
-      <Results urls={g.last} />
+      <Results made={g.last} />
       <Gallery images={images} />
     </section>
   )
@@ -293,59 +375,27 @@ function Gallery({ images }: { images: StudioImage[] }) {
 }
 
 // ── Banco de imagens e publicação ─────────────────────────────────────────────
-function BankTab({ images, looks }: { images: StudioImage[]; looks: { id: string; name: string }[] }) {
-  const router = useRouter()
+function BankTab({ images, looks, occasions }: { images: StudioImage[]; looks: Opt[]; occasions: Opt[] }) {
   const [kind, setKind] = useState<'todas' | StudioImage['kind']>('todas')
   const [open, setOpen] = useState<string | null>(null)
-  const [look, setLook] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const list = images.filter(i => kind === 'todas' || i.kind === kind)
-  async function publish(id: string, target: { look?: string; hero?: 'desktop' | 'mobile' }) {
-    setBusy(true); setMsg(null)
-    const r = await publishAiImage(id, target)
-    setBusy(false)
-    setMsg(r.ok ? { ok: true, text: 'Publicada. A vitrine atualiza em até 1 minuto.' } : { ok: false, text: r.error })
-    if (r.ok) router.refresh()
-  }
-  async function remove(id: string) {
-    if (!confirm('Excluir esta imagem do banco?')) return
-    setBusy(true); setMsg(null)
-    const r = await deleteAiImage(id)
-    setBusy(false)
-    if (!r.ok) { setMsg({ ok: false, text: r.error }); return }
-    setOpen(null); router.refresh()
-  }
   const label = { modelo: 'Modelo', cenario: 'Cenário', look: 'Look' } as const
   return (
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+      <p className="text-sm text-gray-600">Tudo o que você criou fica aqui. Toque na foto para colocar no site (look da vitrine ou capa) ou excluir.</p>
       <div className="flex flex-wrap gap-2 text-sm">
         {(['todas', 'look', 'modelo', 'cenario'] as const).map(k => <button key={k} type="button" onClick={() => setKind(k)} className={`rounded-full px-3 py-1 ${kind === k ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-700'}`}>{k === 'todas' ? 'Todas' : label[k]}</button>)}
       </div>
-      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}</p>}
       {list.length === 0 ? <p className="text-sm text-gray-500">Nada aqui ainda.</p> : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {list.map(i => (
             <div key={i.id} className={`overflow-hidden rounded-lg border ${open === i.id ? 'border-brand-700' : 'border-gray-200'}`}>
               <button type="button" onClick={() => setOpen(open === i.id ? null : i.id)} className="block w-full text-left">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[3/4] w-full bg-gray-100 object-cover" />
+                <img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
                 <span className="block px-2 py-1 text-xs text-gray-700"><span className="font-medium">{label[i.kind]}</span>{i.title ? ` · ${i.title}` : ''}</span>
               </button>
-              {open === i.id && (
-                <div className="space-y-2 border-t border-gray-100 p-2">
-                  {i.kind === 'look' && (
-                    <>
-                      <select className={inp} value={look} onChange={e => setLook(e.target.value)} aria-label="Look"><option value="">Capa de qual look?</option>{looks.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                      <button type="button" className={`${btn} w-full`} disabled={busy || !look} onClick={() => publish(i.id, { look })}>Usar como capa do look</button>
-                      {looks.length === 0 && <p className="text-[11px] text-gray-500">Crie o look em Varejo → Vitrine → Looks.</p>}
-                    </>
-                  )}
-                  <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => publish(i.id, { hero: 'desktop' })}>Capa da vitrine (computador)</button>
-                  <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => publish(i.id, { hero: 'mobile' })}>Capa da vitrine (celular)</button>
-                  <div className="flex justify-between text-xs"><a href={i.url} target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Abrir grande</a><button type="button" className="text-negative-700" disabled={busy} onClick={() => remove(i.id)}>Excluir</button></div>
-                </div>
-              )}
+              {open === i.id && <ImageActions id={i.id} kind={i.kind} url={i.url} looks={looks} occasions={occasions} />}
             </div>
           ))}
         </div>
