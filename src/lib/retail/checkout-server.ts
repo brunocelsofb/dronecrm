@@ -9,6 +9,7 @@ import { loadPricingConfig, onRetailOrderPaid } from '@/lib/retail/loyalty-serve
 import { isProposal } from '@/lib/retail/proposal'
 import { round2 } from '@/lib/retail/margin'
 import { fmtBRL } from '@/lib/format'
+import { recordOrderStage } from '@/lib/retail/order-messages-server'
 import { checkPayment, providerLabel, type PaymentLink, type PayProvider } from '@/lib/retail/payments'
 import type { Verified } from '@/lib/retail/payment-providers'
 
@@ -77,6 +78,7 @@ export async function confirmRetailPayment(o: OrderByToken, provider: PayProvide
   }
   await db.from('retail_orders').update({ status: 'pago', paid_at: now }).eq('id', o.id).neq('status', 'cancelado')
   try { await onRetailOrderPaid(db, o.id, (await loadPricingConfig(db, o.tenant_id)).loyalty) } catch (e) { console.error('[varejo-pagamento] fidelidade:', e instanceof Error ? e.message : e) }
+  await recordOrderStage(db, o.tenant_id, o.id, 'pago')
   await notifyStoreAdmins(o.tenant_id, `Pedido nº ${o.number} pago: ${via}, ${fmtBRL(v.amount)}. O estoque já baixou.${check.alert ? ` Atenção: ${check.alert}` : ''}`)
   return 'pago'
 }

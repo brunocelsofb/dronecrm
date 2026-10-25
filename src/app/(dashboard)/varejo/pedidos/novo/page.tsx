@@ -15,7 +15,7 @@ export default async function NewRetailOrderPage({ searchParams }: { searchParam
   const db = await createScopedAdmin()
   const [{ data: products }, { data: customers }] = await Promise.all([
     db.from('retail_products').select('id, code, name, price, promo_price, status, retail_product_variants(id, sku, color, size, stock, active)').neq('status', 'arquivado').order('name'),
-    db.from('retail_customers').select('id, name, phone').order('name').limit(5000),
+    db.from('retail_customers').select('id, name, phone, email, birth_date').order('name').limit(5000),
   ])
   const catalog: CatalogItem[] = ((products ?? []) as unknown as P[]).flatMap(p =>
     (p.retail_product_variants ?? []).filter(v => v.active).map(v => ({

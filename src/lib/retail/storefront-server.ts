@@ -11,6 +11,7 @@ import { effectivePrice, retailPhotoUrl } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
+import { ensurePublicToken, orderPublicUrl, recordOrderStage } from '@/lib/retail/order-messages-server'
 import { cleanDomain, cleanSlug, readContent, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontContent, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
 
 export type StorefrontRow = {
@@ -91,13 +92,13 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
 }
 
 // Pedido da vitrine → cliente (pelo telefone) + pedido "Novo pedido" + aviso para a loja
-export async function createStorefrontOrder(sf: StorefrontRow, input: StorefrontOrderInput): Promise<{ ok: true; number: number; total: number; whatsappUrl: string | null } | { ok: false; error: string; status: number }> {
+export async function createStorefrontOrder(sf: StorefrontRow, input: StorefrontOrderInput): Promise<{ ok: true; number: number; total: number; whatsappUrl: string | null; trackingUrl: string | null } | { ok: false; error: string; status: number }> {
   const db = scopeAdminClient(createAdminClient(), sf.tenant_id, null)
   const priced = await priceItems(db, input.items, { storefront: true })
   if (!priced.ok) return { ok: false, error: priced.error, status: 409 }
 
   // Freio contra abuso: no máximo 5 pedidos novos do mesmo telefone em 24 h
-  const { data: existing } = await db.from('retail_customers').select('id, whatsapp_optin, email').eq('phone', input.customer.phone).maybeSingle()
+  const { data: existing } = await db.from('retail_customers').select('id, whatsapp_optin, email, birth_date').eq('phone', input.customer.phone).maybeSingle()
   if (existing) {
     const { count } = await db.from('retail_orders').select('id', { count: 'exact', head: true })
       .eq('customer_id', existing.id).eq('source', 'vitrine').gte('created_at', new Date(Date.now() - 86_400_000).toISOString())
@@ -107,7 +108,7 @@ export async function createStorefrontOrder(sf: StorefrontRow, input: Storefront
   let customerId = existing?.id as string | undefined
   if (!customerId) {
     const { data, error } = await db.from('retail_customers').insert({
-      name: input.customer.name, phone: input.customer.phone, email: input.customer.email, cep: input.customer.cep, source: 'vitrine',
+      name: input.customer.name, phone: input.customer.phone, email: input.customer.email, cep: input.customer.cep, birth_date: input.customer.birth_date, source: 'vitrine',
       whatsapp_optin: input.customer.optin, optin_at: input.customer.optin ? now : null,
     }).select('id').single()
     if (error || !data) return { ok: false, error: 'Não foi possível registrar agora. Tente de novo.', status: 500 }
@@ -116,6 +117,7 @@ export async function createStorefrontOrder(sf: StorefrontRow, input: Storefront
     const patch: Record<string, unknown> = {}
     if (input.customer.optin && !existing?.whatsapp_optin) { patch.whatsapp_optin = true; patch.optin_at = now }
     if (input.customer.email && !existing?.email) patch.email = input.customer.email
+    if (input.customer.birth_date && !existing?.birth_date) patch.birth_date = input.customer.birth_date
     if (Object.keys(patch).length) await db.from('retail_customers').update(patch).eq('id', customerId)
   }
 
@@ -133,10 +135,13 @@ export async function createStorefrontOrder(sf: StorefrontRow, input: Storefront
     return { ok: false, error: 'Não foi possível registrar agora. Tente de novo.', status: 500 }
   }
 
+  // Linha do tempo + rascunho "Pedido recebido" para a equipe revisar e enviar
+  await recordOrderStage(db, sf.tenant_id, order.id as string, 'recebido')
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', sf.tenant_id).maybeSingle()
   const store = (sf.title || (org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
   await notifyStoreAdmins(sf.tenant_id, `Novo pedido nº ${order.number} da vitrine: ${input.customer.name}, ${fmtBRL(priced.subtotal)} em peças. Está no Funil da loja em "Novo pedido".`)
   const text = storefrontWhatsappText({ store, number: order.number as number, name: input.customer.name, items: priced.items, total: fmtBRL(priced.subtotal) })
   const wa = sf.whatsapp ? `https://wa.me/${sf.whatsapp.length <= 11 ? `55${sf.whatsapp}` : sf.whatsapp}?text=${encodeURIComponent(text)}` : null
-  return { ok: true, number: order.number as number, total: priced.subtotal, whatsappUrl: wa }
+  const token = await ensurePublicToken(db, order.id as string)
+  return { ok: true, number: order.number as number, total: priced.subtotal, whatsappUrl: wa, trackingUrl: token ? orderPublicUrl(token) : null }
 }

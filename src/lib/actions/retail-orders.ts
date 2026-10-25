@@ -14,6 +14,8 @@ import { cleanText, cleanLongText, parseMoney } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { canonicalPhone, isOrderStatus, isPaymentMethod, onlyDigits, PAID_STATUSES, type OrderStatus } from '@/lib/retail/customers'
 import { loadPricingConfig, onRetailOrderCancelled, onRetailOrderPaid } from '@/lib/retail/loyalty-server'
+import { parseDate } from '@/lib/retail/customers'
+import { addOrderEvent, recordOrderStage, stageForStatus } from '@/lib/retail/order-messages-server'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 type Db = Awaited<ReturnType<typeof createScopedAdmin>>
@@ -28,7 +30,9 @@ async function guard(): Promise<{ tenantId: string; userId: string } | { error: 
 import type { OrderItemInput } from '@/lib/retail/pricing'
 export type OrderInput = {
   customer_id?: string | null
-  new_customer?: { name: string; phone?: string | null } | null
+  new_customer?: { name: string; phone?: string | null; email?: string | null; birth_date?: string | null } | null
+  // completa o cadastro da cliente escolhida (WhatsApp e e-mail são obrigatórios no pedido)
+  customer_patch?: { phone?: string | null; email?: string | null; birth_date?: string | null } | null
   items: OrderItemInput[]
   discount?: string | number | null
   shipping?: string | number | null
@@ -63,26 +67,46 @@ export async function createRetailOrder(input: OrderInput): Promise<Result<{ id:
   if ('error' in g) return { ok: false, error: g.error }
   const db = await createScopedAdmin(g.tenantId)
 
-  // Cliente: existente ou nova (nome + telefone)
+  // Cliente: existente ou nova. O pedido precisa de WhatsApp e e-mail (é por onde vão os avisos)
+  const cleanEmail = (v: unknown) => { const e = cleanText(v, 200)?.toLowerCase() ?? null; return e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null }
   let customerId: string | null = null
   if (input.customer_id) {
-    const { data } = await db.from('retail_customers').select('id').eq('id', input.customer_id).maybeSingle()
+    const { data } = await db.from('retail_customers').select('id, phone, email, birth_date').eq('id', input.customer_id).maybeSingle()
     if (!data) return { ok: false, error: 'Cliente não encontrada.' }
     customerId = data.id as string
+    const p = input.customer_patch ?? {}
+    const patch: Record<string, unknown> = {}
+    if (p.phone && !data.phone) { const ph = canonicalPhone(p.phone); if (!ph) return { ok: false, error: 'WhatsApp inválido. Use DDD + número.' }; patch.phone = ph }
+    if (p.email && !data.email) { const em = cleanEmail(p.email); if (!em) return { ok: false, error: 'E-mail inválido.' }; patch.email = em }
+    if (p.birth_date && !data.birth_date) { const b = parseDate(p.birth_date); if (b) patch.birth_date = b }
+    if (!(patch.phone ?? data.phone)) return { ok: false, error: 'Informe o WhatsApp da cliente.' }
+    if (!(patch.email ?? data.email)) return { ok: false, error: 'Informe o e-mail da cliente.' }
+    if (Object.keys(patch).length) {
+      const { error } = await db.from('retail_customers').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', customerId)
+      if (error) return { ok: false, error: error.code === '23505' ? 'Esse WhatsApp já está em outra cliente.' : error.message }
+    }
   } else if (input.new_customer?.name) {
     const name = cleanText(input.new_customer.name, 160)
     const phone = input.new_customer.phone ? canonicalPhone(input.new_customer.phone) : null
+    const email = cleanEmail(input.new_customer.email)
+    const birth = input.new_customer.birth_date ? parseDate(input.new_customer.birth_date) : null
     if (!name) return { ok: false, error: 'Informe o nome da cliente.' }
-    if (input.new_customer.phone && !phone) return { ok: false, error: 'Telefone inválido. Use DDD + número.' }
-    if (phone) {
-      const { data: ex } = await db.from('retail_customers').select('id').eq('phone', phone).maybeSingle()
-      if (ex) customerId = ex.id as string
-    }
-    if (!customerId) {
-      const { data, error } = await db.from('retail_customers').insert({ name, phone, source: 'manual' }).select('id').single()
+    if (!phone) return { ok: false, error: input.new_customer.phone ? 'WhatsApp inválido. Use DDD + número.' : 'Informe o WhatsApp da cliente.' }
+    if (!email) return { ok: false, error: input.new_customer.email ? 'E-mail inválido.' : 'Informe o e-mail da cliente.' }
+    const { data: ex } = await db.from('retail_customers').select('id, email, birth_date').eq('phone', phone).maybeSingle()
+    if (ex) {
+      customerId = ex.id as string
+      const patch: Record<string, unknown> = {}
+      if (!ex.email) patch.email = email
+      if (birth && !ex.birth_date) patch.birth_date = birth
+      if (Object.keys(patch).length) await db.from('retail_customers').update(patch).eq('id', customerId)
+    } else {
+      const { data, error } = await db.from('retail_customers').insert({ name, phone, email, birth_date: birth, source: 'manual' }).select('id').single()
       if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar a cliente.' }
       customerId = data.id as string
     }
+  } else {
+    return { ok: false, error: 'Escolha a cliente ou cadastre uma nova (nome, WhatsApp e e-mail).' }
   }
 
   const priced = await priceItems(db, input.items)
@@ -124,6 +148,9 @@ export async function createRetailOrder(input: OrderInput): Promise<Result<{ id:
     }
     await onRetailOrderPaid(db, orderId, (await loadPricingConfig(db, g.tenantId)).loyalty)
   }
+  // Linha do tempo + rascunho "Pedido recebido" (e "Pago", se já entrou pago) para a equipe revisar
+  await recordOrderStage(db, g.tenantId, orderId, 'recebido', g.userId)
+  const st = stageForStatus(status); if (st) await recordOrderStage(db, g.tenantId, orderId, st, g.userId)
   revalidatePath('/varejo/pedidos'); revalidatePath('/varejo/clientes'); revalidatePath('/varejo/produtos')
   return { ok: true, id: orderId, number: order.number as number }
 }
@@ -149,11 +176,22 @@ export async function updateRetailOrderStatus(orderId: string, status: string): 
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
   if (wantsStock && !o.paid_at) patch.paid_at = new Date().toISOString()
   if (status === 'cancelado') patch.cancelled_at = new Date().toISOString()
+  if (status === 'enviado') patch.shipped_at = new Date().toISOString()
+  if (status === 'entregue') patch.delivered_at = new Date().toISOString()
   const { error } = await db.from('retail_orders').update(patch).eq('id', orderId)
   if (error) return { ok: false, error: error.message }
   // Fidelidade: conta a compra (e gera cashback) no primeiro "pago"; cancelamento desfaz
   if (patch.paid_at) await onRetailOrderPaid(db, orderId, (await loadPricingConfig(db, g.tenantId)).loyalty)
   if (status === 'cancelado') await onRetailOrderCancelled(db, orderId)
+  // Etapa nova: linha do tempo e rascunho da mensagem (a equipe revisa e envia)
+  if (status !== o.status) {
+    const st = stageForStatus(status)
+    if (st) await recordOrderStage(db, g.tenantId, orderId, st, g.userId)
+    if (status === 'cancelado') {
+      await addOrderEvent(db, orderId, 'cancelado', { isPublic: true, userId: g.userId })
+      await db.from('retail_order_messages').update({ status: 'descartada', updated_at: new Date().toISOString() }).eq('order_id', orderId).eq('status', 'pendente')
+    }
+  }
   revalidatePath(`/varejo/pedidos/${orderId}`); revalidatePath('/varejo/pedidos'); revalidatePath('/varejo/clientes'); revalidatePath('/varejo/produtos')
   return { ok: true }
 }

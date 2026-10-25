@@ -28,13 +28,20 @@ test('telefone do Brasil', () => {
 
 test('pedido da vitrine: valida e recusa robô', () => {
   const v = '5f1c2a3b-1111-4222-8333-944455556666'
-  const ok = parseStorefrontOrder({ customer: { name: ' Ana  Lima ', phone: '(31) 99999-0000', optin: true }, items: [{ variant_id: v, qty: 2 }] })
+  const c = (x = {}) => ({ name: 'Ana', phone: '31999990000', email: 'ana@exemplo.com', ...x })
+  const ok = parseStorefrontOrder({ customer: c({ name: ' Ana  Lima ', phone: '(31) 99999-0000', optin: true, birth_date: '1990-05-17' }), items: [{ variant_id: v, qty: 2 }] })
   assert.ok(ok.ok); assert.equal(ok.order.customer.name, 'Ana Lima'); assert.equal(ok.order.customer.phone, '31999990000'); assert.equal(ok.order.customer.optin, true)
-  assert.equal(parseStorefrontOrder({ website: 'http://spam', customer: { name: 'x', phone: '31999990000' }, items: [] }).spam, true)
-  assert.equal(parseStorefrontOrder({ customer: { name: 'Ana', phone: '999' }, items: [{ variant_id: v, qty: 1 }] }).ok, false)
-  assert.equal(parseStorefrontOrder({ customer: { name: 'Ana', phone: '31999990000' }, items: [] }).error, 'Sua sacola está vazia.')
-  assert.equal(parseStorefrontOrder({ customer: { name: 'Ana', phone: '31999990000' }, items: [{ variant_id: 'x', qty: 1 }] }).ok, false)
-  assert.equal(parseStorefrontOrder({ customer: { name: 'Ana', phone: '31999990000', cep: '123' }, items: [{ variant_id: v, qty: 1 }] }).error, 'CEP precisa ter 8 números.')
+  assert.equal(ok.order.customer.birth_date, '1990-05-17')
+  assert.equal(parseStorefrontOrder({ website: 'http://spam', customer: c(), items: [] }).spam, true)
+  assert.equal(parseStorefrontOrder({ customer: c({ phone: '999' }), items: [{ variant_id: v, qty: 1 }] }).ok, false)
+  assert.equal(parseStorefrontOrder({ customer: c({ email: '' }), items: [{ variant_id: v, qty: 1 }] }).error, 'Informe seu e-mail.')
+  assert.equal(parseStorefrontOrder({ customer: c({ email: 'ana@' }), items: [{ variant_id: v, qty: 1 }] }).error, 'E-mail inválido.')
+  assert.equal(parseStorefrontOrder({ customer: c(), items: [] }).error, 'Sua sacola está vazia.')
+  assert.equal(parseStorefrontOrder({ customer: c(), items: [{ variant_id: 'x', qty: 1 }] }).ok, false)
+  assert.equal(parseStorefrontOrder({ customer: c({ cep: '123' }), items: [{ variant_id: v, qty: 1 }] }).error, 'CEP precisa ter 8 números.')
+  // aniversário inválido ou idade fora do comum: ignora (não barra o pedido)
+  assert.equal(parseStorefrontOrder({ customer: c({ birth_date: '2026-02-30' }), items: [{ variant_id: v, qty: 1 }] }).order.customer.birth_date, null)
+  assert.equal(parseStorefrontOrder({ customer: c({ birth_date: '2024-01-01' }), items: [{ variant_id: v, qty: 1 }] }).order.customer.birth_date, null)
 })
 
 test('mensagem do WhatsApp', () => {

@@ -44,6 +44,11 @@ export default async function RetailFunnelPage() {
   const base = appBaseUrl()
 
   const rows = [open, paid, delivered, lost].flatMap(r => (r.data ?? []) as unknown as Row[])
+  // Mensagens esperando revisão (o card avisa)
+  const ids = rows.filter(r => r.status !== 'cancelado').map(r => r.id)
+  const { data: pend } = ids.length ? await db.from('retail_order_messages').select('order_id').eq('status', 'pendente').in('order_id', ids.slice(0, 900)) : { data: [] }
+  const pendingBy = new Map<string, number>()
+  for (const p of pend ?? []) pendingBy.set(p.order_id as string, (pendingBy.get(p.order_id as string) ?? 0) + 1)
   const lostSince30 = days(30)
   const cards: FunnelCard[] = rows.map(o => {
     const f = followUp(o, settings, now, layout)
@@ -59,7 +64,7 @@ export default async function RetailFunnelPage() {
       column: columnOf(o, layout), hoursInStage: f.hoursInColumn, overdue: f.overdue, suggestLost: f.suggestLost,
       nudgeCount: Number(o.nudge_count ?? 0), lastNudgeHours: o.last_nudge_at ? (now.getTime() - Date.parse(o.last_nudge_at)) / 3_600_000 : null,
       whatsappUrl: text ? whatsappLink(o.retail_customers?.phone, text) : null,
-      lostReason: o.lost_reason,
+      lostReason: o.lost_reason, pendingMessages: pendingBy.get(o.id) ?? 0,
       // Perdido: a coluna mostra 30 dias; o resumo de motivos usa 90
       hidden: f.stage === 'perdido' && (o.stage_at ?? o.created_at) < lostSince30,
     }

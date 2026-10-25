@@ -23,6 +23,7 @@ import { scopeAdminClient } from '@/lib/tenant/scoped-admin'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { createProviderLink, loadPaymentAccounts } from '@/lib/retail/payment-providers'
 import { providerFor, reusableLink, type PaymentLink } from '@/lib/retail/payments'
+import { recordOrderStage } from '@/lib/retail/order-messages-server'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 
@@ -76,6 +77,8 @@ export async function createRetailProposal(orderId: string, links: { pix?: strin
     ...(o.status === 'carrinho' || o.status === 'enviado_atendimento' ? { status: 'aguardando_pagamento' } : {}),
   }).eq('id', orderId)
   if (error) return { ok: false, error: error.message }
+  // Rascunho "Link de pagamento" (com o link) para a equipe revisar e enviar
+  await recordOrderStage(db, tenantId, orderId, 'link', access.userId)
   revalidatePath(`/varejo/pedidos/${orderId}`); revalidatePath('/varejo/funil')
   return { ok: true, url: `${appBaseUrl()}/loja/proposta/${token}` }
 }

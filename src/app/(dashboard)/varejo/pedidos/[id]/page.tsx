@@ -7,6 +7,9 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fmtBRL } from '@/lib/format'
 import { ORDER_STATUSES, PAYMENT_METHODS, formatPhone, orderMessage, whatsappLink } from '@/lib/retail/customers'
 import { OrderPanel } from '@/components/retail/order-panel'
+import { OrderMessagesPanel, type OrderEvent, type OrderMessage } from '@/components/retail/order-messages-panel'
+import { ensurePublicToken, orderPublicUrl } from '@/lib/retail/order-messages-server'
+import { birthdayInfo, birthdayLabel } from '@/lib/retail/customers'
 import { NegotiationPanel } from '@/components/retail/negotiation-panel'
 import { ProposalPanel } from '@/components/retail/proposal-panel'
 import { isProposal } from '@/lib/retail/proposal'
@@ -25,20 +28,22 @@ type Order = {
   paid_at: string | null; created_at: string; customer_id: string | null; lost_reason: string | null
   payment_provider: string | null; payment_paid_method: string | null; payment_paid_amount: number | null; payment_receipt_url: string | null; payment_alert: string | null
   proposal_token: string | null; proposal: unknown; proposal_sent_at: string | null; proposal_choice: string | null; proposal_accepted_at: string | null
-  retail_customers: { id: string; name: string; phone: string | null } | null
+  retail_customers: { id: string; name: string; phone: string | null; email: string | null; birth_date: string | null } | null
+  separated_at: string | null; tracking_carrier: string | null; tracking_code: string | null; tracking_url: string | null
   retail_order_items: { id: string; code: string; name: string; sku: string | null; color: string | null; size: string | null; qty: number; unit_price: number; total: number; unit_cost: number | null; retail_products: { cost_price: number | null } | null }[]
 }
 
 const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
 
 export default async function RetailOrderPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!(await hasFeature('varejo'))) redirect('/')
+  const access = await hasFeature('varejo')
+  if (!access) redirect('/')
   const { id } = await params
   if (!UUID.test(id)) notFound()
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, payment_provider, payment_paid_method, payment_paid_amount, payment_receipt_url, payment_alert, notes, stock_applied, delivery, paid_at, created_at, customer_id, retail_customers(id, name, phone), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, payment_provider, payment_paid_method, payment_paid_amount, payment_receipt_url, payment_alert, notes, stock_applied, delivery, paid_at, created_at, customer_id, separated_at, tracking_carrier, tracking_code, tracking_url, retail_customers(id, name, phone, email, birth_date), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -58,6 +63,24 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const paySetup = readPaymentSetup(cfg.raw.payments)
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
   const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
+  // Mensagens por etapa, linha do tempo, WhatsApps que enviam e se quem está logado tem e-mail
+  const token = await ensurePublicToken(db, o.id).catch(() => null) // suporte (só leitura) não grava
+  const [{ data: msgs }, { data: evs }, { data: orgWa }, { data: myEmail }] = await Promise.all([
+    db.from('retail_order_messages').select('id, stage, status, wa_text, email_subject, email_body, sent_channels, sent_at, sent_by, last_error, updated_at').eq('order_id', o.id),
+    db.from('retail_order_events').select('id, kind, note, public, created_at, created_by').eq('order_id', o.id).order('created_at', { ascending: false }).limit(100),
+    db.from('organization_settings').select('evo_instance_name, evo_instance_aliases').eq('tenant_id', tenantId).maybeSingle(),
+    db.from('email_accounts').select('user_id').eq('user_id', access.userId).maybeSingle(),
+  ])
+  const peopleIds = [...new Set([...(msgs ?? []).map(m => m.sent_by), ...(evs ?? []).map(e => e.created_by)].filter(Boolean))] as string[]
+  const { data: people } = peopleIds.length ? await db.from('profiles').select('id, full_name').in('id', peopleIds) : { data: [] }
+  const nameOf = new Map((people ?? []).map(p => [p.id as string, (p.full_name as string | null) ?? null]))
+  type Alias = string | { label?: string; private?: boolean }
+  const aliases = (orgWa?.evo_instance_aliases ?? {}) as Record<string, Alias>
+  const instances = Object.entries(aliases).filter(([, v]) => !(typeof v === 'object' && v?.private)).map(([name, v]) => ({ name, label: typeof v === 'string' ? v : v?.label ?? name }))
+  if (orgWa?.evo_instance_name && !instances.some(i => i.name === orgWa.evo_instance_name)) instances.unshift({ name: orgWa.evo_instance_name as string, label: orgWa.evo_instance_name as string })
+  const messages: OrderMessage[] = (msgs ?? []).map(m => ({ ...(m as Omit<OrderMessage, 'sent_by_name'>), sent_by_name: m.sent_by ? nameOf.get(m.sent_by as string) ?? null : null }))
+  const events: OrderEvent[] = (evs ?? []).map(e => ({ id: e.id as string, kind: e.kind as string, note: e.note as string | null, public: !!e.public, created_at: e.created_at as string, by: e.created_by ? nameOf.get(e.created_by as string) ?? null : null }))
+  const bday = birthdayLabel(birthdayInfo(o.retail_customers?.birth_date ?? null))
   const custLoyalty = o.customer_id ? await customerLoyalty(db, o.customer_id, loyalty, o.id) : { mode: 'off' as const }
   // custo gravado na venda; pedidos antigos (sem custo gravado) usam o custo atual da peça
   const lines = o.retail_order_items.map(i => ({
@@ -79,7 +102,13 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
       <section className="rounded-xl border border-gray-200 bg-white p-4 text-sm">
         <h2 className="text-sm font-semibold text-gray-900">Cliente</h2>
         {o.retail_customers ? (
-          <p className="mt-1"><Link href={`/varejo/clientes/${o.retail_customers.id}`} className="text-brand-700 hover:underline">{o.retail_customers.name}</Link> · {formatPhone(o.retail_customers.phone)}</p>
+          <>
+            <p className="mt-1"><Link href={`/varejo/clientes/${o.retail_customers.id}`} className="text-brand-700 hover:underline">{o.retail_customers.name}</Link> · {formatPhone(o.retail_customers.phone)}{o.retail_customers.email ? ` · ${o.retail_customers.email}` : ''}</p>
+            <p className="mt-0.5 text-xs text-gray-500">Aniversário: {o.retail_customers.birth_date ? `${o.retail_customers.birth_date.slice(8, 10)}/${o.retail_customers.birth_date.slice(5, 7)}${bday ? ` (${bday})` : ''}` : 'não informado'}</p>
+            {(!o.retail_customers.phone || !o.retail_customers.email) && (
+              <p className="mt-1 rounded-lg bg-warn-100 px-2 py-1 text-xs text-warn-700">Falta {[!o.retail_customers.phone && 'WhatsApp', !o.retail_customers.email && 'e-mail'].filter(Boolean).join(' e ')} na ficha. <Link href={`/varejo/clientes/${o.retail_customers.id}`} className="underline">Completar cadastro</Link></p>
+            )}
+          </>
         ) : <p className="mt-1 text-gray-500">Sem cliente ligada.</p>}
         {(o.delivery?.method || o.delivery?.address || o.delivery?.cep) && (
           <p className="mt-1 text-gray-600">Entrega: {[o.delivery?.method, o.delivery?.address, o.delivery?.cep ? `CEP ${o.delivery.cep}` : null].filter(Boolean).join(' · ')}</p>
@@ -129,6 +158,14 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
             }} />
         )
       })()}
+
+      <OrderMessagesPanel
+        orderId={o.id} status={o.status} separatedAt={o.separated_at}
+        tracking={{ carrier: o.tracking_carrier, code: o.tracking_code, url: o.tracking_url }}
+        messages={messages} events={events}
+        customer={o.retail_customers ? { phone: o.retail_customers.phone, email: o.retail_customers.email } : null}
+        instances={instances} canEmail={!!myEmail} publicUrl={token ? orderPublicUrl(token) : null} editable={o.status !== 'cancelado'}
+      />
 
       <NegotiationPanel
         orderId={o.id} lines={lines} storeName={storeName}

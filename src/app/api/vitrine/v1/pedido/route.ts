@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     const r = await createStorefrontOrder(sf, parsed.order)
     if (!r.ok) return json({ error: r.error }, r.status)
-    return json({ number: r.number, total: r.total, whatsapp_url: r.whatsappUrl }, 201)
+    return json({ number: r.number, total: r.total, whatsapp_url: r.whatsappUrl, tracking_url: r.trackingUrl }, 201)
   } catch (e) {
     console.error('[vitrine] pedido:', e instanceof Error ? e.message : e)
     return json({ error: 'Não foi possível registrar agora. Tente de novo.' }, 500)

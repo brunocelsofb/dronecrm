@@ -82,11 +82,22 @@ export function readTheme(raw: unknown): StorefrontTheme {
 
 // Pedido que chega da vitrine
 export type StorefrontOrderInput = {
-  customer: { name: string; phone: string; email: string | null; cep: string | null; optin: boolean }
+  customer: { name: string; phone: string; email: string | null; cep: string | null; optin: boolean; birth_date: string | null }
   items: { variant_id: string; qty: number }[]
   note: string | null
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Aniversário vindo da vitrine (AAAA-MM-DD), com idade plausível
+export function parseBirthDate(v: unknown, now = new Date()): string | null {
+  const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const dt = new Date(Date.UTC(y, mo - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null
+  const age = now.getUTCFullYear() - y
+  return age >= 10 && age <= 110 ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
 
 export function phoneBR(raw: unknown): string | null {
   let d = String(raw ?? '').replace(/\D/g, '')
@@ -105,7 +116,9 @@ export function parseStorefrontOrder(body: unknown): { ok: true; order: Storefro
   if (!phone) return { ok: false, error: 'Informe seu WhatsApp com DDD.' }
   const emailRaw = String(c.email ?? '').trim().toLowerCase().slice(0, 160)
   const email = emailRaw ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : null) : null
-  if (emailRaw && !email) return { ok: false, error: 'E-mail inválido.' }
+  if (!emailRaw) return { ok: false, error: 'Informe seu e-mail.' }
+  if (!email) return { ok: false, error: 'E-mail inválido.' }
+  const birth_date = parseBirthDate(c.birth_date)
   const cepD = String(c.cep ?? '').replace(/\D/g, '')
   const cep = cepD ? (cepD.length === 8 ? cepD : null) : null
   if (cepD && !cep) return { ok: false, error: 'CEP precisa ter 8 números.' }
@@ -120,7 +133,7 @@ export function parseStorefrontOrder(body: unknown): { ok: true; order: Storefro
     items.push({ variant_id: x.variant_id, qty })
   }
   const note = String(b.note ?? '').trim().slice(0, 500) || null
-  return { ok: true, order: { customer: { name, phone, email, cep, optin: c.optin === true }, items, note } }
+  return { ok: true, order: { customer: { name, phone, email, cep, optin: c.optin === true, birth_date }, items, note } }
 }
 
 // Mensagem que a cliente manda no WhatsApp da loja depois do pedido

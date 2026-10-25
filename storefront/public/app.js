@@ -381,6 +381,7 @@
       body.innerHTML = `<div class="done"><div class="mark" aria-hidden="true">✓</div><h3>Pedido nº ${esc(done.number)} enviado</h3>
         <p>${done.whatsapp_url ? 'Agora chame a loja no WhatsApp: a mensagem já vai pronta com as suas peças. O atendimento confirma o frete e manda o link para pagar.' : 'A loja vai falar com você pelo WhatsApp para confirmar o frete e o pagamento.'}</p></div>`
       foot.innerHTML = (done.whatsapp_url ? `<a class="btn btn-wa btn-block" href="${esc(done.whatsapp_url)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true">${WA_SVG}</svg>Abrir o WhatsApp da loja</a>` : '') +
+        (done.tracking_url ? `<a class="btn btn-line btn-block" href="${esc(done.tracking_url)}" target="_blank" rel="noopener">Acompanhar meu pedido</a>` : '') +
         '<button class="btn btn-line btn-block" type="button" data-close>Continuar olhando</button>'
       return
     }
@@ -410,6 +411,8 @@
     body.innerHTML = `<form id="co" novalidate>
       <div class="field"><label for="fName">Nome</label><input id="fName" name="name" autocomplete="name"><span class="err" id="eName"></span></div>
       <div class="field"><label for="fPhone">WhatsApp</label><input id="fPhone" name="phone" inputmode="tel" autocomplete="tel" placeholder="(DDD) 99999-9999"><span class="err" id="ePhone"></span></div>
+      <div class="field"><label for="fEmail">E-mail</label><input id="fEmail" name="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@exemplo.com"><span class="err" id="eEmail"></span></div>
+      <div class="field"><label for="fBirth">Aniversário <span style="font-weight:400;color:var(--muted)">(opcional, para um mimo no seu dia)</span></label><input id="fBirth" name="birth" type="date" autocomplete="bday"></div>
       ${local ? `<fieldset class="field"><legend>Entrega</legend><div class="radios">
         <label class="radio"><input type="radio" name="ship" value="Retirada em ${esc(local)}" checked><span>Retirada em ${esc(local)}<small>Local combinado com o atendimento</small></span></label>
         <label class="radio"><input type="radio" name="ship" value="Entrega em ${esc(local)}"><span>Entrega em ${esc(local)}<small>Valor combinado no atendimento</small></span></label>
@@ -424,7 +427,7 @@
       <div class="hp" aria-hidden="true"><label>Não preencha <input name="website" tabindex="-1" autocomplete="off"></label></div>
       <label class="check"><input type="checkbox" name="optin"> Quero receber novidades e lançamentos da ${esc(STORE.name)} pelo WhatsApp.</label>
       <div class="sum"><div><span>Subtotal</span><span>${fmt(subtotal())}</span></div><div><span>Frete</span><span>a calcular</span></div><div class="total"><span>Total das peças</span><span>${fmt(subtotal())}</span></div></div>
-      <p class="note">Seu nome e telefone vão só para a loja, para atender este pedido.</p>
+      <p class="note">Seus dados vão só para a loja, para atender este pedido e avisar cada etapa.</p>
     </form>`
     foot.innerHTML = `<p class="form-err" id="coErr" hidden></p><button class="btn btn-wa btn-block" type="button" id="send"><svg viewBox="0 0 24 24" aria-hidden="true">${WA_SVG}</svg>Enviar pedido</button><button class="link" type="button" id="backBag" style="justify-self:center">Voltar para a sacola</button>`
     const form = $('#co')
@@ -442,18 +445,19 @@
     saveBag(); renderBag()
   })
   async function submitOrder(form, needCep) {
-    const name = form.name.value.trim(), phone = digits(form.phone.value), cep = digits(form.cep.value)
+    const name = form.name.value.trim(), phone = digits(form.phone.value), cep = digits(form.cep.value), email = form.email.value.trim()
     const ship = form.querySelector('input[name=ship]:checked, input[type=hidden][name=ship]')?.value || ''
     const errs = {
       eName: name.length < 2 ? 'Informe seu nome.' : '',
       ePhone: phone.length < 10 || phone.length > 13 ? 'Informe o WhatsApp com DDD.' : '',
+      eEmail: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? 'Informe um e-mail válido.' : '',
       eCep: needCep && cep.length !== 8 ? 'Informe o CEP com 8 números.' : '',
     }
     Object.entries(errs).forEach(([id, m]) => { $('#' + id).textContent = m })
     const first = Object.entries(errs).find(([, m]) => m); if (first) { $('#' + first[0]).previousElementSibling?.focus(); return }
     const note = [`Entrega: ${ship}`, `Pagamento desejado: ${form.pay.value}`, form.note.value.trim() && `Observação: ${form.note.value.trim()}`].filter(Boolean).join('\n')
     const payload = {
-      customer: { name, phone, email: null, cep: needCep ? cep : null, optin: form.optin.checked },
+      customer: { name, phone, email, cep: needCep ? cep : null, optin: form.optin.checked, birth_date: form.birth.value || null },
       items: bag.map(i => ({ variant_id: i.variant_id, qty: i.qty })),
       note, website: form.website.value,
     }

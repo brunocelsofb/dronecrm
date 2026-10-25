@@ -18,6 +18,7 @@ import {
   ShoppingBag, Package, Calculator,
   SquareKanban,
   Store,
+  MessageSquareText,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
@@ -67,6 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo' },
       { href: '/varejo/funil', label: 'Funil da loja', icon: SquareKanban, feature: 'varejo' },
       { href: '/varejo/pedidos', label: 'Pedidos', icon: Receipt, feature: 'varejo' },
+      { href: '/varejo/mensagens', label: 'Mensagens do pedido', icon: MessageSquareText, feature: 'varejo' },
       { href: '/varejo/painel', label: 'Painel da loja', icon: Gauge, feature: 'varejo' },
     ],
   },

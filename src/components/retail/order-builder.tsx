@@ -8,7 +8,7 @@ import { ORDER_STATUSES, PAYMENT_METHODS, formatPhone } from '@/lib/retail/custo
 import { parseMoney } from '@/lib/retail/products'
 
 export type CatalogItem = { variant_id: string; label: string; code: string; sku: string; price: number; stock: number }
-export type CustomerOption = { id: string; name: string; phone: string | null }
+export type CustomerOption = { id: string; name: string; phone: string | null; email?: string | null; birth_date?: string | null }
 
 const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-700 focus:outline-none'
 const lbl = 'mb-1 block text-sm font-medium text-gray-800'
@@ -31,6 +31,8 @@ export function OrderBuilder({ catalog, customers, initialCustomerId }: { catalo
   const [customerQuery, setCustomerQuery] = useState('')
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
+  const [newEmail, setNewEmail] = useState('')
+  const [newBirth, setNewBirth] = useState('')
   const [itemQuery, setItemQuery] = useState('')
   const [items, setItems] = useState<{ variant_id: string; qty: number }[]>([])
   const [discount, setDiscount] = useState('')
@@ -62,7 +64,8 @@ export function OrderBuilder({ catalog, customers, initialCustomerId }: { catalo
     setBusy(true); setError(null)
     const r = await createRetailOrder({
       customer_id: customer?.id ?? null,
-      new_customer: !customer && newName.trim() ? { name: newName, phone: newPhone } : null,
+      new_customer: !customer && newName.trim() ? { name: newName, phone: newPhone, email: newEmail, birth_date: newBirth || null } : null,
+      customer_patch: customer ? { phone: newPhone || null, email: newEmail || null, birth_date: newBirth || null } : null,
       items, discount, shipping, payment_method: method, payment_condition: condition, payment_link: link, status, notes,
     })
     setBusy(false)
@@ -75,24 +78,38 @@ export function OrderBuilder({ catalog, customers, initialCustomerId }: { catalo
       <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <H n={1}>Quem está comprando?</H>
         {customer ? (
-          <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
-            <span>{customer.name} · {formatPhone(customer.phone)}</span>
-            <button type="button" onClick={() => setCustomer(null)} className="text-brand-700 hover:underline">Trocar</button>
-          </div>
+          <>
+            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+              <span>{customer.name} · {formatPhone(customer.phone)}{customer.email ? ` · ${customer.email}` : ''}</span>
+              <button type="button" onClick={() => { setCustomer(null); setNewPhone(''); setNewEmail(''); setNewBirth('') }} className="text-brand-700 hover:underline">Trocar</button>
+            </div>
+            {(!customer.phone || !customer.email || !customer.birth_date) && (
+              <div className="space-y-2 rounded-lg border border-warn-600/30 bg-warn-100/40 p-3">
+                <p className="text-xs text-gray-700">Complete o cadastro: WhatsApp e e-mail são obrigatórios (os avisos do pedido vão por eles). O aniversário é opcional.</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {!customer.phone && <input className={inp} inputMode="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="WhatsApp com DDD" aria-label="WhatsApp" />}
+                  {!customer.email && <input className={inp} type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="E-mail" aria-label="E-mail" />}
+                  {!customer.birth_date && <label className="text-xs text-gray-600">Aniversário<input className={inp} type="date" value={newBirth} onChange={e => setNewBirth(e.target.value)} /></label>}
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <input className={inp} value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Buscar cliente por nome ou telefone" />
             {customerMatches.length > 0 && (
               <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
                 {customerMatches.map(c => (
-                  <li key={c.id}><button type="button" onClick={() => { setCustomer(c); setCustomerQuery('') }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{c.name} · {formatPhone(c.phone)}</button></li>
+                  <li key={c.id}><button type="button" onClick={() => { setCustomer(c); setCustomerQuery(''); setNewPhone(''); setNewEmail(''); setNewBirth('') }} className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50">{c.name} · {formatPhone(c.phone)}</button></li>
                 ))}
               </ul>
             )}
             <p className="text-xs text-gray-500">Ou cadastre agora (se o telefone já existir, o pedido vai para a cliente existente):</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input className={inp} value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nome" />
-              <input className={inp} inputMode="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Telefone com DDD" />
+              <input className={inp} value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nome" aria-label="Nome" />
+              <input className={inp} inputMode="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="WhatsApp com DDD" aria-label="WhatsApp" />
+              <input className={inp} type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="E-mail" aria-label="E-mail" />
+              <label className="text-xs text-gray-600">Aniversário (opcional)<input className={inp} type="date" value={newBirth} onChange={e => setNewBirth(e.target.value)} /></label>
             </div>
           </>
         )}

@@ -11,7 +11,7 @@ import { CustomerImport, InactiveDaysForm } from '@/components/retail/customer-t
 export const dynamic = 'force-dynamic'
 
 type Row = {
-  id: string; name: string; phone: string | null; city: string | null; whatsapp_optin: boolean; birth_date: string | null
+  id: string; name: string; phone: string | null; email: string | null; city: string | null; whatsapp_optin: boolean; birth_date: string | null
   legacy_last_purchase_at: string | null; legacy_total: number | null; legacy_orders: number | null
 }
 
@@ -30,7 +30,7 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
   const [settings, stats, { data }] = await Promise.all([
     loadRetailSettings(db, tenantId),
     loadCustomerOrderStats(db),
-    db.from('retail_customers').select('id, name, phone, city, whatsapp_optin, birth_date, legacy_last_purchase_at, legacy_total, legacy_orders').order('name').limit(5000),
+    db.from('retail_customers').select('id, name, phone, email, city, whatsapp_optin, birth_date, legacy_last_purchase_at, legacy_total, legacy_orders').order('name').limit(5000),
   ])
   const now = new Date()
   const rows = ((data ?? []) as Row[]).map(c => {
@@ -89,7 +89,7 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs text-gray-500">
-              <tr><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">Telefone</th><th className="px-3 py-2">Última compra</th><th className="px-3 py-2 text-right">Compras</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2">Situação</th></tr>
+              <tr><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">Contato</th><th className="px-3 py-2">Aniversário</th><th className="px-3 py-2">Última compra</th><th className="px-3 py-2 text-right">Compras</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2">Situação</th></tr>
             </thead>
             <tbody>
               {list.map(r => {
@@ -97,7 +97,8 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
                 return (
                   <tr key={r.id} className="border-t border-gray-100">
                     <td className="px-3 py-2"><Link href={`/varejo/clientes/${r.id}`} className="font-medium text-gray-900 hover:text-brand-700">{r.name}</Link>{r.city && <span className="block text-xs text-gray-500">{r.city}</span>}{birthdayLabel(r.bday) && <span className={`block text-xs ${r.bday?.daysUntil === 0 ? 'font-medium text-accent-purple' : 'text-gray-500'}`}>{birthdayLabel(r.bday)}</span>}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{formatPhone(r.phone)}</td>
+                    <td className="px-3 py-2 text-gray-700"><span className="block whitespace-nowrap">{formatPhone(r.phone)}</span>{r.email ? <span className="block text-xs text-gray-500">{r.email}</span> : <span className="block text-xs text-warn-700">sem e-mail</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">{r.birth_date ? `${r.birth_date.slice(8, 10)}/${r.birth_date.slice(5, 7)}` : <span className="text-xs text-gray-400">—</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-gray-700">{fmtDate(r.stats.last)}{ago !== null && <span className="block text-xs text-gray-500">há {ago} dia(s)</span>}</td>
                     <td className="px-3 py-2 text-right text-gray-700">{r.stats.orders}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap text-gray-900">{fmtBRL(r.stats.total)}</td>
