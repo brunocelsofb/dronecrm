@@ -214,7 +214,7 @@ export async function moveRetailPhoto(productId: string, path: string, direction
 // Uma linha por variação. Linhas com o mesmo código formam uma peça.
 // Peça e variação existentes (mesmo código / mesmo SKU) são atualizadas; nada é apagado.
 export type ImportProduct = {
-  code: string; name: string; category: string | null; price: number; promo_price: number | null; cost_price: number | null
+  code: string; name: string; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null
   status: ProductStatus; description: string | null; composition: string | null; care: string | null
   variants: { sku: string; color: string | null; size: string | null; stock: number }[]
 }
@@ -252,7 +252,7 @@ function statusFrom(v: unknown): ProductStatus {
   return 'rascunho'
 }
 
-export async function parseRetailProductFile(formData: FormData): Promise<Result<{ products: ImportProduct[]; ignored: string[] }>> {
+export async function parseRetailProductFile(formData: FormData): Promise<Result<{ products: ImportProduct[]; ignored: string[]; warnings: string[] }>> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   const file = formData.get('file')
@@ -271,6 +271,7 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
 
   const byCode = new Map<string, ImportProduct>()
   const ignored: string[] = []
+  const warnings: string[] = []
   records.forEach((rec, i) => {
     const line = i + 2
     const code = normalizeCode(pick(rec, 'code'))
@@ -283,12 +284,13 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     if (!p) {
       const name = cleanText(pick(rec, 'name'), 160)
       if (!name) { ignored.push(`Linha ${line} (${code}): sem nome.`); return }
-      if (price === null) { ignored.push(`Linha ${line} (${code}): preço inválido.`); return }
+      // Sem preço: entra como rascunho, com aviso (não vende nem vai para a vitrine até ter preço)
+      if (price === null) warnings.push(`Linha ${line} (${code} · ${name}): sem preço. Entra como rascunho; defina o preço antes de publicar.`)
       p = {
         code, name, category: cleanText(pick(rec, 'category'), 80), price,
         promo_price: parseMoney(pick(rec, 'promo_price')),
         cost_price: parseMoney(pick(rec, 'cost_price')),
-        status: statusFrom(pick(rec, 'status')),
+        status: price === null ? 'rascunho' : statusFrom(pick(rec, 'status')),
         description: cleanLongText(pick(rec, 'description')), composition: cleanText(pick(rec, 'composition'), 300), care: cleanLongText(pick(rec, 'care'), 1000),
         variants: [],
       }
@@ -296,10 +298,11 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     }
     const sku = normalizeCode(pick(rec, 'sku')) ?? defaultSku(code, color, size)
     const dupe = p.variants.find(v => v.sku === sku || ((v.color ?? '').toLowerCase() === (color ?? '').toLowerCase() && (v.size ?? '').toLowerCase() === (size ?? '').toLowerCase()))
-    if (dupe) { ignored.push(`Linha ${line} (${code}): variação repetida (${[color, size].filter(Boolean).join(' / ') || sku}).`); return }
+    // Mesma cor e tamanho em duas linhas: soma as quantidades (com aviso para conferir)
+    if (dupe) { warnings.push(`Linha ${line} (${code}): ${[color, size].filter(Boolean).join(' / ') || sku} repetida. Quantidades somadas (${dupe.stock} + ${stock} = ${dupe.stock + stock}); confira se não foi linha duplicada.`); dupe.stock += stock; return }
     p.variants.push({ sku, color, size, stock })
   })
-  return { ok: true, products: [...byCode.values()], ignored: ignored.slice(0, 50) }
+  return { ok: true, products: [...byCode.values()], ignored: ignored.slice(0, 50), warnings: warnings.slice(0, 100) }
 }
 
 export async function importRetailProductsChunk(products: ImportProduct[]): Promise<Result<{ created: number; updated: number; errors: string[] }>> {
@@ -313,13 +316,15 @@ export async function importRetailProductsChunk(products: ImportProduct[]): Prom
     const code = normalizeCode(raw.code)
     const name = cleanText(raw.name, 160)
     const price = parseMoney(raw.price)
-    if (!code || !name || price === null) { errors.push(`${raw.code ?? '?'}: dados incompletos.`); continue }
-    const { data: existing } = await db.from('retail_products').select('id').eq('code', code).maybeSingle()
+    if (!code || !name) { errors.push(`${raw.code ?? '?'}: dados incompletos.`); continue }
+    const { data: existing } = await db.from('retail_products').select('id, price').eq('code', code).maybeSingle()
+    // Preço em branco na planilha não apaga o preço já cadastrado; peça sem preço fica em rascunho
+    const hasPrice = price !== null || (existing?.price !== null && existing?.price !== undefined)
     const row = {
-      code, name, category: cleanText(raw.category, 80), price, promo_price: parseMoney(raw.promo_price),
+      code, name, category: cleanText(raw.category, 80), ...(price !== null ? { price } : existing ? {} : { price: null }), promo_price: parseMoney(raw.promo_price),
       // custo em branco na planilha não apaga o custo já cadastrado
       ...(parseMoney(raw.cost_price) !== null ? { cost_price: parseMoney(raw.cost_price) } : {}),
-      status: isProductStatus(raw.status) ? raw.status : 'rascunho',
+      status: hasPrice && isProductStatus(raw.status) ? raw.status : 'rascunho',
       description: cleanLongText(raw.description), composition: cleanText(raw.composition, 300), care: cleanLongText(raw.care, 1000),
       updated_at: new Date().toISOString(),
     }

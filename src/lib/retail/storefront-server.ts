@@ -58,7 +58,7 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
     getPublicBranding(sf.tenant_id),
     db.from('retail_products')
       .select('id, code, name, category, description, composition, care, measures, price, promo_price, photos, occasions, created_at, retail_product_variants(id, color, size, stock, active)')
-      .eq('status', 'publicado').order('created_at', { ascending: false }).limit(1000),
+      .eq('status', 'publicado').not('price', 'is', null).order('created_at', { ascending: false }).limit(1000),
     db.from('retail_looks').select('id, name, occasion, description, cover_photo, product_ids').eq('active', true).order('position').limit(100),
   ])
   type P = { id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null; price: number; promo_price: number | null; photos: string[] | null; occasions: string[] | null; created_at: string; retail_product_variants: { id: string; color: string | null; size: string | null; stock: number; active: boolean }[] }

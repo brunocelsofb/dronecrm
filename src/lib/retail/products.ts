@@ -32,7 +32,7 @@ export type RetailProduct = {
   composition: string | null
   care: string | null
   measures: string | null
-  price: number
+  price: number | null // null = importada sem preço (rascunho até definir)
   promo_price: number | null
   cost_price?: number | null // só no Drone; nunca vai para a vitrine pública
   status: ProductStatus

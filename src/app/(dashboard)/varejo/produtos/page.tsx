@@ -11,7 +11,7 @@ import { ProductImport } from '@/components/retail/product-import'
 export const dynamic = 'force-dynamic'
 
 type Row = {
-  id: string; code: string; name: string; category: string | null; price: number; promo_price: number | null
+  id: string; code: string; name: string; category: string | null; price: number | null; promo_price: number | null
   status: string; photos: string[] | null
   retail_product_variants: { stock: number; active: boolean }[] | null
 }
@@ -36,6 +36,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
     (!term || p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term)) &&
     (!categoria || p.category === categoria) &&
     (!situacao || p.status === situacao))
+  const noPrice = all.filter(p => p.price === null && p.status !== 'arquivado')
   const withoutStock = all.filter(p => p.status === 'publicado' && totalStock(p.retail_product_variants ?? []) === 0).length
 
   return (
@@ -59,6 +60,11 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         <Stat label="Unidades em estoque" value={String(all.filter(p => p.status !== 'arquivado').reduce((s, p) => s + totalStock(p.retail_product_variants ?? []), 0))} />
         <Stat label="Publicadas sem estoque" value={String(withoutStock)} tone={withoutStock ? 'warn' : undefined} />
       </div>
+      {noPrice.length > 0 && (
+        <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">
+          {noPrice.length === 1 ? '1 peça está sem preço' : `${noPrice.length} peças estão sem preço`} (vieram da planilha assim). Ficam em rascunho e não vendem nem aparecem na vitrine até ter preço: {noPrice.slice(0, 6).map(p => p.code).join(', ')}{noPrice.length > 6 ? '…' : ''}.
+        </p>
+      )}
 
       <form className="flex flex-wrap gap-2" method="get">
         <input name="q" defaultValue={q} placeholder="Buscar por nome ou código" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -93,7 +99,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {list.map(p => {
             const stock = totalStock(p.retail_product_variants ?? [])
-            const price = effectivePrice(p)
+            const price = p.price === null ? null : effectivePrice({ price: Number(p.price), promo_price: p.promo_price === null ? null : Number(p.promo_price) })
             const cover = (p.photos ?? [])[0]
             return (
               <li key={p.id}>
@@ -106,8 +112,10 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
                     <p className="truncate text-sm font-medium text-gray-900">{p.name}</p>
                     <p className="text-xs text-gray-500">{p.code}{p.category ? ` · ${p.category}` : ''}</p>
                     <p className="mt-1 text-sm text-gray-900">
-                      {fmtBRL(price)}
-                      {price < p.price && <span className="ml-1 text-xs text-gray-400 line-through">{fmtBRL(p.price)}</span>}
+                      {price === null ? <span className="rounded bg-warn-100 px-1.5 py-0.5 text-xs font-medium text-warn-700">Sem preço: defina antes de vender</span> : <>
+                        {fmtBRL(price)}
+                        {p.price !== null && price < Number(p.price) && <span className="ml-1 text-xs text-gray-400 line-through">{fmtBRL(Number(p.price))}</span>}
+                      </>}
                     </p>
                     <div className="mt-1 flex items-center gap-2">
                       <span className={`rounded px-1.5 py-0.5 text-[11px] ${STATUS_STYLE[p.status] ?? ''}`}>{PRODUCT_STATUSES.find(s => s.id === p.status)?.label ?? p.status}</span>

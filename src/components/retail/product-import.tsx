@@ -12,7 +12,7 @@ export function ProductImport() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<{ products: ImportProduct[]; ignored: string[] } | null>(null)
+  const [preview, setPreview] = useState<{ products: ImportProduct[]; ignored: string[]; warnings: string[] } | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
   const [result, setResult] = useState<{ created: number; updated: number; errors: string[] } | null>(null)
 
@@ -26,7 +26,7 @@ export function ProductImport() {
     setBusy(false)
     if (!r.ok) { setError(r.error); return }
     if (!r.products.length) { setError('Nenhuma peça válida encontrada na planilha.'); return }
-    setPreview({ products: r.products, ignored: r.ignored })
+    setPreview({ products: r.products, ignored: r.ignored, warnings: r.warnings })
   }
 
   async function run() {
@@ -53,7 +53,7 @@ export function ProductImport() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => !busy && setOpen(false)}>
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-semibold text-gray-900">Importar produtos</h2>
-            <p className="mt-1 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho. Use a planilha-modelo para ver as colunas. Peça com o mesmo código e variação com o mesmo SKU são atualizadas; nada é apagado.</p>
+            <p className="mt-1 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho. Use a planilha-modelo para ver as colunas. Peça com o mesmo código e variação com o mesmo SKU são atualizadas (não duplica); nada é apagado. Atenção: o estoque de cada variação fica igual ao número da planilha (substitui, não soma). Peça sem preço entra em rascunho, com aviso.</p>
 
             {!preview && !result && (
               <label className={`mt-4 block cursor-pointer rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600 hover:bg-gray-50 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
@@ -69,10 +69,16 @@ export function ProductImport() {
                 </p>
                 <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-gray-600">
                   {preview.products.slice(0, 50).map(p => (
-                    <li key={p.code}><strong>{p.code}</strong> · {p.name} · {fmtBRL(p.price)} · {p.variants.length} var.</li>
+                    <li key={p.code}><strong>{p.code}</strong> · {p.name} · {p.price === null ? <span className="font-medium text-warn-700">sem preço</span> : fmtBRL(p.price)} · {p.variants.length} var.</li>
                   ))}
                   {preview.products.length > 50 && <li>… e mais {preview.products.length - 50}.</li>}
                 </ul>
+                {preview.warnings.length > 0 && (
+                  <details open className="rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">
+                    <summary className="font-medium">{preview.warnings.length} aviso(s): entram, mas confira</summary>
+                    <ul className="mt-1 space-y-0.5">{preview.warnings.map(m => <li key={m}>{m}</li>)}</ul>
+                  </details>
+                )}
                 {preview.ignored.length > 0 && (
                   <details className="rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">
                     <summary>{preview.ignored.length} linha(s) ignorada(s)</summary>

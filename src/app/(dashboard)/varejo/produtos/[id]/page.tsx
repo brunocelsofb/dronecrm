@@ -37,7 +37,7 @@ export default async function RetailProductPage({ params, searchParams }: { para
     const d = data as unknown as Omit<RetailProduct, 'variants'> & { retail_product_variants: RetailProduct['variants'] }
     product = {
       ...d,
-      price: Number(d.price),
+      price: d.price === null ? null : Number(d.price),
       promo_price: d.promo_price === null ? null : Number(d.promo_price),
       cost_price: d.cost_price === null || d.cost_price === undefined ? null : Number(d.cost_price),
       status: isProductStatus(d.status) ? d.status : 'rascunho',
