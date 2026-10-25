@@ -7,14 +7,30 @@ import { fmtBRL } from '@/lib/format'
 
 const CHUNK = 10
 
-const MODES: { id: ImportMode; label: string; text: string }[] = [
-  { id: 'cadastro', label: 'Atualizar cadastro e preços', text: 'Nome, preço, custo, categoria… O estoque das variações que já existem não muda. Variação nova entra com a quantidade da planilha.' },
-  { id: 'entrada', label: 'Entrada de mercadoria (soma)', text: 'Chegou mercadoria: a quantidade da planilha é somada ao estoque atual. Basta código, cor, tamanho e quantidade.' },
-  { id: 'contagem', label: 'Contagem de estoque (substitui)', text: 'Depois de contar a loja: o estoque fica igual ao da planilha. Variação que não está na planilha não muda.' },
-]
+// Cada botão abre a importação já com um propósito, e o aviso diz para que serve
+const MODES: Record<ImportMode, { button: string; title: string; when: string; stock: string; example: string; confirm: string }> = {
+  cadastro: {
+    button: 'Cadastrar peças por planilha', title: 'Cadastrar ou atualizar peças',
+    when: 'Use para cadastrar peças novas ou mudar dados de várias peças de uma vez: nome, preço, custo, categoria.',
+    stock: 'O estoque das peças que já existem NÃO muda. Peça ou cor/tamanho novo entra com a quantidade da planilha.',
+    example: 'Ex.: primeiro cadastro da loja; reajuste de preços da coleção.', confirm: 'Importar',
+  },
+  entrada: {
+    button: 'Dar entrada em mercadoria', title: 'Entrada de mercadoria',
+    when: 'Use quando chegar mercadoria do fornecedor.',
+    stock: 'A quantidade da planilha é SOMADA ao estoque atual. Basta código, cor, tamanho e quantidade que chegou.',
+    example: 'Ex.: tinha 2 Calça Paris Bege 38, chegaram 4 → fica 6.', confirm: 'Somar ao estoque',
+  },
+  contagem: {
+    button: 'Fazer contagem de estoque', title: 'Contagem de estoque',
+    when: 'Use depois de contar as peças da loja (ex.: uma vez por mês), para corrigir diferenças.',
+    stock: 'O estoque fica IGUAL ao da planilha (substitui o atual). Peça que não estiver na planilha não muda.',
+    example: 'Ex.: o sistema diz 5, você contou 4 → fica 4.', confirm: 'Substituir o estoque',
+  },
+}
 type Line = { code: string; name: string | null; variant: string; before: number | null; after: number }
 
-export function ProductImport() {
+export function ProductImport({ mode = 'cadastro', primary = false }: { mode?: ImportMode; primary?: boolean }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -22,7 +38,7 @@ export function ProductImport() {
   const [preview, setPreview] = useState<{ products: ImportProduct[]; ignored: string[]; warnings: string[] } | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
   const [result, setResult] = useState<{ created: number; updated: number; errors: string[] } | null>(null)
-  const [mode, setMode] = useState<ImportMode>('cadastro')
+  const M = MODES[mode]
   const [lines, setLines] = useState<Line[]>([])
 
   function reset() { setError(null); setPreview(null); setProgress(null); setResult(null); setLines([]) }
@@ -70,22 +86,17 @@ export function ProductImport() {
 
   return (
     <>
-      <button type="button" onClick={() => { setOpen(o => !o); reset() }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Importar planilha</button>
+      <button type="button" onClick={() => { setOpen(o => !o); reset() }} className={primary ? 'rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800' : 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50'}>{M.button}</button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => !busy && setOpen(false)}>
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-semibold text-gray-900">Importar produtos</h2>
-            <p className="mt-1 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho (use a planilha-modelo). Peça com o mesmo código e variação com o mesmo SKU são atualizadas, sem duplicar; nada é apagado; campo vazio mantém o que já está cadastrado. Peça nova sem preço entra em rascunho, com aviso.</p>
-
-            <fieldset className="mt-4 space-y-2" disabled={busy || !!preview}>
-              <legend className="mb-1 text-sm font-medium text-gray-800">O que esta planilha faz?</legend>
-              {MODES.map(m => (
-                <label key={m.id} className={`flex cursor-pointer gap-2 rounded-lg border p-2.5 text-sm ${mode === m.id ? 'border-brand-700 bg-brand-100/40' : 'border-gray-200'}`}>
-                  <input type="radio" name="import-mode" className="mt-1" checked={mode === m.id} onChange={() => setMode(m.id)} />
-                  <span><span className="block font-medium text-gray-900">{m.label}</span><span className="block text-xs text-gray-600">{m.text}</span></span>
-                </label>
-              ))}
-            </fieldset>
+            <h2 className="text-base font-semibold text-gray-900">{M.title}</h2>
+            <div className="mt-3 space-y-1 rounded-lg border border-brand-700/30 bg-brand-100/40 p-3 text-sm text-gray-800">
+              <p><strong>Para que serve:</strong> {M.when}</p>
+              <p><strong>Estoque:</strong> {M.stock}</p>
+              <p className="text-xs text-gray-600">{M.example}</p>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho (use a planilha-modelo). Não duplica peças e não apaga nada; campo vazio mantém o que já está cadastrado.</p>
 
             {!preview && !result && (
               <label className={`mt-4 block cursor-pointer rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600 hover:bg-gray-50 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
@@ -97,7 +108,7 @@ export function ProductImport() {
             {preview && (
               <div className="mt-4 space-y-3">
                 <div className="rounded-lg bg-brand-100 px-3 py-2 text-sm text-brand-800">
-                  <p className="font-medium">{MODES.find(m => m.id === mode)?.label}</p>
+                  <p className="font-medium">{M.title}</p>
                   <p>{preview.products.length} peça(s), {lines.length} variação(ões){newVariants ? `, ${newVariants} nova(s)` : ''}.</p>
                   <p>Estoque: {changed.length ? `${changed.length} variação(ões) mudam (+${plus}${minus ? ` / −${minus}` : ''} unidades)` : 'nenhuma variação muda'}.</p>
                 </div>
@@ -136,7 +147,7 @@ export function ProductImport() {
                 )}
                 <div className="flex justify-end gap-2">
                   <button type="button" disabled={busy} onClick={reset} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700">Escolher outra</button>
-                  <button type="button" disabled={busy} onClick={run} className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{progress ?? (mode === 'entrada' ? 'Somar ao estoque' : mode === 'contagem' ? 'Substituir o estoque' : 'Importar')}</button>
+                  <button type="button" disabled={busy} onClick={run} className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">{progress ?? M.confirm}</button>
                 </div>
               </div>
             )}
