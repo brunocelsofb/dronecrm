@@ -320,3 +320,6 @@ pre.msg { white-space: pre-wrap; text-align: left; background: var(--sand); bord
 .form-err { color: #8e3b2c; font-size: 14px; margin: 0 0 10px; }
 [hidden] { display: none !important; }
 .brand { text-decoration: none; }
+
+/* Selo discreto nas fotos criadas pelo Estúdio IA */
+.ai-tag { position: absolute; right: 8px; bottom: 8px; z-index: 2; font-size: 10px; line-height: 1.4; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.82); color: var(--muted); pointer-events: none; }

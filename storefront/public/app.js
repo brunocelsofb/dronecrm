@@ -61,7 +61,7 @@
     OCCASIONS = (STORE.occasions || []).map(o => {
       const look = LOOKS.find(l => l.occasion === o.id)
       const prod = PRODUCTS.find(p => p.occasions.includes(o.id) && p.photos[0])
-      return { ...o, photo: look?.cover || prod?.photos[0] || null }
+      return { ...o, photo: look?.cover || prod?.photos[0] || null, ai: !!(look?.cover && look.cover_ai) }
     }).filter(o => LOOKS.some(l => l.occasion === o.id) || PRODUCTS.some(p => p.occasions.includes(o.id)))
     CATS = (d.categories || []).map(name => ({ name, photo: PRODUCTS.find(p => p.category === name && p.photos[0])?.photos[0] || null }))
       .filter(c => PRODUCTS.some(p => p.category === c.name))
@@ -73,6 +73,7 @@
     const t = tone || '#E8E0D5'
     return `<div class="ph${!photo && isDark(t) ? ' dark' : ''}" style="${photo ? '' : `background:${t}`}">${phInner(photo, alt)}${extra}</div>`
   }
+  const AI_TAG = '<span class="ai-tag">Imagem criada por IA</span>'
   const productPhoto = (p, color, i = 0, seal = true) =>
     phBox(p.photos[i] || p.photos[0] || null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '')
   const priceLabel = p => (p.promo_price !== null && p.promo_price < p.price ? `<s>${fmt(p.price)}</s>${fmt(p.final_price)}` : fmt(p.final_price))
@@ -108,7 +109,7 @@
     $('#heroText').hidden = !$('#heroText').textContent
     const hp = $('#heroPhoto')
     hp.style.background = s.hero ? '' : 'var(--sand)'
-    hp.innerHTML = s.hero ? `<picture>${s.hero_mobile ? `<source media="(max-width: 859px)" srcset="${esc(s.hero_mobile)}">` : ''}<img class="real" src="${esc(s.hero)}" alt="" fetchpriority="high"></picture>` : ''
+    hp.innerHTML = s.hero ? `<picture>${s.hero_mobile ? `<source media="(max-width: 859px)" srcset="${esc(s.hero_mobile)}">` : ''}<img class="real" src="${esc(s.hero)}" alt="" fetchpriority="high"></picture>${s.hero_ai || s.hero_mobile_ai ? AI_TAG : ''}` : ''
     if (!OCCASIONS.length) $('.hero .copy a[href="#ocasioes"]').outerHTML = '<a class="btn btn-primary" href="#novidades">Ver as peças</a>'
 
     // Destaque: só aparece com título
@@ -198,7 +199,7 @@
     $('#occCards').innerHTML = OCCASIONS.map(o => {
       const n = LOOKS.filter(l => l.occasion === o.id).length
       const tail = n ? `${n} look${n === 1 ? '' : 's'}.` : ''
-      return `<button class="cat" type="button" data-goto-occ="${esc(o.id)}">${phBox(o.photo, '#D8CFC4', o.name)}<span>${esc(o.name)}</span><small>${esc(o.text || '')} ${tail}</small></button>`
+      return `<button class="cat" type="button" data-goto-occ="${esc(o.id)}">${phBox(o.photo, '#D8CFC4', o.name, o.ai ? AI_TAG : '')}<span>${esc(o.name)}</span><small>${esc(o.text || '')} ${tail}</small></button>`
     }).join('')
   }
   function renderLooks() {
@@ -211,7 +212,7 @@
       const ps = l.items.map(byId)
       const total = cents(ps.reduce((t, p) => t + p.final_price, 0))
       return `<article class="look">
-      ${phBox(l.cover, '#D8CFC4', l.name)}
+      ${phBox(l.cover, '#D8CFC4', l.name, l.cover_ai ? AI_TAG : '')}
       ${l.occasion ? `<div class="tag">${esc(occName(l.occasion))}</div>` : ''}
       <h3 style="margin-top:4px">${esc(l.name)}</h3>${l.description ? `<p>${esc(l.description)}</p>` : ''}
       <ul>${ps.map(p => `<li><button type="button" data-open="${esc(p.id)}">${esc(p.name)} · ${fmt(p.final_price)}</button></li>`).join('')}</ul>

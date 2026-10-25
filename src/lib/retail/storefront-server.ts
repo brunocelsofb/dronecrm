@@ -11,6 +11,7 @@ import { effectivePrice, retailPhotoUrl } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
+import { isAiPhotoUrl } from '@/lib/retail/ai-studio'
 import { ensurePublicToken, orderPublicUrl, recordOrderStage } from '@/lib/retail/order-messages-server'
 import { cleanDomain, cleanSlug, readContent, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontContent, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
 
@@ -41,9 +42,9 @@ export type PublicProduct = {
   price: number; promo_price: number | null; final_price: number; photos: string[]; occasions: string[]; is_new: boolean
   variants: { id: string; color: string | null; size: string | null; available: boolean; last_units: boolean }[]
 }
-export type PublicLook = { id: string; name: string; occasion: string | null; description: string | null; cover: string | null; product_ids: string[] }
+export type PublicLook = { id: string; name: string; occasion: string | null; description: string | null; cover: string | null; cover_ai?: boolean; product_ids: string[] }
 export type PublicCatalog = {
-  store: { name: string; slug: string; tagline: string | null; about: string | null; logo: string | null; hero: string | null; hero_mobile: string | null; whatsapp: string | null; theme: StorefrontTheme; occasions: Occasion[]; content: StorefrontContent }
+  store: { name: string; slug: string; tagline: string | null; about: string | null; logo: string | null; hero: string | null; hero_mobile: string | null; hero_ai?: boolean; hero_mobile_ai?: boolean; whatsapp: string | null; theme: StorefrontTheme; occasions: Occasion[]; content: StorefrontContent }
   categories: string[]
   products: PublicProduct[]
   looks: PublicLook[]
@@ -80,11 +81,13 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
     .map(l => ({ id: l.id, name: l.name, occasion: l.occasion, description: l.description, product_ids: (l.product_ids ?? []).filter(id => ids.has(id)), cover: photoUrl(l.cover_photo) }))
     .filter(l => l.product_ids.length > 0)
     .map(l => ({ ...l, cover: l.cover ?? products.find(p => p.id === l.product_ids[0])?.photos[0] ?? null }))
+    .map(l => ({ ...l, cover_ai: isAiPhotoUrl(l.cover, sf.tenant_id) }))
   const categories = [...new Set(products.map(p => p.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
   return {
     store: {
       name: (sf.title || branding.companyName || 'Loja').trim(), slug: sf.slug, tagline: sf.tagline, about: sf.about,
       logo: branding.logoUrl, hero: photoUrl(sf.hero_photo) ?? products[0]?.photos[0] ?? null, hero_mobile: photoUrl(sf.hero_photo_mobile),
+      hero_ai: isAiPhotoUrl(photoUrl(sf.hero_photo), sf.tenant_id), hero_mobile_ai: isAiPhotoUrl(photoUrl(sf.hero_photo_mobile), sf.tenant_id),
       whatsapp: sf.whatsapp, theme: readTheme(sf.theme), occasions: readOccasions(sf.occasions), content: readContent(sf.content),
     },
     categories, products, looks: publicLooks, updated_at: new Date().toISOString(),

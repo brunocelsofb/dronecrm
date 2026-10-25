@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:varejo": "node --experimental-strip-types --test tests/retail-margin.test.mjs tests/retail-dashboard.test.mjs tests/retail-funnel.test.mjs tests/retail-payments.test.mjs tests/retail-storefront.test.mjs tests/retail-order-messages.test.mjs"
+    "test:varejo": "node --experimental-strip-types --test tests/retail-margin.test.mjs tests/retail-dashboard.test.mjs tests/retail-funnel.test.mjs tests/retail-payments.test.mjs tests/retail-storefront.test.mjs tests/retail-order-messages.test.mjs tests/retail-ai-studio.test.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
