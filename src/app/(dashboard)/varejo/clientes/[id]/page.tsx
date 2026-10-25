@@ -78,10 +78,12 @@ export default async function RetailCustomerPage({ params }: { params: Promise<{
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{c.name}</h1>
-          <p className="text-sm text-gray-500">{formatPhone(c.phone)}{c.city ? ` · ${c.city}` : ''}</p>
+          <p className="text-sm text-gray-500">{formatPhone(c.phone)}{c.email ? ` · ${c.email}` : ''}{c.city ? ` · ${c.city}` : ''}</p>
+          {(!c.phone || !c.email) && <p className="mt-1 text-xs text-warn-700">Falta {[!c.phone && 'WhatsApp', !c.email && 'e-mail'].filter(Boolean).join(' e ')}: os pedidos precisam dos dois.</p>}
         </div>
         <div className="flex items-center gap-2">
           <span className={`rounded px-2 py-1 text-xs ${CUSTOMER_STATUS[status].style}`}>{CUSTOMER_STATUS[status].label}</span>
+          <a href="#cadastro" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Editar cadastro</a>
           <Link href={`/varejo/pedidos/novo?cliente=${c.id}`} className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Novo pedido</Link>
         </div>
       </div>

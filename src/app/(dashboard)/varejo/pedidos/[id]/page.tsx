@@ -7,6 +7,8 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { fmtBRL } from '@/lib/format'
 import { ORDER_STATUSES, PAYMENT_METHODS, formatPhone, orderMessage, whatsappLink } from '@/lib/retail/customers'
 import { OrderPanel } from '@/components/retail/order-panel'
+import { TestOrderDelete } from '@/components/retail/test-order-delete'
+import { getSupportSession } from '@/lib/tenant/support'
 import { OrderMessagesPanel, type OrderEvent, type OrderMessage } from '@/components/retail/order-messages-panel'
 import { ensurePublicToken, orderPublicUrl } from '@/lib/retail/order-messages-server'
 import { birthdayInfo, birthdayLabel } from '@/lib/retail/customers'
@@ -64,6 +66,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const { data: org } = await db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle()
   const storeName = ((org?.company_name as string | null) || (org?.name as string | null) || 'loja').trim()
   // Mensagens por etapa, linha do tempo, WhatsApps que enviam e se quem está logado tem e-mail
+  const support = await getSupportSession()
   const token = await ensurePublicToken(db, o.id).catch(() => null) // suporte (só leitura) não grava
   const [{ data: msgs }, { data: evs }, { data: orgWa }, { data: myEmail }] = await Promise.all([
     db.from('retail_order_messages').select('id, stage, status, wa_text, email_subject, email_body, sent_channels, sent_at, sent_by, last_error, updated_at').eq('order_id', o.id),
@@ -106,7 +109,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
             <p className="mt-1"><Link href={`/varejo/clientes/${o.retail_customers.id}`} className="text-brand-700 hover:underline">{o.retail_customers.name}</Link> · {formatPhone(o.retail_customers.phone)}{o.retail_customers.email ? ` · ${o.retail_customers.email}` : ''}</p>
             <p className="mt-0.5 text-xs text-gray-500">Aniversário: {o.retail_customers.birth_date ? `${o.retail_customers.birth_date.slice(8, 10)}/${o.retail_customers.birth_date.slice(5, 7)}${bday ? ` (${bday})` : ''}` : 'não informado'}</p>
             {(!o.retail_customers.phone || !o.retail_customers.email) && (
-              <p className="mt-1 rounded-lg bg-warn-100 px-2 py-1 text-xs text-warn-700">Falta {[!o.retail_customers.phone && 'WhatsApp', !o.retail_customers.email && 'e-mail'].filter(Boolean).join(' e ')} na ficha. <Link href={`/varejo/clientes/${o.retail_customers.id}`} className="underline">Completar cadastro</Link></p>
+              <p className="mt-1 rounded-lg bg-warn-100 px-2 py-1 text-xs text-warn-700">Falta {[!o.retail_customers.phone && 'WhatsApp', !o.retail_customers.email && 'e-mail'].filter(Boolean).join(' e ')} na ficha. <Link href={`/varejo/clientes/${o.retail_customers.id}#cadastro`} className="underline">Completar cadastro</Link></p>
             )}
           </>
         ) : <p className="mt-1 text-gray-500">Sem cliente ligada.</p>}
@@ -187,6 +190,8 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
         message={message}
         whatsappUrl={wa}
       />
+
+      {(access.isAdmin || support) && <TestOrderDelete orderId={o.id} support={!!support} />}
     </div>
   )
 }

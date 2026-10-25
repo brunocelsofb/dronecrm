@@ -44,8 +44,9 @@ export function CustomerForm({ customer }: { customer: CustomerData | null }) {
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
-      <h2 className="text-base font-semibold text-gray-900">Cadastro</h2>
+    <section id="cadastro" className="scroll-mt-20 space-y-4 rounded-xl border border-gray-200 bg-white p-4">
+      <h2 className="text-base font-semibold text-gray-900">{customer ? 'Editar cadastro' : 'Cadastro'}</h2>
+      {customer && <p className="-mt-2 text-xs text-gray-500">Altere o que precisar e toque em Salvar. WhatsApp e e-mail são usados nos avisos dos pedidos.</p>}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div><label className={lbl}>Nome *</label><input className={inp} value={f.name} onChange={set('name')} placeholder="ex.: Maria Souza" /></div>
         <div>
