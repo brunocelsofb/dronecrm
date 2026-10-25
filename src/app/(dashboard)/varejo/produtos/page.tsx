@@ -48,6 +48,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
           <p className="mt-1 text-sm text-gray-500">Peças da vitrine, com preço, fotos e estoque por cor e tamanho.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/varejo/estoque" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Histórico do estoque</Link>
           <a href="/api/varejo/modelo" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
           <ProductImport />
           <Link href="/varejo/produtos/nova" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>

@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { StockHistory } from '@/components/retail/stock-history'
+import { loadStockMoves } from '@/lib/retail/stock-server'
 import { notFound, redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -52,6 +54,15 @@ export default async function RetailProductPage({ params, searchParams }: { para
       <h1 className="text-xl font-semibold text-gray-900">{product ? product.name : 'Nova peça'}</h1>
       {!product && <p className="text-sm text-gray-500">São 4 passos rápidos: dados, quantidades, fotos e vitrine. Campos com * são obrigatórios.</p>}
       <ProductForm product={product} categories={categories} justCreated={!!product && criada === '1'} pricing={pricing} loyalty={loyalty} occasions={occasions} />
+      {product && (
+        <section className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold text-gray-900">Histórico do estoque</h2>
+            <Link href="/varejo/estoque" className="text-xs text-brand-700 hover:underline">Ver de todas as peças</Link>
+          </div>
+          <StockHistory moves={await loadStockMoves(db, { productId: product.id, limit: 30 })} showProduct={false} />
+        </section>
+      )}
     </div>
   )
 }

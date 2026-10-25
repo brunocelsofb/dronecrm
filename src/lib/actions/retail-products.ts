@@ -19,11 +19,19 @@ import {
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 
-async function guard(): Promise<{ tenantId: string } | { error: string }> {
+async function guard(): Promise<{ tenantId: string; userId: string } | { error: string }> {
   const access = await hasFeature('varejo')
   if (!access) return { error: 'Sem acesso ao módulo Varejo.' }
   if (await getSupportSession()) return { error: 'Acesso de suporte é só leitura.' }
-  return { tenantId: await requireTenantId() }
+  return { tenantId: await requireTenantId(), userId: access.userId }
+}
+
+// Mudança de saldo sempre pela função do banco: fica no histórico com o motivo e quem fez
+type StockRow = { variant_id: string; mode: 'add' | 'set'; qty: number }
+async function moveStock(db: Awaited<ReturnType<typeof createScopedAdmin>>, tenantId: string, userId: string, kind: 'entrada' | 'contagem' | 'ajuste' | 'importacao' | 'cadastro', rows: StockRow[], note?: string | null): Promise<string | null> {
+  if (!rows.length) return null
+  const { data, error } = await db.rpc('retail_stock_batch', { p_tenant: tenantId, p_user: userId, p_kind: kind, p_note: note ?? null, p_rows: rows })
+  return error ? error.message : (data as string | null)
 }
 
 export type ProductInput = {
@@ -108,18 +116,29 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
     productId = data.id as string
   }
 
-  // Variações: apaga as removidas, atualiza as existentes, cria as novas
-  const { data: current } = await db.from('retail_product_variants').select('id').eq('product_id', productId)
+  // Variações: apaga as removidas, atualiza as existentes, cria as novas.
+  // O saldo muda pela função do banco (histórico "ajuste" com quem fez)
+  const { data: current } = await db.from('retail_product_variants').select('id, stock').eq('product_id', productId)
+  const stockNow = new Map((current ?? []).map(r => [r.id as string, Number(r.stock)]))
+  const stockRows: StockRow[] = []
+  const newStock: StockRow[] = []
   const keep = new Set(vv.list.map(v => v.id).filter(Boolean) as string[])
   const removed = (current ?? []).map(r => r.id as string).filter(id => !keep.has(id))
   if (removed.length) await db.from('retail_product_variants').delete().in('id', removed).eq('product_id', productId)
   for (const v of vv.list) {
-    const vrow = { sku: v.sku, color: v.color, size: v.size, stock: v.stock, active: v.active, updated_at: new Date().toISOString() }
-    const { error } = v.id
-      ? await db.from('retail_product_variants').update(vrow).eq('id', v.id).eq('product_id', productId)
-      : await db.from('retail_product_variants').insert({ ...vrow, product_id: productId })
-    if (error) return { ok: false, error: error.code === '23505' ? `SKU ${v.sku} já usado em outra peça (ou cor e tamanho repetidos).` : error.message }
+    const vrow = { sku: v.sku, color: v.color, size: v.size, active: v.active, updated_at: new Date().toISOString() }
+    if (v.id) {
+      const { error } = await db.from('retail_product_variants').update(vrow).eq('id', v.id).eq('product_id', productId)
+      if (error) return { ok: false, error: error.code === '23505' ? `SKU ${v.sku} já usado em outra peça (ou cor e tamanho repetidos).` : error.message }
+      if (stockNow.get(v.id) !== v.stock) stockRows.push({ variant_id: v.id, mode: 'set', qty: v.stock })
+    } else {
+      const { data, error } = await db.from('retail_product_variants').insert({ ...vrow, stock: 0, product_id: productId }).select('id').single()
+      if (error || !data) return { ok: false, error: error?.code === '23505' ? `SKU ${v.sku} já usado em outra peça (ou cor e tamanho repetidos).` : error?.message ?? 'Falha ao criar a variação.' }
+      if (v.stock > 0) newStock.push({ variant_id: data.id as string, mode: 'set', qty: v.stock })
+    }
   }
+  const stockErr = (await moveStock(db, g.tenantId, g.userId, 'ajuste', stockRows, 'cadastro da peça')) ?? (await moveStock(db, g.tenantId, g.userId, 'cadastro', newStock, 'variação nova'))
+  if (stockErr) return { ok: false, error: `Peça salva, mas o estoque não foi gravado: ${stockErr}` }
 
   revalidatePath('/varejo/produtos')
   const { data: saved } = await db.from('retail_product_variants').select('id, sku, color, size, stock, active').eq('product_id', productId)
@@ -211,11 +230,18 @@ export async function moveRetailPhoto(productId: string, path: string, direction
 }
 
 // ── Importação por planilha ──────────────────────────────────────────────────
-// Uma linha por variação. Linhas com o mesmo código formam uma peça.
-// Peça e variação existentes (mesmo código / mesmo SKU) são atualizadas; nada é apagado.
+// Uma linha por variação. Linhas com o mesmo código formam uma peça. Nada é apagado.
+// Três jeitos, escolhidos antes de subir:
+//   cadastro  → atualiza dados e preços; NÃO mexe no estoque de variação que já existe
+//   entrada   → soma a quantidade da planilha ao estoque (mercadoria que chegou)
+//   contagem  → o estoque fica igual ao da planilha (inventário)
+// Campo vazio na planilha não apaga o que já está cadastrado.
+export type ImportMode = 'cadastro' | 'entrada' | 'contagem'
+const isImportMode = (v: unknown): v is ImportMode => v === 'cadastro' || v === 'entrada' || v === 'contagem'
+
 export type ImportProduct = {
-  code: string; name: string; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null
-  status: ProductStatus; description: string | null; composition: string | null; care: string | null
+  code: string; name: string | null; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null
+  status: ProductStatus | null; description: string | null; composition: string | null; care: string | null
   variants: { sku: string; color: string | null; size: string | null; stock: number }[]
 }
 
@@ -237,7 +263,7 @@ const COLS: Record<string, string[]> = {
   care: ['cuidados', 'conservacao', 'conservação'],
   status: ['situacao', 'situação', 'status'],
 }
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[_\s]+/g, ' ').trim()
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, ' ').trim()
 
 function pick(rec: Record<string, unknown>, field: string): unknown {
   const wanted = COLS[field].map(norm)
@@ -245,8 +271,9 @@ function pick(rec: Record<string, unknown>, field: string): unknown {
   return undefined
 }
 
-function statusFrom(v: unknown): ProductStatus {
+function statusFrom(v: unknown): ProductStatus | null {
   const s = norm(String(v ?? ''))
+  if (!s) return null
   if (s.startsWith('pub') || s === 'ativo' || s === 'sim') return 'publicado'
   if (s.startsWith('arq') || s === 'inativo') return 'arquivado'
   return 'rascunho'
@@ -255,6 +282,7 @@ function statusFrom(v: unknown): ProductStatus {
 export async function parseRetailProductFile(formData: FormData): Promise<Result<{ products: ImportProduct[]; ignored: string[]; warnings: string[] }>> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
+  const mode: ImportMode = isImportMode(formData.get('mode')) ? formData.get('mode') as ImportMode : 'cadastro'
   const file = formData.get('file')
   if (!(file instanceof File)) return { ok: false, error: 'Escolha a planilha.' }
   if (file.size > MAX_BYTES) return { ok: false, error: 'Planilha maior que 950 KB. Divida em partes.' }
@@ -268,6 +296,7 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
   }
   if (!records.length) return { ok: false, error: 'A planilha está vazia (a primeira linha deve ter os títulos das colunas).' }
   if (records.length > MAX_ROWS) return { ok: false, error: `Máximo de ${MAX_ROWS} linhas por importação.` }
+  if (mode !== 'cadastro' && !records.some(r => pick(r, 'stock') !== undefined)) return { ok: false, error: 'A planilha não tem a coluna de quantidade (Estoque).' }
 
   const byCode = new Map<string, ImportProduct>()
   const ignored: string[] = []
@@ -276,21 +305,22 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     const line = i + 2
     const code = normalizeCode(pick(rec, 'code'))
     if (!code) { if (Object.values(rec).some(v => String(v).trim())) ignored.push(`Linha ${line}: sem código.`); return }
-    const price = parseMoney(pick(rec, 'price'))
-    const stock = parseStock(pick(rec, 'stock')) ?? 0
+    const rawStock = String(pick(rec, 'stock') ?? '').trim()
+    const stock = parseStock(rawStock) ?? 0
+    if (rawStock && parseStock(rawStock) === null) warnings.push(`Linha ${line} (${code}): quantidade "${rawStock}" inválida, conta como 0.`)
     const color = cleanText(pick(rec, 'color'), 60)
     const size = cleanText(pick(rec, 'size'), 20)
     let p = byCode.get(code)
     if (!p) {
       const name = cleanText(pick(rec, 'name'), 160)
-      if (!name) { ignored.push(`Linha ${line} (${code}): sem nome.`); return }
-      // Sem preço: entra como rascunho, com aviso (não vende nem vai para a vitrine até ter preço)
-      if (price === null) warnings.push(`Linha ${line} (${code} · ${name}): sem preço. Entra como rascunho; defina o preço antes de publicar.`)
+      const price = parseMoney(pick(rec, 'price'))
+      // Sem preço: peça nova entra como rascunho, com aviso; peça existente mantém o preço que tem
+      if (price === null && mode === 'cadastro') warnings.push(`Linha ${line} (${code}${name ? ` · ${name}` : ''}): sem preço. Se a peça for nova, entra como rascunho; defina o preço antes de publicar.`)
       p = {
         code, name, category: cleanText(pick(rec, 'category'), 80), price,
         promo_price: parseMoney(pick(rec, 'promo_price')),
         cost_price: parseMoney(pick(rec, 'cost_price')),
-        status: price === null ? 'rascunho' : statusFrom(pick(rec, 'status')),
+        status: statusFrom(pick(rec, 'status')),
         description: cleanLongText(pick(rec, 'description')), composition: cleanText(pick(rec, 'composition'), 300), care: cleanLongText(pick(rec, 'care'), 1000),
         variants: [],
       }
@@ -305,51 +335,80 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
   return { ok: true, products: [...byCode.values()], ignored: ignored.slice(0, 50), warnings: warnings.slice(0, 100) }
 }
 
-export async function importRetailProductsChunk(products: ImportProduct[]): Promise<Result<{ created: number; updated: number; errors: string[] }>> {
+// Saldo atual das variações da planilha (para mostrar "antes → depois" antes de importar)
+export async function retailStockForSkus(skus: string[]): Promise<Result<{ stock: Record<string, { stock: number; code: string }> }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const list = [...new Set((Array.isArray(skus) ? skus : []).map(s => normalizeCode(s)).filter(Boolean) as string[])].slice(0, 5000)
+  const db = await createScopedAdmin(g.tenantId)
+  const out: Record<string, { stock: number; code: string }> = {}
+  for (let i = 0; i < list.length; i += 300) {
+    const { data } = await db.from('retail_product_variants').select('sku, stock, retail_products(code)').in('sku', list.slice(i, i + 300))
+    for (const v of (data ?? []) as unknown as { sku: string; stock: number; retail_products: { code: string } | null }[]) out[v.sku] = { stock: Number(v.stock), code: v.retail_products?.code ?? '' }
+  }
+  return { ok: true, stock: out }
+}
+
+export async function importRetailProductsChunk(products: ImportProduct[], modeIn: ImportMode = 'cadastro'): Promise<Result<{ created: number; updated: number; errors: string[] }>> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   if (!Array.isArray(products) || products.length > 20) return { ok: false, error: 'Lote inválido.' }
+  const mode: ImportMode = isImportMode(modeIn) ? modeIn : 'cadastro'
   const db = await createScopedAdmin(g.tenantId)
   let created = 0, updated = 0
   const errors: string[] = []
+  const kind = mode === 'entrada' ? 'entrada' : mode === 'contagem' ? 'contagem' : 'importacao'
   for (const raw of products) {
     const code = normalizeCode(raw.code)
+    if (!code) { errors.push(`${raw.code ?? '?'}: sem código.`); continue }
     const name = cleanText(raw.name, 160)
     const price = parseMoney(raw.price)
-    if (!code || !name) { errors.push(`${raw.code ?? '?'}: dados incompletos.`); continue }
     const { data: existing } = await db.from('retail_products').select('id, price').eq('code', code).maybeSingle()
-    // Preço em branco na planilha não apaga o preço já cadastrado; peça sem preço fica em rascunho
+    // Só grava o que veio preenchido; vazio mantém o que já está cadastrado
+    const filled: Record<string, unknown> = {}
+    const put = (k: string, v: unknown) => { if (v !== null && v !== undefined && v !== '') filled[k] = v }
+    put('name', name); put('category', cleanText(raw.category, 80)); put('price', price); put('promo_price', parseMoney(raw.promo_price))
+    put('cost_price', parseMoney(raw.cost_price)); put('description', cleanLongText(raw.description)); put('composition', cleanText(raw.composition, 300)); put('care', cleanLongText(raw.care, 1000))
     const hasPrice = price !== null || (existing?.price !== null && existing?.price !== undefined)
-    const row = {
-      code, name, category: cleanText(raw.category, 80), ...(price !== null ? { price } : existing ? {} : { price: null }), promo_price: parseMoney(raw.promo_price),
-      // custo em branco na planilha não apaga o custo já cadastrado
-      ...(parseMoney(raw.cost_price) !== null ? { cost_price: parseMoney(raw.cost_price) } : {}),
-      status: hasPrice && isProductStatus(raw.status) ? raw.status : 'rascunho',
-      description: cleanLongText(raw.description), composition: cleanText(raw.composition, 300), care: cleanLongText(raw.care, 1000),
-      updated_at: new Date().toISOString(),
-    }
+    const status = isProductStatus(raw.status) ? raw.status : null
     let productId: string
     if (existing) {
-      const { error } = await db.from('retail_products').update(row).eq('id', existing.id)
+      // Sem preço não publica; situação em branco mantém a atual
+      const patch = { ...filled, ...(status ? { status: hasPrice ? status : 'rascunho' } : {}), updated_at: new Date().toISOString() }
+      const { error } = await db.from('retail_products').update(patch).eq('id', existing.id)
       if (error) { errors.push(`${code}: ${error.message}`); continue }
       productId = existing.id as string; updated++
     } else {
-      const { data, error } = await db.from('retail_products').insert(row).select('id').single()
+      if (!name) { errors.push(`${code}: peça nova precisa de nome.`); continue }
+      const { data, error } = await db.from('retail_products').insert({ code, ...filled, price, status: hasPrice && status ? status : 'rascunho' }).select('id').single()
       if (error || !data) { errors.push(`${code}: ${error?.message ?? 'falha ao criar'}`); continue }
       productId = data.id as string; created++
     }
+    const moves: StockRow[] = []
     for (const v of raw.variants ?? []) {
       const sku = normalizeCode(v.sku) ?? defaultSku(code, cleanText(v.color, 60), cleanText(v.size, 20))
-      const stock = parseStock(v.stock) ?? 0
-      const vrow = { sku, color: cleanText(v.color, 60), size: cleanText(v.size, 20), stock, active: true, updated_at: new Date().toISOString() }
+      const qty = parseStock(v.stock) ?? 0
       const { data: ev } = await db.from('retail_product_variants').select('id, product_id').eq('sku', sku).maybeSingle()
       if (ev && ev.product_id !== productId) { errors.push(`${code}: SKU ${sku} já pertence a outra peça.`); continue }
-      const { error } = ev
-        ? await db.from('retail_product_variants').update(vrow).eq('id', ev.id)
-        : await db.from('retail_product_variants').insert({ ...vrow, product_id: productId })
-      if (error) errors.push(`${code} / ${sku}: ${error.code === '23505' ? 'cor e tamanho repetidos' : error.message}`)
+      if (ev) {
+        const vpatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (cleanText(v.color, 60)) vpatch.color = cleanText(v.color, 60)
+        if (cleanText(v.size, 20)) vpatch.size = cleanText(v.size, 20)
+        const { error } = await db.from('retail_product_variants').update(vpatch).eq('id', ev.id)
+        if (error) { errors.push(`${code} / ${sku}: ${error.code === '23505' ? 'cor e tamanho repetidos' : error.message}`); continue }
+        // cadastro: não mexe no saldo; entrada: soma; contagem: define
+        if (mode === 'entrada' && qty > 0) moves.push({ variant_id: ev.id as string, mode: 'add', qty })
+        if (mode === 'contagem') moves.push({ variant_id: ev.id as string, mode: 'set', qty })
+      } else {
+        const { data: nv, error } = await db.from('retail_product_variants')
+          .insert({ sku, color: cleanText(v.color, 60), size: cleanText(v.size, 20), stock: 0, active: true, product_id: productId }).select('id').single()
+        if (error || !nv) { errors.push(`${code} / ${sku}: ${error?.code === '23505' ? 'cor e tamanho repetidos' : error?.message ?? 'falha ao criar'}`); continue }
+        if (qty > 0) moves.push({ variant_id: nv.id as string, mode: 'set', qty })
+      }
     }
+    const err = await moveStock(db, g.tenantId, g.userId, kind, moves, `planilha (${mode})`)
+    if (err) errors.push(`${code}: estoque não gravado (${err}).`)
   }
-  revalidatePath('/varejo/produtos')
+  revalidatePath('/varejo/produtos'); revalidatePath('/varejo/estoque')
   return { ok: true, created, updated, errors: errors.slice(0, 30) }
 }
