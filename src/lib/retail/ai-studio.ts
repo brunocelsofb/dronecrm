@@ -58,7 +58,7 @@ export function modelPrompt(s: ModelSpec): string {
     'Fotografia realista de catálogo de moda, corpo inteiro, de uma modelo feminina fictícia (pessoa que não existe).',
     s.age && `Idade aparente: ${s.age}.`, s.body && `Tipo de corpo: ${s.body}.`, s.skin && `Tom de pele: ${s.skin}.`, s.hair && `Cabelo: ${s.hair}.`,
     s.style && `Estilo e expressão: ${s.style}.`,
-    'Em pé, de frente, braços relaxados, roupa básica justa e lisa em tom neutro (para depois vestir outras peças), descalça ou com sandália nude.',
+    'Em pé, de frente, braços relaxados, vestindo só um body (collant) liso cor nude e sandália nude, pernas à mostra, sem calça, sem saia e sem acessórios (para depois vestir outras peças sem confundir com a roupa dela).',
     'Fundo de estúdio cinza-claro liso, luz suave e uniforme, foco nítido, sem textos, sem logotipos.',
     s.extra,
   ]
@@ -91,6 +91,23 @@ export function lookPrompt(pieces: number, hasScene: boolean): string {
       : 'Mostre a modelo de corpo inteiro, em uma posição onde é possível notar as principais características tanto da roupa quanto dos acessórios.',
     'Foto realista, vertical, sem textos e sem logotipos.',
   ].filter(Boolean).join('\n')
+}
+
+// Ficha de cada peça para a IA: diz QUAL peça vestir, de que cor, e o que tirar da modelo.
+// Sem isso, quando a foto da peça mostra uma pessoa com várias roupas (ou a modelo já está
+// de calça), a IA pode manter a roupa da modelo e ignorar a peça.
+export type PieceBrief = { name: string; category: string | null; color: string | null }
+export function pieceBrief(pieces: PieceBrief[]): string {
+  if (!pieces.length) return ''
+  const lines = pieces.map((p, i) => `- Imagem ${i + 2}: ${p.name}${p.category ? ` (tipo: ${p.category})` : ''}${p.color ? `, cor ${p.color}` : ''}.`)
+  return [
+    'REGRAS OBRIGATÓRIAS sobre as peças:',
+    ...lines,
+    'Em cada imagem de peça, use SOMENTE a peça indicada. Se aparecer uma pessoa ou outras roupas nessa foto, ignore o rosto, o corpo e as outras roupas dela.',
+    'Tire da modelo a roupa que ocupa o mesmo lugar no corpo (por exemplo, a calça que ela está usando) e vista a peça indicada no lugar. A roupa original da modelo não pode continuar aparecendo nessa parte do corpo.',
+    'A cor, a textura e o modelo da peça na foto final têm que ser iguais aos da foto da peça' + (pieces.some(p => p.color) ? ' (respeite a cor indicada acima).' : '.'),
+    'Mantenha o rosto, o cabelo, o tom de pele e o corpo da modelo da imagem 1.',
+  ].join('\n')
 }
 
 // A foto é do Estúdio IA? (pasta "<tenant>/ia/" no bucket)

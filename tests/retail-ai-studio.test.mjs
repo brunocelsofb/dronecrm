@@ -37,3 +37,16 @@ test('texto do look: lê o JSON da IA e valida a ocasião', () => {
   // o modelo do pedido não vale como resposta
   assert.equal(parseLookCopy(copyPrompt({ store: 'X', essence: 'Y', pieces: [], occasions: [] }), []), null)
 })
+
+test('ficha das peças: diz qual peça, a cor e manda trocar a roupa da modelo', async () => {
+  const { pieceBrief } = await import('../src/lib/retail/ai-studio.ts')
+  const t = pieceBrief([{ name: 'Calça Paris Chique', category: 'Calças', color: 'Preto' }])
+  assert.match(t, /Imagem 2: Calça Paris Chique \(tipo: Calças\), cor Preto/)
+  assert.match(t, /ignore o rosto, o corpo e as outras roupas/)
+  assert.match(t, /Tire da modelo a roupa que ocupa o mesmo lugar/)
+  assert.match(t, /respeite a cor indicada/)
+  assert.equal(pieceBrief([]), '')
+  const two = pieceBrief([{ name: 'Blusa', category: null, color: null }, { name: 'Saia', category: 'Saias', color: 'Azul' }])
+  assert.match(two, /Imagem 2: Blusa\./)
+  assert.match(two, /Imagem 3: Saia \(tipo: Saias\), cor Azul/)
+})

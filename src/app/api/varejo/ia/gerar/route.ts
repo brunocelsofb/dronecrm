@@ -8,7 +8,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { decryptSecret } from '@/lib/ai/tenant-key'
 import { generateImage } from '@/lib/retail/ai-providers'
-import { defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, validModel } from '@/lib/retail/ai-studio'
+import { defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, pieceBrief, validModel } from '@/lib/retail/ai-studio'
 import { RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (base.length < 10) return bad('Escreva o pedido para a IA.')
   // Pose escolhida (com 2 fotos, cada pedido vem com uma pose diferente)
   const pose = kind === 'look' && isPose(b.pose) ? String(b.pose) : null
-  const prompt = pose ? `${base}\nPose da modelo nesta foto: ${pose}.` : base
+  let prompt = pose ? `${base}\nPose da modelo nesta foto: ${pose}.` : base
   const title = String(b.title ?? '').trim().slice(0, 80) || null
 
   const db = await createScopedAdmin(tenantId)
@@ -59,8 +59,9 @@ export async function POST(req: NextRequest) {
     const sc = UUID.test(sceneId) ? (refs ?? []).find(r => r.id === sceneId && r.kind === 'cenario') : null
     if (UUID.test(sceneId) && !sc) return bad('Cenário não encontrado no banco de imagens.')
     const prodIds = [...new Set(pieces.map(p => String(p.product_id ?? '')).filter(id => UUID.test(id)))]
-    const { data: prods } = prodIds.length ? await db.from('retail_products').select('id, photos').in('id', prodIds) : { data: [] }
+    const { data: prods } = prodIds.length ? await db.from('retail_products').select('id, name, category, photos, photo_meta').in('id', prodIds) : { data: [] }
     const byId = new Map((prods ?? []).map(p => [p.id as string, (p.photos ?? []) as string[]]))
+    const info = new Map((prods ?? []).map(p => [p.id as string, p]))
     images.push(retailPhotoUrl(m.path as string))
     for (const p of pieces) {
       const photo = byId.get(String(p.product_id))?.[Number(p.photo ?? 0)]
@@ -72,6 +73,15 @@ export async function POST(req: NextRequest) {
     const t = (b.target && typeof b.target === 'object' ? b.target : null) as { product_id?: unknown; color?: unknown } | null
     const target = t && typeof t.product_id === 'string' && prodIds.includes(t.product_id) ? { product_id: t.product_id, color: typeof t.color === 'string' ? t.color.slice(0, 60) : null } : null
     Object.assign(inputs, { model_image_id: modelId, scene_image_id: sc?.id ?? null, pieces, pose, target })
+    // Sempre (mesmo com o texto editado): nome, tipo e cor de cada peça, e o que trocar na modelo
+    const brief = pieceBrief(pieces.map(p => {
+      const row = info.get(String(p.product_id))
+      const path = byId.get(String(p.product_id))?.[Number(p.photo ?? 0)] ?? ''
+      const metaColor = ((row?.photo_meta ?? {}) as Record<string, { color?: string | null }>)[path]?.color ?? null
+      const color = target && target.product_id === p.product_id && target.color ? target.color : metaColor
+      return { name: String(row?.name ?? 'peça'), category: (row?.category as string | null) ?? null, color }
+    }))
+    if (brief) prompt = `${prompt}\n\n${brief}`
   }
 
   const fmt = IMAGE_FORMAT[kind]

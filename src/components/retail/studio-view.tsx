@@ -7,6 +7,7 @@ import { createContext, useContext, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createLookFromAiImage, deleteAiImage, publishAiImage, publishAiImageToProduct, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
 import { colorCoverage, missingModelColors, type PhotoMeta } from '@/lib/retail/photo-colors'
+import { setRetailPhotoMeta } from '@/lib/actions/retail-products'
 import { AI_PROVIDERS, IMAGE_FORMAT, type LookCopy, MAX_LOOK_PIECES, POSES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
 
 type Target = { product_id: string; color: string | null }
@@ -228,6 +229,7 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
           {picked.length > 0 && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setPicked([])}>Limpar</button>}
         </div>
         <input className={`${inp} mt-2`} value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar peça por nome ou código" />
+        <PickedColors picked={picked} products={products} target={liveTarget} onColor={(pid, color) => setTarget({ product_id: pid, color })} />
         {products.length === 0 ? <p className="mt-2 text-sm text-gray-600">Nenhuma peça com foto ainda. Adicione fotos em Produtos.</p> : (
           <div className="mt-2 grid max-h-[420px] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-6">
             {tiles.map(t => { const k = isPicked(t.p.id, t.i); return <Pickable key={`${t.p.id}-${t.i}`} url={t.url} label={`${t.p.code} · ${t.info?.color ?? t.p.name}`} selected={k >= 0} badge={k >= 0 ? String(k + 1) : undefined} onClick={() => toggle(t.p.id, t.i)} /> })}
@@ -266,6 +268,39 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
       </div>
       <LookGallery images={images.filter(i => i.kind === 'look')} looks={looks} occasions={occasions} />
     </section>
+  )
+}
+
+// Peça escolhida com várias cores e foto sem cor marcada: pergunta a cor (e já grava na foto)
+function PickedColors({ picked, products, target, onColor }: { picked: { product_id: string; photo: number }[]; products: StudioProduct[]; target: Target | null; onColor: (pid: string, color: string) => void }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const rows = picked.map(x => {
+    const p = products.find(o => o.id === x.product_id)
+    const path = p?.paths[x.photo] ?? ''
+    return { p, path, color: p?.meta[path]?.color ?? null }
+  }).filter(r => r.p && r.p.colors.length > 1 && !r.color) as { p: StudioProduct; path: string; color: null }[]
+  if (!rows.length) return null
+  async function save(p: StudioProduct, path: string, color: string) {
+    setBusy(true); setErr(null)
+    const r = await setRetailPhotoMeta(p.id, path, { color, model: false })
+    setBusy(false)
+    if (!r.ok) { setErr(r.error); return }
+    onColor(p.id, color); router.refresh()
+  }
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-warn-700/30 bg-warn-100/60 p-3">
+      <p className="text-sm font-medium text-gray-900">Qual é a cor da peça nesta foto?</p>
+      <p className="text-xs text-gray-700">Sem a cor, a IA pode errar o tom ou manter a roupa da modelo. A cor fica gravada na foto da peça.</p>
+      {rows.map(({ p, path }) => (
+        <label key={`${p.id}-${path}`} className="flex flex-wrap items-center gap-2 text-sm text-gray-800"><span><strong>{p.code}</strong> · {p.name}</span>
+          <select className="rounded-lg border border-gray-300 px-2 py-1 text-sm" disabled={busy} value={target?.product_id === p.id ? target.color ?? '' : ''} onChange={e => e.target.value && save(p, path, e.target.value)}>
+            <option value="">Escolha a cor…</option>{p.colors.map(c => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+      ))}
+      {err && <p role="alert" className="text-xs text-negative-700">{err}</p>}
+    </div>
   )
 }
 
