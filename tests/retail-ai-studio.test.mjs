@@ -5,11 +5,12 @@ import { lookPrompt, isAiPhotoUrl, modelPrompt, validModel, defaultModel } from 
 test('prompt do look segue a ordem das imagens', () => {
   const p = lookPrompt(2, true)
   assert.match(p, /Vou te enviar 4 imagens/)
-  assert.match(p, /As imagens 2 a 3 são as peças/)
-  assert.match(p, /A última imagem é a de um provador/)
+  assert.match(p, /As imagens 2 a 3 são as de peças/)
+  assert.match(p, /A última imagem é a de um \(cenário\)\./)
   const s = lookPrompt(1, false)
   assert.match(s, /Vou te enviar 2 imagens/)
-  assert.doesNotMatch(s, /provador/)
+  assert.doesNotMatch(s, /cenário/)
+  assert.match(s, /A segunda imagem é a de uma peça de roupa feminina\./)
 })
 
 test('selo de IA só para fotos do Estúdio da própria loja', () => {
@@ -49,4 +50,11 @@ test('ficha das peças: diz qual peça, a cor e manda trocar a roupa da modelo',
   const two = pieceBrief([{ name: 'Blusa', category: null, color: null }, { name: 'Saia', category: 'Saias', color: 'Azul' }])
   assert.match(two, /Imagem 2: Blusa\./)
   assert.match(two, /Imagem 3: Saia \(tipo: Saias\), cor Azul/)
+})
+
+test('completar o look leva a essência da loja', async () => {
+  const { completeLookBrief } = await import('../src/lib/retail/ai-studio.ts')
+  const t = completeLookBrief('Elegância para a vida real')
+  assert.match(t, /Elegância para a vida real/)
+  assert.match(t, /blusa se a peça for uma calça/)
 })

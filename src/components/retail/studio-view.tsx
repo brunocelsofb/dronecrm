@@ -192,6 +192,9 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
   const [times, setTimes] = useState(1)
   const [pose, setPose] = useState<string>('auto')
   const [target, setTarget] = useState<Target | null>(null)
+  // Completar o look: com 1 peça, a IA completa por padrão; com 2 ou mais, só as peças escolhidas
+  const [completeChoice, setCompleteChoice] = useState<boolean | null>(null)
+  const complete = completeChoice ?? picked.length === 1
   const g = useGenerate()
   // Vem do aviso: já escolhe a foto real da peça naquela cor e deixa pronto para gerar
   function startColor(p: StudioProduct, color: string, ref: number) {
@@ -229,6 +232,7 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
           {picked.length > 0 && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setPicked([])}>Limpar</button>}
         </div>
         <input className={`${inp} mt-2`} value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar peça por nome ou código" />
+        <p className="mt-1 text-xs text-gray-500">Para <strong>misturar peças suas</strong> (ex.: a calça e a blusa da loja), toque em mais de uma foto; o número mostra a ordem.</p>
         <PickedColors picked={picked} products={products} target={liveTarget} onColor={(pid, color) => setTarget({ product_id: pid, color })} />
         {products.length === 0 ? <p className="mt-2 text-sm text-gray-600">Nenhuma peça com foto ainda. Adicione fotos em Produtos.</p> : (
           <div className="mt-2 grid max-h-[420px] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-6">
@@ -236,6 +240,15 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
           </div>
         )}
       </div>
+      {picked.length > 0 && (
+        <div className="space-y-1.5 rounded-lg border border-gray-200 p-3">
+          <p className="text-sm font-medium text-gray-900">O resto do look</p>
+          <label className="flex items-start gap-2 text-sm text-gray-700"><input type="radio" className="mt-1" checked={complete} onChange={() => setCompleteChoice(true)} />
+            <span><strong>A IA completa o look</strong> com peças simples que combinam, na essência da loja (ex.: escolheu só a calça, ela põe blusa e sapato). <span className="text-xs text-gray-500">As peças extras não são da loja; servem só para compor a foto.</span></span></label>
+          <label className="flex items-start gap-2 text-sm text-gray-700"><input type="radio" className="mt-1" checked={!complete} onChange={() => setCompleteChoice(false)} />
+            <span><strong>Só as peças que eu escolhi</strong>{picked.length === 1 ? ' (a IA veste só esta peça)' : ''}.</span></label>
+        </div>
+      )}
       <div>
         <h3 className="text-sm font-semibold text-gray-900">3. Cenário <span className="font-normal text-gray-500">(opcional)</span></h3>
         {scenes.length === 0 ? <p className="mt-1 text-sm text-gray-600">Sem cenário, a modelo sai num fundo neutro. <button type="button" className="text-brand-700 underline" onClick={() => goTo('cenario')}>Criar cenário</button></p> : (
@@ -246,7 +259,8 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
         <h3 className="text-sm font-semibold text-gray-900">4. Gerar</h3>
         <div><label className={lbl} htmlFor="lk-title">Nome da foto (opcional)</label><input id="lk-title" className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="ex.: Reunião de segunda" /></div>
         <div><div className="flex items-baseline justify-between"><label className={lbl} htmlFor="lk-prompt">Pedido para a IA</label>{custom !== null && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setCustom(null)}>Voltar ao texto padrão</button>}</div>
-          <textarea id="lk-prompt" className={inp} rows={8} value={prompt} onChange={e => setCustom(e.target.value)} /></div>
+          <textarea id="lk-prompt" className={inp} rows={8} value={prompt} onChange={e => setCustom(e.target.value)} />
+          <p className="mt-1 text-xs text-gray-500">Ao gerar, o Drone acrescenta ao pedido o nome, o tipo e a cor de cada peça{complete ? ', e o pedido para completar o look na essência da loja' : ''}.</p></div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ProviderPick connected={connected} value={provider || connected[0] || ''} onChange={setProvider} />
           <div><label className={lbl} htmlFor="lk-n">Quantas fotos</label><select id="lk-n" className={inp} value={times} onChange={e => setTimes(Number(e.target.value))}><option value={1}>1 foto</option><option value={2}>2 fotos, poses diferentes (cobra 2)</option></select></div>
@@ -258,7 +272,7 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
           onClick={() => {
             const start = Math.floor(Math.random() * POSES.length)
             const poses = times > 1 ? [POSES[start], POSES[(start + 1 + Math.floor(Math.random() * (POSES.length - 1))) % POSES.length]] : [pose === 'auto' ? POSES[start] : pose]
-            g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p, target: liveTarget })))
+            g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p, target: liveTarget, complete })))
           }}>Gerar foto do look</button>
         {!picked.length && <p className="text-xs text-gray-500">Escolha a modelo e ao menos uma peça.</p>}
         <Waiting busy={g.busy} />

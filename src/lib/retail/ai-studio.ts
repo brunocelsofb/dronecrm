@@ -76,21 +76,33 @@ export function scenePrompt(s: SceneSpec): string {
   ].filter(Boolean).join(' ')
 }
 
-// Foto do look: modelo + peças + cenário (o texto segue o prompt combinado com a loja)
+// Foto do look: texto fixo combinado com a loja (modelo + peça(s) + cenário)
 export function lookPrompt(pieces: number, hasScene: boolean): string {
   const total = 1 + pieces + (hasScene ? 1 : 0)
-  const pecas = pieces === 1 ? 'A segunda imagem é a de uma peça de roupa feminina.' : `As imagens 2 a ${pieces + 1} são as peças de um look de roupas femininas.`
+  const one = pieces === 1
   return [
     `Vou te enviar ${total} imagens e quero que você execute rigorosamente as orientações a seguir.`,
     'A primeira imagem é a de uma modelo.',
-    pecas,
-    hasScene ? `A última imagem é a de um provador de loja de roupas (cenário).` : '',
-    `Quero que você coloque ${pieces === 1 ? 'a peça' : 'as roupas dessas peças'} na modelo da primeira imagem, mantendo todas as características tanto da modelo quanto da roupa inalteradas (cor, estampa, tecido, comprimento e detalhes).`,
+    one ? 'A segunda imagem é a de uma peça de roupa feminina.' : `As imagens 2 a ${pieces + 1} são as de peças de roupa femininas.`,
+    hasScene ? 'A última imagem é a de um (cenário).' : '',
+    `Quero que você coloque ${one ? 'a peça' : 'as peças'} na modelo da primeira imagem, mantendo todas as características tanto da modelo quanto da roupa inalteradas (cor, estampa, tecido, comprimento e detalhes).`,
     hasScene
       ? 'E para finalizar, depois de vestir a modelo, coloque a modelo no cenário da última imagem, em uma posição onde é possível notar as principais características tanto da roupa quanto dos acessórios.'
       : 'Mostre a modelo de corpo inteiro, em uma posição onde é possível notar as principais características tanto da roupa quanto dos acessórios.',
     'Foto realista, vertical, sem textos e sem logotipos.',
   ].filter(Boolean).join('\n')
+}
+
+// Completar o look: com 1 peça (ex.: só a calça), a IA veste o resto com peças simples que
+// combinem com a essência da loja. As peças extras não são da loja: são só composição.
+export function completeLookBrief(essence: string): string {
+  return [
+    'COMPLETAR O LOOK:',
+    'A modelo deve aparecer com um look completo e coerente. As peças indicadas são as protagonistas.',
+    'Complete o que faltar (por exemplo, a blusa se a peça for uma calça ou saia; a calça ou saia se a peça for uma blusa; e o calçado) com peças simples, lisas e em cores que combinem com as peças indicadas.',
+    `Siga a essência da loja: "${essence}". As peças complementares não podem chamar mais atenção que as peças indicadas.`,
+    'Não copie as outras roupas que aparecem nas fotos das peças.',
+  ].join('\n')
 }
 
 // Ficha de cada peça para a IA: diz QUAL peça vestir, de que cor, e o que tirar da modelo.

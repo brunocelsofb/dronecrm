@@ -8,7 +8,8 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { decryptSecret } from '@/lib/ai/tenant-key'
 import { generateImage } from '@/lib/retail/ai-providers'
-import { defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, pieceBrief, validModel } from '@/lib/retail/ai-studio'
+import { completeLookBrief, defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, pieceBrief, validModel } from '@/lib/retail/ai-studio'
+import { readContent } from '@/lib/retail/storefront'
 import { RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
 
 export const dynamic = 'force-dynamic'
@@ -82,6 +83,13 @@ export async function POST(req: NextRequest) {
       return { name: String(row?.name ?? 'peça'), category: (row?.category as string | null) ?? null, color }
     }))
     if (brief) prompt = `${prompt}\n\n${brief}`
+    // Completar o look com peças simples que combinem com a essência da loja (escolha da tela)
+    if (b.complete === true) {
+      const { data: sf } = await db.from('retail_storefronts').select('tagline, content').maybeSingle()
+      const essence = readContent(sf?.content).hero_title || (sf?.tagline as string | null) || 'moda feminina elegante para o dia a dia'
+      prompt = `${prompt}\n\n${completeLookBrief(essence)}`
+      inputs.complete = true
+    }
   }
 
   const fmt = IMAGE_FORMAT[kind]
