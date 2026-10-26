@@ -97,3 +97,33 @@ export function lookPrompt(pieces: number, hasScene: boolean): string {
 export function isAiPhotoUrl(url: string | null | undefined, tenantId: string): boolean {
   return !!url && url.includes(`/retail-media/${tenantId}/ia/`)
 }
+
+// ── Texto do look (site + rede social + ocasião sugerida) ─────────────────────
+export const AI_TEXT_MODEL: Record<AiProvider, string> = { openai: 'gpt-6-astra', gemini: 'gemini-3.8-flash' }
+export type LookCopy = { site: string; social: string; hashtags: string[]; occasion: { id: string | null; name: string; why: string } }
+
+export function copyPrompt(o: { store: string; essence: string; pieces: string[]; occasions: { id: string; name: string }[] }): string {
+  return [
+    `Você é redatora de moda da loja ${o.store}. Essência da marca: "${o.essence}".`,
+    'Olhe a foto do look (modelo vestindo as peças) e escreva em português do Brasil, com tom elegante, acolhedor e direto, sem exagero e sem prometer o que não está na foto.',
+    o.pieces.length ? `Peças do look: ${o.pieces.join('; ')}.` : '',
+    `Ocasiões que a loja já usa: ${o.occasions.length ? o.occasions.map(x => `${x.id} = ${x.name}`).join('; ') : 'nenhuma ainda'}.`,
+    'Responda SOMENTE com um JSON neste formato:',
+    '{"site": "texto curto para a vitrine (2 a 3 frases, até 300 caracteres)", "social": "legenda para Instagram (até 600 caracteres, pode ter 1 ou 2 emojis discretos e uma chamada para comprar pelo site ou WhatsApp)", "hashtags": ["até 8 hashtags sem o #"], "occasion": {"id": "id de uma ocasião da lista que combine, ou null", "name": "nome da ocasião (da lista ou uma nova sugestão curta)", "why": "uma frase explicando a escolha"}}',
+  ].filter(Boolean).join('\n')
+}
+
+// Lê o JSON da resposta (aceita bloco ```json); valida e limpa
+export function parseLookCopy(text: string, occasionIds: string[]): LookCopy | null {
+  const m = String(text ?? '').match(/\{[\s\S]*\}/)
+  if (!m) return null
+  let j: Record<string, unknown>
+  try { j = JSON.parse(m[0]) } catch { return null }
+  const site = String(j.site ?? '').trim().slice(0, 400)
+  const social = String(j.social ?? '').trim().slice(0, 900)
+  if (!site || !social || /^texto curto para a vitrine/i.test(site)) return null
+  const hashtags = (Array.isArray(j.hashtags) ? j.hashtags : []).map(h => String(h).replace(/^#/, '').replace(/\s+/g, '').trim()).filter(Boolean).slice(0, 10)
+  const oc = (j.occasion && typeof j.occasion === 'object' ? j.occasion : {}) as Record<string, unknown>
+  const id = typeof oc.id === 'string' && occasionIds.includes(oc.id) ? oc.id : null
+  return { site, social, hashtags, occasion: { id, name: String(oc.name ?? '').trim().slice(0, 40), why: String(oc.why ?? '').trim().slice(0, 200) } }
+}

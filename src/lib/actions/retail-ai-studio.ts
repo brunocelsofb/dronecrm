@@ -104,7 +104,7 @@ export async function publishAiImage(id: string, target: { look?: string | null;
 }
 
 // Lançar no site em um passo: cria o look da vitrine com esta foto de capa e as peças usadas nela
-export async function createLookFromAiImage(id: string, input: { name: string; occasion: string | null }): Promise<Result<{ lookId: string }>> {
+export async function createLookFromAiImage(id: string, input: { name: string; occasion: string | null; description?: string | null }): Promise<Result<{ lookId: string }>> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   if (!UUID.test(id)) return { ok: false, error: 'Imagem inválida.' }
@@ -121,7 +121,7 @@ export async function createLookFromAiImage(id: string, input: { name: string; o
   const occ = input.occasion && /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(input.occasion) ? input.occasion : null
   const { data: last } = await db.from('retail_looks').select('position').order('position', { ascending: false }).limit(1).maybeSingle()
   const { data, error } = await db.from('retail_looks').insert({
-    name, occasion: occ, description: null, product_ids: productIds, cover_photo: retailPhotoUrl(img.path as string), active: true, position: Number(last?.position ?? 0) + 1,
+    name, occasion: occ, description: String(input.description ?? '').trim().slice(0, 600) || null, product_ids: productIds, cover_photo: retailPhotoUrl(img.path as string), active: true, position: Number(last?.position ?? 0) + 1,
   }).select('id').single()
   if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar o look.' }
   revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')

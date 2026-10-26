@@ -24,3 +24,16 @@ test('modelo virtual e modelos de IA', () => {
   assert.equal(validModel('openai', defaultModel('openai')), true)
   assert.equal(validModel('gemini', 'qualquer'), false)
 })
+
+import { parseLookCopy, copyPrompt } from '../src/lib/retail/ai-studio.ts'
+test('texto do look: lê o JSON da IA e valida a ocasião', () => {
+  const t = 'Claro!\n```json\n{"site":"Alfaiataria leve para o dia todo.","social":"Elegância para a vida real ✨","hashtags":["#modafeminina","look do dia"],"occasion":{"id":"trabalho","name":"Trabalho","why":"Corte reto e tom sóbrio."}}\n```'
+  const c = parseLookCopy(t, ['trabalho', 'igreja'])
+  assert.equal(c.site, 'Alfaiataria leve para o dia todo.')
+  assert.deepEqual(c.hashtags, ['modafeminina', 'lookdodia'])
+  assert.equal(c.occasion.id, 'trabalho')
+  assert.equal(parseLookCopy(t, ['igreja']).occasion.id, null)
+  assert.equal(parseLookCopy('sem json', []), null)
+  // o modelo do pedido não vale como resposta
+  assert.equal(parseLookCopy(copyPrompt({ store: 'X', essence: 'Y', pieces: [], occasions: [] }), []), null)
+})

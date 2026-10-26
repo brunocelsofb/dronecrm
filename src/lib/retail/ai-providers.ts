@@ -91,3 +91,43 @@ export async function checkKey(provider: AiProvider, key: string): Promise<strin
     return 'Não consegui falar com o serviço de IA agora. Tente de novo.'
   }
 }
+
+// Texto a partir de uma foto (OpenAI Responses / Gemini Interactions).
+// Junta todos os textos da resposta; quem chama usa o último que fizer sentido.
+function allTexts(node: unknown, out: string[] = [], depth = 0): string[] {
+  if (!node || typeof node !== 'object' || depth > 10) return out
+  const o = node as Record<string, unknown>
+  if (typeof o.output_text === 'string' && o.output_text.trim()) out.push(o.output_text)
+  if ((o.type === 'output_text' || o.type === 'text') && typeof o.text === 'string' && o.text.trim()) out.push(o.text)
+  for (const v of Object.values(o)) {
+    if (Array.isArray(v)) v.forEach(x => allTexts(x, out, depth + 1))
+    else if (v && typeof v === 'object') allTexts(v, out, depth + 1)
+  }
+  return out
+}
+
+export async function describeImage(g: { provider: AiProvider; key: string; model: string; prompt: string; imageUrl: string }): Promise<{ ok: true; texts: string[] } | { ok: false; error: string }> {
+  try {
+    let r: Response
+    if (g.provider === 'gemini') {
+      const img = await fetchAsBase64(g.imageUrl)
+      r = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': g.key },
+        body: JSON.stringify({ model: g.model, input: [{ type: 'text', text: g.prompt }, { type: 'image', mime_type: img.mime, data: img.data }] }),
+      })
+    } else {
+      r = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${g.key}` },
+        body: JSON.stringify({ model: g.model, input: [{ role: 'user', content: [{ type: 'input_text', text: g.prompt }, { type: 'input_image', image_url: g.imageUrl }] }] }),
+      })
+    }
+    const body = await r.text()
+    if (!r.ok) return { ok: false, error: apiError(g.provider, r.status, body) }
+    let json: unknown = null
+    try { json = JSON.parse(body) } catch { return { ok: false, error: 'Resposta inesperada da IA.' } }
+    const texts = allTexts(json).filter(t => t !== g.prompt)
+    return texts.length ? { ok: true, texts } : { ok: false, error: 'A IA não devolveu texto.' }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message.slice(0, 300) : 'Falha ao chamar a IA.' }
+  }
+}

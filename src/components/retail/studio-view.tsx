@@ -6,9 +6,9 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createLookFromAiImage, deleteAiImage, publishAiImage, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
-import { AI_PROVIDERS, IMAGE_FORMAT, MAX_LOOK_PIECES, POSES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
+import { AI_PROVIDERS, IMAGE_FORMAT, type LookCopy, MAX_LOOK_PIECES, POSES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
 
-export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; title: string | null; url: string; provider: string; created_at: string }
+export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; title: string | null; url: string; provider: string; created_at: string; copy?: LookCopy | null }
 export type StudioProduct = { id: string; code: string; name: string; photos: string[] }
 type Conn = { provider: AiProvider; last4: string | null; model: string | null }
 type Opt = { id: string; name: string }
@@ -97,12 +97,13 @@ function AccountSection({ connections }: { connections: Conn[] }) {
 }
 
 // ── Gerar (chamada comum) ─────────────────────────────────────────────────────
-type Made = { id: string; url: string; kind: StudioImage['kind'] }
+type Made = { id: string; url: string; kind: StudioImage['kind']; copy?: LookCopy | null }
 function useGenerate() {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [last, setLast] = useState<Made[]>([])
+  const [writing, setWriting] = useState(false)
   // Um pedido por foto (com 2 fotos, cada pedido leva uma pose diferente)
   async function run(bodies: Record<string, unknown>[]) {
     setBusy(true); setErr(null)
@@ -113,9 +114,19 @@ function useGenerate() {
     const ok = results.filter((x): x is Made => 'url' in x)
     const bad = results.find((x): x is { error: string } => 'error' in x)
     if (bad) setErr(bad.error)
-    if (ok.length) { setLast(ok); router.refresh() }
+    if (ok.length) setLast(ok)
+    // Foto de look nova: já pede o texto (site, rede social e ocasião) pela foto
+    const looksMade = ok.filter(m => m.kind === 'look')
+    if (looksMade.length) {
+      setWriting(true)
+      const copies = await Promise.all(looksMade.map(m => fetch('/api/varejo/ia/texto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_id: m.id }) })
+        .then(async x => (x.ok ? ((await x.json()).copy as LookCopy) : null)).catch(() => null)))
+      setWriting(false)
+      setLast(ok.map(m => ({ ...m, copy: copies[looksMade.indexOf(m)] ?? m.copy ?? null })))
+    }
+    if (ok.length) router.refresh()
   }
-  return { busy, err, last, run }
+  return { busy, err, last, run, writing }
 }
 
 function ProviderPick({ connected, value, onChange }: { connected: AiProvider[]; value: AiProvider | ''; onChange: (p: AiProvider) => void }) {
@@ -138,7 +149,7 @@ function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occa
           <div key={m.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <a href={m.url} target="_blank" rel="noopener noreferrer"><img src={m.url} alt="Imagem gerada" className="aspect-[4/5] w-full object-cover" /></a>
-            {m.kind === 'look' && looks && occasions && <ImageActions id={m.id} kind="look" url={m.url} looks={looks} occasions={occasions} />}
+            {m.kind === 'look' && looks && occasions && <ImageActions key={`${m.id}-${m.copy ? 1 : 0}`} id={m.id} kind="look" url={m.url} looks={looks} occasions={occasions} copy={m.copy} />}
           </div>
         ))}
       </div>
@@ -232,6 +243,7 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
         {!picked.length && <p className="text-xs text-gray-500">Escolha a modelo e ao menos uma peça.</p>}
         <Waiting busy={g.busy} />
         {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
+        {g.writing && <p className="text-sm text-gray-600" role="status">Escrevendo o texto do look pela foto…</p>}
         <Results made={g.last} looks={looks} occasions={occasions} />
       </div>
       <LookGallery images={images.filter(i => i.kind === 'look')} looks={looks} occasions={occasions} />
@@ -254,7 +266,7 @@ function LookGallery({ images, looks, occasions }: { images: StudioImage[]; look
               <img src={i.url} alt={i.title ?? 'Look'} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
               <span className="block truncate px-2 py-1 text-xs text-gray-700">{i.title ?? 'Look'}</span>
             </button>
-            {open === i.id && <ImageActions id={i.id} kind="look" url={i.url} looks={looks} occasions={occasions} />}
+            {open === i.id && <ImageActions id={i.id} kind="look" url={i.url} looks={looks} occasions={occasions} copy={i.copy} />}
           </div>
         ))}
       </div>
@@ -263,10 +275,29 @@ function LookGallery({ images, looks, occasions }: { images: StudioImage[]; look
 }
 
 // Publicar uma imagem: criar look na vitrine, capa de look existente, capa da vitrine, excluir
-function ImageActions({ id, kind, url, looks, occasions }: { id: string; kind: StudioImage['kind']; url: string; looks: Opt[]; occasions: Opt[] }) {
+function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = null }: { id: string; kind: StudioImage['kind']; url: string; looks: Opt[]; occasions: Opt[]; copy?: LookCopy | null }) {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [occ, setOcc] = useState('')
+  const [occ, setOcc] = useState(initialCopy?.occasion.id ?? '')
+  const [copy, setCopy] = useState<LookCopy | null>(initialCopy)
+  const [site, setSite] = useState(initialCopy?.site ?? '')
+  const [copyBusy, setCopyBusy] = useState(false)
+  const [copyErr, setCopyErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  async function suggest() {
+    setCopyBusy(true); setCopyErr(null)
+    const r = await fetch('/api/varejo/ia/texto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_id: id }) })
+      .then(async (x): Promise<{ copy: LookCopy } | { error: string }> => { const j = await x.json().catch(() => ({})); return x.ok ? { copy: j.copy as LookCopy } : { error: String(j.error ?? `Erro ${x.status}.`) } })
+      .catch((): { error: string } => ({ error: 'Sem conexão. Tente de novo.' }))
+    setCopyBusy(false)
+    if ('error' in r) { setCopyErr(r.error); return }
+    setCopy(r.copy); setSite(r.copy.site); if (r.copy.occasion.id) setOcc(r.copy.occasion.id)
+  }
+  async function copySocial() {
+    if (!copy) return
+    const text = `${copy.social}${copy.hashtags.length ? `\n\n${copy.hashtags.map(h => `#${h}`).join(' ')}` : ''}`
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { setCopyErr('Não foi possível copiar. Selecione o texto e copie.') }
+  }
   const [look, setLook] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -280,11 +311,33 @@ function ImageActions({ id, kind, url, looks, occasions }: { id: string; kind: S
   return (
     <div className="space-y-2 border-t border-gray-100 p-2">
       {kind === 'look' && (
+        <div className="space-y-1.5 rounded-md border border-gray-100 p-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[11px] font-medium text-gray-700">Texto sugerido</p>
+            {!copyBusy && <button type="button" className="text-[11px] text-brand-700 underline" onClick={suggest}>{copy ? 'Refazer texto' : 'Sugerir texto'}</button>}
+          </div>
+          {copyBusy && <p className="text-[11px] text-gray-500" role="status">Escrevendo pela foto…</p>}
+          {copyErr && <p role="alert" className="text-[11px] text-negative-700">{copyErr}</p>}
+          {copy && (
+            <>
+              <label className="block text-[11px] text-gray-600">Para o site (vai na descrição do look)
+                <textarea className={`${inp} mt-0.5 text-xs`} rows={4} value={site} onChange={e => setSite(e.target.value)} /></label>
+              <div className="text-[11px] text-gray-600">Para a rede social
+                <p className="mt-0.5 whitespace-pre-wrap rounded-lg bg-gray-50 p-2 text-xs text-gray-800">{copy.social}{copy.hashtags.length ? `\n\n${copy.hashtags.map(h => `#${h}`).join(' ')}` : ''}</p>
+                <button type="button" className="mt-1 text-[11px] text-brand-700 underline" onClick={copySocial}>{copied ? 'Copiado' : 'Copiar legenda'}</button></div>
+              {copy.occasion.name && (
+                <p className="rounded bg-brand-100/50 px-2 py-1 text-[11px] text-gray-700"><strong>Ocasião sugerida:</strong> {copy.occasion.name}{copy.occasion.why ? `. ${copy.occasion.why}` : ''}{!copy.occasion.id ? ' (é nova: crie em Varejo → Vitrine → Ocasiões)' : ''}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {kind === 'look' && (
         <div className="space-y-1.5 rounded-md bg-brand-100/40 p-2">
           <p className="text-[11px] font-medium text-gray-700">Criar look na vitrine com esta foto (já com as peças dela)</p>
           <input className={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Nome do look (ex.: Reunião)" aria-label="Nome do look" />
           {occasions.length > 0 && <select className={inp} value={occ} onChange={e => setOcc(e.target.value)} aria-label="Ocasião"><option value="">Sem ocasião</option>{occasions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>}
-          <button type="button" className={`${btn} w-full`} disabled={busy || !name.trim()} onClick={() => act(() => createLookFromAiImage(id, { name, occasion: occ || null }), 'Look criado e publicado na vitrine.')}>Criar look no site</button>
+          <button type="button" className={`${btn} w-full`} disabled={busy || !name.trim()} onClick={() => act(() => createLookFromAiImage(id, { name, occasion: occ || null, description: site || null }), 'Look criado e publicado na vitrine.')}>Criar look no site</button>
         </div>
       )}
       {kind === 'look' && looks.length > 0 && (
@@ -366,10 +419,31 @@ function SceneTab({ images, connected }: { images: StudioImage[]; connected: AiP
 }
 
 function Gallery({ images }: { images: StudioImage[] }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
   if (!images.length) return null
+  async function remove(i: StudioImage) {
+    if (!confirm(`Excluir ${i.title ?? 'esta imagem'}? As fotos de look já criadas com ela continuam.`)) return
+    setBusy(i.id); setErr(null)
+    const r = await deleteAiImage(i.id)
+    setBusy(null)
+    if (!r.ok) { setErr(r.error); return }
+    router.refresh()
+  }
   return (
-    <div className="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 sm:grid-cols-6">
-      {images.map(i => /* eslint-disable-next-line @next/next/no-img-element */ <a key={i.id} href={i.url} target="_blank" rel="noopener noreferrer" className="block"><img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[3/4] w-full rounded-lg bg-gray-100 object-cover" /><span className="block truncate text-[11px] text-gray-600">{i.title}</span></a>)}
+    <div className="space-y-2 border-t border-gray-100 pt-3">
+      {err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{err}</p>}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {images.map(i => (
+          <div key={i.id}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <a href={i.url} target="_blank" rel="noopener noreferrer" className="block"><img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[3/4] w-full rounded-lg bg-gray-100 object-cover" /></a>
+            <div className="flex items-center justify-between gap-1"><span className="truncate text-[11px] text-gray-600">{i.title}</span>
+              <button type="button" className="shrink-0 text-[11px] text-negative-700 disabled:opacity-50" disabled={busy === i.id} onClick={() => remove(i)}>{busy === i.id ? '…' : 'Excluir'}</button></div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -395,7 +469,7 @@ function BankTab({ images, looks, occasions }: { images: StudioImage[]; looks: O
                 <img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
                 <span className="block px-2 py-1 text-xs text-gray-700"><span className="font-medium">{label[i.kind]}</span>{i.title ? ` · ${i.title}` : ''}</span>
               </button>
-              {open === i.id && <ImageActions id={i.id} kind={i.kind} url={i.url} looks={looks} occasions={occasions} />}
+              {open === i.id && <ImageActions id={i.id} kind={i.kind} url={i.url} looks={looks} occasions={occasions} copy={i.copy} />}
             </div>
           ))}
         </div>

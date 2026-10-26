@@ -26,12 +26,12 @@ export default async function RetailStudioPage() {
   const db = await createScopedAdmin(tenantId)
   const [{ data: conns }, { data: imgs }, { data: prods }, { data: looks }, { data: sf }] = await Promise.all([
     db.from('retail_ai_connections').select('provider, key_last4, model').eq('user_id', access.userId),
-    db.from('retail_ai_images').select('id, kind, title, path, provider, model, created_at').order('created_at', { ascending: false }).limit(300),
+    db.from('retail_ai_images').select('id, kind, title, path, provider, model, created_at, copy').order('created_at', { ascending: false }).limit(300),
     db.from('retail_products').select('id, code, name, photos, status').neq('status', 'arquivado').order('name').limit(2000),
     db.from('retail_looks').select('id, name, cover_photo').order('position').limit(200),
     db.from('retail_storefronts').select('occasions').maybeSingle(),
   ])
-  const images: StudioImage[] = (imgs ?? []).map(i => ({ id: i.id as string, kind: i.kind as StudioImage['kind'], title: i.title as string | null, url: retailPhotoUrl(i.path as string), provider: i.provider as string, created_at: i.created_at as string }))
+  const images: StudioImage[] = (imgs ?? []).map(i => ({ id: i.id as string, kind: i.kind as StudioImage['kind'], title: i.title as string | null, url: retailPhotoUrl(i.path as string), provider: i.provider as string, created_at: i.created_at as string, copy: (i.copy as StudioImage['copy']) ?? null }))
   const products: StudioProduct[] = (prods ?? []).map(p => ({
     id: p.id as string, code: p.code as string, name: p.name as string,
     photos: ((p.photos ?? []) as string[]).map(ph => (/^https:\/\//.test(ph) ? ph : retailPhotoUrl(ph))),
