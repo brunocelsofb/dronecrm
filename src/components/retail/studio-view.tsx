@@ -3,13 +3,17 @@
 // Estúdio IA: conta de IA da administradora, modelos virtuais, cenários, foto do look
 // (modelo + peças + cenário) e o banco de imagens para publicar na vitrine.
 
-import { useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createLookFromAiImage, deleteAiImage, publishAiImage, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
+import { createLookFromAiImage, deleteAiImage, publishAiImage, publishAiImageToProduct, removeAiConnection, saveAiConnection, setAiModel } from '@/lib/actions/retail-ai-studio'
+import { colorCoverage, missingModelColors, type PhotoMeta } from '@/lib/retail/photo-colors'
 import { AI_PROVIDERS, IMAGE_FORMAT, type LookCopy, MAX_LOOK_PIECES, POSES, SCENE_PLACES, lookPrompt, modelPrompt, scenePrompt, type AiProvider, type ModelSpec } from '@/lib/retail/ai-studio'
 
-export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; title: string | null; url: string; provider: string; created_at: string; copy?: LookCopy | null }
-export type StudioProduct = { id: string; code: string; name: string; photos: string[] }
+type Target = { product_id: string; color: string | null }
+export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; title: string | null; url: string; provider: string; created_at: string; copy?: LookCopy | null; pieces?: string[]; target?: Target | null }
+// photos = endereço para mostrar; paths = como está gravado (chave do meta); meta = cor e "com modelo" de cada foto
+export type StudioProduct = { id: string; code: string; name: string; status: string; colors: string[]; meta: PhotoMeta; paths: string[]; photos: string[] }
+const ProductsCtx = createContext<StudioProduct[]>([])
 type Conn = { provider: AiProvider; last4: string | null; model: string | null }
 type Opt = { id: string; name: string }
 
@@ -23,6 +27,7 @@ export function StudioView({ connections, images, products, looks, occasions }: 
   const [tab, setTab] = useState<Tab>('look')
   const connected = connections.map(c => c.provider)
   return (
+    <ProductsCtx.Provider value={products}>
     <div className="space-y-4">
       <AccountSection connections={connections} />
       <p className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">Na vitrine, toda foto criada aqui leva um selo discreto <strong>&quot;Imagem criada por IA&quot;</strong>. A IA pode mudar um pouco o tom ou o caimento da roupa: as fotos reais continuam na página de cada peça.</p>
@@ -36,6 +41,7 @@ export function StudioView({ connections, images, products, looks, occasions }: 
       {tab === 'cenario' && <SceneTab images={images.filter(i => i.kind === 'cenario')} connected={connected} />}
       {tab === 'banco' && <BankTab images={images} looks={looks} occasions={occasions} />}
     </div>
+    </ProductsCtx.Provider>
   )
 }
 
@@ -97,7 +103,7 @@ function AccountSection({ connections }: { connections: Conn[] }) {
 }
 
 // ── Gerar (chamada comum) ─────────────────────────────────────────────────────
-type Made = { id: string; url: string; kind: StudioImage['kind']; copy?: LookCopy | null }
+type Made = { id: string; url: string; kind: StudioImage['kind']; copy?: LookCopy | null; pieces?: string[]; target?: Target | null }
 function useGenerate() {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -108,8 +114,8 @@ function useGenerate() {
   async function run(bodies: Record<string, unknown>[]) {
     setBusy(true); setErr(null)
     const results = await Promise.all(bodies.map(body => fetch('/api/varejo/ia/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(async r => { const j = await r.json().catch(() => ({})); return r.ok ? { id: j.id as string, url: j.url as string, kind: j.kind as Made['kind'] } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
-      .catch(() => ({ error: 'Sem conexão. Tente de novo.' }))))
+      .then(async (r): Promise<Made | { error: string }> => { const j = await r.json().catch(() => ({})); return r.ok ? { id: j.id as string, url: j.url as string, kind: j.kind as Made['kind'], pieces: Array.isArray(body.pieces) ? [...new Set((body.pieces as { product_id: string }[]).map(x => x.product_id))] : [], target: (body.target as Target | null | undefined) ?? null } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
+      .catch((): { error: string } => ({ error: 'Sem conexão. Tente de novo.' }))))
     setBusy(false)
     const ok = results.filter((x): x is Made => 'url' in x)
     const bad = results.find((x): x is { error: string } => 'error' in x)
@@ -149,7 +155,7 @@ function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occa
           <div key={m.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <a href={m.url} target="_blank" rel="noopener noreferrer"><img src={m.url} alt="Imagem gerada" className="aspect-[4/5] w-full object-cover" /></a>
-            {m.kind === 'look' && looks && occasions && <ImageActions key={`${m.id}-${m.copy ? 1 : 0}`} id={m.id} kind="look" url={m.url} looks={looks} occasions={occasions} copy={m.copy} />}
+            {m.kind === 'look' && looks && occasions && <ImageActions key={`${m.id}-${m.copy ? 1 : 0}`} id={m.id} kind="look" url={m.url} looks={looks} occasions={occasions} copy={m.copy} pieces={m.pieces} target={m.target} />}
           </div>
         ))}
       </div>
@@ -184,12 +190,22 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
   const [custom, setCustom] = useState<string | null>(null)
   const [times, setTimes] = useState(1)
   const [pose, setPose] = useState<string>('auto')
+  const [target, setTarget] = useState<Target | null>(null)
   const g = useGenerate()
+  // Vem do aviso: já escolhe a foto real da peça naquela cor e deixa pronto para gerar
+  function startColor(p: StudioProduct, color: string, ref: number) {
+    setPicked([{ product_id: p.id, photo: ref }]); setTarget({ product_id: p.id, color })
+    setTitle(`${p.name} · ${color}`); setCustom(null); setQ('')
+    document.getElementById('estudio-look')?.scrollIntoView({ behavior: 'smooth' })
+  }
+  // A cor só vale se a peça continuar escolhida
+  const liveTarget = target && picked.some(x => x.product_id === target.product_id) ? target : null
   const auto = lookPrompt(Math.max(1, picked.length), !!scene)
   const prompt = custom ?? auto
   const term = q.trim().toLowerCase()
+  // Só fotos da peça sem modelo (servem de base para a IA vestir); mostra a cor da foto
   const tiles = useMemo(() => products.filter(p => !term || p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term))
-    .flatMap(p => p.photos.map((url, i) => ({ p, url, i }))).slice(0, 120), [products, term])
+    .flatMap(p => p.photos.map((url, i) => ({ p, url, i, info: p.meta[p.paths[i]] })).filter(t => !t.info?.model)).slice(0, 120), [products, term])
   const isPicked = (pid: string, i: number) => picked.findIndex(x => x.product_id === pid && x.photo === i)
   const toggle = (pid: string, i: number) => setPicked(prev => {
     const k = prev.findIndex(x => x.product_id === pid && x.photo === i)
@@ -198,7 +214,9 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
   })
   return (
     <section className="space-y-5 rounded-xl border border-gray-200 bg-white p-4">
-      <div>
+      <MissingColors products={products} onStart={startColor} />
+      <div id="estudio-look" className="scroll-mt-4">
+        {liveTarget && <p className="mb-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">Foto com modelo para <strong>{products.find(p => p.id === liveTarget.product_id)?.name}</strong> na cor <strong>{liveTarget.color}</strong>. Escolha a modelo e o cenário e gere; depois toque em <strong>Publicar na peça</strong>.</p>}
         <h3 className="text-sm font-semibold text-gray-900">1. Escolha a modelo</h3>
         {models.length === 0 ? <p className="mt-1 text-sm text-gray-600">Você ainda não tem modelo. <button type="button" className="text-brand-700 underline" onClick={() => goTo('modelo')}>Crie a primeira na aba Modelos</button>.</p> : (
           <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">{models.map(m => <Pickable key={m.id} url={m.url} label={m.title ?? 'Modelo'} selected={model === m.id} onClick={() => setModel(m.id)} />)}</div>
@@ -206,13 +224,13 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
       </div>
       <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-gray-900">2. Escolha as peças do look <span className="font-normal text-gray-500">({picked.length} de até {MAX_LOOK_PIECES})</span></h3>
+          <h3 className="text-sm font-semibold text-gray-900">2. Escolha as peças <span className="font-normal text-gray-500">({picked.length} de até {MAX_LOOK_PIECES}; 1 peça = foto da peça com a modelo)</span></h3>
           {picked.length > 0 && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setPicked([])}>Limpar</button>}
         </div>
         <input className={`${inp} mt-2`} value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar peça por nome ou código" />
         {products.length === 0 ? <p className="mt-2 text-sm text-gray-600">Nenhuma peça com foto ainda. Adicione fotos em Produtos.</p> : (
           <div className="mt-2 grid max-h-[420px] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-6">
-            {tiles.map(t => { const k = isPicked(t.p.id, t.i); return <Pickable key={`${t.p.id}-${t.i}`} url={t.url} label={`${t.p.code} · ${t.p.name}`} selected={k >= 0} badge={k >= 0 ? String(k + 1) : undefined} onClick={() => toggle(t.p.id, t.i)} /> })}
+            {tiles.map(t => { const k = isPicked(t.p.id, t.i); return <Pickable key={`${t.p.id}-${t.i}`} url={t.url} label={`${t.p.code} · ${t.info?.color ?? t.p.name}`} selected={k >= 0} badge={k >= 0 ? String(k + 1) : undefined} onClick={() => toggle(t.p.id, t.i)} /> })}
           </div>
         )}
       </div>
@@ -238,7 +256,7 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
           onClick={() => {
             const start = Math.floor(Math.random() * POSES.length)
             const poses = times > 1 ? [POSES[start], POSES[(start + 1 + Math.floor(Math.random() * (POSES.length - 1))) % POSES.length]] : [pose === 'auto' ? POSES[start] : pose]
-            g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p })))
+            g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p, target: liveTarget })))
           }}>Gerar foto do look</button>
         {!picked.length && <p className="text-xs text-gray-500">Escolha a modelo e ao menos uma peça.</p>}
         <Waiting busy={g.busy} />
@@ -248,6 +266,77 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
       </div>
       <LookGallery images={images.filter(i => i.kind === 'look')} looks={looks} occasions={occasions} />
     </section>
+  )
+}
+
+// ── Aviso: peças com mais de uma cor sem foto com modelo em alguma cor ─────────
+function MissingColors({ products, onStart }: { products: StudioProduct[]; onStart: (p: StudioProduct, color: string, ref: number) => void }) {
+  const [all, setAll] = useState(false)
+  const rows = products.map(p => ({ p, miss: missingModelColors(p.paths, p.meta, p.colors), cov: colorCoverage(p.paths, p.meta, p.colors) })).filter(r => r.miss.length > 0)
+  if (!rows.length) return null
+  const total = rows.reduce((t, r) => t + r.miss.length, 0)
+  const shown = all ? rows : rows.slice(0, 5)
+  return (
+    <div className="space-y-2 rounded-lg border border-warn-700/30 bg-warn-100/60 p-3">
+      <p className="text-sm font-semibold text-gray-900">Faltam fotos com modelo: {rows.length} peça(s), {total} cor(es)</p>
+      <p className="text-xs text-gray-700">Peça com mais de uma cor precisa de uma foto com a modelo <strong>em cada cor</strong>: na vitrine, a cliente toca na cor e a foto troca. A IA veste a peça a partir da <strong>foto real da peça naquela cor</strong>.</p>
+      <ul className="divide-y divide-warn-700/10">
+        {shown.map(({ p, cov }) => (
+          <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
+            <span className="min-w-0 flex-1 text-sm text-gray-900"><strong>{p.code}</strong> · {p.name}{p.status !== 'publicado' ? <span className="ml-1 text-xs text-gray-500">(não publicada)</span> : null}</span>
+            <span className="flex flex-wrap gap-1.5">
+              {cov.map(c => c.model
+                ? <span key={c.color} className="rounded-full bg-positive-100 px-2 py-1 text-xs text-positive-700">✓ {c.color}</span>
+                : c.reference !== null
+                  ? <button key={c.color} type="button" onClick={() => onStart(p, c.color, c.reference as number)} className="rounded-full bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800">Gerar {c.color}</button>
+                  : <a key={c.color} href={`/varejo/produtos/${p.id}#fotos`} className="rounded-full border border-warn-700/40 bg-white px-2.5 py-1 text-xs text-warn-700" title="Suba uma foto real da peça nesta cor e marque a cor na foto">Falta foto real {c.color}</a>)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {rows.length > 5 && <button type="button" className="text-xs text-brand-700 underline" onClick={() => setAll(!all)}>{all ? 'Mostrar menos' : `Ver todas (${rows.length})`}</button>}
+    </div>
+  )
+}
+
+// Publicar a foto com a modelo na peça, na cor certa, com o texto da peça
+function PublishToProduct({ id, pieces, target, site, setSite }: { id: string; pieces: string[]; target: Target | null; site: string; setSite: (v: string) => void }) {
+  const router = useRouter()
+  const all = useContext(ProductsCtx)
+  const options = all.filter(p => pieces.includes(p.id))
+  const [pid, setPid] = useState(target?.product_id && options.some(o => o.id === target.product_id) ? target.product_id : options[0]?.id ?? '')
+  const prod = options.find(o => o.id === pid)
+  const firstMissing = prod ? missingModelColors(prod.paths, prod.meta, prod.colors)[0]?.color : undefined
+  const [color, setColor] = useState<string>(target?.color ?? firstMissing ?? prod?.colors[0] ?? '')
+  const [useText, setUseText] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  if (!options.length) return null
+  const colorOk = !prod || prod.colors.length === 0 ? '' : prod.colors.includes(color) ? color : ''
+  async function go() {
+    setBusy(true); setMsg(null)
+    const r = await publishAiImageToProduct(id, { productId: pid, color: colorOk || null, description: useText ? site : null })
+    setBusy(false)
+    setMsg(r.ok ? { ok: true, text: `Publicada em ${prod?.name}${colorOk ? `, cor ${colorOk}` : ''}. A vitrine atualiza em até 1 minuto.` } : { ok: false, text: r.error })
+    if (r.ok) router.refresh()
+  }
+  return (
+    <div className="space-y-1.5 rounded-md bg-brand-100/40 p-2">
+      <p className="text-[11px] font-medium text-gray-700">Publicar na peça (foto com a modelo)</p>
+      {options.length > 1 && <select className={inp} value={pid} onChange={e => { setPid(e.target.value); const o = options.find(x => x.id === e.target.value); setColor(o ? (missingModelColors(o.paths, o.meta, o.colors)[0]?.color ?? o.colors[0] ?? '') : '') }} aria-label="Peça">{options.map(o => <option key={o.id} value={o.id}>{o.code} · {o.name}</option>)}</select>}
+      {options.length === 1 && <p className="text-xs text-gray-700">{prod?.code} · {prod?.name}</p>}
+      {prod && prod.colors.length > 0 && (
+        <select className={inp} value={colorOk} onChange={e => setColor(e.target.value)} aria-label="Cor da peça nesta foto">
+          <option value="">Vale para todas as cores</option>
+          {prod.colors.map(c => <option key={c} value={c}>Cor: {c}{colorCoverage(prod.paths, prod.meta, [c])[0].model ? ' (já tem foto com modelo)' : ''}</option>)}
+        </select>
+      )}
+      <label className="block text-[11px] text-gray-600">Texto da peça no site (descrição)
+        <textarea className={`${inp} mt-0.5 text-xs`} rows={3} value={site} onChange={e => setSite(e.target.value)} placeholder="Toque em Sugerir texto acima ou escreva aqui" /></label>
+      <label className="flex items-center gap-1.5 text-[11px] text-gray-600"><input type="checkbox" checked={useText && !!site.trim()} disabled={!site.trim()} onChange={e => setUseText(e.target.checked)} />Usar este texto como descrição da peça</label>
+      <button type="button" className={`${btn} w-full`} disabled={busy || !pid} onClick={go}>{busy ? 'Publicando…' : 'Publicar na peça'}</button>
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded px-2 py-1 text-xs ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}</p>}
+    </div>
   )
 }
 
@@ -266,7 +355,7 @@ function LookGallery({ images, looks, occasions }: { images: StudioImage[]; look
               <img src={i.url} alt={i.title ?? 'Look'} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
               <span className="block truncate px-2 py-1 text-xs text-gray-700">{i.title ?? 'Look'}</span>
             </button>
-            {open === i.id && <ImageActions id={i.id} kind="look" url={i.url} looks={looks} occasions={occasions} copy={i.copy} />}
+            {open === i.id && <ImageActions id={i.id} kind="look" url={i.url} looks={looks} occasions={occasions} copy={i.copy} pieces={i.pieces} target={i.target} />}
           </div>
         ))}
       </div>
@@ -275,7 +364,7 @@ function LookGallery({ images, looks, occasions }: { images: StudioImage[]; look
 }
 
 // Publicar uma imagem: criar look na vitrine, capa de look existente, capa da vitrine, excluir
-function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = null }: { id: string; kind: StudioImage['kind']; url: string; looks: Opt[]; occasions: Opt[]; copy?: LookCopy | null }) {
+function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = null, pieces = [], target = null }: { id: string; kind: StudioImage['kind']; url: string; looks: Opt[]; occasions: Opt[]; copy?: LookCopy | null; pieces?: string[]; target?: Target | null }) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [occ, setOcc] = useState(initialCopy?.occasion.id ?? '')
@@ -320,8 +409,8 @@ function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = nul
           {copyErr && <p role="alert" className="text-[11px] text-negative-700">{copyErr}</p>}
           {copy && (
             <>
-              <label className="block text-[11px] text-gray-600">Para o site (vai na descrição do look)
-                <textarea className={`${inp} mt-0.5 text-xs`} rows={4} value={site} onChange={e => setSite(e.target.value)} /></label>
+              {pieces.length > 1 && <label className="block text-[11px] text-gray-600">Para o site (vai na descrição do look)
+                <textarea className={`${inp} mt-0.5 text-xs`} rows={4} value={site} onChange={e => setSite(e.target.value)} /></label>}
               <div className="text-[11px] text-gray-600">Para a rede social
                 <p className="mt-0.5 whitespace-pre-wrap rounded-lg bg-gray-50 p-2 text-xs text-gray-800">{copy.social}{copy.hashtags.length ? `\n\n${copy.hashtags.map(h => `#${h}`).join(' ')}` : ''}</p>
                 <button type="button" className="mt-1 text-[11px] text-brand-700 underline" onClick={copySocial}>{copied ? 'Copiado' : 'Copiar legenda'}</button></div>
@@ -332,6 +421,7 @@ function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = nul
           )}
         </div>
       )}
+      {kind === 'look' && pieces.length === 1 && <PublishToProduct id={id} pieces={pieces} target={target} site={site} setSite={setSite} />}
       {kind === 'look' && (
         <div className="space-y-1.5 rounded-md bg-brand-100/40 p-2">
           <p className="text-[11px] font-medium text-gray-700">Criar look na vitrine com esta foto (já com as peças dela)</p>
@@ -345,6 +435,12 @@ function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = nul
           <select className={inp} value={look} onChange={e => setLook(e.target.value)} aria-label="Look existente"><option value="">Ou trocar a capa de um look…</option>{looks.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
           {look && <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { look }), 'Capa do look trocada.')}>Usar como capa deste look</button>}
         </div>
+      )}
+      {kind === 'look' && pieces.length > 1 && (
+        <details className="rounded-md border border-gray-100 p-2">
+          <summary className="cursor-pointer text-[11px] font-medium text-gray-700">Publicar também na página de uma das peças</summary>
+          <div className="mt-1.5"><PublishToProduct id={id} pieces={pieces} target={target} site={site} setSite={setSite} /></div>
+        </details>
       )}
       <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'desktop' }), 'Capa da vitrine (computador) trocada.')}>Capa da vitrine (computador)</button>
       <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'mobile' }), 'Capa da vitrine (celular) trocada.')}>Capa da vitrine (celular)</button>
@@ -469,7 +565,7 @@ function BankTab({ images, looks, occasions }: { images: StudioImage[]; looks: O
                 <img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[4/5] w-full bg-gray-100 object-cover" />
                 <span className="block px-2 py-1 text-xs text-gray-700"><span className="font-medium">{label[i.kind]}</span>{i.title ? ` · ${i.title}` : ''}</span>
               </button>
-              {open === i.id && <ImageActions id={i.id} kind={i.kind} url={i.url} looks={looks} occasions={occasions} copy={i.copy} />}
+              {open === i.id && <ImageActions id={i.id} kind={i.kind} url={i.url} looks={looks} occasions={occasions} copy={i.copy} pieces={i.pieces} target={i.target} />}
             </div>
           ))}
         </div>

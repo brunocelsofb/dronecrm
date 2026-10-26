@@ -12,6 +12,7 @@ import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { readPhotoMeta, type PhotoMeta } from '@/lib/retail/photo-colors'
 import {
   cleanText, cleanLongText, normalizeCode, defaultSku, parseMoney, parseStock, isProductStatus,
   RETAIL_MEDIA_BUCKET, MAX_PHOTOS, type ProductStatus, type RetailVariant,
@@ -151,7 +152,8 @@ export async function deleteRetailProduct(productId: string): Promise<Result> {
   const db = await createScopedAdmin(g.tenantId)
   const { data: p } = await db.from('retail_products').select('id, photos').eq('id', productId).maybeSingle()
   if (!p) return { ok: false, error: 'Peça não encontrada.' }
-  const photos = ((p.photos as string[] | null) ?? []).filter(path => path.startsWith(`${g.tenantId}/`))
+  // Só os arquivos da pasta da peça; foto do Estúdio IA continua no banco de imagens
+  const photos = ((p.photos as string[] | null) ?? []).filter(path => path.startsWith(`${g.tenantId}/produtos/${productId}/`))
   if (photos.length) await db.storage.from(RETAIL_MEDIA_BUCKET).remove(photos)
   const { error } = await db.from('retail_products').delete().eq('id', productId)
   if (error) return { ok: false, error: error.message }
@@ -207,8 +209,12 @@ export async function removeRetailPhoto(productId: string, path: string): Promis
   const photos = await productPhotos(db, productId)
   if (!photos) return { ok: false, error: 'Peça não encontrada.' }
   const next = photos.filter(p => p !== path)
-  const { error } = await db.from('retail_products').update({ photos: next, updated_at: new Date().toISOString() }).eq('id', productId)
+  const { data: cur } = await db.from('retail_products').select('photo_meta').eq('id', productId).maybeSingle()
+  const meta = { ...((cur?.photo_meta as Record<string, unknown> | null) ?? {}) }
+  delete meta[path]
+  const { error } = await db.from('retail_products').update({ photos: next, photo_meta: meta, updated_at: new Date().toISOString() }).eq('id', productId)
   if (error) return { ok: false, error: error.message }
+  // Foto do Estúdio IA (pasta "ia/") sai só da peça: continua no banco de imagens
   if (photos.includes(path) && path.startsWith(`${g.tenantId}/produtos/${productId}/`)) await db.storage.from(RETAIL_MEDIA_BUCKET).remove([path])
   revalidatePath(`/varejo/produtos/${productId}`)
   return { ok: true, photos: next }
@@ -227,6 +233,25 @@ export async function moveRetailPhoto(productId: string, path: string, direction
   const { error } = await db.from('retail_products').update({ photos: next, updated_at: new Date().toISOString() }).eq('id', productId)
   if (error) return { ok: false, error: error.message }
   return { ok: true, photos: next }
+}
+
+// Cor da foto (null = vale para todas as cores) e se é foto com modelo
+export async function setRetailPhotoMeta(productId: string, path: string, info: { color: string | null; model: boolean }): Promise<Result<{ meta: PhotoMeta }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: p } = await db.from('retail_products').select('photos, photo_meta, retail_product_variants(color, active)').eq('id', productId).maybeSingle()
+  if (!p) return { ok: false, error: 'Peça não encontrada.' }
+  const photos = ((p.photos as string[] | null) ?? [])
+  if (!photos.includes(path)) return { ok: false, error: 'Foto não encontrada nesta peça.' }
+  const colors = [...new Set(((p.retail_product_variants ?? []) as { color: string | null; active: boolean }[]).filter(v => v.active && v.color).map(v => v.color as string))]
+  if (info.color !== null && !colors.includes(info.color)) return { ok: false, error: 'Essa cor não existe nesta peça. Confira o passo 2.' }
+  const raw = { ...((p.photo_meta as Record<string, unknown> | null) ?? {}), [path]: { color: info.color, model: !!info.model } }
+  const meta = readPhotoMeta(raw, photos, colors)
+  const { error } = await db.from('retail_products').update({ photo_meta: meta, updated_at: new Date().toISOString() }).eq('id', productId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/varejo/produtos/${productId}`); revalidatePath('/varejo/estudio')
+  return { ok: true, meta }
 }
 
 // ── Importação por planilha ──────────────────────────────────────────────────

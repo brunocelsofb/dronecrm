@@ -12,6 +12,7 @@ import { priceItems, round2 } from '@/lib/retail/pricing'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
 import { isAiPhotoUrl } from '@/lib/retail/ai-studio'
+import { isAiPhotoPath, readPhotoMeta } from '@/lib/retail/photo-colors'
 import { ensurePublicToken, orderPublicUrl, recordOrderStage } from '@/lib/retail/order-messages-server'
 import { cleanDomain, cleanSlug, readContent, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontContent, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
 
@@ -40,6 +41,8 @@ export async function findStorefront(q: { host?: string | null; slug?: string | 
 export type PublicProduct = {
   id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null
   price: number; promo_price: number | null; final_price: number; photos: string[]; occasions: string[]; is_new: boolean
+  // Uma entrada por foto (mesma ordem): cor da foto (null = todas), se é com modelo e se foi criada por IA
+  photo_info: { color: string | null; model: boolean; ai: boolean }[]
   variants: { id: string; color: string | null; size: string | null; available: boolean; last_units: boolean }[]
 }
 export type PublicLook = { id: string; name: string; occasion: string | null; description: string | null; cover: string | null; cover_ai?: boolean; product_ids: string[] }
@@ -58,20 +61,24 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
   const [branding, { data: prods }, { data: looks }] = await Promise.all([
     getPublicBranding(sf.tenant_id),
     db.from('retail_products')
-      .select('id, code, name, category, description, composition, care, measures, price, promo_price, photos, occasions, created_at, retail_product_variants(id, color, size, stock, active)')
+      .select('id, code, name, category, description, composition, care, measures, price, promo_price, photos, photo_meta, occasions, created_at, retail_product_variants(id, color, size, stock, active)')
       .eq('status', 'publicado').not('price', 'is', null).order('created_at', { ascending: false }).limit(1000),
     db.from('retail_looks').select('id, name, occasion, description, cover_photo, product_ids').eq('active', true).order('position').limit(100),
   ])
-  type P = { id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null; price: number; promo_price: number | null; photos: string[] | null; occasions: string[] | null; created_at: string; retail_product_variants: { id: string; color: string | null; size: string | null; stock: number; active: boolean }[] }
+  type P = { id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null; price: number; promo_price: number | null; photos: string[] | null; photo_meta: unknown; occasions: string[] | null; created_at: string; retail_product_variants: { id: string; color: string | null; size: string | null; stock: number; active: boolean }[] }
   const recent = Date.now() - 30 * 86_400_000
   const products: PublicProduct[] = ((prods ?? []) as unknown as P[])
     .map(p => {
       const variants = p.retail_product_variants.filter(v => v.active).map(v => ({ id: v.id, color: v.color, size: v.size, available: v.stock > 0, last_units: v.stock > 0 && v.stock <= 2 }))
+      const raw = (p.photos ?? []).filter(x => typeof x === 'string' && x)
+      const colors = [...new Set(variants.map(v => v.color).filter((c): c is string => !!c))]
+      const meta = readPhotoMeta(p.photo_meta, raw, colors)
       return {
         id: p.id, code: p.code, name: p.name, category: p.category, description: p.description, composition: p.composition, care: p.care, measures: p.measures,
         price: Number(p.price), promo_price: p.promo_price === null ? null : Number(p.promo_price),
         final_price: round2(effectivePrice({ price: Number(p.price), promo_price: p.promo_price === null ? null : Number(p.promo_price) })),
-        photos: (p.photos ?? []).map(x => photoUrl(x)).filter((x): x is string => !!x), occasions: p.occasions ?? [],
+        photos: raw.map(x => photoUrl(x) as string), occasions: p.occasions ?? [],
+        photo_info: raw.map(x => ({ color: meta[x].color, model: meta[x].model, ai: isAiPhotoPath(x) || isAiPhotoUrl(photoUrl(x), sf.tenant_id) })),
         is_new: Date.parse(p.created_at) >= recent, variants,
       }
     })

@@ -68,7 +68,10 @@ export async function POST(req: NextRequest) {
       images.push(/^https:\/\//.test(photo) ? photo : retailPhotoUrl(photo))
     }
     if (sc) images.push(retailPhotoUrl(sc.path as string))
-    Object.assign(inputs, { model_image_id: modelId, scene_image_id: sc?.id ?? null, pieces, pose })
+    // Foto feita para uma cor de uma peça (vem do aviso "faltam fotos com modelo")
+    const t = (b.target && typeof b.target === 'object' ? b.target : null) as { product_id?: unknown; color?: unknown } | null
+    const target = t && typeof t.product_id === 'string' && prodIds.includes(t.product_id) ? { product_id: t.product_id, color: typeof t.color === 'string' ? t.color.slice(0, 60) : null } : null
+    Object.assign(inputs, { model_image_id: modelId, scene_image_id: sc?.id ?? null, pieces, pose, target })
   }
 
   const fmt = IMAGE_FORMAT[kind]

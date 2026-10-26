@@ -89,8 +89,19 @@
   document.addEventListener('load', e => { if (e.target instanceof HTMLImageElement && e.target.classList.contains('real')) fitPhoto(e.target) }, true)
   let fitTimer
   window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => document.querySelectorAll('.ph img.real').forEach(i => { if (i.complete) fitPhoto(i) }), 200) })
-  const productPhoto = (p, color, i = 0, seal = true) =>
-    phBox(p.photos[i] || p.photos[0] || null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '')
+  // Fotos da cor escolhida: as marcadas com a cor primeiro, depois as que valem para todas
+  const infoOf = (p, i) => (p.photo_info && p.photo_info[i]) || { color: null, model: false, ai: false }
+  function photosFor(p, color) {
+    const all = p.photos.map((url, i) => ({ url, ...infoOf(p, i) }))
+    if (!color) return all
+    const list = [...all.filter(x => x.color === color), ...all.filter(x => !x.color)]
+    return list.length ? list : all
+  }
+  const productPhoto = (p, color, i = 0, seal = true) => {
+    const list = photosFor(p, color), ph = list[i] || list[0] || null
+    const extra = (seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '') + (ph && ph.ai ? AI_TAG : '')
+    return phBox(ph ? ph.url : null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, extra)
+  }
   const priceLabel = p => (p.promo_price !== null && p.promo_price < p.price ? `<s>${fmt(p.price)}</s>${fmt(p.final_price)}` : fmt(p.final_price))
 
   // ── WhatsApp e avisos ───────────────────────────────────────────────────────
@@ -198,11 +209,18 @@
     const on = favs.includes(id)
     return `<button class="fav" type="button" data-fav="${esc(id)}" aria-pressed="${on}" aria-label="${on ? 'Tirar dos favoritos' : 'Salvar nos favoritos'}"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg></button>`
   }
+  // Cor mostrada no cartão: a que a cliente tocou; senão a primeira com estoque e foto com modelo
+  const cardColor = {}
+  const showColor = p => cardColor[p.id] || firstColor(p)
   function cardHtml(p) {
-    const cs = colorsOf(p)
-    const dots = cs.length > 1 || cs[0] !== ONE_COLOR ? `<span class="dots" aria-label="${cs.length} cor(es)">${cs.map(c => `<span class="dot" style="background:${colorHex(c)}" title="${esc(c)}"></span>`).join('')}</span>` : ''
-    return `<article class="card">${favBtn(p.id)}<button class="open" type="button" data-open="${esc(p.id)}" aria-label="Ver detalhes de ${esc(p.name)}">
-      ${productPhoto(p, cs[0])}<span><span class="name">${esc(p.name)}</span><br><span class="price">${priceLabel(p)}</span></span>${dots}</button></article>`
+    const cs = colorsOf(p), color = showColor(p)
+    const dots = cs.length > 1 ? `<span class="dots" role="radiogroup" aria-label="Cores">${cs.map(c => `<button class="dot" type="button" role="radio" aria-checked="${c === color}" aria-label="Ver na cor ${esc(c)}" title="${esc(c)}" data-card="${esc(p.id)}" data-card-color="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</span>`
+      : cs[0] !== ONE_COLOR ? `<span class="dots" aria-label="Cor ${esc(cs[0])}"><span class="dot" style="background:${colorHex(cs[0])}" title="${esc(cs[0])}"></span></span>` : ''
+    return `<article class="card" data-card-id="${esc(p.id)}">${favBtn(p.id)}<button class="open" type="button" data-open="${esc(p.id)}" aria-label="Ver detalhes de ${esc(p.name)}">
+      ${productPhoto(p, color)}<span><span class="name">${esc(p.name)}</span><br><span class="price">${priceLabel(p)}</span></span></button>${dots}</article>`
+  }
+  function refreshCard(p) {
+    document.querySelectorAll(`[data-card-id="${CSS.escape(p.id)}"]`).forEach(el => { el.outerHTML = cardHtml(p) })
   }
   function miniHtml(p) { return `<button class="mini" type="button" data-open="${esc(p.id)}">${productPhoto(p, colorsOf(p)[0], 0, false)}<span><b>${esc(p.name)}</b><br>${priceLabel(p)}</span></button>` }
   function goCat(c) { cat = c; renderChips(); renderGrid(); closeSheets(); document.getElementById('novidades').scrollIntoView({ behavior: smooth() }) }
@@ -249,7 +267,11 @@
 
   // Look inteiro: escolhe cor e tamanho de cada peça e põe tudo na sacola
   let lk = null
-  const firstColor = p => { const ok = colorsOf(p).filter(c => sizesOf(p, c).some(v => v.available)); return ok[0] || colorsOf(p)[0] }
+  const firstColor = p => {
+    const ok = colorsOf(p).filter(c => sizesOf(p, c).some(v => v.available))
+    const withModel = ok.find(c => p.photos.some((_, i) => infoOf(p, i).color === c && infoOf(p, i).model))
+    return withModel || ok[0] || colorsOf(p)[0]
+  }
   const onlySize = (p, c) => { const s = sizesOf(p, c).filter(v => v.available); return s.length === 1 ? s[0].size : null }
   function openLook(id) {
     const l = LOOKS.find(x => x.id === id); if (!l) return
@@ -325,7 +347,7 @@
   let cur = null
   function openProduct(id) {
     const p = byId(id); if (!p) return
-    const c = firstColor(p)
+    const c = cardColor[p.id] || firstColor(p)
     cur = { p, color: c, size: onlySize(p, c) || sizesOf(p, c).find(v => v.available)?.size || null, qty: 1, photo: 0 }
     renderProduct(); openSheet('#productSheet'); markSeen(id)
   }
@@ -334,7 +356,8 @@
     const v = size ? variantOf(p, color, size) : null
     const cs = colorsOf(p)
     $('#pdTitle').textContent = p.name
-    const thumbs = p.photos.length > 1 ? `<div class="mini-row" style="grid-auto-columns:64px;margin-top:10px">${p.photos.map((ph, i) => `<button class="mini" type="button" data-photo="${i}" aria-label="Foto ${i + 1}" style="${i === cur.photo ? 'outline:1.5px solid var(--espresso);outline-offset:2px;border-radius:3px' : ''}">${phBox(ph, '#E8E0D5', '')}</button>`).join('')}</div>` : ''
+    const shots = photosFor(p, color)
+    const thumbs = shots.length > 1 ? `<div class="mini-row" style="grid-auto-columns:64px;margin-top:10px">${shots.map((ph, i) => `<button class="mini" type="button" data-photo="${i}" aria-label="Foto ${i + 1}" style="${i === cur.photo ? 'outline:1.5px solid var(--espresso);outline-offset:2px;border-radius:3px' : ''}">${phBox(ph.url, '#E8E0D5', '')}</button>`).join('')}</div>` : ''
     const spec = [['Composição', p.composition], ['Cuidados', p.care], ['Código', p.code]].filter(([, x]) => x)
     $('#pdBody').innerHTML = `<div class="pd"><div>${productPhoto(p, color, cur.photo)}${thumbs}</div>
       <div><h3>${esc(p.name)}</h3><p class="price">${priceLabel(p)}</p>${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
@@ -361,7 +384,7 @@
   $('#pdBody').addEventListener('click', e => {
     const t = e.target.closest('button'); if (!t || !cur) return
     if (t.dataset.photo !== undefined) { cur.photo = Number(t.dataset.photo) }
-    else if (t.dataset.color) { cur.color = t.dataset.color; cur.size = onlySize(cur.p, cur.color) || sizesOf(cur.p, cur.color).find(v => v.available)?.size || null; cur.qty = 1 }
+    else if (t.dataset.color) { cur.color = t.dataset.color; cur.photo = 0; cardColor[cur.p.id] = cur.color; refreshCard(cur.p); cur.size = onlySize(cur.p, cur.color) || sizesOf(cur.p, cur.color).find(v => v.available)?.size || null; cur.qty = 1 }
     else if (t.dataset.size) { cur.size = t.dataset.size; cur.qty = 1 }
     else if (t.dataset.q) { cur.qty = Math.min(Math.max(1, cur.qty + Number(t.dataset.q)), MAX_QTY) }
     else return
@@ -521,6 +544,7 @@
     const look = e.target.closest('[data-look]'); if (look) { openLook(look.dataset.look); return }
     const go = e.target.closest('[data-goto-occ]'); if (go) { goOcc(go.dataset.gotoOcc); return }
     const oc = e.target.closest('[data-occ]'); if (oc) { occ = oc.dataset.occ; renderLooks(); return }
+    const dot = e.target.closest('[data-card-color]'); if (dot) { const p = byId(dot.dataset.card); if (p) { cardColor[p.id] = dot.dataset.cardColor; refreshCard(p) } return }
     const open = e.target.closest('[data-open]'); if (open) { openProduct(open.dataset.open); return }
     const gc = e.target.closest('[data-goto-cat]'); if (gc) { goCat(gc.dataset.gotoCat); return }
     const chip = e.target.closest('[data-cat]'); if (chip) { cat = chip.dataset.cat; renderChips(); renderGrid() }

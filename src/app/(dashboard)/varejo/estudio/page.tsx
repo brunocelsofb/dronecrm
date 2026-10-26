@@ -5,6 +5,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { retailPhotoUrl } from '@/lib/retail/products'
 import { readOccasions } from '@/lib/retail/storefront'
+import { readPhotoMeta } from '@/lib/retail/photo-colors'
 import { StudioView, type StudioImage, type StudioProduct } from '@/components/retail/studio-view'
 
 export const dynamic = 'force-dynamic'
@@ -26,16 +27,28 @@ export default async function RetailStudioPage() {
   const db = await createScopedAdmin(tenantId)
   const [{ data: conns }, { data: imgs }, { data: prods }, { data: looks }, { data: sf }] = await Promise.all([
     db.from('retail_ai_connections').select('provider, key_last4, model').eq('user_id', access.userId),
-    db.from('retail_ai_images').select('id, kind, title, path, provider, model, created_at, copy').order('created_at', { ascending: false }).limit(300),
-    db.from('retail_products').select('id, code, name, photos, status').neq('status', 'arquivado').order('name').limit(2000),
+    db.from('retail_ai_images').select('id, kind, title, path, provider, model, created_at, copy, inputs').order('created_at', { ascending: false }).limit(300),
+    db.from('retail_products').select('id, code, name, photos, photo_meta, status, retail_product_variants(color, active)').neq('status', 'arquivado').order('name').limit(2000),
     db.from('retail_looks').select('id, name, cover_photo').order('position').limit(200),
     db.from('retail_storefronts').select('occasions').maybeSingle(),
   ])
-  const images: StudioImage[] = (imgs ?? []).map(i => ({ id: i.id as string, kind: i.kind as StudioImage['kind'], title: i.title as string | null, url: retailPhotoUrl(i.path as string), provider: i.provider as string, created_at: i.created_at as string, copy: (i.copy as StudioImage['copy']) ?? null }))
-  const products: StudioProduct[] = (prods ?? []).map(p => ({
-    id: p.id as string, code: p.code as string, name: p.name as string,
-    photos: ((p.photos ?? []) as string[]).map(ph => (/^https:\/\//.test(ph) ? ph : retailPhotoUrl(ph))),
-  })).filter(p => p.photos.length > 0)
+  const images: StudioImage[] = (imgs ?? []).map(i => {
+    const inp = (i.inputs ?? {}) as { pieces?: { product_id?: string }[]; target?: { product_id?: string; color?: string | null } | null }
+    return {
+      id: i.id as string, kind: i.kind as StudioImage['kind'], title: i.title as string | null, url: retailPhotoUrl(i.path as string), provider: i.provider as string, created_at: i.created_at as string, copy: (i.copy as StudioImage['copy']) ?? null,
+      pieces: [...new Set((inp.pieces ?? []).map(x => String(x.product_id ?? '')).filter(Boolean))],
+      target: inp.target?.product_id ? { product_id: String(inp.target.product_id), color: inp.target.color ?? null } : null,
+    }
+  })
+  const products: StudioProduct[] = (prods ?? []).map(p => {
+    const paths = ((p.photos ?? []) as string[]).filter(x => typeof x === 'string' && x)
+    const colors = [...new Set(((p.retail_product_variants ?? []) as { color: string | null; active: boolean }[]).filter(v => v.active && v.color).map(v => v.color as string))]
+    const meta = readPhotoMeta(p.photo_meta, paths, colors)
+    return {
+      id: p.id as string, code: p.code as string, name: p.name as string, status: p.status as string, colors, meta,
+      paths, photos: paths.map(ph => (/^https:\/\//.test(ph) ? ph : retailPhotoUrl(ph))),
+    }
+  })
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <div>

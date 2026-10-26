@@ -37,6 +37,7 @@ export type RetailProduct = {
   cost_price?: number | null // só no Drone; nunca vai para a vitrine pública
   status: ProductStatus
   photos: string[]
+  photo_meta?: Record<string, { color: string | null; model: boolean }> // cor de cada foto e se é com modelo
   weight_g: number | null
   occasions?: string[]
   variants: RetailVariant[]

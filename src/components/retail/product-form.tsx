@@ -9,8 +9,9 @@ import { fitPhoto, PHOTO_FRAMES } from '@/lib/retail/image-fit'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto,
+  saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto, setRetailPhotoMeta,
 } from '@/lib/actions/retail-products'
+import { isAiPhotoPath, missingModelColors, type PhotoMeta } from '@/lib/retail/photo-colors'
 import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, effectivePrice, parseMoney, retailPhotoUrl, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
 import { analyzePrice, priceMemory, referencePrice, requiredMarginPct, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
 import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
@@ -79,6 +80,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
   const [colorText, setColorText] = useState('')
   const [sizeText, setSizeText] = useState('')
   const [photos, setPhotos] = useState<string[]>(product?.photos ?? [])
+  const [meta, setMeta] = useState<PhotoMeta>(product?.photo_meta ?? {})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -209,6 +211,17 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
     setBusy(false)
     if (!r.ok) setError(r.error); else setPhotos(r.photos)
   }
+
+  async function setPhotoInfo(path: string, info: { color: string | null; model: boolean }) {
+    if (!product) return
+    setBusy(true); setError(null)
+    const r = await setRetailPhotoMeta(product.id, path, info)
+    setBusy(false)
+    if (!r.ok) setError(r.error); else setMeta(r.meta)
+  }
+  const realColors = colors.filter(Boolean)
+  const infoOf = (p: string) => meta[p] ?? { color: null, model: isAiPhotoPath(p) }
+  const missingModel = missingModelColors(photos, Object.fromEntries(photos.map(p => [p, infoOf(p)])), realColors)
 
   const dataDone = !!f.code.trim() && !!f.name.trim() && !!f.price.trim()
   const stockDone = hasGrid && totalUnits > 0
@@ -389,6 +402,13 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
           <>
             <p className="text-xs text-gray-500">Pode mandar a foto como estiver: o Drone deixa no tamanho da vitrine (<strong>1200 × 1600 px, em pé 3 : 4</strong>). Foto deitada ou quadrada entra <strong>inteira</strong>, com o fundo da própria foto desfocado, sem cortar a peça. Melhor resultado: foto em pé, peça inteira e fundo limpo.</p>
             <p className="text-sm text-gray-600">Até {MAX_PHOTOS} fotos, direto da galeria do celular. A <strong>primeira</strong> é a capa na vitrine; use as setas para mudar a ordem.</p>
+            {realColors.length > 1 && (
+              <div className="rounded-lg border border-brand-700/30 bg-brand-100/40 p-3 text-xs text-gray-700">
+                <p><strong>Peça com {realColors.length} cores:</strong> marque a cor de cada foto. Na vitrine, a cliente toca na cor e a foto troca. Foto sem cor marcada aparece em todas as cores.</p>
+                <p className="mt-1">Para a foto com modelo de cada cor, suba uma <strong>foto real da peça em cada cor</strong> e use o <Link href="/varejo/estudio" className="text-brand-700 underline">Estúdio IA</Link>.</p>
+                {missingModel.length > 0 && <p className="mt-1 font-medium text-warn-700">Falta foto com modelo: {missingModel.map(m => m.color).join(', ')}.</p>}
+              </div>
+            )}
             {photos.length > 0 && (
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {photos.map((p, i) => (
@@ -397,7 +417,18 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={retailPhotoUrl(p)} alt="" className="h-full w-full object-cover" />
                       {i === 0 && <span className="absolute left-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-gray-800">Capa</span>}
+                      {infoOf(p).model && <span className="absolute bottom-1 left-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] text-gray-800">{isAiPhotoPath(p) ? 'Com modelo (IA)' : 'Com modelo'}</span>}
                     </div>
+                    {realColors.length > 0 && (
+                      <select className="w-full rounded border border-gray-300 px-1 py-0.5 text-[11px]" aria-label={`Cor da foto ${i + 1}`} disabled={busy}
+                        value={infoOf(p).color ?? ''} onChange={e => setPhotoInfo(p, { color: e.target.value || null, model: infoOf(p).model })}>
+                        <option value="">Todas as cores</option>
+                        {realColors.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    )}
+                    {!isAiPhotoPath(p) && (
+                      <label className="flex items-center gap-1 text-[11px] text-gray-600"><input type="checkbox" className="h-3 w-3" disabled={busy} checked={infoOf(p).model} onChange={e => setPhotoInfo(p, { color: infoOf(p).color, model: e.target.checked })} />Com modelo</label>
+                    )}
                     <div className="flex justify-between text-xs">
                       <button type="button" aria-label="Mover para a esquerda" disabled={busy || i === 0} onClick={() => photoAction(() => moveRetailPhoto(product.id, p, -1))} className="px-1 text-gray-600 disabled:opacity-30">←</button>
                       <button type="button" disabled={busy} onClick={() => photoAction(() => removeRetailPhoto(product.id, p))} className="text-negative-700">Remover</button>

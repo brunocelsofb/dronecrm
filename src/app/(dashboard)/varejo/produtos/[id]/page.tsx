@@ -9,6 +9,7 @@ import { ProductForm } from '@/components/retail/product-form'
 import { requireTenantId } from '@/lib/tenant/context'
 import { loadPricingConfig } from '@/lib/retail/loyalty-server'
 import { readOccasions } from '@/lib/retail/storefront'
+import { readPhotoMeta } from '@/lib/retail/photo-colors'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +34,7 @@ export default async function RetailProductPage({ params, searchParams }: { para
   if (id !== 'nova') {
     if (!UUID.test(id)) notFound()
     const { data } = await db.from('retail_products')
-      .select('id, code, name, category, description, composition, care, measures, price, promo_price, cost_price, status, photos, weight_g, occasions, retail_product_variants(id, sku, color, size, stock, active)')
+      .select('id, code, name, category, description, composition, care, measures, price, promo_price, cost_price, status, photos, photo_meta, weight_g, occasions, retail_product_variants(id, sku, color, size, stock, active)')
       .eq('id', id).maybeSingle()
     if (!data) notFound()
     const d = data as unknown as Omit<RetailProduct, 'variants'> & { retail_product_variants: RetailProduct['variants'] }
@@ -44,6 +45,7 @@ export default async function RetailProductPage({ params, searchParams }: { para
       cost_price: d.cost_price === null || d.cost_price === undefined ? null : Number(d.cost_price),
       status: isProductStatus(d.status) ? d.status : 'rascunho',
       photos: d.photos ?? [],
+      photo_meta: readPhotoMeta((d as { photo_meta?: unknown }).photo_meta, d.photos ?? [], [...new Set((d.retail_product_variants ?? []).filter(v => v.active && v.color).map(v => v.color as string))]),
       variants: [...(d.retail_product_variants ?? [])].sort((a, b) => `${a.color ?? ''}${a.size ?? ''}`.localeCompare(`${b.color ?? ''}${b.size ?? ''}`, 'pt-BR')),
     }
   }

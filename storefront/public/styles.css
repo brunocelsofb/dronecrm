@@ -119,6 +119,11 @@ section.block { padding: 64px 0; }
 .card .price { font-size: 15px; }
 .dots { display: flex; gap: 5px; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(42,24,13,.18); }
+.card > .dots { margin-top: -2px; }
+button.dot { width: 18px; height: 18px; padding: 0; cursor: pointer; position: relative; }
+button.dot::after { content: ''; position: absolute; inset: -6px; } /* área de toque maior */
+button.dot[aria-checked="true"] { outline: 1.5px solid var(--espresso); outline-offset: 2px; }
+.mini .ai-tag, .lk-item .ai-tag, .line .ai-tag { display: none; }
 .empty { padding: 40px 0; text-align: center; color: var(--muted); grid-column: 1 / -1; }
 .search-bar { display: none; margin-bottom: 18px; }
 .search-bar.on { display: flex; }

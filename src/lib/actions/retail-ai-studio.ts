@@ -12,7 +12,8 @@ import { getSupportSession } from '@/lib/tenant/support'
 import { encryptSecret } from '@/lib/ai/tenant-key'
 import { checkKey } from '@/lib/retail/ai-providers'
 import { defaultModel, isAiProvider, validModel } from '@/lib/retail/ai-studio'
-import { RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
+import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
+import { insertModelPhoto, readPhotoMeta } from '@/lib/retail/photo-colors'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -70,11 +71,13 @@ export async function deleteAiImage(id: string): Promise<Result> {
   const { data: img } = await db.from('retail_ai_images').select('id, path').eq('id', id).maybeSingle()
   if (!img) return { ok: false, error: 'Imagem não encontrada.' }
   const url = retailPhotoUrl(img.path as string)
-  const [{ count: inLooks }, { count: inHero }] = await Promise.all([
+  const [{ count: inLooks }, { count: inHero }, { data: inProducts }] = await Promise.all([
     db.from('retail_looks').select('id', { count: 'exact', head: true }).eq('cover_photo', url),
     db.from('retail_storefronts').select('id', { count: 'exact', head: true }).or(`hero_photo.eq.${url},hero_photo_mobile.eq.${url}`),
+    db.from('retail_products').select('code').contains('photos', [img.path as string]).limit(3),
   ])
   if (inLooks || inHero) return { ok: false, error: 'Esta imagem está publicada (capa de look ou da vitrine). Troque a capa antes de excluir.' }
+  if (inProducts?.length) return { ok: false, error: `Esta imagem está na peça ${inProducts.map(p => p.code).join(', ')}. Remova a foto da peça (Produtos → Fotos) antes de excluir.` }
   await db.storage.from(RETAIL_MEDIA_BUCKET).remove([img.path as string])
   await db.from('retail_ai_images').delete().eq('id', id)
   revalidatePath('/varejo/estudio')
@@ -126,4 +129,36 @@ export async function createLookFromAiImage(id: string, input: { name: string; o
   if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar o look.' }
   revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')
   return { ok: true, lookId: data.id as string }
+}
+
+// Publicar a foto com modelo NA PEÇA, na cor certa (a vitrine mostra essa foto ao escolher a cor).
+// Entra junto das outras fotos com modelo, na frente (a primeira foto é a capa do cartão).
+// O texto sugerido (editável) vira a descrição da peça, se a pessoa quiser.
+export async function publishAiImageToProduct(id: string, input: { productId: string; color: string | null; description?: string | null }): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!UUID.test(id) || !UUID.test(input.productId)) return { ok: false, error: 'Escolha a peça.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const [{ data: img }, { data: p }] = await Promise.all([
+    db.from('retail_ai_images').select('path, kind').eq('id', id).maybeSingle(),
+    db.from('retail_products').select('photos, photo_meta, retail_product_variants(color, active)').eq('id', input.productId).maybeSingle(),
+  ])
+  if (!img || img.kind !== 'look') return { ok: false, error: 'Escolha uma foto com a modelo vestindo a peça.' }
+  if (!p) return { ok: false, error: 'Peça não encontrada.' }
+  const path = img.path as string
+  const photos = (p.photos as string[] | null) ?? []
+  const colors = [...new Set(((p.retail_product_variants ?? []) as { color: string | null; active: boolean }[]).filter(v => v.active && v.color).map(v => v.color as string))]
+  const color = input.color && colors.includes(input.color) ? input.color : null
+  if (input.color && !color) return { ok: false, error: 'Essa cor não existe na peça.' }
+  if (!photos.includes(path) && photos.length >= MAX_PHOTOS) return { ok: false, error: `A peça já tem ${MAX_PHOTOS} fotos (o máximo). Remova uma em Produtos → Fotos e publique de novo.` }
+  const meta0 = readPhotoMeta(p.photo_meta, photos, colors)
+  const nextPhotos = insertModelPhoto(photos, meta0, path)
+  const meta = readPhotoMeta({ ...meta0, [path]: { color, model: true } }, nextPhotos, colors)
+  const desc = String(input.description ?? '').trim().slice(0, 2000)
+  const patch: Record<string, unknown> = { photos: nextPhotos, photo_meta: meta, updated_at: new Date().toISOString() }
+  if (desc) patch.description = desc
+  const { error } = await db.from('retail_products').update(patch).eq('id', input.productId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/varejo/estudio'); revalidatePath(`/varejo/produtos/${input.productId}`); revalidatePath('/varejo/produtos')
+  return { ok: true }
 }
