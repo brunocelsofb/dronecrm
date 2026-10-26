@@ -4,6 +4,7 @@
 // ocasiões e cores) e os looks (combinações de peças por ocasião).
 
 import { useMemo, useState } from 'react'
+import { fitPhoto, PHOTO_FRAMES, type PhotoFrame } from '@/lib/retail/image-fit'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { saveRetailStorefront, saveRetailLook, deleteRetailLook, moveRetailLook, createRetailStorefrontUpload, type StorefrontInput } from '@/lib/actions/retail-storefront'
@@ -84,13 +85,13 @@ export function StorefrontAdmin({ initial, saved, products, looks, storefrontBas
                 <li><strong>Computador:</strong> foto em pé, <strong>1600 × 2000 px</strong> (4 : 5; mínimo 1200 × 1500). Fica à direita do título. Em telas largas corta um pouco em cima e embaixo: deixe a pessoa no centro, com a cabeça no terço de cima e folga nas bordas. Sem texto ou logo na foto.</li>
                 <li><strong>Celular:</strong> quase quadrada, <strong>1200 × 1260 px</strong>. Fica no topo, acima do título. Sem ela, o celular usa a do computador cortada.</li>
                 <li>O nome da loja, a frase e o botão ficam <strong>embaixo, à esquerda</strong>, sobre uma sombra: deixe essa área mais limpa e a peça ou o rosto no centro ou à direita.</li>
-                <li>JPG, PNG ou WEBP. O Drone reduz o arquivo sozinho para a vitrine abrir rápido.</li>
+                <li>JPG, PNG ou WEBP. O Drone deixa a foto no tamanho exato de cada espaço sozinho; se o formato for muito diferente, ela entra inteira com o fundo desfocado em vez de ser cortada.</li>
               </ul>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <CoverSlot label="Computador (vertical 4:5)" ratio="aspect-[4/5] max-w-[14rem]" url={f.hero_photo} disabled={ro} maxSide={2400} onChange={u => set('hero_photo', u)} fallback="Sem foto: usa a peça mais nova" />
-            <CoverSlot label="Celular (quase quadrada)" ratio="aspect-[20/21] max-w-[14rem]" url={f.hero_photo_mobile} disabled={ro} maxSide={1600} onChange={u => set('hero_photo_mobile', u)} fallback="Sem foto: usa a do computador" />
+            <CoverSlot label="Computador (vertical 4:5)" ratio="aspect-[4/5] max-w-[14rem]" url={f.hero_photo} disabled={ro} frame={PHOTO_FRAMES.capaComputador} onChange={u => set('hero_photo', u)} fallback="Sem foto: usa a peça mais nova" />
+            <CoverSlot label="Celular (quase quadrada)" ratio="aspect-[20/21] max-w-[14rem]" url={f.hero_photo_mobile} disabled={ro} frame={PHOTO_FRAMES.capaCelular} onChange={u => set('hero_photo_mobile', u)} fallback="Sem foto: usa a do computador" />
           </div>
           {photos.length > 0 && !ro && (
             <div>
@@ -304,20 +305,7 @@ function LooksManager({ looks, products, occasions, canEdit }: { looks: LookRow[
   )
 }
 
-// Reduz a foto no aparelho (lado maior até maxSide, JPEG 85%) antes de enviar
-async function shrink(file: File, maxSide: number): Promise<File> {
-  try {
-    const bmp = await createImageBitmap(file)
-    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale)
-    canvas.getContext('2d')?.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85))
-    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file
-  } catch { return file }
-}
-
-function CoverSlot({ label, ratio, url, disabled, maxSide, onChange, fallback }: { label: string; ratio: string; url: string | null; disabled: boolean; maxSide: number; onChange: (u: string | null) => void; fallback: string }) {
+function CoverSlot({ label, ratio, url, disabled, frame, onChange, fallback }: { label: string; ratio: string; url: string | null; disabled: boolean; frame: PhotoFrame; onChange: (u: string | null) => void; fallback: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [dims, setDims] = useState<string | null>(null)
@@ -329,7 +317,7 @@ function CoverSlot({ label, ratio, url, disabled, maxSide, onChange, fallback }:
     try {
       const bmp = await createImageBitmap(original).catch(() => null)
       if (bmp) setDims(`${bmp.width} × ${bmp.height} px`)
-      const file = await shrink(original, maxSide)
+      const file = await fitPhoto(original, frame)
       const prep = await createRetailStorefrontUpload(file.name, file.type || 'image/jpeg')
       if (!prep.ok) { setErr(prep.error); return }
       const up = await createClient().storage.from(RETAIL_MEDIA_BUCKET).uploadToSignedUrl(prep.path, prep.token, file, { contentType: file.type || 'image/jpeg' })

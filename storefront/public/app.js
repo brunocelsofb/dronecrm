@@ -74,6 +74,21 @@
     return `<div class="ph${!photo && isDark(t) ? ' dark' : ''}" style="${photo ? '' : `background:${t}`}">${phInner(photo, alt)}${extra}</div>`
   }
   const AI_TAG = '<span class="ai-tag">Imagem criada por IA</span>'
+  // Foto com formato bem diferente do espaço (ex.: deitada num cartão em pé) entra
+  // inteira, com o fundo da própria foto desfocado: a vitrine nunca corta a peça.
+  // Foto no formato certo (as que o Drone já ajusta) continua ocupando o espaço todo.
+  const FIT_TOLERANCE = 0.08
+  function fitPhoto(img) {
+    const box = img.closest('.ph')
+    if (!box || box.closest('.hero') || !img.naturalWidth || !box.clientHeight) return
+    const diff = Math.abs((img.naturalWidth / img.naturalHeight) / (box.clientWidth / box.clientHeight) - 1)
+    const fit = diff > FIT_TOLERANCE
+    box.classList.toggle('fit', fit)
+    if (fit) box.style.setProperty('--ph-bg', `url("${img.currentSrc || img.src}")`)
+  }
+  document.addEventListener('load', e => { if (e.target instanceof HTMLImageElement && e.target.classList.contains('real')) fitPhoto(e.target) }, true)
+  let fitTimer
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => document.querySelectorAll('.ph img.real').forEach(i => { if (i.complete) fitPhoto(i) }), 200) })
   const productPhoto = (p, color, i = 0, seal = true) =>
     phBox(p.photos[i] || p.photos[0] || null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '')
   const priceLabel = p => (p.promo_price !== null && p.promo_price < p.price ? `<s>${fmt(p.price)}</s>${fmt(p.final_price)}` : fmt(p.final_price))

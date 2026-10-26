@@ -5,6 +5,7 @@
 // A grade cor × tamanho é o estoque: cada quadradinho é uma variação (SKU) com saldo próprio.
 
 import { useMemo, useState } from 'react'
+import { fitPhoto, PHOTO_FRAMES } from '@/lib/retail/image-fit'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -36,22 +37,6 @@ const VISIBILITY: { id: ProductStatus; title: string; text: string }[] = [
   { id: 'publicado', title: 'Publicada', text: 'Aparece na vitrine e pode ser vendida.' },
   { id: 'arquivado', title: 'Arquivada', text: 'Saiu de linha. Fica só no histórico de pedidos.' },
 ]
-
-// Reduz a foto no próprio aparelho (lado maior 1600 px, JPEG) para a vitrine abrir rápido
-async function shrinkImage(file: File): Promise<File> {
-  try {
-    const bmp = await createImageBitmap(file)
-    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale)
-    canvas.getContext('2d')?.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-    const blob: Blob | null = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85))
-    if (!blob) return file
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
-  } catch {
-    return file // navegador não abriu o formato: envia o original
-  }
-}
 
 function initialGrid(product: RetailProduct | null) {
   const colors: string[] = [], sizes: string[] = []
@@ -205,7 +190,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
     let current = photos
     for (const original of Array.from(files)) {
       if (current.length >= MAX_PHOTOS) { setError(`Máximo de ${MAX_PHOTOS} fotos por peça.`); break }
-      const file = await shrinkImage(original)
+      const file = await fitPhoto(original, PHOTO_FRAMES.produto)
       const prep = await createRetailPhotoUpload(product.id, file.name, file.type || 'image/jpeg')
       if (!prep.ok) { setError(prep.error); break }
       const up = await sb.storage.from(RETAIL_MEDIA_BUCKET).uploadToSignedUrl(prep.path, prep.token, file, { contentType: file.type || 'image/jpeg' })
@@ -402,7 +387,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
           <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-600">As fotos entram logo depois de criar a peça. Toque em <strong>Criar peça</strong> lá embaixo; a tela volta aqui.</p>
         ) : (
           <>
-            <p className="text-xs text-gray-500">Foto <strong>vertical 3 : 4</strong>, de preferência <strong>1200 × 1600 px</strong>, com a peça inteira e fundo limpo. É o formato dos cartões da vitrine; fotos de outro formato são cortadas.</p>
+            <p className="text-xs text-gray-500">Pode mandar a foto como estiver: o Drone deixa no tamanho da vitrine (<strong>1200 × 1600 px, em pé 3 : 4</strong>). Foto deitada ou quadrada entra <strong>inteira</strong>, com o fundo da própria foto desfocado, sem cortar a peça. Melhor resultado: foto em pé, peça inteira e fundo limpo.</p>
             <p className="text-sm text-gray-600">Até {MAX_PHOTOS} fotos, direto da galeria do celular. A <strong>primeira</strong> é a capa na vitrine; use as setas para mudar a ordem.</p>
             {photos.length > 0 && (
               <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
