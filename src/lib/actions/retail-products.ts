@@ -153,7 +153,7 @@ export async function deleteRetailProduct(productId: string): Promise<Result> {
   const { data: p } = await db.from('retail_products').select('id, photos').eq('id', productId).maybeSingle()
   if (!p) return { ok: false, error: 'Peça não encontrada.' }
   // Só os arquivos da pasta da peça; foto do Estúdio IA continua no banco de imagens
-  const photos = ((p.photos as string[] | null) ?? []).filter(path => path.startsWith(`${g.tenantId}/produtos/${productId}/`))
+  const photos = ((p.photos as string[] | null) ?? []).filter(path => path.startsWith(`${g.tenantId}/produtos/`))
   if (photos.length) await db.storage.from(RETAIL_MEDIA_BUCKET).remove(photos)
   const { error } = await db.from('retail_products').delete().eq('id', productId)
   if (error) return { ok: false, error: error.message }
@@ -215,7 +215,7 @@ export async function removeRetailPhoto(productId: string, path: string): Promis
   const { error } = await db.from('retail_products').update({ photos: next, photo_meta: meta, updated_at: new Date().toISOString() }).eq('id', productId)
   if (error) return { ok: false, error: error.message }
   // Foto do Estúdio IA (pasta "ia/") sai só da peça: continua no banco de imagens
-  if (photos.includes(path) && path.startsWith(`${g.tenantId}/produtos/${productId}/`)) await db.storage.from(RETAIL_MEDIA_BUCKET).remove([path])
+  if (photos.includes(path) && path.startsWith(`${g.tenantId}/produtos/`)) await db.storage.from(RETAIL_MEDIA_BUCKET).remove([path])
   revalidatePath(`/varejo/produtos/${productId}`)
   return { ok: true, photos: next }
 }
@@ -388,7 +388,18 @@ export async function importRetailProductsChunk(products: ImportProduct[], modeI
     if (!code) { errors.push(`${raw.code ?? '?'}: sem código.`); continue }
     const name = cleanText(raw.name, 160)
     const price = parseMoney(raw.price)
-    const { data: existing } = await db.from('retail_products').select('id, price').eq('code', code).maybeSingle()
+    let { data: existing } = await db.from('retail_products').select('id, price').eq('code', code).maybeSingle()
+    // Código que foi juntado em outra peça (Juntar cores): acha a peça pelo SKU das variações
+    // e só mexe nas variações (nome e preço continuam os da peça juntada)
+    let joined = false
+    if (!existing) {
+      const skus = (raw.variants ?? []).map(v => normalizeCode(v.sku) ?? defaultSku(code, cleanText(v.color, 60), cleanText(v.size, 20)))
+      const { data: hit } = skus.length ? await db.from('retail_product_variants').select('product_id').in('sku', skus).limit(1) : { data: [] }
+      if (hit?.[0]) {
+        const { data: jp } = await db.from('retail_products').select('id, price').eq('id', hit[0].product_id).maybeSingle()
+        if (jp) { existing = jp; joined = true }
+      }
+    }
     // Só grava o que veio preenchido; vazio mantém o que já está cadastrado
     const filled: Record<string, unknown> = {}
     const put = (k: string, v: unknown) => { if (v !== null && v !== undefined && v !== '') filled[k] = v }
@@ -397,7 +408,9 @@ export async function importRetailProductsChunk(products: ImportProduct[], modeI
     const hasPrice = price !== null || (existing?.price !== null && existing?.price !== undefined)
     const status = isProductStatus(raw.status) ? raw.status : null
     let productId: string
-    if (existing) {
+    if (existing && joined) {
+      productId = existing.id as string; updated++
+    } else if (existing) {
       // Sem preço não publica; situação em branco mantém a atual
       const patch = { ...filled, ...(status ? { status: hasPrice ? status : 'rascunho' } : {}), updated_at: new Date().toISOString() }
       const { error } = await db.from('retail_products').update(patch).eq('id', existing.id)
@@ -417,8 +430,8 @@ export async function importRetailProductsChunk(products: ImportProduct[], modeI
       if (ev && ev.product_id !== productId) { errors.push(`${code}: SKU ${sku} já pertence a outra peça.`); continue }
       if (ev) {
         const vpatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
-        if (cleanText(v.color, 60)) vpatch.color = cleanText(v.color, 60)
-        if (cleanText(v.size, 20)) vpatch.size = cleanText(v.size, 20)
+        if (cleanText(v.color, 60) && !joined) vpatch.color = cleanText(v.color, 60)
+        if (cleanText(v.size, 20) && !joined) vpatch.size = cleanText(v.size, 20)
         const { error } = await db.from('retail_product_variants').update(vpatch).eq('id', ev.id)
         if (error) { errors.push(`${code} / ${sku}: ${error.code === '23505' ? 'cor e tamanho repetidos' : error.message}`); continue }
         // cadastro: não mexe no saldo; entrada: soma; contagem: define
@@ -436,4 +449,26 @@ export async function importRetailProductsChunk(products: ImportProduct[], modeI
   }
   revalidatePath('/varejo/produtos'); revalidatePath('/varejo/estoque')
   return { ok: true, created, updated, errors: errors.slice(0, 30) }
+}
+
+// ── Juntar cadastros da mesma peça (uma cor por código) ─────────────────────
+// Só a administradora. Tudo num passo só no banco (retail_merge_products): ou junta tudo ou nada.
+export async function mergeRetailProducts(input: { mainId: string; otherIds: string[]; priceFrom: string | null; colors: Record<string, string> }): Promise<Result<{ id: string }>> {
+  const access = await hasFeature('varejo')
+  if (!access) return { ok: false, error: 'Sem acesso ao módulo Varejo.' }
+  if (await getSupportSession()) return { ok: false, error: 'Acesso de suporte é só leitura.' }
+  if (!access.isAdmin) return { ok: false, error: 'Só a administradora junta peças.' }
+  const tenantId = await requireTenantId()
+  const UUIDRE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const others = [...new Set((input.otherIds ?? []).filter(x => UUIDRE.test(x) && x !== input.mainId))].slice(0, 20)
+  if (!UUIDRE.test(input.mainId) || !others.length) return { ok: false, error: 'Escolha a peça principal e ao menos uma para juntar.' }
+  const priceFrom = input.priceFrom && UUIDRE.test(input.priceFrom) ? input.priceFrom : null
+  const colors: Record<string, string> = {}
+  for (const [k, v] of Object.entries(input.colors ?? {})) if (others.includes(k) && String(v ?? '').trim()) colors[k] = String(v).trim().slice(0, 60)
+  const db = await createScopedAdmin(tenantId)
+  const { data, error } = await db.rpc('retail_merge_products', { p_tenant: tenantId, p_user: access.userId, p_main: input.mainId, p_others: others, p_price_from: priceFrom, p_colors: colors })
+  if (error) return { ok: false, error: error.message.replace(/^.*?ERROR:\s*/, '') }
+  if (data) return { ok: false, error: String(data) }
+  revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${input.mainId}`); revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')
+  return { ok: true, id: input.mainId }
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { suggestGroups } from '@/lib/retail/merge'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -59,6 +60,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
     (!categoria || p.category === categoria) &&
     (!situacao || p.status === situacao))
   const noPrice = all.filter(p => p.price === null && p.status !== 'arquivado')
+  const sameName = suggestGroups(all)
   const withoutStock = all.filter(p => p.status === 'publicado' && totalStock(p.retail_product_variants ?? []) === 0).length
 
   return (
@@ -71,6 +73,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/varejo/estoque" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Histórico do estoque</Link>
+          <Link href="/varejo/produtos/juntar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Juntar cores</Link>
           <a href="/api/varejo/modelo" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
           <ProductImport mode="cadastro" />
           <ProductImport mode="entrada" />
@@ -84,6 +87,11 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         <Stat label="Unidades em estoque" value={String(all.filter(p => p.status !== 'arquivado').reduce((s, p) => s + totalStock(p.retail_product_variants ?? []), 0))} />
         <Stat label="Publicadas sem estoque" value={String(withoutStock)} tone={withoutStock ? 'warn' : undefined} />
       </div>
+      {sameName.length > 0 && (
+        <p className="rounded-lg border border-brand-700/30 bg-brand-100/50 px-3 py-2 text-sm text-gray-800">
+          {sameName.length === 1 ? '1 peça aparece' : `${sameName.length} peças aparecem`} em mais de um cadastro com o mesmo nome (uma cor por código): {sameName.slice(0, 4).map(g => g[0].name).join(', ')}{sameName.length > 4 ? '…' : ''}. <Link href="/varejo/produtos/juntar" className="font-medium text-brand-700 underline">Juntar cores</Link> deixa cada uma numa linha só, com as cores na vitrine.
+        </p>
+      )}
       {noPrice.length > 0 && (
         <p className="rounded-lg bg-warn-100 px-3 py-2 text-sm text-warn-700">
           {noPrice.length === 1 ? '1 peça está sem preço' : `${noPrice.length} peças estão sem preço`} (vieram da planilha assim). Ficam em rascunho e não vendem nem aparecem na vitrine até ter preço: {noPrice.slice(0, 6).map(p => p.code).join(', ')}{noPrice.length > 6 ? '…' : ''}.
