@@ -329,4 +329,4 @@ pre.msg { white-space: pre-wrap; text-align: left; background: var(--sand); bord
 .brand { text-decoration: none; }
 
 /* Selo discreto nas fotos criadas pelo Estúdio IA */
-.ai-tag { position: absolute; right: 8px; bottom: 8px; z-index: 2; font-size: 10px; line-height: 1.4; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.82); color: var(--muted); pointer-events: none; }
+.ai-tag { position: absolute; right: 6px; bottom: 6px; z-index: 2; font-size: 8px; line-height: 1.3; letter-spacing: .01em; padding: 1px 5px; border-radius: 999px; background: rgba(255,255,255,.6); color: var(--muted); opacity: .85; pointer-events: none; white-space: nowrap; }

@@ -358,15 +358,18 @@ function PublishToProduct({ id, pieces, target, site, setSite }: { id: string; p
   const firstMissing = prod ? missingModelColors(prod.paths, prod.meta, prod.colors)[0]?.color : undefined
   const [color, setColor] = useState<string>(target?.color ?? firstMissing ?? prod?.colors[0] ?? '')
   const [useText, setUseText] = useState(true)
+  const [showOnSite, setShowOnSite] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   if (!options.length) return null
   const colorOk = !prod || prod.colors.length === 0 ? '' : prod.colors.includes(color) ? color : ''
   async function go() {
     setBusy(true); setMsg(null)
-    const r = await publishAiImageToProduct(id, { productId: pid, color: colorOk || null, description: useText ? site : null })
+    const r = await publishAiImageToProduct(id, { productId: pid, color: colorOk || null, description: useText ? site : null, showOnSite })
     setBusy(false)
-    setMsg(r.ok ? { ok: true, text: `Publicada em ${prod?.name}${colorOk ? `, cor ${colorOk}` : ''}. A vitrine atualiza em até 1 minuto.` } : { ok: false, text: r.error })
+    setMsg(!r.ok ? { ok: false, text: r.error }
+      : r.onSite ? { ok: true, text: `Foto colocada em ${prod?.name}${colorOk ? `, cor ${colorOk}` : ''}, e a peça está no site. A vitrine atualiza em até 1 minuto.` }
+      : { ok: false, text: `Foto colocada em ${prod?.name}${colorOk ? `, cor ${colorOk}` : ''}, mas ainda NÃO aparece no site. ${r.note ?? ''}` })
     if (r.ok) router.refresh()
   }
   return (
@@ -383,6 +386,10 @@ function PublishToProduct({ id, pieces, target, site, setSite }: { id: string; p
       <label className="block text-[11px] text-gray-600">Texto da peça no site (descrição)
         <textarea className={`${inp} mt-0.5 text-xs`} rows={3} value={site} onChange={e => setSite(e.target.value)} placeholder="Toque em Sugerir texto acima ou escreva aqui" /></label>
       <label className="flex items-center gap-1.5 text-[11px] text-gray-600"><input type="checkbox" checked={useText && !!site.trim()} disabled={!site.trim()} onChange={e => setUseText(e.target.checked)} />Usar este texto como descrição da peça</label>
+      {prod && prod.status !== 'publicado' && (
+        <label className="flex items-start gap-1.5 rounded bg-warn-100 px-2 py-1 text-[11px] text-warn-700"><input type="checkbox" className="mt-0.5" checked={showOnSite} onChange={e => setShowOnSite(e.target.checked)} />
+          <span>A peça está como <strong>{prod.status === 'arquivado' ? 'Arquivada' : 'Rascunho'}</strong> e não aparece no site. Marque para <strong>publicar a peça</strong> junto com a foto.</span></label>
+      )}
       <button type="button" className={`${btn} w-full`} disabled={busy || !pid} onClick={go}>{busy ? 'Publicando…' : 'Publicar na peça'}</button>
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded px-2 py-1 text-xs ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}</p>}
     </div>

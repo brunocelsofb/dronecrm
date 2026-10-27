@@ -134,14 +134,14 @@ export async function createLookFromAiImage(id: string, input: { name: string; o
 // Publicar a foto com modelo NA PEÇA, na cor certa (a vitrine mostra essa foto ao escolher a cor).
 // Entra junto das outras fotos com modelo, na frente (a primeira foto é a capa do cartão).
 // O texto sugerido (editável) vira a descrição da peça, se a pessoa quiser.
-export async function publishAiImageToProduct(id: string, input: { productId: string; color: string | null; description?: string | null }): Promise<Result> {
+export async function publishAiImageToProduct(id: string, input: { productId: string; color: string | null; description?: string | null; showOnSite?: boolean }): Promise<Result<{ onSite: boolean; note: string | null }>> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   if (!UUID.test(id) || !UUID.test(input.productId)) return { ok: false, error: 'Escolha a peça.' }
   const db = await createScopedAdmin(g.tenantId)
   const [{ data: img }, { data: p }] = await Promise.all([
     db.from('retail_ai_images').select('path, kind').eq('id', id).maybeSingle(),
-    db.from('retail_products').select('photos, photo_meta, retail_product_variants(color, active)').eq('id', input.productId).maybeSingle(),
+    db.from('retail_products').select('photos, photo_meta, status, price, retail_product_variants(color, active, stock)').eq('id', input.productId).maybeSingle(),
   ])
   if (!img || img.kind !== 'look') return { ok: false, error: 'Escolha uma foto com a modelo vestindo a peça.' }
   if (!p) return { ok: false, error: 'Peça não encontrada.' }
@@ -157,8 +157,18 @@ export async function publishAiImageToProduct(id: string, input: { productId: st
   const desc = String(input.description ?? '').trim().slice(0, 2000)
   const patch: Record<string, unknown> = { photos: nextPhotos, photo_meta: meta, updated_at: new Date().toISOString() }
   if (desc) patch.description = desc
+  // A foto só aparece no site se a peça estiver Publicada (com preço e estoque)
+  let status = p.status as string
+  let note: string | null = null
+  if (status !== 'publicado' && input.showOnSite) {
+    if (p.price === null) note = 'A peça está sem preço: defina o preço em Produtos para ela aparecer no site.'
+    else { patch.status = 'publicado'; status = 'publicado' }
+  }
   const { error } = await db.from('retail_products').update(patch).eq('id', input.productId)
   if (error) return { ok: false, error: error.message }
+  const stock = ((p.retail_product_variants ?? []) as { active: boolean; stock: number }[]).filter(v => v.active).reduce((t, v) => t + Number(v.stock ?? 0), 0)
+  if (status !== 'publicado') note = note ?? (status === 'arquivado' ? 'A peça está Arquivada: não aparece no site.' : 'A peça está como Rascunho: não aparece no site até ser Publicada.')
+  else if (stock <= 0) note = 'A peça está sem estoque: só aparece no site quando tiver unidades.'
   revalidatePath('/varejo/estudio'); revalidatePath(`/varejo/produtos/${input.productId}`); revalidatePath('/varejo/produtos')
-  return { ok: true }
+  return { ok: true, onSite: status === 'publicado' && stock > 0, note }
 }
