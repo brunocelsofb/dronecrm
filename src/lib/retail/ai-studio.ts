@@ -66,7 +66,7 @@ export function modelPrompt(s: ModelSpec): string {
 }
 
 export type SceneSpec = { place: string; mood: string; extra: string }
-export const SCENE_PLACES = ['Provador de loja de roupas', 'Interior de loja de roupas', 'Rua charmosa da cidade', 'Escritório moderno', 'Igreja (entrada, luz natural)', 'Café', 'Estúdio fotográfico']
+export const SCENE_PLACES = ['Provador de loja de roupas', 'Interior de loja de roupas', 'Parque com árvores e caminho de terra', 'Jardim florido', 'Praia ao entardecer', 'Rua charmosa da cidade', 'Calçada com vitrines', 'Escritório moderno', 'Restaurante elegante', 'Café', 'Igreja (entrada, luz natural)', 'Salão de festa decorado', 'Varanda de casa com plantas', 'Hotel (lobby elegante)', 'Estúdio fotográfico com fundo liso']
 export function scenePrompt(s: SceneSpec): string {
   return [
     `Fotografia realista de ambiente, sem pessoas: ${s.place || 'provador de loja de roupas'}.`,

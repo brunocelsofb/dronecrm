@@ -668,14 +668,16 @@ function SceneTab({ images, connected }: { images: StudioImage[]; connected: AiP
       <p className="text-sm text-gray-600">Ambientes sem pessoas, criados pela IA, para colocar a modelo depois.</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div><label className={lbl} htmlFor="sc-title">Nome</label><input id="sc-title" className={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="ex.: Provador claro" /></div>
-        <div><label className={lbl} htmlFor="sc-place">Lugar</label><select id="sc-place" className={inp} value={place} onChange={e => { setPlace(e.target.value); setCustom(null) }}>{SCENE_PLACES.map(p => <option key={p}>{p}</option>)}</select></div>
+        <div><label className={lbl} htmlFor="sc-place">Lugar <span className="font-normal text-gray-400">(escreva qualquer lugar ou escolha uma sugestão)</span></label>
+          <input id="sc-place" className={inp} list="sc-places" value={place} onChange={e => { setPlace(e.target.value); setCustom(null) }} placeholder="ex.: parque com árvores e banco de madeira" />
+          <datalist id="sc-places">{SCENE_PLACES.map(p => <option key={p} value={p} />)}</datalist></div>
         <div><label className={lbl} htmlFor="sc-mood">Clima</label><input id="sc-mood" className={inp} value={mood} onChange={e => { setMood(e.target.value); setCustom(null) }} /></div>
         <div><label className={lbl} htmlFor="sc-extra">Mais algum detalhe (opcional)</label><input id="sc-extra" className={inp} value={extra} onChange={e => { setExtra(e.target.value); setCustom(null) }} /></div>
       </div>
       <div><div className="flex items-baseline justify-between"><label className={lbl} htmlFor="sc-prompt">Pedido para a IA</label>{custom !== null && <button type="button" className="text-xs text-gray-500 underline" onClick={() => setCustom(null)}>Voltar ao texto padrão</button>}</div>
         <textarea id="sc-prompt" className={inp} rows={4} value={prompt} onChange={e => setCustom(e.target.value)} /></div>
       <ProviderPick connected={connected} value={provider || connected[0] || ''} onChange={setProvider} />
-      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0])} onClick={() => g.run([{ kind: 'cenario', provider: provider || connected[0], prompt, title: title || place }])}>Criar cenário</button>
+      <button type="button" className={btn} disabled={g.busy || !(provider || connected[0]) || !prompt.trim()} onClick={() => g.run([{ kind: 'cenario', provider: provider || connected[0], prompt, title: title || place || 'Cenário' }])}>Criar cenário</button>
       <Waiting busy={g.busy} />
       {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
       <Results made={g.last} />
