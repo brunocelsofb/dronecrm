@@ -76,6 +76,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         <div className="flex flex-wrap gap-2">
           <Link href="/varejo/estoque" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Histórico do estoque</Link>
           <Link href="/varejo/produtos/juntar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Juntar cores</Link>
+          <Link href="/varejo/produtos/separar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Separar cores e tamanhos{combined.length ? <span className="ml-1.5 rounded-full bg-warn-100 px-1.5 text-xs font-semibold text-warn-700">{combined.length}</span> : null}</Link>
           <a href="/api/varejo/modelo" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
           <ProductImport mode="cadastro" />
           <ProductImport mode="entrada" />

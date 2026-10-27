@@ -17,7 +17,7 @@ export default async function RetailSplitPage() {
   const db = await createScopedAdmin(await requireTenantId())
   const { data } = await db.from('retail_product_variants')
     .select('id, color, size, stock, product_id, retail_products!inner(code, name, status)')
-    .or('color.like.%/%,size.like.%/%').limit(2000)
+    .or('color.like.*/*,size.like.*/*').limit(2000)
   type R = { id: string; color: string | null; size: string | null; stock: number; product_id: string; retail_products: { code: string; name: string; status: string } }
   const items: SplitItem[] = ((data ?? []) as unknown as R[])
     .filter(v => v.retail_products.status !== 'arquivado' && needsSplit(v.color, v.size))
