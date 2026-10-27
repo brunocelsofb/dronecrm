@@ -37,7 +37,6 @@ function GroupCard({ group, onDone }: { group: MergeMember[]; onDone: (ids: stri
   const router = useRouter()
   const [mainId, setMainId] = useState(pickMain(group).id)
   const same = samePrice(group)
-  const [priceFrom, setPriceFrom] = useState<string | null>(null)
   const [renamed, setRenamed] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string; id?: string } | null>(null)
@@ -47,20 +46,18 @@ function GroupCard({ group, onDone }: { group: MergeMember[]; onDone: (ids: stri
   const mainNoColor = issues[main.id] === 'sem cor'
   const missingName = others.filter(m => issues[m.id] === 'sem cor')
   const photos = photosAfter(group)
-  const priceOk = same || !!priceFrom
   const finalColors = [...new Set(group.flatMap(m => (m.id !== main.id && renamed[m.id]?.trim() ? [renamed[m.id].trim()] : m.colors.map(c => c ?? 'sem cor'))))]
-  const chosenPrice = same ? main : group.find(m => m.id === priceFrom) ?? null
+  const basePrice = main.price !== null ? main : group.find(m => m.price !== null) ?? main
   const blockers = [
     mainNoColor && 'A peça principal está sem cor: escolha outra como principal ou dê nome à cor dela na peça (passo 2).',
     missingName.length > 0 && `Dê o nome da cor de ${missingName.map(m => m.code).join(', ')}.`,
-    !priceOk && 'Os preços são diferentes: escolha qual fica.',
     photos > MAX_PHOTOS && `Juntas ficam ${photos} fotos (máximo ${MAX_PHOTOS}). Remova algumas fotos antes.`,
   ].filter(Boolean) as string[]
 
   async function go() {
     if (!confirm(`Juntar ${group.length} cadastros em ${main.code} · ${main.name}? Os outros códigos deixam de existir como peça (viram variações desta).`)) return
     setBusy(true); setMsg(null)
-    const r = await mergeRetailProducts({ mainId: main.id, otherIds: others.map(m => m.id), priceFrom: same ? null : priceFrom, colors: renamed })
+    const r = await mergeRetailProducts({ mainId: main.id, otherIds: others.map(m => m.id), priceFrom: null, colors: renamed })
     setBusy(false)
     if (!r.ok) { setMsg({ ok: false, text: r.error }); return }
     setMsg({ ok: true, text: 'Pronto: virou uma peça só.', id: r.id })
@@ -88,9 +85,7 @@ function GroupCard({ group, onDone }: { group: MergeMember[]; onDone: (ids: stri
                   )}
                 </td>
                 <td className="py-2 pr-2 text-gray-700">
-                  {same ? priceText(m) : (
-                    <label className="flex items-center gap-1"><input type="radio" name={`price-${group[0].id}`} checked={priceFrom === m.id} onChange={() => setPriceFrom(m.id)} disabled={m.price === null} />{priceText(m)}</label>
-                  )}
+                  {priceText(m)}
                 </td>
                 <td className="py-2 pr-2 tabular-nums text-gray-700">{m.stock} un.</td>
                 <td className="py-2 pr-2 tabular-nums text-gray-700">{m.photos}</td>
@@ -101,7 +96,7 @@ function GroupCard({ group, onDone }: { group: MergeMember[]; onDone: (ids: stri
         </table>
       </div>
       <div className="rounded-lg bg-brand-100/50 px-3 py-2 text-sm text-gray-800">
-        <p><strong>Vai ficar:</strong> 1 peça <strong>{main.code}</strong> · {finalColors.length} cor(es): {finalColors.join(', ')} · {chosenPrice ? priceText(chosenPrice) : 'preço a escolher'} · {photos} foto(s){group.some(m => m.status === 'publicado') ? ' · Publicada' : ''}.</p>
+        <p><strong>Vai ficar:</strong> 1 peça <strong>{main.code}</strong> · {finalColors.length} cor(es): {finalColors.join(', ')} · {same ? priceText(basePrice) : `preço da peça ${priceText(basePrice)}; cada cor mantém o seu preço`} · {photos} foto(s){group.some(m => m.status === 'publicado') ? ' · Publicada' : ''}.</p>
         <p className="mt-0.5 text-xs text-gray-600">Estoque, códigos (SKU) e histórico continuam. Cada foto fica marcada com a cor do cadastro de onde veio. Os outros códigos deixam de ser peças e viram variações desta.</p>
       </div>
       {blockers.length > 0 && <ul className="space-y-0.5 rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">{blockers.map(b => <li key={b}>{b}</li>)}</ul>}
