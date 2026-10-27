@@ -21,6 +21,8 @@ export type RetailVariant = {
   size: string | null
   stock: number
   active: boolean
+  price?: number | null // preço só desta cor (vazio = da peça)
+  promo_price?: number | null
 }
 
 export type RetailProduct = {
@@ -93,6 +95,15 @@ export function parseStock(v: unknown): number | null {
 // Preço que vale na venda: promocional quando houver e for menor
 export function effectivePrice(p: { price: number; promo_price: number | null }): number {
   return p.promo_price !== null && p.promo_price < p.price ? p.promo_price : p.price
+}
+
+// Preço da cor: a cor pode ter preço e/ou promoção próprios; vazio segue a peça.
+// Cor com preço próprio e sem promoção própria não herda a promoção da peça.
+export function variantPrice(p: { price: number | null; promo_price: number | null }, v: { price?: number | null; promo_price?: number | null }): { price: number | null; promo_price: number | null; final: number | null } {
+  const own = v.price !== null && v.price !== undefined
+  const price = own ? Number(v.price) : p.price === null ? null : Number(p.price)
+  const promo = v.promo_price !== null && v.promo_price !== undefined ? Number(v.promo_price) : own ? null : p.promo_price === null ? null : Number(p.promo_price)
+  return { price, promo_price: promo, final: price === null ? null : effectivePrice({ price, promo_price: promo }) }
 }
 
 export function totalStock(variants: { stock: number; active: boolean }[]): number {

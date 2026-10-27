@@ -9,7 +9,7 @@ create or replace function contract_crm.retail_merge_products(
 returns text language plpgsql security definer set search_path to 'contract_crm', 'pg_temp' as $function$
 declare
   m record; o record; v record; hit record; src record;
-  n int; publish boolean := false;
+  n int; publish boolean := false; m_price numeric; m_promo numeric;
   v_photos jsonb; v_meta jsonb; ph text; ocolor text; ncolors int; newc text;
 begin
   if p_main is null or p_others is null or array_length(p_others, 1) is null then return 'Escolha as peças.'; end if;
@@ -38,6 +38,13 @@ begin
     update contract_crm.retail_products set price = src.price, promo_price = src.promo_price, cost_price = coalesce(src.cost_price, cost_price) where id = p_main;
   end if;
 
+  select price, promo_price into m_price, m_promo from contract_crm.retail_products where id = p_main;
+  -- Principal sem preço: usa o primeiro cadastro que tem preço
+  if m_price is null then
+    select price, promo_price into m_price, m_promo from contract_crm.retail_products where id = any(p_others) and tenant_id = p_tenant and price is not null order by code limit 1;
+    if m_price is not null then update contract_crm.retail_products set price = m_price, promo_price = m_promo where id = p_main; end if;
+  end if;
+
   perform set_config('retail.stock_kind', 'ajuste', true);
   perform set_config('retail.stock_user', coalesce(p_user::text, ''), true);
   perform set_config('retail.stock_note', 'junção de cadastros da mesma peça', true);
@@ -53,6 +60,13 @@ begin
     ocolor := null;
     select max(color) into ocolor from contract_crm.retail_product_variants where product_id = o.id
       having count(distinct coalesce(color, '')) = 1;
+    -- Preço diferente da principal: a cor mantém o preço dela (preço por cor)
+    if o.price is not null and (o.price is distinct from m_price or o.promo_price is distinct from m_promo) then
+      update contract_crm.retail_product_variants
+        set promo_price = case when price is null then o.promo_price else promo_price end,
+            price = coalesce(price, o.price), updated_at = now()
+        where product_id = o.id;
+    end if;
 
     -- Variações: move para a principal; cor e tamanho repetidos somam o estoque
     for v in select * from contract_crm.retail_product_variants where product_id = o.id loop

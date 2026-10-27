@@ -8,7 +8,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { decryptSecret } from '@/lib/ai/tenant-key'
 import { generateImage } from '@/lib/retail/ai-providers'
-import { completeLookBrief, defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, pieceBrief, validModel } from '@/lib/retail/ai-studio'
+import { completeLookBrief, swapColorPrompt, defaultModel, IMAGE_FORMAT, isAiKind, isAiProvider, isPose, MAX_LOOK_PIECES, pieceBrief, validModel } from '@/lib/retail/ai-studio'
 import { readContent } from '@/lib/retail/storefront'
 import { RETAIL_MEDIA_BUCKET, retailPhotoUrl } from '@/lib/retail/products'
 
@@ -29,8 +29,9 @@ export async function POST(req: NextRequest) {
   const provider = b.provider, kind = b.kind
   if (!isAiProvider(provider)) return bad('Escolha Gemini ou ChatGPT.')
   if (!isAiKind(kind)) return bad('Tipo de imagem inválido.')
+  const swap = kind === 'look' && typeof b.base_image_id === 'string' && UUID.test(b.base_image_id)
   const base = String(b.prompt ?? '').trim().slice(0, 6000)
-  if (base.length < 10) return bad('Escreva o pedido para a IA.')
+  if (base.length < 10 && !swap) return bad('Escreva o pedido para a IA.')
   // Pose escolhida (com 2 fotos, cada pedido vem com uma pose diferente)
   const pose = kind === 'look' && isPose(b.pose) ? String(b.pose) : null
   let prompt = pose ? `${base}\nPose da modelo nesta foto: ${pose}.` : base
@@ -47,7 +48,24 @@ export async function POST(req: NextRequest) {
   // Fotos de referência: só da própria loja (peças cadastradas e imagens do Estúdio)
   const images: string[] = []
   const inputs: Record<string, unknown> = {}
-  if (kind === 'look') {
+  if (swap) {
+    // Outra cor: parte da foto pronta e troca só a peça (mesma modelo, pose e cenário)
+    const p0 = (Array.isArray(b.pieces) ? (b.pieces as { product_id?: string; photo?: number }[]) : [])[0]
+    const t = (b.target && typeof b.target === 'object' ? b.target : null) as { product_id?: unknown; color?: unknown } | null
+    if (!p0 || typeof p0.product_id !== 'string' || !UUID.test(p0.product_id)) return bad('Escolha a peça.')
+    if (!t || t.product_id !== p0.product_id || typeof t.color !== 'string' || !t.color.trim()) return bad('Escolha a cor.')
+    const [{ data: baseImg }, { data: prod }] = await Promise.all([
+      db.from('retail_ai_images').select('id, kind, path').eq('id', String(b.base_image_id)).maybeSingle(),
+      db.from('retail_products').select('id, name, category, photos').eq('id', p0.product_id).maybeSingle(),
+    ])
+    if (!baseImg || baseImg.kind !== 'look') return bad('A foto de base não foi encontrada no banco de imagens.')
+    if (!prod) return bad('Peça não encontrada.')
+    const photo = ((prod.photos ?? []) as string[])[Number(p0.photo ?? 0)]
+    if (!photo) return bad('A peça não tem essa foto.')
+    images.push(retailPhotoUrl(baseImg.path as string), /^https:\/\//.test(photo) ? photo : retailPhotoUrl(photo))
+    prompt = swapColorPrompt({ name: String(prod.name), category: (prod.category as string | null) ?? null, color: t.color.trim().slice(0, 60) })
+    Object.assign(inputs, { base_image_id: baseImg.id, pieces: [{ product_id: p0.product_id, photo: Number(p0.photo ?? 0) }], target: { product_id: p0.product_id, color: t.color.trim().slice(0, 60) } })
+  } else if (kind === 'look') {
     const modelId = String(b.model_image_id ?? ''), sceneId = String(b.scene_image_id ?? '')
     if (!UUID.test(modelId)) return bad('Escolha a modelo.')
     const pieces = Array.isArray(b.pieces) ? (b.pieces as { product_id?: string; photo?: number }[]).slice(0, MAX_LOOK_PIECES + 1) : []

@@ -34,7 +34,7 @@ export default async function RetailProductPage({ params, searchParams }: { para
   if (id !== 'nova') {
     if (!UUID.test(id)) notFound()
     const { data } = await db.from('retail_products')
-      .select('id, code, name, category, description, composition, care, measures, price, promo_price, cost_price, status, photos, photo_meta, weight_g, occasions, retail_product_variants(id, sku, color, size, stock, active)')
+      .select('id, code, name, category, description, composition, care, measures, price, promo_price, cost_price, status, photos, photo_meta, weight_g, occasions, retail_product_variants(id, sku, color, size, stock, active, price, promo_price)')
       .eq('id', id).maybeSingle()
     if (!data) notFound()
     const d = data as unknown as Omit<RetailProduct, 'variants'> & { retail_product_variants: RetailProduct['variants'] }

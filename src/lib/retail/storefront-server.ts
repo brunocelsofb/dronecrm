@@ -7,7 +7,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scopeAdminClient } from '@/lib/tenant/scoped-admin'
 import { getPublicBranding } from '@/lib/utils/public-branding'
-import { effectivePrice, retailPhotoUrl } from '@/lib/retail/products'
+import { effectivePrice, retailPhotoUrl, variantPrice } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
 import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
@@ -43,7 +43,8 @@ export type PublicProduct = {
   price: number; promo_price: number | null; final_price: number; photos: string[]; occasions: string[]; is_new: boolean
   // Uma entrada por foto (mesma ordem): cor da foto (null = todas), se é com modelo e se foi criada por IA
   photo_info: { color: string | null; model: boolean; ai: boolean }[]
-  variants: { id: string; color: string | null; size: string | null; available: boolean; last_units: boolean }[]
+  // Preço de cada variação (a cor pode ter preço/promoção próprios; igual ao da peça quando não tem)
+  variants: { id: string; color: string | null; size: string | null; available: boolean; last_units: boolean; price: number; promo_price: number | null; final_price: number }[]
 }
 export type PublicLook = { id: string; name: string; occasion: string | null; description: string | null; cover: string | null; cover_ai?: boolean; product_ids: string[] }
 export type PublicCatalog = {
@@ -61,15 +62,18 @@ export async function loadCatalog(sf: StorefrontRow): Promise<PublicCatalog> {
   const [branding, { data: prods }, { data: looks }] = await Promise.all([
     getPublicBranding(sf.tenant_id),
     db.from('retail_products')
-      .select('id, code, name, category, description, composition, care, measures, price, promo_price, photos, photo_meta, occasions, created_at, retail_product_variants(id, color, size, stock, active)')
+      .select('id, code, name, category, description, composition, care, measures, price, promo_price, photos, photo_meta, occasions, created_at, retail_product_variants(id, color, size, stock, active, price, promo_price)')
       .eq('status', 'publicado').not('price', 'is', null).order('created_at', { ascending: false }).limit(1000),
     db.from('retail_looks').select('id, name, occasion, description, cover_photo, product_ids').eq('active', true).order('position').limit(100),
   ])
-  type P = { id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null; price: number; promo_price: number | null; photos: string[] | null; photo_meta: unknown; occasions: string[] | null; created_at: string; retail_product_variants: { id: string; color: string | null; size: string | null; stock: number; active: boolean }[] }
+  type P = { id: string; code: string; name: string; category: string | null; description: string | null; composition: string | null; care: string | null; measures: string | null; price: number; promo_price: number | null; photos: string[] | null; photo_meta: unknown; occasions: string[] | null; created_at: string; retail_product_variants: { id: string; color: string | null; size: string | null; stock: number; active: boolean; price: number | null; promo_price: number | null }[] }
   const recent = Date.now() - 30 * 86_400_000
   const products: PublicProduct[] = ((prods ?? []) as unknown as P[])
     .map(p => {
-      const variants = p.retail_product_variants.filter(v => v.active).map(v => ({ id: v.id, color: v.color, size: v.size, available: v.stock > 0, last_units: v.stock > 0 && v.stock <= 2 }))
+      const variants = p.retail_product_variants.filter(v => v.active).map(v => {
+        const vp = variantPrice({ price: p.price, promo_price: p.promo_price }, v)
+        return { id: v.id, color: v.color, size: v.size, available: v.stock > 0, last_units: v.stock > 0 && v.stock <= 2, price: Number(vp.price), promo_price: vp.promo_price, final_price: round2(Number(vp.final)) }
+      })
       const raw = (p.photos ?? []).filter(x => typeof x === 'string' && x)
       const colors = [...new Set(variants.map(v => v.color).filter((c): c is string => !!c))]
       const meta = readPhotoMeta(p.photo_meta, raw, colors)

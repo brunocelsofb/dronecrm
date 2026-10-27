@@ -15,6 +15,20 @@ export type StudioImage = { id: string; kind: 'modelo' | 'cenario' | 'look'; tit
 // photos = endereço para mostrar; paths = como está gravado (chave do meta); meta = cor e "com modelo" de cada foto
 export type StudioProduct = { id: string; code: string; name: string; status: string; colors: string[]; meta: PhotoMeta; paths: string[]; photos: string[] }
 const ProductsCtx = createContext<StudioProduct[]>([])
+
+// Baixar a imagem no tamanho original (se o navegador bloquear, abre em outra aba)
+async function downloadImage(url: string, name: string) {
+  try {
+    const r = await fetch(url)
+    if (!r.ok) throw new Error()
+    const blob = await r.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${name.replace(/[^\p{L}\p{N} _-]+/gu, '').trim().replace(/\s+/g, '-') || 'imagem'}.${blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg'}`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+  } catch { window.open(url, '_blank', 'noopener') }
+}
 type Conn = { provider: AiProvider; last4: string | null; model: string | null }
 type Opt = { id: string; name: string }
 
@@ -111,29 +125,52 @@ function useGenerate() {
   const [err, setErr] = useState<string | null>(null)
   const [last, setLast] = useState<Made[]>([])
   const [writing, setWriting] = useState(false)
+  const one = (body: Record<string, unknown>) => fetch('/api/varejo/ia/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async (r): Promise<Made | { error: string }> => { const j = await r.json().catch(() => ({})); return r.ok ? { id: j.id as string, url: j.url as string, kind: j.kind as Made['kind'], pieces: Array.isArray(body.pieces) ? [...new Set((body.pieces as { product_id: string }[]).map(x => x.product_id))] : [], target: (body.target as Target | null | undefined) ?? null } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
+    .catch((): { error: string } => ({ error: 'Sem conexão. Tente de novo.' }))
+  // Texto sugerido (site, rede social, ocasião) pela foto
+  async function writeCopies(ok: Made[], only?: string[]) {
+    const looksMade = ok.filter(m => m.kind === 'look' && (!only || only.includes(m.id)))
+    if (!looksMade.length) return
+    setWriting(true)
+    const copies = await Promise.all(looksMade.map(m => fetch('/api/varejo/ia/texto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_id: m.id }) })
+      .then(async x => (x.ok ? ((await x.json()).copy as LookCopy) : null)).catch(() => null)))
+    setWriting(false)
+    setLast(ok.map(m => { const i = looksMade.indexOf(m); return i >= 0 ? { ...m, copy: copies[i] ?? m.copy ?? null } : m }))
+  }
   // Um pedido por foto (com 2 fotos, cada pedido leva uma pose diferente)
   async function run(bodies: Record<string, unknown>[]) {
     setBusy(true); setErr(null)
-    const results = await Promise.all(bodies.map(body => fetch('/api/varejo/ia/gerar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(async (r): Promise<Made | { error: string }> => { const j = await r.json().catch(() => ({})); return r.ok ? { id: j.id as string, url: j.url as string, kind: j.kind as Made['kind'], pieces: Array.isArray(body.pieces) ? [...new Set((body.pieces as { product_id: string }[]).map(x => x.product_id))] : [], target: (body.target as Target | null | undefined) ?? null } : { error: (j.error as string) ?? (r.status === 504 ? 'A IA demorou demais e o tempo acabou. Tente de novo ou use o modelo rápido.' : `Erro ${r.status}.`) } })
-      .catch((): { error: string } => ({ error: 'Sem conexão. Tente de novo.' }))))
+    const results = await Promise.all(bodies.map(one))
     setBusy(false)
     const ok = results.filter((x): x is Made => 'url' in x)
     const bad = results.find((x): x is { error: string } => 'error' in x)
     if (bad) setErr(bad.error)
     if (ok.length) setLast(ok)
-    // Foto de look nova: já pede o texto (site, rede social e ocasião) pela foto
-    const looksMade = ok.filter(m => m.kind === 'look')
-    if (looksMade.length) {
-      setWriting(true)
-      const copies = await Promise.all(looksMade.map(m => fetch('/api/varejo/ia/texto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_id: m.id }) })
-        .then(async x => (x.ok ? ((await x.json()).copy as LookCopy) : null)).catch(() => null)))
-      setWriting(false)
-      setLast(ok.map(m => ({ ...m, copy: copies[looksMade.indexOf(m)] ?? m.copy ?? null })))
-    }
+    await writeCopies(ok)
     if (ok.length) router.refresh()
   }
-  return { busy, err, last, run, writing }
+  // Todas as cores: 1ª foto (se não houver base) e depois cada cor trocando só a peça na foto base
+  async function chain(first: Record<string, unknown> | null, baseId: string | null, rest: (base: string) => Record<string, unknown>[]) {
+    setBusy(true); setErr(null); setLast([])
+    const made: Made[] = []
+    let base = baseId
+    if (first) {
+      const r = await one(first)
+      if ('error' in r) { setBusy(false); setErr(r.error); return }
+      made.push(r); base = r.id; setLast([...made])
+    }
+    if (!base) { setBusy(false); setErr('Falta a foto de base.'); return }
+    const results = await Promise.all(rest(base).map(one))
+    setBusy(false)
+    const ok = [...made, ...results.filter((x): x is Made => 'url' in x)]
+    const bad = results.find((x): x is { error: string } => 'error' in x)
+    if (bad) setErr(`${ok.length} foto(s) prontas; uma falhou: ${bad.error}`)
+    setLast(ok)
+    await writeCopies(ok, ok.slice(0, 1).map(m => m.id)) // texto só da 1ª (serve para a peça)
+    if (ok.length) router.refresh()
+  }
+  return { busy, err, last, run, chain, writing }
 }
 
 function ProviderPick({ connected, value, onChange }: { connected: AiProvider[]; value: AiProvider | ''; onChange: (p: AiProvider) => void }) {
@@ -148,8 +185,10 @@ function ProviderPick({ connected, value, onChange }: { connected: AiProvider[];
 
 function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occasions?: Opt[] }) {
   if (!made.length) return null
+  const allColors = made.length > 1 && made.every(m => m.target?.color && m.target.product_id === made[0].target?.product_id)
   return (
     <div className="space-y-2 rounded-lg bg-positive-100/50 p-3">
+      {allColors && <PublishAll made={made} />}
       <p className="text-sm font-medium text-positive-700">Pronto! {made.length > 1 ? 'As fotos ficaram guardadas' : 'A foto ficou guardada'} no Banco de imagens{made[0].kind === 'look' ? '. Para colocar no site, use os botões abaixo da foto.' : '.'}</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {made.map(m => (
@@ -160,6 +199,35 @@ function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occa
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Publicar todas as cores de uma vez: cada foto vai para a sua cor; o texto da 1ª vira a descrição
+function PublishAll({ made }: { made: Made[] }) {
+  const router = useRouter()
+  const all = useContext(ProductsCtx)
+  const prod = all.find(p => p.id === made[0].target?.product_id)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  async function go() {
+    setBusy(true); setMsg(null)
+    const notes: string[] = []
+    let onSite = false
+    for (const [i, m] of made.entries()) {
+      const r = await publishAiImageToProduct(m.id, { productId: m.target!.product_id, color: m.target!.color, description: i === 0 ? m.copy?.site ?? null : null, showOnSite: true })
+      if (!r.ok) { setBusy(false); setMsg({ ok: false, text: `${m.target!.color}: ${r.error}` }); return }
+      onSite = r.onSite; if (r.note) notes.push(r.note)
+    }
+    setBusy(false)
+    setMsg(onSite ? { ok: true, text: `${made.length} fotos publicadas, cada uma na sua cor. A vitrine atualiza em até 1 minuto.` } : { ok: false, text: `Fotos colocadas na peça, mas ela ainda NÃO aparece no site. ${notes[notes.length - 1] ?? ''}` })
+    router.refresh()
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-700/30 bg-white p-3">
+      <div className="min-w-0 flex-1 text-sm text-gray-800"><strong>{prod?.name ?? 'Peça'}</strong>: {made.map(m => m.target?.color).join(', ')}. Confira as fotos e publique todas de uma vez.{made[0].copy?.site ? ' O texto da 1ª foto vira a descrição da peça.' : ''}</div>
+      <button type="button" disabled={busy || !!msg?.ok} onClick={go} className={btn}>{busy ? 'Publicando…' : `Publicar todas (${made.length})`}</button>
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`w-full text-sm ${msg.ok ? 'text-positive-700' : 'text-negative-700'}`}>{msg.text}</p>}
     </div>
   )
 }
@@ -202,6 +270,30 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
     setTitle(`${p.name} · ${color}`); setCustom(null); setQ('')
     document.getElementById('estudio-look')?.scrollIntoView({ behavior: 'smooth' })
   }
+  // Todas as cores de uma peça: 1ª foto com a modelo (ou a que já existe) e as outras cores trocando só a peça
+  type Batch = { product: StudioProduct; colors: { color: string; ref: number }[]; baseId: string | null; baseColor: string | null }
+  const [batch, setBatch] = useState<Batch | null>(null)
+  function startAll(p: StudioProduct) {
+    const miss = missingModelColors(p.paths, p.meta, p.colors).filter(c => c.reference !== null).map(c => ({ color: c.color, ref: c.reference as number }))
+    const bi = p.paths.findIndex(path => p.meta[path]?.model && /(^|\/)ia\//.test(path))
+    const baseImg = bi >= 0 ? images.find(im => im.kind === 'look' && im.url === p.photos[bi]) : undefined
+    setBatch({ product: p, colors: miss, baseId: baseImg?.id ?? null, baseColor: baseImg ? p.meta[p.paths[bi]]?.color ?? null : null })
+    setTarget(null); setCustom(null); setQ('')
+    if (!baseImg && miss[0]) setPicked([{ product_id: p.id, photo: miss[0].ref }])
+    document.getElementById('estudio-look')?.scrollIntoView({ behavior: 'smooth' })
+  }
+  function generateAll(b: Batch) {
+    const prov = provider || connected[0]
+    const first = b.baseId ? null : {
+      kind: 'look', provider: prov, prompt, title: `${b.product.name} · ${b.colors[0].color}`, model_image_id: model, scene_image_id: scene,
+      pieces: [{ product_id: b.product.id, photo: b.colors[0].ref }], pose: pose === 'auto' ? POSES[0] : pose, target: { product_id: b.product.id, color: b.colors[0].color }, complete,
+    }
+    const rest = (b.baseId ? b.colors : b.colors.slice(1))
+    void g.chain(first, b.baseId, base => rest.map(c => ({
+      kind: 'look', provider: prov, prompt: 'troca de cor', title: `${b.product.name} · ${c.color}`, base_image_id: base,
+      pieces: [{ product_id: b.product.id, photo: c.ref }], target: { product_id: b.product.id, color: c.color },
+    })))
+  }
   // A cor só vale se a peça continuar escolhida
   const liveTarget = target && picked.some(x => x.product_id === target.product_id) ? target : null
   const auto = lookPrompt(Math.max(1, picked.length), !!scene)
@@ -211,15 +303,24 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
   const tiles = useMemo(() => products.filter(p => !term || p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term))
     .flatMap(p => p.photos.map((url, i) => ({ p, url, i, info: p.meta[p.paths[i]] })).filter(t => !t.info?.model)).slice(0, 120), [products, term])
   const isPicked = (pid: string, i: number) => picked.findIndex(x => x.product_id === pid && x.photo === i)
-  const toggle = (pid: string, i: number) => setPicked(prev => {
+  const toggle = (pid: string, i: number) => { setBatch(null); setPicked(prev => {
     const k = prev.findIndex(x => x.product_id === pid && x.photo === i)
     if (k >= 0) return prev.filter((_, j) => j !== k)
     return prev.length >= MAX_LOOK_PIECES ? prev : [...prev, { product_id: pid, photo: i }]
-  })
+  }) }
   return (
     <section className="space-y-5 rounded-xl border border-gray-200 bg-white p-4">
-      <MissingColors products={products} onStart={startColor} />
+      <MissingColors products={products} onStart={startColor} onAll={startAll} />
       <div id="estudio-look" className="scroll-mt-4">
+        {batch && (
+          <div className="mb-2 space-y-1 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">
+            <p><strong>Todas as cores de {batch.product.name}:</strong> {batch.colors.map(c => c.color).join(', ')} ({batch.colors.length} foto{batch.colors.length > 1 ? 's' : ''}, cobradas na sua conta de IA).</p>
+            <p className="text-xs">{batch.baseId
+              ? `Usa a foto com modelo que já existe${batch.baseColor ? ` (${batch.baseColor})` : ''} como base: a IA troca só a peça, com a mesma modelo, pose e cenário.`
+              : `Escolha a modelo e o cenário. A IA faz a 1ª cor (${batch.colors[0]?.color}) e, nas outras, troca só a peça na mesma foto (mesma modelo, pose e cenário).`}</p>
+            <button type="button" className="text-xs underline" onClick={() => setBatch(null)}>Cancelar</button>
+          </div>
+        )}
         {liveTarget && <p className="mb-2 rounded-lg bg-brand-100/60 px-3 py-2 text-sm text-brand-800">Foto com modelo para <strong>{products.find(p => p.id === liveTarget.product_id)?.name}</strong> na cor <strong>{liveTarget.color}</strong>. Escolha a modelo e o cenário e gere; depois toque em <strong>Publicar na peça</strong>.</p>}
         <h3 className="text-sm font-semibold text-gray-900">1. Escolha a modelo</h3>
         {models.length === 0 ? <p className="mt-1 text-sm text-gray-600">Você ainda não tem modelo. <button type="button" className="text-brand-700 underline" onClick={() => goTo('modelo')}>Crie a primeira na aba Modelos</button>.</p> : (
@@ -268,12 +369,17 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
             <option value="auto">{times > 1 ? 'Uma pose diferente em cada foto' : 'A IA escolhe'}</option>{POSES.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
         </div>
         <p className="text-xs text-gray-500">Tamanho: {IMAGE_FORMAT.look.label}, o padrão da vitrine (cartão do look e capa do computador).</p>
+        {batch ? (
+          <button type="button" className={btn} disabled={g.busy || !(provider || connected[0]) || !batch.colors.length || (!batch.baseId && !model)} onClick={() => generateAll(batch)}>
+            Gerar todas as cores ({batch.colors.length} foto{batch.colors.length > 1 ? 's' : ''})</button>
+        ) : (
         <button type="button" className={btn} disabled={g.busy || !(provider || connected[0]) || !model || !picked.length}
           onClick={() => {
             const start = Math.floor(Math.random() * POSES.length)
             const poses = times > 1 ? [POSES[start], POSES[(start + 1 + Math.floor(Math.random() * (POSES.length - 1))) % POSES.length]] : [pose === 'auto' ? POSES[start] : pose]
             g.run(poses.map(p => ({ kind: 'look', provider: provider || connected[0], prompt, title, model_image_id: model, scene_image_id: scene, pieces: picked, pose: p, target: liveTarget, complete })))
           }}>Gerar foto do look</button>
+        )}
         {!picked.length && <p className="text-xs text-gray-500">Escolha a modelo e ao menos uma peça.</p>}
         <Waiting busy={g.busy} />
         {g.err && <p role="alert" className="rounded-lg bg-negative-100 px-3 py-2 text-sm text-negative-700">{g.err}</p>}
@@ -319,7 +425,7 @@ function PickedColors({ picked, products, target, onColor }: { picked: { product
 }
 
 // ── Aviso: peças com mais de uma cor sem foto com modelo em alguma cor ─────────
-function MissingColors({ products, onStart }: { products: StudioProduct[]; onStart: (p: StudioProduct, color: string, ref: number) => void }) {
+function MissingColors({ products, onStart, onAll }: { products: StudioProduct[]; onStart: (p: StudioProduct, color: string, ref: number) => void; onAll: (p: StudioProduct) => void }) {
   const [all, setAll] = useState(false)
   const rows = products.map(p => ({ p, miss: missingModelColors(p.paths, p.meta, p.colors), cov: colorCoverage(p.paths, p.meta, p.colors) })).filter(r => r.miss.length > 0)
   if (!rows.length) return null
@@ -334,6 +440,13 @@ function MissingColors({ products, onStart }: { products: StudioProduct[]; onSta
           <li key={p.id} className="flex flex-wrap items-center gap-2 py-2">
             <span className="min-w-0 flex-1 text-sm text-gray-900"><strong>{p.code}</strong> · {p.name}{p.status !== 'publicado' ? <span className="ml-1 text-xs text-gray-500">(não publicada)</span> : null}</span>
             <span className="flex flex-wrap gap-1.5">
+              {(() => {
+                const ready = cov.filter(c => !c.model && c.reference !== null).length
+                const hasBase = p.paths.some(path => p.meta[path]?.model && /(^|\/)ia\//.test(path))
+                return ready >= 2 || (ready >= 1 && hasBase)
+                  ? <button type="button" onClick={() => onAll(p)} className="rounded-full border border-brand-700 bg-white px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100">Todas as cores ({ready})</button>
+                  : null
+              })()}
               {cov.map(c => c.model
                 ? <span key={c.color} className="rounded-full bg-positive-100 px-2 py-1 text-xs text-positive-700">✓ {c.color}</span>
                 : c.reference !== null
@@ -500,6 +613,7 @@ function ImageActions({ id, kind, url, looks, occasions, copy: initialCopy = nul
       )}
       <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'desktop' }), 'Capa da vitrine (computador) trocada.')}>Capa da vitrine (computador)</button>
       <button type="button" className={`${btnLine} w-full`} disabled={busy} onClick={() => act(() => publishAiImage(id, { hero: 'mobile' }), 'Capa da vitrine (celular) trocada.')}>Capa da vitrine (celular)</button>
+      <button type="button" className={`${btnLine} w-full`} onClick={() => downloadImage(url, copy?.occasion.name ? `look-${copy.occasion.name}` : 'foto-ia')}>Baixar a foto</button>
       <div className="flex justify-between text-xs"><a href={url} target="_blank" rel="noopener noreferrer" className="text-brand-700 underline">Abrir grande</a><button type="button" className="text-negative-700" disabled={busy} onClick={() => { if (confirm('Excluir esta imagem do banco?')) void act(() => deleteAiImage(id), 'Excluída.') }}>Excluir</button></div>
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`rounded px-2 py-1 text-xs ${msg.ok ? 'bg-positive-100 text-positive-700' : 'bg-negative-100 text-negative-700'}`}>{msg.text}{msg.ok ? ' A vitrine atualiza em até 1 minuto.' : ''}</p>}
     </div>
@@ -592,7 +706,8 @@ function Gallery({ images }: { images: StudioImage[] }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <a href={i.url} target="_blank" rel="noopener noreferrer" className="block"><img src={i.url} alt={i.title ?? ''} loading="lazy" className="aspect-[3/4] w-full rounded-lg bg-gray-100 object-cover" /></a>
             <div className="flex items-center justify-between gap-1"><span className="truncate text-[11px] text-gray-600">{i.title}</span>
-              <button type="button" className="shrink-0 text-[11px] text-negative-700 disabled:opacity-50" disabled={busy === i.id} onClick={() => remove(i)}>{busy === i.id ? '…' : 'Excluir'}</button></div>
+              <span className="flex shrink-0 gap-2"><button type="button" className="text-[11px] text-brand-700" onClick={() => downloadImage(i.url, i.title ?? i.kind)}>Baixar</button>
+              <button type="button" className="text-[11px] text-negative-700 disabled:opacity-50" disabled={busy === i.id} onClick={() => remove(i)}>{busy === i.id ? '…' : 'Excluir'}</button></span></div>
           </div>
         ))}
       </div>

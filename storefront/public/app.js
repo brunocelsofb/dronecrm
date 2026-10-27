@@ -53,7 +53,7 @@
     WA = digits(STORE.whatsapp) || null
     PRODUCTS = d.products.map(p => ({
       ...p,
-      seal: p.promo_price !== null && p.promo_price < p.price ? 'Promoção' : p.is_new ? 'Novidade' : '',
+      seal: [p, ...p.variants].some(x => x.promo_price !== null && x.promo_price !== undefined && x.promo_price < x.price) ? 'Promoção' : p.is_new ? 'Novidade' : '',
       variants: p.variants.map(v => ({ ...v, color: v.color || ONE_COLOR, size: v.size || ONE_SIZE })),
     }))
     LOOKS = d.looks.map(l => ({ ...l, items: l.product_ids.filter(byId) })).filter(l => l.items.length)
@@ -102,7 +102,18 @@
     const extra = (seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '') + (ph && ph.ai ? AI_TAG : '')
     return phBox(ph ? ph.url : null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, extra)
   }
-  const priceLabel = p => (p.promo_price !== null && p.promo_price < p.price ? `<s>${fmt(p.price)}</s>${fmt(p.final_price)}` : fmt(p.final_price))
+  // Preço por cor: cada variação traz o preço da sua cor (igual ao da peça quando a cor não tem preço próprio)
+  const vpx = (p, v) => (v && v.final_price !== undefined ? v : p)
+  const colorV = (p, c) => p.variants.find(v => v.color === c && v.available) || p.variants.find(v => v.color === c)
+  const priceAt = (p, c) => vpx(p, colorV(p, c))
+  const varies = p => new Set(p.variants.map(v => vpx(p, v).final_price)).size > 1
+  const minFinal = p => Math.min(...(p.variants.some(v => v.available) ? p.variants.filter(v => v.available) : p.variants).map(v => vpx(p, v).final_price))
+  const priceLabel = (p, color) => {
+    if (color === undefined && varies(p)) return `a partir de ${fmt(minFinal(p))}`
+    const x = color === undefined ? priceAt(p, colorsOf(p)[0]) : priceAt(p, color)
+    return x.promo_price !== null && x.promo_price !== undefined && x.promo_price < x.price ? `<s>${fmt(x.price)}</s>${fmt(x.final_price)}` : fmt(x.final_price)
+  }
+  const priceText = p => (varies(p) ? `a partir de ${fmt(minFinal(p))}` : fmt(priceAt(p, colorsOf(p)[0]).final_price))
 
   // ── WhatsApp e avisos ───────────────────────────────────────────────────────
   function openWhatsApp(text) {
@@ -217,7 +228,7 @@
     const dots = cs.length > 1 ? `<span class="dots" role="radiogroup" aria-label="Cores">${cs.map(c => `<button class="dot" type="button" role="radio" aria-checked="${c === color}" aria-label="Ver na cor ${esc(c)}" title="${esc(c)}" data-card="${esc(p.id)}" data-card-color="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</span>`
       : cs[0] !== ONE_COLOR ? `<span class="dots" aria-label="Cor ${esc(cs[0])}"><span class="dot" style="background:${colorHex(cs[0])}" title="${esc(cs[0])}"></span></span>` : ''
     return `<article class="card" data-card-id="${esc(p.id)}">${favBtn(p.id)}<button class="open" type="button" data-open="${esc(p.id)}" aria-label="Ver detalhes de ${esc(p.name)}">
-      ${productPhoto(p, color)}<span><span class="name">${esc(p.name)}</span><br><span class="price">${priceLabel(p)}</span></span></button>${dots}</article>`
+      ${productPhoto(p, color)}<span><span class="name">${esc(p.name)}</span><br><span class="price">${priceLabel(p, color)}</span></span></button>${dots}</article>`
   }
   function refreshCard(p) {
     document.querySelectorAll(`[data-card-id="${CSS.escape(p.id)}"]`).forEach(el => { el.outerHTML = cardHtml(p) })
@@ -243,12 +254,12 @@
     const list = LOOKS.filter(l => occ === 'Todas' || l.occasion === occ)
     $('#lookList').innerHTML = list.length ? list.map(l => {
       const ps = l.items.map(byId)
-      const total = cents(ps.reduce((t, p) => t + p.final_price, 0))
+      const total = cents(ps.reduce((t, p) => t + priceAt(p, firstColor(p)).final_price, 0))
       return `<article class="look">
       ${phBox(l.cover, '#D8CFC4', l.name, l.cover_ai ? AI_TAG : '')}
       ${l.occasion ? `<div class="tag">${esc(occName(l.occasion))}</div>` : ''}
       <h3 style="margin-top:4px">${esc(l.name)}</h3>${l.description ? `<p>${esc(l.description)}</p>` : ''}
-      <ul>${ps.map(p => `<li><button type="button" data-open="${esc(p.id)}">${esc(p.name)} · ${fmt(p.final_price)}</button></li>`).join('')}</ul>
+      <ul>${ps.map(p => `<li><button type="button" data-open="${esc(p.id)}">${esc(p.name)} · ${priceText(p)}</button></li>`).join('')}</ul>
       <div class="acts">${ps.length > 1 ? `<button class="btn btn-primary" type="button" data-look="${esc(l.id)}">Quero o look inteiro · ${fmt(total)}</button>` : `<button class="btn btn-primary" type="button" data-open="${esc(ps[0].id)}">Ver a peça</button>`}</div>
     </article>`
     }).join('') : '<p class="empty">Ainda não há looks para esta ocasião. Veja as peças abaixo.</p>'
@@ -285,14 +296,14 @@
     const ps = l.items.map(byId)
     $('#lkBody').innerHTML = '<p class="note" style="margin:0 0 4px">Escolha a cor e o seu tamanho em cada peça.</p>' + ps.map(p => {
       const s = sel[p.id], cs = colorsOf(p)
-      return `<div class="lk-item">${productPhoto(p, s.color, 0, false)}<div><div class="t">${esc(p.name)}</div><div class="v">${fmt(p.final_price)}</div>
+      return `<div class="lk-item">${productPhoto(p, s.color, 0, false)}<div><div class="t">${esc(p.name)}</div><div class="v">${fmt(priceAt(p, s.color).final_price)}</div>
         ${cs.length > 1 || cs[0] !== ONE_COLOR ? `<div class="opt-label">Cor <em>${esc(s.color)}</em></div>
         <div class="swatches">${cs.map(c => `<button class="swatch" type="button" role="radio" aria-checked="${c === s.color}" aria-label="${esc(c)}" data-lk="${esc(p.id)}" data-lk-color="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</div>` : ''}
         <div class="opt-label">Tamanho <em>${s.size ? esc(s.size) : 'escolha'}</em></div>
         <div class="sizes">${sizesOf(p, s.color).map(v => `<button class="size ${v.available ? '' : 'out'}" type="button" role="radio" aria-checked="${v.size === s.size}" data-lk="${esc(p.id)}" data-lk-size="${esc(v.size)}" ${v.available ? '' : 'aria-disabled="true"'}>${esc(v.size)}</button>`).join('')}</div></div></div>`
     }).join('')
     const missing = ps.filter(p => !sel[p.id].size)
-    const total = cents(ps.reduce((t, p) => t + p.final_price, 0))
+    const total = cents(ps.reduce((t, p) => t + priceAt(p, sel[p.id].color).final_price, 0))
     const btn = $('#lkAdd')
     btn.disabled = missing.length > 0
     btn.textContent = missing.length ? `Escolha o tamanho de ${missing.length === 1 ? missing[0].name : `${missing.length} peças`}` : `Adicionar o look à sacola · ${fmt(total)}`
@@ -360,7 +371,7 @@
     const thumbs = shots.length > 1 ? `<div class="mini-row" style="grid-auto-columns:64px;margin-top:10px">${shots.map((ph, i) => `<button class="mini" type="button" data-photo="${i}" aria-label="Foto ${i + 1}" style="${i === cur.photo ? 'outline:1.5px solid var(--espresso);outline-offset:2px;border-radius:3px' : ''}">${phBox(ph.url, '#E8E0D5', '')}</button>`).join('')}</div>` : ''
     const spec = [['Composição', p.composition], ['Cuidados', p.care], ['Código', p.code]].filter(([, x]) => x)
     $('#pdBody').innerHTML = `<div class="pd"><div>${productPhoto(p, color, cur.photo)}${thumbs}</div>
-      <div><h3>${esc(p.name)}</h3><p class="price">${priceLabel(p)}</p>${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
+      <div><h3>${esc(p.name)}</h3><p class="price">${priceLabel(p, color)}</p>${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
         ${cs.length > 1 || cs[0] !== ONE_COLOR ? `<div class="opt-label">Cor <em>${esc(color)}</em></div>
         <div class="swatches" role="radiogroup" aria-label="Cor">${cs.map(c => `<button class="swatch" type="button" role="radio" aria-checked="${c === color}" aria-label="${esc(c)}" data-color="${esc(c)}" style="background:${colorHex(c)}"></button>`).join('')}</div>` : ''}
         <div class="opt-label">Tamanho <em>${size ? esc(size) : 'escolha'}</em></div>
@@ -378,7 +389,7 @@
       })()}`
     const add = $('#addBtn')
     add.disabled = !v || !v.available
-    add.textContent = !size ? 'Escolha o tamanho' : v && v.available ? `Adicionar à sacola · ${fmt(p.final_price * qty)}` : 'Esgotado neste tamanho'
+    add.textContent = !size ? 'Escolha o tamanho' : v && v.available ? `Adicionar à sacola · ${fmt(vpx(p, v).final_price * qty)}` : 'Esgotado neste tamanho'
     $('#askBtn').hidden = !WA
   }
   $('#pdBody').addEventListener('click', e => {
@@ -408,7 +419,7 @@
   }
   function saveBag() { save('sacola', bag); renderCount() }
   function renderCount() { const n = bag.reduce((t, i) => t + i.qty, 0); const b = $('#bagCount'); b.textContent = n; b.hidden = !n; $('#stickyBag').textContent = n ? `Sacola (${n})` : 'Sacola' }
-  const lines = () => bag.map(i => ({ ...i, ...(findVariant(i.variant_id) || {}) })).filter(l => l.p).map(l => ({ ...l, total: cents(l.p.final_price * l.qty) }))
+  const lines = () => bag.map(i => ({ ...i, ...(findVariant(i.variant_id) || {}) })).filter(l => l.p).map(l => ({ ...l, total: cents(vpx(l.p, l.v).final_price * l.qty) }))
   const subtotal = () => cents(lines().reduce((t, l) => t + l.total, 0))
   const variantText = v => [v.color !== ONE_COLOR && v.color, v.size !== ONE_SIZE && v.size].filter(Boolean).join(' · ')
   let step = 'bag', done = null
@@ -433,7 +444,7 @@
     if (step === 'bag') {
       $('#bagTitle').textContent = 'Sacola'
       body.innerHTML = lines().map(l => `<div class="line">${productPhoto(l.p, l.v.color, 0, false)}
-          <div><div class="t">${esc(l.p.name)}</div><div class="v">${esc([variantText(l.v), fmt(l.p.final_price)].filter(Boolean).join(' · '))}</div>
+          <div><div class="t">${esc(l.p.name)}</div><div class="v">${esc([variantText(l.v), fmt(vpx(l.p, l.v).final_price)].filter(Boolean).join(' · '))}</div>
             ${l.v.available ? '' : '<div class="v" style="color:#8e3b2c">Esgotou. Remova para continuar.</div>'}
             <div class="ctrl"><div class="qty"><button type="button" data-l="${esc(l.variant_id)}" data-d="-1" aria-label="Diminuir">−</button><output>${l.qty}</output><button type="button" data-l="${esc(l.variant_id)}" data-d="1" aria-label="Aumentar">+</button></div><button class="link" type="button" data-rm="${esc(l.variant_id)}">Remover</button></div></div>
           <div>${fmt(l.total)}</div></div>`).join('') +

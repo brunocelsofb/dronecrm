@@ -105,6 +105,20 @@ export function completeLookBrief(essence: string): string {
   ].join('\n')
 }
 
+// Outras cores da mesma peça: parte da foto já pronta (modelo vestida) e troca SÓ a peça,
+// usando a foto real da peça na outra cor. Assim modelo, pose e cenário ficam iguais.
+export function swapColorPrompt(o: { name: string; category: string | null; color: string }): string {
+  return [
+    'Vou te enviar 2 imagens e quero que você execute rigorosamente as orientações a seguir.',
+    'A primeira imagem é uma foto pronta de uma modelo vestindo um look.',
+    `A segunda imagem é a mesma peça (${o.name}${o.category ? `, tipo: ${o.category}` : ''}) na cor ${o.color}.`,
+    `Troque somente essa peça na modelo pela peça da segunda imagem, na cor ${o.color}, mantendo o modelo, o tecido, a estampa e os detalhes da segunda imagem.`,
+    'Mantenha todo o resto exatamente igual à primeira imagem: a mesma modelo, rosto, cabelo, corpo, pose, cenário, luz, enquadramento e as outras roupas e acessórios.',
+    'Se a segunda imagem mostrar uma pessoa ou outras roupas, ignore tudo e use só a peça.',
+    'Foto realista, vertical, sem textos e sem logotipos.',
+  ].join('\n')
+}
+
 // Ficha de cada peça para a IA: diz QUAL peça vestir, de que cor, e o que tirar da modelo.
 // Sem isso, quando a foto da peça mostra uma pessoa com várias roupas (ou a modelo já está
 // de calça), a IA pode manter a roupa da modelo e ignorar a peça.

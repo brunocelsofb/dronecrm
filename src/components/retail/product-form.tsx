@@ -9,10 +9,10 @@ import { fitPhoto, PHOTO_FRAMES } from '@/lib/retail/image-fit'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto, setRetailPhotoMeta,
+  saveRetailProduct, deleteRetailProduct, createRetailPhotoUpload, attachRetailPhoto, removeRetailPhoto, moveRetailPhoto, setRetailPhotoMeta, setRetailColorPrices,
 } from '@/lib/actions/retail-products'
 import { isAiPhotoPath, missingModelColors, type PhotoMeta } from '@/lib/retail/photo-colors'
-import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, effectivePrice, parseMoney, retailPhotoUrl, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
+import { MAX_PHOTOS, RETAIL_MEDIA_BUCKET, effectivePrice, parseMoney, retailPhotoUrl, variantPrice, type ProductStatus, type RetailProduct } from '@/lib/retail/products'
 import { analyzePrice, priceMemory, referencePrice, requiredMarginPct, type LoyaltySettings, type PricingSettings } from '@/lib/retail/margin'
 import { fmtBRL, fmtNum1, fmtPct } from '@/lib/format'
 import Link from 'next/link'
@@ -259,6 +259,7 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
           </div>
         </div>
         <PricePanel f={f} setPrice={v => setF(prev => ({ ...prev, price: v }))} setPromo={v => setF(prev => ({ ...prev, promo_price: v }))} setCost={v => setF(prev => ({ ...prev, cost_price: v }))} pricing={pricing} loyalty={loyalty} />
+        {product && <ColorPrices product={product} f={f} pricing={pricing} loyalty={loyalty} />}
         <details className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium text-brand-700">Detalhes para a vitrine (opcional, ajuda a vender)</summary>
           <div className="mt-3 space-y-3">
@@ -487,6 +488,55 @@ export function ProductForm({ product, categories, justCreated, pricing, loyalty
         <button type="button" onClick={save} disabled={busy} className="rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50">
           {busy ? 'Salvando…' : product ? 'Salvar alterações' : 'Criar peça'}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Preço e promoção por cor: vazio segue a peça. Ex.: só o Preto em promoção.
+function ColorPrices({ product, f, pricing, loyalty }: { product: RetailProduct; f: { price: string; promo_price: string; cost_price: string }; pricing: PricingSettings; loyalty: LoyaltySettings }) {
+  const router = useRouter()
+  const colors = [...new Set(product.variants.map(v => v.color))]
+  const money = (n: number | null | undefined) => (n === null || n === undefined ? '' : Number(n).toFixed(2).replace('.', ','))
+  const initial = Object.fromEntries(colors.map(c => {
+    const v = product.variants.find(x => x.color === c)
+    return [c ?? '', { price: money(v?.price), promo: money(v?.promo_price) }]
+  }))
+  const [rows, setRows] = useState<Record<string, { price: string; promo: string }>>(initial)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  if (colors.length < 2) return null
+  const base = parseMoney(f.price), basePromo = parseMoney(f.promo_price), cost = parseMoney(f.cost_price) ?? 0
+  const changed = colors.some(c => rows[c ?? ''].price !== initial[c ?? ''].price || rows[c ?? ''].promo !== initial[c ?? ''].promo)
+  async function save() {
+    setBusy(true); setMsg(null)
+    const r = await setRetailColorPrices(product.id, colors.map(c => ({ color: c, price: rows[c ?? ''].price || null, promo_price: rows[c ?? ''].promo || null })))
+    setBusy(false)
+    setMsg(r.ok ? { ok: true, text: 'Preços das cores salvos.' } : { ok: false, text: r.error })
+    if (r.ok) router.refresh()
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+      <p className="text-sm font-semibold text-gray-900">Preço por cor <span className="font-normal text-gray-500">(opcional)</span></p>
+      <p className={hint}>Deixe vazio para usar o preço da peça. Use para pôr <strong>só uma cor em promoção</strong> ou dar outro preço a uma cor. Na vitrine, o preço muda ao tocar na cor.</p>
+      <div className="space-y-1.5">
+        {colors.map(c => {
+          const r = rows[c ?? '']
+          const vp = variantPrice({ price: base, promo_price: basePromo }, { price: parseMoney(r.price), promo_price: parseMoney(r.promo) })
+          const a = vp.final !== null && cost > 0 ? analyzePrice(vp.final, cost, pricing, loyalty) : null
+          return (
+            <div key={c ?? ''} className="grid grid-cols-[minmax(0,1fr)_6.5rem_6.5rem] items-center gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_7rem_7rem_10rem]">
+              <span className="truncate text-gray-800">{c || 'Cor única'}</span>
+              <input className={inp} inputMode="decimal" aria-label={`Preço de ${c || 'Cor única'}`} placeholder={base !== null ? money(base) : 'preço'} value={r.price} onChange={e => setRows(p => ({ ...p, [c ?? '']: { ...p[c ?? ''], price: e.target.value } }))} />
+              <input className={inp} inputMode="decimal" aria-label={`Promoção de ${c || 'Cor única'}`} placeholder={r.price ? 'promoção' : basePromo !== null ? money(basePromo) : 'promoção'} value={r.promo} onChange={e => setRows(p => ({ ...p, [c ?? '']: { ...p[c ?? ''], promo: e.target.value } }))} />
+              <span className="col-span-3 text-xs text-gray-600 sm:col-span-1">{vp.final !== null ? `vende por ${fmtBRL(vp.final)}` : 'sem preço'}{a ? ` · margem ${fmtPct(a.marginPct)}` : ''}</span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={busy || !changed} onClick={save} className="rounded-lg border border-brand-700 bg-white px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">{busy ? 'Salvando…' : 'Salvar preços das cores'}</button>
+        {msg && <p role={msg.ok ? 'status' : 'alert'} className={`text-sm ${msg.ok ? 'text-positive-700' : 'text-negative-700'}`}>{msg.text}</p>}
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { readPhotoMeta, type PhotoMeta } from '@/lib/retail/photo-colors'
+import { similarColors } from '@/lib/retail/merge'
 import {
   cleanText, cleanLongText, normalizeCode, defaultSku, parseMoney, parseStock, isProductStatus,
   RETAIL_MEDIA_BUCKET, MAX_PHOTOS, type ProductStatus, type RetailVariant,
@@ -119,7 +120,10 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
 
   // Variações: apaga as removidas, atualiza as existentes, cria as novas.
   // O saldo muda pela função do banco (histórico "ajuste" com quem fez)
-  const { data: current } = await db.from('retail_product_variants').select('id, stock').eq('product_id', productId)
+  const { data: current } = await db.from('retail_product_variants').select('id, stock, color, price, promo_price').eq('product_id', productId)
+  // Tamanho novo numa cor com preço próprio herda o preço da cor
+  const colorPrice = new Map<string, { price: unknown; promo_price: unknown }>()
+  for (const r of current ?? []) if (r.price !== null || r.promo_price !== null) colorPrice.set(String(r.color ?? ''), { price: r.price, promo_price: r.promo_price })
   const stockNow = new Map((current ?? []).map(r => [r.id as string, Number(r.stock)]))
   const stockRows: StockRow[] = []
   const newStock: StockRow[] = []
@@ -133,7 +137,7 @@ export async function saveRetailProduct(input: ProductInput): Promise<Result<{ i
       if (error) return { ok: false, error: error.code === '23505' ? `SKU ${v.sku} já usado em outra peça (ou cor e tamanho repetidos).` : error.message }
       if (stockNow.get(v.id) !== v.stock) stockRows.push({ variant_id: v.id, mode: 'set', qty: v.stock })
     } else {
-      const { data, error } = await db.from('retail_product_variants').insert({ ...vrow, stock: 0, product_id: productId }).select('id').single()
+      const { data, error } = await db.from('retail_product_variants').insert({ ...vrow, ...(colorPrice.get(String(v.color ?? '')) ?? {}), stock: 0, product_id: productId }).select('id').single()
       if (error || !data) return { ok: false, error: error?.code === '23505' ? `SKU ${v.sku} já usado em outra peça (ou cor e tamanho repetidos).` : error?.message ?? 'Falha ao criar a variação.' }
       if (v.stock > 0) newStock.push({ variant_id: data.id as string, mode: 'set', qty: v.stock })
     }
@@ -357,6 +361,13 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     if (dupe) { warnings.push(`Linha ${line} (${code}): ${[color, size].filter(Boolean).join(' / ') || sku} repetida. Quantidades somadas (${dupe.stock} + ${stock} = ${dupe.stock + stock}); confira se não foi linha duplicada.`); dupe.stock += stock; return }
     p.variants.push({ sku, color, size, stock })
   })
+  // Cores parecidas (Preta x Preto): viram duas cores diferentes se não forem iguais
+  const sheetColors = [...byCode.values()].flatMap(p => p.variants.map(v => cleanText(v.color, 60) ?? '')).filter(Boolean)
+  if (sheetColors.length) {
+    const { data: known } = await (await createScopedAdmin(g.tenantId)).from('retail_product_variants').select('color').not('color', 'is', null).limit(20000)
+    for (const [a, b] of similarColors(sheetColors, [...new Set((known ?? []).map(k => String(k.color)))]).slice(0, 20))
+      warnings.unshift(`Cores parecidas: "${a}" e "${b}". Se for a mesma cor, escreva igual nas duas (senão viram duas cores na vitrine).`)
+  }
   return { ok: true, products: [...byCode.values()], ignored: ignored.slice(0, 50), warnings: warnings.slice(0, 100) }
 }
 
@@ -471,4 +482,28 @@ export async function mergeRetailProducts(input: { mainId: string; otherIds: str
   if (data) return { ok: false, error: String(data) }
   revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${input.mainId}`); revalidatePath('/varejo/estudio'); revalidatePath('/varejo/vitrine')
   return { ok: true, id: input.mainId }
+}
+
+// Preço e promoção por cor (vazio = segue a peça). Vale para todos os tamanhos da cor.
+export async function setRetailColorPrices(productId: string, rows: { color: string | null; price: string | null; promo_price: string | null }[]): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: p } = await db.from('retail_products').select('id, price').eq('id', productId).maybeSingle()
+  if (!p) return { ok: false, error: 'Peça não encontrada.' }
+  for (const r of (rows ?? []).slice(0, 40)) {
+    const price = r.price && String(r.price).trim() ? parseMoney(r.price) : null
+    const promo = r.promo_price && String(r.promo_price).trim() ? parseMoney(r.promo_price) : null
+    const label = r.color ?? 'Cor única'
+    if (r.price && String(r.price).trim() && price === null) return { ok: false, error: `${label}: preço inválido.` }
+    if (r.promo_price && String(r.promo_price).trim() && promo === null) return { ok: false, error: `${label}: promoção inválida.` }
+    const base = price ?? (p.price === null ? null : Number(p.price))
+    if (promo !== null && base !== null && promo >= base) return { ok: false, error: `${label}: a promoção precisa ser menor que o preço.` }
+    let q = db.from('retail_product_variants').update({ price, promo_price: promo, updated_at: new Date().toISOString() }).eq('product_id', productId)
+    q = r.color === null ? q.is('color', null) : q.eq('color', r.color)
+    const { error } = await q
+    if (error) return { ok: false, error: error.message }
+  }
+  revalidatePath(`/varejo/produtos/${productId}`); revalidatePath('/varejo/produtos')
+  return { ok: true }
 }

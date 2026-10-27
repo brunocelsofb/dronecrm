@@ -47,3 +47,23 @@ export function colorIssue(m: MergeMember, group: MergeMember[], renamed: Record
 }
 
 export function photosAfter(g: MergeMember[]) { return g.reduce((t, m) => t + m.photos, 0) }
+
+// Cores que provavelmente são a mesma escrita de outro jeito (Preta/Preto, Marron/Marrom, Off White/Offwhite)
+export function similarColorKey(c: string | null): string {
+  return nameKey(c ?? '').replace(/[\s-]+/g, '').replace(/m$/, 'n').replace(/(.)\1+/g, '$1').replace(/[aoe]s?$/, '')
+}
+// Pares de nomes diferentes que parecem a mesma cor: [nome da planilha, nome já usado]
+export function similarColors(sheet: string[], known: string[]): [string, string][] {
+  const out: [string, string][] = []
+  const seen = new Set<string>()
+  const all = [...new Set([...known, ...sheet].filter(Boolean))]
+  for (const a of [...new Set(sheet.filter(Boolean))]) {
+    for (const b of all) {
+      if (a === b || !similarColorKey(a) || similarColorKey(a) !== similarColorKey(b)) continue
+      const k = [a, b].sort().join('|')
+      if (seen.has(k)) continue
+      seen.add(k); out.push([a, b])
+    }
+  }
+  return out
+}
