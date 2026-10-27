@@ -31,11 +31,16 @@
   const ONE_SIZE = 'Único'
 
   // Bolinha de cor: pelo nome da cor (português); cor desconhecida fica neutra
+  // Ordem importa: nomes compostos antes dos simples (ex.: "azul marinho" antes de "azul")
   const COLOR_HEX = [
-    [/preto|black|ônix|onix/, '#2B2522'], [/branc|off|marfim|perola|pérola|gelo/, '#F3EFE8'], [/areia|bege|nude|cáqui|caqui|camel|creme/, '#D9C7AC'],
-    [/oliva|militar/, '#6B6B3A'], [/verde/, '#5E7F5A'], [/bord[oô]|vinho|marsala/, '#5E2430'], [/vermelh/, '#A8322D'], [/rosa|blush/, '#E7C4C0'],
-    [/lil[aá]s|lavanda|roxo/, '#A898C4'], [/amarel|manteiga|mostarda/, '#F1DD9C'], [/laranja|terracota|ferrugem/, '#C46B3D'], [/marrom|caf[eé]|chocolate|tabaco/, '#6B4A33'],
-    [/jeans claro/, '#A9C1D9'], [/jeans|denim/, '#5D7FA6'], [/marinho/, '#26344F'], [/azul/, '#8FA9C4'], [/cinza|grafite|chumbo/, '#8A8580'], [/dourad|ouro/, '#C9A45C'], [/prata/, '#C9C9C9'],
+    [/dark blue|navy|azul marinho|marinho/, '#26344F'], [/azul bb|azul beb[eê]|baby blue|azul frozen|azul claro|light blue/, '#BCD3E6'],
+    [/mocha|mousse|moca|mocca/, '#8B6B57'], [/caramelo|caramel|whisky/, '#A86B3C'], [/champanhe|champagne/, '#E8D9BC'], [/vanil|baunilha/, '#F2E6C9'],
+    [/salm[aã]o|salmon|coral|p[eê]ssego|peach/, '#EBA48A'], [/lima|lime|verde caipirinha|verde lim/, '#C3D46A'], [/verde escuro|musgo/, '#3F5A3C'],
+    [/rose|ros[eé]|rosa claro|blush/, '#E9C7C3'], [/beringela|berinjela|uva|ameixa|plum/, '#5B2E4A'], [/cru\b|natural|linho|ecru/, '#E6DCC8'],
+    [/preto|black|ônix|onix/, '#2B2522'], [/branc|white|off|marfim|perola|pérola|gelo/, '#F3EFE8'], [/areia|bege|nude|cáqui|caqui|camel|creme/, '#D9C7AC'],
+    [/oliva|militar/, '#6B6B3A'], [/verde|green/, '#5E7F5A'], [/bord[oô]|vinho|marsala/, '#5E2430'], [/vermelh|red\b/, '#A8322D'], [/rosa|blush/, '#E7C4C0'],
+    [/lil[aá]s|lavanda|roxo/, '#A898C4'], [/amarel|manteiga|mostarda/, '#F1DD9C'], [/laranja|terracota|ferrugem/, '#C46B3D'], [/marr[oa]m|marron|brown|caf[eé]|chocolate|tabaco/, '#6B4A33'],
+    [/jeans claro/, '#A9C1D9'], [/jeans|denim/, '#5D7FA6'], [/marinho/, '#26344F'], [/azul|blue/, '#8FA9C4'], [/cinza|grafite|chumbo/, '#8A8580'], [/dourad|ouro/, '#C9A45C'], [/prata/, '#C9C9C9'],
   ]
   const colorHex = name => { const n = String(name || '').toLowerCase(); return (COLOR_HEX.find(([re]) => re.test(n)) || [null, '#D8CFC4'])[1] }
   const isDark = hex => { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 120 }

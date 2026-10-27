@@ -23,7 +23,7 @@ export default async function RetailStockHistoryPage({ searchParams }: { searchP
           <h1 className="text-xl font-semibold text-gray-900">Histórico do estoque</h1>
           <p className="text-sm text-gray-500">Toda mudança de saldo, com o motivo, quem fez e o saldo antes e depois. Mostra as 300 mais recentes.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><ProductImport mode="entrada" /><ProductImport mode="contagem" /></div>
+        <div className="flex flex-wrap gap-2"><a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha preenchida</a><ProductImport mode="entrada" /><ProductImport mode="contagem" /></div>
       </div>
       <div className="flex flex-wrap gap-2 text-sm">
         <Link href="/varejo/estoque" className={`rounded-full border px-3 py-1 ${!kind ? 'border-brand-700 bg-brand-100 text-brand-800' : 'border-gray-300 text-gray-700'}`}>Todos</Link>

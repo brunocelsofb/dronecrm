@@ -75,9 +75,9 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/varejo/estoque" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Histórico do estoque</Link>
-          <Link href="/varejo/produtos/juntar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Juntar cores</Link>
-          <Link href="/varejo/produtos/separar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Separar cores e tamanhos{combined.length ? <span className="ml-1.5 rounded-full bg-warn-100 px-1.5 text-xs font-semibold text-warn-700">{combined.length}</span> : null}</Link>
-          <a href="/api/varejo/modelo" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha-modelo</a>
+          {sameName.length > 0 && <Link href="/varejo/produtos/juntar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Juntar cores <span className="ml-1 rounded-full bg-brand-100 px-1.5 text-xs font-semibold text-brand-800">{sameName.length}</span></Link>}
+          {combined.length > 0 && <Link href="/varejo/produtos/separar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Separar cores e tamanhos <span className="ml-1 rounded-full bg-warn-100 px-1.5 text-xs font-semibold text-warn-700">{combined.length}</span></Link>}
+          <a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" title="Todas as peças com o estoque de agora, no formato da importação">Baixar planilha preenchida</a>
           <ProductImport mode="cadastro" />
           <ProductImport mode="entrada" />
           <Link href="/varejo/produtos/nova" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>

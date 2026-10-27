@@ -25,7 +25,7 @@ const MODES: Record<ImportMode, { button: string; title: string; when: string; s
     button: 'Fazer contagem de estoque', title: 'Contagem de estoque',
     when: 'Use depois de contar as peças da loja (ex.: uma vez por mês), para corrigir diferenças.',
     stock: 'O estoque fica IGUAL ao da planilha (substitui o atual). Peça que não estiver na planilha não muda.',
-    example: 'Ex.: o sistema diz 5, você contou 4 → fica 4.', confirm: 'Substituir o estoque',
+    example: 'Ex.: o sistema diz 5, você contou 4 → fica 4. Dica: baixe a planilha preenchida, corrija só a coluna estoque e importe aqui.', confirm: 'Substituir o estoque',
   },
 }
 type Line = { code: string; name: string | null; variant: string; before: number | null; after: number }
@@ -96,7 +96,7 @@ export function ProductImport({ mode = 'cadastro', primary = false }: { mode?: I
               <p><strong>Estoque:</strong> {M.stock}</p>
               <p className="text-xs text-gray-600">{M.example}</p>
             </div>
-            <p className="mt-2 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho (use a planilha-modelo). Não duplica peças e não apaga nada; campo vazio mantém o que já está cadastrado.</p>
+            <p className="mt-2 text-xs text-gray-500">Excel ou CSV, uma linha por cor e tamanho. Não duplica peças e não apaga nada; campo vazio mantém o que já está cadastrado. <a href="/api/varejo/modelo" className="text-brand-700 underline">Baixar planilha-modelo (vazia)</a> · <a href="/api/varejo/planilha" className="text-brand-700 underline">Baixar planilha preenchida (estoque de agora)</a></p>
 
             {!preview && !result && (
               <label className={`mt-4 block cursor-pointer rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-600 hover:bg-gray-50 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
