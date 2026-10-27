@@ -58,7 +58,7 @@ export function modelPrompt(s: ModelSpec): string {
     'Fotografia realista de catálogo de moda, corpo inteiro, de uma modelo feminina fictícia (pessoa que não existe).',
     s.age && `Idade aparente: ${s.age}.`, s.body && `Tipo de corpo: ${s.body}.`, s.skin && `Tom de pele: ${s.skin}.`, s.hair && `Cabelo: ${s.hair}.`,
     s.style && `Estilo e expressão: ${s.style}.`,
-    'Em pé, de frente, braços relaxados, vestindo só um body (collant) liso cor nude e sandália nude, pernas à mostra, sem calça, sem saia e sem acessórios (para depois vestir outras peças sem confundir com a roupa dela).',
+    'Em pé, de frente, braços relaxados, vestindo roupa básica e discreta: camiseta branca lisa de manga curta e calça legging cinza-clara lisa, com sapatilha bege, sem acessórios (roupa simples, para depois vestir as peças da loja).',
     'Fundo de estúdio cinza-claro liso, luz suave e uniforme, foco nítido, sem textos, sem logotipos.',
     s.extra,
   ]
