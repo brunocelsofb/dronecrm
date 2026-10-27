@@ -14,6 +14,7 @@ import { getSupportSession } from '@/lib/tenant/support'
 import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { readPhotoMeta, type PhotoMeta } from '@/lib/retail/photo-colors'
 import { similarColors } from '@/lib/retail/merge'
+import { needsSplit } from '@/lib/retail/split'
 import {
   cleanText, cleanLongText, normalizeCode, defaultSku, parseMoney, parseStock, isProductStatus,
   RETAIL_MEDIA_BUCKET, MAX_PHOTOS, type ProductStatus, type RetailVariant,
@@ -361,6 +362,9 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     if (dupe) { warnings.push(`Linha ${line} (${code}): ${[color, size].filter(Boolean).join(' / ') || sku} repetida. Quantidades somadas (${dupe.stock} + ${stock} = ${dupe.stock + stock}); confira se não foi linha duplicada.`); dupe.stock += stock; return }
     p.variants.push({ sku, color, size, stock })
   })
+  // Várias cores ou tamanhos na mesma célula ("Preto / Azul", "P/M"): entram como uma cor só
+  const multi = [...byCode.values()].flatMap(p => p.variants.filter(v => needsSplit(v.color ?? null, v.size ?? null)).map(v => `${p.code} (${[v.color, v.size].filter(Boolean).join(' · ')})`))
+  if (multi.length) warnings.unshift(`${multi.length} linha(s) com várias cores ou tamanhos na mesma célula: ${multi.slice(0, 5).join('; ')}${multi.length > 5 ? '…' : ''}. O certo é uma linha por cor e tamanho. Se importar assim, use depois Produtos → Separar cores e tamanhos.`)
   // Cores parecidas (Preta x Preto): viram duas cores diferentes se não forem iguais
   const sheetColors = [...byCode.values()].flatMap(p => p.variants.map(v => cleanText(v.color, 60) ?? '')).filter(Boolean)
   if (sheetColors.length) {
@@ -505,5 +509,29 @@ export async function setRetailColorPrices(productId: string, rows: { color: str
     if (error) return { ok: false, error: error.message }
   }
   revalidatePath(`/varejo/produtos/${productId}`); revalidatePath('/varejo/produtos')
+  return { ok: true }
+}
+
+// ── Separar cores e tamanhos que vieram juntos numa linha da planilha ────────
+export async function splitRetailVariant(variantId: string, rows: { color: string; size: string; qty: number }[]): Promise<Result> {
+  const access = await hasFeature('varejo')
+  if (!access) return { ok: false, error: 'Sem acesso ao módulo Varejo.' }
+  if (await getSupportSession()) return { ok: false, error: 'Acesso de suporte é só leitura.' }
+  if (!access.isAdmin) return { ok: false, error: 'Só a administradora separa as linhas.' }
+  const tenantId = await requireTenantId()
+  const db = await createScopedAdmin(tenantId)
+  const { data: v } = await db.from('retail_product_variants').select('id, product_id, retail_products(code)').eq('id', variantId).maybeSingle()
+  if (!v) return { ok: false, error: 'Linha não encontrada.' }
+  const code = String((v.retail_products as unknown as { code: string } | null)?.code ?? '')
+  const clean = (rows ?? []).slice(0, 40).map(r => ({ color: cleanText(r.color, 60) ?? '', size: cleanText(r.size, 20) ?? '', qty: Math.floor(Number(r.qty)) }))
+    .filter(r => r.color || r.size)
+  if (!clean.length) return { ok: false, error: 'Informe ao menos uma linha com cor ou tamanho.' }
+  if (clean.some(r => !Number.isFinite(r.qty) || r.qty < 0)) return { ok: false, error: 'Quantidade inválida.' }
+  if (clean.some(r => r.color.includes('/') || r.size.includes('/'))) return { ok: false, error: 'Cada linha deve ter uma cor e um tamanho só (sem "/").' }
+  const payload = clean.map(r => ({ ...r, sku: defaultSku(code, r.color || null, r.size || null) }))
+  const { data, error } = await db.rpc('retail_split_variant', { p_tenant: tenantId, p_user: access.userId, p_variant: variantId, p_rows: payload })
+  if (error) return { ok: false, error: error.message }
+  if (data) return { ok: false, error: String(data) }
+  revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${v.product_id}`); revalidatePath('/varejo/estoque')
   return { ok: true }
 }

@@ -189,6 +189,7 @@ function Results({ made, looks, occasions }: { made: Made[]; looks?: Opt[]; occa
   return (
     <div className="space-y-2 rounded-lg bg-positive-100/50 p-3">
       {allColors && <PublishAll made={made} />}
+      {!allColors && made.length > 1 && made.every(m => m.kind === 'look' && m.pieces?.length === 1 && m.pieces[0] === made[0].pieces?.[0]) && <PublishPoses made={made} />}
       <p className="text-sm font-medium text-positive-700">Pronto! {made.length > 1 ? 'As fotos ficaram guardadas' : 'A foto ficou guardada'} no Banco de imagens{made[0].kind === 'look' ? '. Para colocar no site, use os botões abaixo da foto.' : '.'}</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {made.map(m => (
@@ -227,6 +228,42 @@ function PublishAll({ made }: { made: Made[] }) {
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-700/30 bg-white p-3">
       <div className="min-w-0 flex-1 text-sm text-gray-800"><strong>{prod?.name ?? 'Peça'}</strong>: {made.map(m => m.target?.color).join(', ')}. Confira as fotos e publique todas de uma vez.{made[0].copy?.site ? ' O texto da 1ª foto vira a descrição da peça.' : ''}</div>
       <button type="button" disabled={busy || !!msg?.ok} onClick={go} className={btn}>{busy ? 'Publicando…' : `Publicar todas (${made.length})`}</button>
+      {msg && <p role={msg.ok ? 'status' : 'alert'} className={`w-full text-sm ${msg.ok ? 'text-positive-700' : 'text-negative-700'}`}>{msg.text}</p>}
+    </div>
+  )
+}
+
+// Várias poses da mesma peça: publica todas na peça, na mesma cor (a 1ª vira a capa)
+function PublishPoses({ made }: { made: Made[] }) {
+  const router = useRouter()
+  const all = useContext(ProductsCtx)
+  const prod = all.find(p => p.id === made[0].pieces?.[0])
+  const first = made.find(m => m.target?.color)?.target?.color ?? (prod ? missingModelColors(prod.paths, prod.meta, prod.colors)[0]?.color : undefined) ?? prod?.colors[0] ?? ''
+  const [color, setColor] = useState(first)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  if (!prod) return null
+  async function go() {
+    setBusy(true); setMsg(null)
+    let last: Awaited<ReturnType<typeof publishAiImageToProduct>> | null = null
+    // em ordem: cada foto com modelo entra depois das que já existem, então a 1ª pose fica na frente
+    for (const [i, m] of made.entries()) {
+      last = await publishAiImageToProduct(m.id, { productId: prod!.id, color: color || null, description: i === 0 ? m.copy?.site ?? null : null, showOnSite: true })
+      if (!last.ok) { setBusy(false); setMsg({ ok: false, text: last.error }); return }
+    }
+    setBusy(false)
+    setMsg(last?.ok && last.onSite ? { ok: true, text: `${made.length} fotos publicadas em ${prod!.name}${color ? `, cor ${color}` : ''}. A vitrine atualiza em até 1 minuto.` } : { ok: false, text: `Fotos colocadas na peça, mas ela ainda NÃO aparece no site. ${last?.ok ? last.note ?? '' : ''}` })
+    router.refresh()
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-700/30 bg-white p-3">
+      <div className="min-w-0 flex-1 text-sm text-gray-800"><strong>{prod.name}</strong>: publicar as {made.length} poses na peça, na ordem em que aparecem.</div>
+      {prod.colors.length > 0 && (
+        <select className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" value={color} onChange={e => setColor(e.target.value)} aria-label="Cor da peça nas fotos">
+          <option value="">Vale para todas as cores</option>{prod.colors.map(c => <option key={c} value={c}>Cor: {c}</option>)}
+        </select>
+      )}
+      <button type="button" disabled={busy || !!msg?.ok} onClick={go} className={btn}>{busy ? 'Publicando…' : `Publicar as ${made.length} fotos`}</button>
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={`w-full text-sm ${msg.ok ? 'text-positive-700' : 'text-negative-700'}`}>{msg.text}</p>}
     </div>
   )

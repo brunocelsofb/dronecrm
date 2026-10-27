@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { suggestGroups } from '@/lib/retail/merge'
+import { needsSplit } from '@/lib/retail/split'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -25,7 +26,7 @@ export const dynamic = 'force-dynamic'
 type Row = {
   id: string; code: string; name: string; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null
   status: string; photos: string[] | null
-  retail_product_variants: { stock: number; active: boolean }[] | null
+  retail_product_variants: { stock: number; active: boolean; color?: string | null; size?: string | null }[] | null
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -39,7 +40,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
   const { q = '', categoria = '', situacao = '' } = await searchParams
   const db = await createScopedAdmin()
   const { data } = await db.from('retail_products')
-    .select('id, code, name, category, price, promo_price, cost_price, status, photos, retail_product_variants(stock, active)')
+    .select('id, code, name, category, price, promo_price, cost_price, status, photos, retail_product_variants(stock, active, color, size)')
     .order('name')
   const all = (data ?? []) as unknown as Row[]
   const cfg = await loadPricingConfig(db, await requireTenantId())
@@ -61,6 +62,7 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
     (!situacao || p.status === situacao))
   const noPrice = all.filter(p => p.price === null && p.status !== 'arquivado')
   const sameName = suggestGroups(all)
+  const combined = all.filter(p => p.status !== 'arquivado' && (p.retail_product_variants ?? []).some(v => needsSplit(v.color ?? null, v.size ?? null)))
   const withoutStock = all.filter(p => p.status === 'publicado' && totalStock(p.retail_product_variants ?? []) === 0).length
 
   return (
@@ -87,6 +89,11 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
         <Stat label="Unidades em estoque" value={String(all.filter(p => p.status !== 'arquivado').reduce((s, p) => s + totalStock(p.retail_product_variants ?? []), 0))} />
         <Stat label="Publicadas sem estoque" value={String(withoutStock)} tone={withoutStock ? 'warn' : undefined} />
       </div>
+      {combined.length > 0 && (
+        <p className="rounded-lg border border-warn-700/30 bg-warn-100 px-3 py-2 text-sm text-warn-700">
+          {combined.length === 1 ? '1 peça tem' : `${combined.length} peças têm`} várias cores ou tamanhos na mesma linha da planilha (ex.: &quot;Dark Blue / Mocha Mousse&quot;): na vitrine viram uma cor só e o estoque fica errado. <Link href="/varejo/produtos/separar" className="font-medium underline">Separar cores e tamanhos</Link>
+        </p>
+      )}
       {sameName.length > 0 && (
         <p className="rounded-lg border border-brand-700/30 bg-brand-100/50 px-3 py-2 text-sm text-gray-800">
           {sameName.length === 1 ? '1 peça aparece' : `${sameName.length} peças aparecem`} em mais de um cadastro com o mesmo nome (uma cor por código): {sameName.slice(0, 4).map(g => g[0].name).join(', ')}{sameName.length > 4 ? '…' : ''}. <Link href="/varejo/produtos/juntar" className="font-medium text-brand-700 underline">Juntar cores</Link> deixa cada uma numa linha só, com as cores na vitrine.
