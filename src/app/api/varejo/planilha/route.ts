@@ -17,13 +17,13 @@ export async function GET() {
   if (!access) return NextResponse.json({ error: 'Sem acesso ao módulo Varejo.' }, { status: 403 })
   const db = await createScopedAdmin(await requireTenantId())
   const { data } = await db.from('retail_products')
-    .select('code, name, category, price, promo_price, cost_price, status, description, composition, care, retail_product_variants(sku, color, size, stock, active, price, promo_price)')
+    .select('code, name, category, price, promo_price, cost_price, status, description, composition, care, retail_product_variants(sku, barcode, color, size, stock, active, price, promo_price)')
     .neq('status', 'arquivado').order('name').limit(10000)
-  type V = { sku: string; color: string | null; size: string | null; stock: number; active: boolean; price: number | null; promo_price: number | null }
+  type V = { sku: string; barcode: string | null; color: string | null; size: string | null; stock: number; active: boolean; price: number | null; promo_price: number | null }
   type P = { code: string; name: string; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null; status: string; description: string | null; composition: string | null; care: string | null; retail_product_variants: V[] }
   // Custo só para a administradora (fica no CRM, nunca na vitrine)
   const showCost = access.isAdmin
-  const header = ['codigo', 'nome', 'categoria', 'preco', 'preco_promocional', ...(showCost ? ['custo'] : []), 'cor', 'tamanho', 'sku', 'estoque', 'descricao', 'composicao', 'cuidados', 'situacao', 'preco_desta_cor (só leitura)']
+  const header = ['codigo', 'nome', 'categoria', 'preco', 'preco_promocional', ...(showCost ? ['custo'] : []), 'cor', 'tamanho', 'sku', 'codigo_barras', 'estoque', 'descricao', 'composicao', 'cuidados', 'situacao', 'preco_desta_cor (só leitura)']
   const rows: (string | number)[][] = []
   for (const p of (data ?? []) as unknown as P[]) {
     const vs = (p.retail_product_variants ?? []).filter(v => v.active)
@@ -34,7 +34,7 @@ export async function GET() {
       rows.push([
         p.code, i === 0 ? p.name : '', i === 0 ? p.category ?? '' : '', i === 0 ? money(p.price) : '', i === 0 ? money(p.promo_price) : '',
         ...(showCost ? [i === 0 ? money(p.cost_price) : ''] : []),
-        v.color ?? '', v.size ?? '', v.sku, Number(v.stock),
+        v.color ?? '', v.size ?? '', v.sku, v.barcode ?? '', Number(v.stock),
         i === 0 ? p.description ?? '' : '', i === 0 ? p.composition ?? '' : '', i === 0 ? p.care ?? '' : '', i === 0 ? p.status : '',
         own && vp.final !== null ? money(vp.final) : '',
       ])
@@ -46,6 +46,7 @@ export async function GET() {
     ['Contagem do mês: conte a loja, corrija só a coluna "estoque" e importe em Produtos → Histórico do estoque → Fazer contagem de estoque. O estoque fica igual ao da planilha.'],
     ['Chegou mercadoria: use a planilha de entrada só com as quantidades que chegaram (Dar entrada em mercadoria). Não use esta planilha com o estoque todo para entrada: somaria em dobro.'],
     ['Preço, nome e descrição: corrija aqui e importe em Cadastrar peças por planilha (não mexe no estoque).'],
+    ['codigo_barras: o código da etiqueta (EAN). Pode preencher aqui de uma vez ou ligar na tela Somar peças, bipando.'],
     ['Uma cor e um tamanho por linha. Nada de "Preto / Azul" ou "P/M" na mesma célula.'],
     ['preco_desta_cor: só informa quando a cor tem preço próprio (muda em Produtos → peça → Preço por cor). A importação ignora essa coluna.'],
   ]

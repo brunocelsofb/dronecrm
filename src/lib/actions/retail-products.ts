@@ -15,6 +15,7 @@ import { sanitizeStorageFileName } from '@/lib/utils/storage'
 import { readPhotoMeta, type PhotoMeta } from '@/lib/retail/photo-colors'
 import { similarColors } from '@/lib/retail/merge'
 import { needsSplit } from '@/lib/retail/split'
+import { normalizeBarcode } from '@/lib/retail/scan'
 import {
   cleanText, cleanLongText, normalizeCode, defaultSku, parseMoney, parseStock, isProductStatus,
   RETAIL_MEDIA_BUCKET, MAX_PHOTOS, type ProductStatus, type RetailVariant,
@@ -272,7 +273,7 @@ const isImportMode = (v: unknown): v is ImportMode => v === 'cadastro' || v === 
 export type ImportProduct = {
   code: string; name: string | null; category: string | null; price: number | null; promo_price: number | null; cost_price: number | null
   status: ProductStatus | null; description: string | null; composition: string | null; care: string | null
-  variants: { sku: string; color: string | null; size: string | null; stock: number }[]
+  variants: { sku: string; color: string | null; size: string | null; stock: number; barcode?: string | null }[]
 }
 
 const MAX_BYTES = 950 * 1024
@@ -287,6 +288,7 @@ const COLS: Record<string, string[]> = {
   color: ['cor'],
   size: ['tamanho', 'tam'],
   sku: ['sku', 'codigo da variacao', 'código da variação'],
+  barcode: ['codigo de barras', 'código de barras', 'codigo barras', 'ean', 'gtin', 'cod barras'],
   stock: ['estoque', 'saldo', 'quantidade', 'qtd'],
   description: ['descricao', 'descrição'],
   composition: ['composicao', 'composição', 'tecido'],
@@ -360,7 +362,8 @@ export async function parseRetailProductFile(formData: FormData): Promise<Result
     const dupe = p.variants.find(v => v.sku === sku || ((v.color ?? '').toLowerCase() === (color ?? '').toLowerCase() && (v.size ?? '').toLowerCase() === (size ?? '').toLowerCase()))
     // Mesma cor e tamanho em duas linhas: soma as quantidades (com aviso para conferir)
     if (dupe) { warnings.push(`Linha ${line} (${code}): ${[color, size].filter(Boolean).join(' / ') || sku} repetida. Quantidades somadas (${dupe.stock} + ${stock} = ${dupe.stock + stock}); confira se não foi linha duplicada.`); dupe.stock += stock; return }
-    p.variants.push({ sku, color, size, stock })
+    const bc = normalizeBarcode(String(pick(rec, 'barcode') ?? ''))
+    p.variants.push({ sku, color, size, stock, barcode: bc.length >= 4 ? bc : null })
   })
   // Várias cores ou tamanhos na mesma célula ("Preto / Azul", "P/M"): entram como uma cor só
   const multi = [...byCode.values()].flatMap(p => p.variants.filter(v => needsSplit(v.color ?? null, v.size ?? null)).map(v => `${p.code} (${[v.color, v.size].filter(Boolean).join(' · ')})`))
@@ -445,17 +448,18 @@ export async function importRetailProductsChunk(products: ImportProduct[], modeI
       if (ev && ev.product_id !== productId) { errors.push(`${code}: SKU ${sku} já pertence a outra peça.`); continue }
       if (ev) {
         const vpatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (v.barcode) vpatch.barcode = normalizeBarcode(v.barcode)
         if (cleanText(v.color, 60) && !joined) vpatch.color = cleanText(v.color, 60)
         if (cleanText(v.size, 20) && !joined) vpatch.size = cleanText(v.size, 20)
         const { error } = await db.from('retail_product_variants').update(vpatch).eq('id', ev.id)
-        if (error) { errors.push(`${code} / ${sku}: ${error.code === '23505' ? 'cor e tamanho repetidos' : error.message}`); continue }
+        if (error) { errors.push(`${code} / ${sku}: ${error.code === '23505' ? 'cor e tamanho (ou código de barras) repetidos' : error.message}`); continue }
         // cadastro: não mexe no saldo; entrada: soma; contagem: define
         if (mode === 'entrada' && qty > 0) moves.push({ variant_id: ev.id as string, mode: 'add', qty })
         if (mode === 'contagem') moves.push({ variant_id: ev.id as string, mode: 'set', qty })
       } else {
         const { data: nv, error } = await db.from('retail_product_variants')
-          .insert({ sku, color: cleanText(v.color, 60), size: cleanText(v.size, 20), stock: 0, active: true, product_id: productId }).select('id').single()
-        if (error || !nv) { errors.push(`${code} / ${sku}: ${error?.code === '23505' ? 'cor e tamanho repetidos' : error?.message ?? 'falha ao criar'}`); continue }
+          .insert({ sku, color: cleanText(v.color, 60), size: cleanText(v.size, 20), stock: 0, active: true, product_id: productId, ...(v.barcode ? { barcode: normalizeBarcode(v.barcode) } : {}) }).select('id').single()
+        if (error || !nv) { errors.push(`${code} / ${sku}: ${error?.code === '23505' ? 'cor e tamanho (ou código de barras) repetidos' : error?.message ?? 'falha ao criar'}`); continue }
         if (qty > 0) moves.push({ variant_id: nv.id as string, mode: 'set', qty })
       }
     }
@@ -534,4 +538,35 @@ export async function splitRetailVariant(variantId: string, rows: { color: strin
   if (data) return { ok: false, error: String(data) }
   revalidatePath('/varejo/produtos'); revalidatePath(`/varejo/produtos/${v.product_id}`); revalidatePath('/varejo/estoque')
   return { ok: true }
+}
+
+// ── Leitor de código de barras ───────────────────────────────────────────────
+// Liga o código lido (etiqueta do fornecedor) a uma cor e tamanho da peça
+export async function linkRetailBarcode(variantId: string, code: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const c = normalizeBarcode(code)
+  if (c.length < 4) return { ok: false, error: 'Código de barras inválido.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: other } = await db.from('retail_product_variants').select('id, sku, retail_products(name)').eq('barcode', c).maybeSingle()
+  if (other && other.id !== variantId) return { ok: false, error: `Este código já está ligado a ${(other.retail_products as unknown as { name: string } | null)?.name ?? 'outra peça'} (${other.sku}).` }
+  const { data, error } = await db.from('retail_product_variants').update({ barcode: c, updated_at: new Date().toISOString() }).eq('id', variantId).select('id').maybeSingle()
+  if (error) return { ok: false, error: error.code === '23505' ? 'Este código já está ligado a outra peça.' : error.message }
+  if (!data) return { ok: false, error: 'Variação não encontrada.' }
+  return { ok: true }
+}
+
+// Aplica a contagem feita com o leitor: entrada soma; contagem iguala (e pode zerar o que não foi lido)
+export async function applyRetailScan(mode: 'entrada' | 'contagem', rows: { variant_id: string; mode: 'add' | 'set'; qty: number }[]): Promise<Result<{ changed: number }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (mode !== 'entrada' && mode !== 'contagem') return { ok: false, error: 'Escolha entrada ou contagem.' }
+  const clean = (rows ?? []).slice(0, 5000).filter(r => typeof r.variant_id === 'string' && (r.mode === 'add' || r.mode === 'set') && Number.isInteger(r.qty) && r.qty >= 0)
+    .filter(r => (mode === 'entrada' ? r.mode === 'add' : r.mode === 'set'))
+  if (!clean.length) return { ok: false, error: 'Nada para mudar no estoque.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const err = await moveStock(db, g.tenantId, g.userId, mode, clean, 'leitor de código de barras')
+  if (err) return { ok: false, error: err }
+  revalidatePath('/varejo/estoque'); revalidatePath('/varejo/produtos')
+  return { ok: true, changed: clean.length }
 }
