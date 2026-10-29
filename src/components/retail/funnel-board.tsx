@@ -19,6 +19,7 @@ export type FunnelCard = {
   nudgeCount: number; lastNudgeHours: number | null
   whatsappUrl: string | null; lostReason: string | null; hidden: boolean
   pendingMessages?: number
+  campaign?: string | null // pedido veio de uma campanha
 }
 
 const RECOVER = 'recuperar'
@@ -173,6 +174,7 @@ function Card({ c, layout, canEdit }: { c: FunnelCard; layout: FunnelLayout; can
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
         <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">{colLabel} {sinceText(c.hoursInStage)}</span>
         {c.overdue && <span className="rounded bg-warn-100 px-1.5 py-0.5 font-medium text-warn-700">Parado</span>}
+        {c.campaign && <span className="rounded bg-accent-cream px-1.5 py-0.5 text-gray-700" title="Pedido da campanha">📣 {c.campaign}</span>}
         {(c.pendingMessages ?? 0) > 0 && <Link href={`/varejo/pedidos/${c.id}`} className="rounded bg-brand-100 px-1.5 py-0.5 font-medium text-brand-800 hover:underline">{c.pendingMessages === 1 ? '1 mensagem para revisar' : `${c.pendingMessages} mensagens para revisar`}</Link>}
         {c.nudgeCount > 0 && c.lastNudgeHours !== null && (
           <span className="rounded bg-brand-100 px-1.5 py-0.5 text-brand-800">{c.nudgeCount} lembrete{c.nudgeCount > 1 ? 's' : ''} · último {sinceText(c.lastNudgeHours)}</span>

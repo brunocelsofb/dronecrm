@@ -17,6 +17,14 @@
     if (loja && !qs.get('loja')) history.replaceState(null, '', `${location.pathname}?loja=${loja}${location.hash}`)
   }
   const api = (path) => `/api/${path}${loja ? `?loja=${encodeURIComponent(loja)}` : ''}`
+  // Campanha do link (?c=codigo): vale por 7 dias neste aparelho e vai junto com o pedido
+  const CAMP_KEY = 'vitrine-campanha'
+  const campCode = (qs.get('c') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40)
+  try { if (campCode) localStorage.setItem(CAMP_KEY, JSON.stringify({ code: campCode, at: Date.now() })) } catch { /* sem armazenamento */ }
+  function currentCampaign() {
+    if (campCode) return campCode
+    try { const c = JSON.parse(localStorage.getItem(CAMP_KEY) || 'null'); return c && Date.now() - c.at < 7 * 86400000 ? c.code : null } catch { return null }
+  }
 
   // ── Utilidades ──────────────────────────────────────────────────────────────
   const $ = s => document.querySelector(s)
@@ -515,6 +523,7 @@
     const note = [`Entrega: ${ship}`, `Pagamento desejado: ${form.pay.value}`, form.note.value.trim() && `Observação: ${form.note.value.trim()}`].filter(Boolean).join('\n')
     const payload = {
       customer: { name, phone, email, cep: needCep ? cep : null, optin: form.optin.checked, birth_date: form.birth.value || null },
+      campaign: currentCampaign(),
       items: bag.map(i => ({ variant_id: i.variant_id, qty: i.qty })),
       note, website: form.website.value,
     }

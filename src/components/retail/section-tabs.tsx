@@ -13,3 +13,4 @@ export function SectionTabs({ tabs, active }: { tabs: { href: string; label: str
 }
 export const PRODUCT_TABS = [{ href: '/varejo/produtos/prontas', label: 'O que falta' }, { href: '/varejo/produtos', label: 'Todas as peças' }, { href: '/varejo/estoque', label: 'Estoque' }]
 export const ORDER_TABS = [{ href: '/varejo/funil', label: 'Quadro' }, { href: '/varejo/pedidos', label: 'Lista' }]
+export const CUSTOMER_TABS = [{ href: '/varejo/clientes', label: 'Clientes' }, { href: '/varejo/campanhas', label: 'Campanhas' }]

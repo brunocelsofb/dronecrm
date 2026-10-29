@@ -12,6 +12,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
 import { cleanText, cleanLongText, parseMoney } from '@/lib/retail/products'
 import { priceItems, round2 } from '@/lib/retail/pricing'
+import { resolveOrderCampaign } from '@/lib/retail/campaigns-server'
 import { canonicalPhone, isOrderStatus, isPaymentMethod, onlyDigits, PAID_STATUSES, type OrderStatus } from '@/lib/retail/customers'
 import { loadPricingConfig, onRetailOrderCancelled, onRetailOrderPaid } from '@/lib/retail/loyalty-server'
 import { parseDate } from '@/lib/retail/customers'
@@ -119,8 +120,9 @@ export async function createRetailOrder(input: OrderInput): Promise<Result<{ id:
 
   const { data: num, error: numErr } = await db.rpc('retail_next_order_number', { p_tenant: g.tenantId })
   if (numErr || typeof num !== 'number') return { ok: false, error: numErr?.message ?? 'Falha ao numerar o pedido.' }
+  const campaignId = await resolveOrderCampaign(db, { customerId })
   const { data: order, error } = await db.from('retail_orders').insert({
-    number: num, customer_id: customerId, status,
+    number: num, customer_id: customerId, status, campaign_id: campaignId,
     payment_method: isPaymentMethod(input.payment_method) ? input.payment_method : null,
     payment_condition: cleanText(input.payment_condition, 200),
     payment_link: cleanLink(input.payment_link),

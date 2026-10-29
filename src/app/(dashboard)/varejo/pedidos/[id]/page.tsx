@@ -45,7 +45,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
   const tenantId = await requireTenantId()
   const db = await createScopedAdmin(tenantId)
   const { data } = await db.from('retail_orders')
-    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, payment_provider, payment_paid_method, payment_paid_amount, payment_receipt_url, payment_alert, notes, stock_applied, delivery, paid_at, created_at, customer_id, separated_at, tracking_carrier, tracking_code, tracking_url, retail_customers(id, name, phone, email, birth_date), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
+    .select('id, number, status, payment_method, payment_condition, payment_link, subtotal, discount, shipping, total, loyalty_discount, loyalty_kind, loyalty_earned, source, proposal_token, proposal, proposal_sent_at, proposal_choice, proposal_accepted_at, lost_reason, payment_provider, payment_paid_method, payment_paid_amount, payment_receipt_url, payment_alert, notes, stock_applied, delivery, paid_at, created_at, customer_id, separated_at, tracking_carrier, tracking_code, tracking_url, campaign_id, retail_campaigns(name), retail_customers(id, name, phone, email, birth_date), retail_order_items(id, code, name, sku, color, size, qty, unit_price, total, unit_cost, retail_products(cost_price))')
     .eq('id', id).maybeSingle()
   if (!data) notFound()
   const o = data as unknown as Order
@@ -97,7 +97,7 @@ export default async function RetailOrderPage({ params }: { params: Promise<{ id
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pedido nº {o.number}</h1>
-          <p className="text-sm text-gray-500">{fmtDT(o.created_at)} · {o.source === 'vitrine' ? 'veio da vitrine' : 'lançado pela equipe'}{o.paid_at ? ` · pago em ${fmtDT(o.paid_at)}` : ''}</p>
+          <p className="text-sm text-gray-500">{fmtDT(o.created_at)} · {o.source === 'vitrine' ? 'veio da vitrine' : 'lançado pela equipe'}{(o as unknown as { retail_campaigns: { name: string } | null }).retail_campaigns ? <> · campanha <Link href={`/varejo/campanhas/${(o as unknown as { campaign_id: string }).campaign_id}`} className="text-brand-700 hover:underline">{(o as unknown as { retail_campaigns: { name: string } }).retail_campaigns.name}</Link></> : null}{o.paid_at ? ` · pago em ${fmtDT(o.paid_at)}` : ''}</p>
         </div>
         <span className={`rounded px-2 py-1 text-xs ${st?.style ?? ''}`}>{st?.label ?? o.status}{o.status === 'cancelado' && o.lost_reason ? ` · ${lostReasonLabel(o.lost_reason)}` : ''}</span>
       </div>

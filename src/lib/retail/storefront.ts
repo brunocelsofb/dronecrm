@@ -85,6 +85,7 @@ export type StorefrontOrderInput = {
   customer: { name: string; phone: string; email: string | null; cep: string | null; optin: boolean; birth_date: string | null }
   items: { variant_id: string; qty: number }[]
   note: string | null
+  campaign: string | null // código do link da campanha (?c=)
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -133,7 +134,8 @@ export function parseStorefrontOrder(body: unknown): { ok: true; order: Storefro
     items.push({ variant_id: x.variant_id, qty })
   }
   const note = String(b.note ?? '').trim().slice(0, 500) || null
-  return { ok: true, order: { customer: { name, phone, email, cep, optin: c.optin === true, birth_date }, items, note } }
+  const campaign = typeof b.campaign === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(b.campaign) ? b.campaign : null
+  return { ok: true, order: { customer: { name, phone, email, cep, optin: c.optin === true, birth_date }, items, note, campaign } }
 }
 
 // Mensagem que a cliente manda no WhatsApp da loja depois do pedido

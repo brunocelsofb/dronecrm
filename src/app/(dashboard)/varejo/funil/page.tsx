@@ -20,7 +20,7 @@ type Row = FunnelOrder & {
   retail_order_items: { name: string }[]
 }
 
-const COLS = 'id, number, status, total, created_at, stage_at, proposal_sent_at, proposal_accepted_at, last_nudge_at, nudge_count, lost_reason, custom_stage, custom_stage_at, payment_link, proposal_token, proposal, retail_customers(name, phone), retail_order_items(name)'
+const COLS = 'id, number, status, total, created_at, stage_at, proposal_sent_at, proposal_accepted_at, last_nudge_at, nudge_count, lost_reason, custom_stage, custom_stage_at, payment_link, proposal_token, proposal, retail_customers(name, phone), retail_order_items(name), retail_campaigns(name)'
 
 export default async function RetailFunnelPage() {
   const access = await hasFeature('varejo')
@@ -66,6 +66,7 @@ export default async function RetailFunnelPage() {
       nudgeCount: Number(o.nudge_count ?? 0), lastNudgeHours: o.last_nudge_at ? (now.getTime() - Date.parse(o.last_nudge_at)) / 3_600_000 : null,
       whatsappUrl: text ? whatsappLink(o.retail_customers?.phone, text) : null,
       lostReason: o.lost_reason, pendingMessages: pendingBy.get(o.id) ?? 0,
+      campaign: (o as unknown as { retail_campaigns: { name: string } | null }).retail_campaigns?.name ?? null,
       // Perdido: a coluna mostra 30 dias; o resumo de motivos usa 90
       hidden: f.stage === 'perdido' && (o.stage_at ?? o.created_at) < lostSince30,
     }

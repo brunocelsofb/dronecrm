@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SectionTabs, CUSTOMER_TABS } from '@/components/retail/section-tabs'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
@@ -50,6 +51,7 @@ export default async function RetailCustomersPage({ searchParams }: { searchPara
 
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={CUSTOMER_TABS} active="/varejo/clientes" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Clientes</h1>

@@ -66,7 +66,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/varejo/painel', label: 'Painel da loja', icon: Gauge, feature: 'varejo' },
       { href: '/varejo/produtos/prontas', label: 'Produtos', icon: Package, feature: 'varejo', also: ['/varejo/produtos', '/varejo/estoque'] },
       { href: '/varejo/funil', label: 'Pedidos', icon: SquareKanban, feature: 'varejo', also: ['/varejo/pedidos'] },
-      { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo' },
+      { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo', also: ['/varejo/campanhas'] },
       { href: '/varejo/estudio', label: 'Estúdio IA', icon: Sparkles, feature: 'varejo' },
       { href: '/varejo/configurar', label: 'Configurar loja', icon: Store, feature: 'varejo', also: ['/varejo/vitrine', '/varejo/precificacao', '/varejo/mensagens'] },
     ],

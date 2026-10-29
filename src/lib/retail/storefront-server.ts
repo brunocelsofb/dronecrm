@@ -13,6 +13,7 @@ import { notifyStoreAdmins } from '@/lib/retail/checkout-server'
 import { fmtBRL } from '@/lib/format'
 import { isAiPhotoUrl } from '@/lib/retail/ai-studio'
 import { isAiPhotoPath, readPhotoMeta } from '@/lib/retail/photo-colors'
+import { resolveOrderCampaign } from '@/lib/retail/campaigns-server'
 import { ensurePublicToken, orderPublicUrl, recordOrderStage } from '@/lib/retail/order-messages-server'
 import { cleanDomain, cleanSlug, readContent, readOccasions, readTheme, storefrontWhatsappText, type Occasion, type StorefrontContent, type StorefrontOrderInput, type StorefrontTheme } from '@/lib/retail/storefront'
 
@@ -137,8 +138,9 @@ export async function createStorefrontOrder(sf: StorefrontRow, input: Storefront
 
   const { data: num, error: numErr } = await db.rpc('retail_next_order_number', { p_tenant: sf.tenant_id })
   if (numErr || typeof num !== 'number') return { ok: false, error: 'Não foi possível registrar agora. Tente de novo.', status: 500 }
+  const campaignId = await resolveOrderCampaign(db, { code: input.campaign, customerId })
   const { data: order, error } = await db.from('retail_orders').insert({
-    number: num, customer_id: customerId, status: 'carrinho', source: 'vitrine',
+    number: num, customer_id: customerId, status: 'carrinho', source: 'vitrine', campaign_id: campaignId,
     subtotal: priced.subtotal, discount: 0, shipping: 0, total: priced.subtotal,
     delivery: { method: null, cep: input.customer.cep, address: null }, notes: input.note,
   }).select('id, number').single()
