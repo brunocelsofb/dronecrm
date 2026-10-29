@@ -7,21 +7,33 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import { Search, X } from 'lucide-react'
-import { Building2, Users, KanbanSquare, Target, Briefcase, FileText, PenLine, Mail, MessageCircle, BrainCircuit, ClipboardList, Plug, Settings2 } from 'lucide-react'
+import { Building2, Users, KanbanSquare, Target, Briefcase, FileText, PenLine, Mail, MessageCircle, BrainCircuit, ClipboardList, Plug, Settings2, Store } from 'lucide-react'
+import { featureForPath } from '@/lib/config/plans'
 
 // keywords: palavras que a pessoa pode procurar e não aparecem no nome/descrição
-type Item = { href: string; label: string; description: string; keywords?: string }
+// Aparece só se a empresa tem a aba dona do endereço (plano); anyOf: basta uma destas abas
+type Item = { href: string; label: string; description: string; keywords?: string; anyOf?: string[] }
 type Box = { title: string; description: string; icon: LucideIcon; items: Item[] }
 
 const BOXES: Box[] = [
+  {
+    title: 'Loja (Varejo)', icon: Store, description: 'Vitrine, preços, mensagens do pedido e Estúdio IA.',
+    items: [
+      { href: '/varejo/configurar', label: 'Configurar loja', description: 'Atalhos da loja e Zerar a loja (o Estúdio IA fica intacto)', keywords: 'zerar recomeçar apagar estoque loja' },
+      { href: '/varejo/vitrine', label: 'Vitrine', description: 'Capa, cores, textos, ocasiões, looks e políticas do site', keywords: 'site landing lp capa tema políticas troca' },
+      { href: '/varejo/precificacao', label: 'Custos e preço', description: 'Impostos, taxas, custos fixos, margem e fidelidade', keywords: 'margem imposto mei simples taxa cartão fidelidade cashback' },
+      { href: '/varejo/mensagens', label: 'Mensagens do pedido', description: 'Textos de WhatsApp e e-mail de cada etapa do pedido', keywords: 'whatsapp e-mail pedido rastreio pagamento' },
+      { href: '/varejo/estudio', label: 'Conta de IA do Estúdio', description: 'Chave do Gemini ou ChatGPT para gerar modelos, cenários e looks', keywords: 'gemini chatgpt openai chave api imagem modelo' },
+    ],
+  },
   {
     title: 'Empresa', icon: Building2, description: 'Quem é a empresa no CRM e as metas.',
     items: [
       { href: '/settings/empresa', label: 'Dados da empresa', description: 'Logo, nome, CNPJ e visual das propostas', keywords: 'cnpj logo marca link de login razão social' },
       { href: '/settings/privacidade', label: 'Privacidade e dados', description: 'Contrato de dados (LGPD), acesso de suporte, retenção, criptografia e exportação dos dados', keywords: 'exportar exportação backup baixar zip csv portabilidade lgpd privacidade contrato dados suporte acesso super admin retenção apagar mensagens criptografia dpa' },
       { href: '/settings/segmentos', label: 'Segmentos e inativos', description: 'Segmentos das empresas e regra de cliente inativo', keywords: 'segmento grupo hospitalar clinicas diagnostico inativo reativação hunter campanha' },
-      { href: '/settings/metas', label: 'Metas de receita', description: 'Meta mês a mês e prazo do relatório de medição', keywords: 'meta receita faturamento medição' },
-      { href: '/settings/protocolos', label: 'Numeração de chamados e propostas', description: 'Prefixo e próximo número' },
+      { href: '/settings/metas', label: 'Metas de receita', description: 'Meta mês a mês e prazo do relatório de medição', keywords: 'meta receita faturamento medição', anyOf: ['dashboard', 'painel', 'financeiro'] },
+      { href: '/settings/protocolos', label: 'Numeração de chamados e propostas', description: 'Prefixo e próximo número', anyOf: ['tickets', 'propostas'] },
       { href: '/settings/wallpapers', label: 'Papéis de parede', description: 'Fundo do login e das páginas públicas' },
     ],
   },
@@ -103,7 +115,7 @@ const BOXES: Box[] = [
   {
     title: 'Integrações', icon: Plug, description: 'Escolha e configure as ferramentas que conversam com o CRM.',
     items: [
-      { href: '/settings/integracoes', label: 'Integrações', description: 'Faturamento (Sankhya, TOTVS…), anúncios, RD Station, Mailchimp, site', keywords: 'integração sankhya totvs faturamento rd station mailchimp anúncios site api' },
+      { href: '/settings/integracoes', label: 'Integrações', description: 'Faturamento (Sankhya, TOTVS…), anúncios, RD Station, Mailchimp, site', keywords: 'integração sankhya totvs faturamento rd station mailchimp anúncios site api', anyOf: ['pipeline', 'leads', 'marketing', 'financeiro'] },
     ],
   },
   {
@@ -129,7 +141,14 @@ function matches(item: Item, box: Box, terms: string[]): boolean {
   return terms.every(t => hay.includes(t))
 }
 
-export function SettingsBoxes() {
+// Só o que a empresa usa: item cuja aba não está no plano (ou no perfil) não aparece
+function visibleBoxes(features: string[]): Box[] {
+  const ok = (it: Item) => it.anyOf ? it.anyOf.some(f => features.includes(f)) : (() => { const k = featureForPath(it.href); return !k || features.includes(k) })()
+  return BOXES.map(b => ({ ...b, items: b.items.filter(ok) })).filter(b => b.items.length > 0)
+}
+
+export function SettingsBoxes({ features }: { features: string[] }) {
+  const boxes = useMemo(() => visibleBoxes(features), [features])
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [q, setQ] = useState('')
@@ -137,11 +156,11 @@ export function SettingsBoxes() {
   const searching = terms.length > 0
   const hits = useMemo(() => {
     const set = new Set<string>()
-    if (searching) for (const b of BOXES) for (const it of b.items) if (matches(it, b, terms)) set.add(it.href)
+    if (searching) for (const b of boxes) for (const it of b.items) if (matches(it, b, terms)) set.add(it.href)
     return set
-  }, [terms, searching])
-  const boxHits = BOXES.filter(b => b.items.some(it => hits.has(it.href))).length
-  const first = BOXES.flatMap(b => b.items).find(it => hits.has(it.href))
+  }, [terms, searching, boxes])
+  const boxHits = boxes.filter(b => b.items.some(it => hits.has(it.href))).length
+  const first = boxes.flatMap(b => b.items).find(it => hits.has(it.href))
 
   return (
     <div className="space-y-4">
@@ -177,7 +196,7 @@ export function SettingsBoxes() {
       </div>
 
       <div className="gap-4 md:columns-2 xl:columns-3">
-      {BOXES.map(box => {
+      {boxes.map(box => {
         const Icon = box.icon
         const boxHit = box.items.some(it => hits.has(it.href))
         const dim = searching && !boxHit

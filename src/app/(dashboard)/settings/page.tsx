@@ -7,11 +7,13 @@
 
 import { redirect } from 'next/navigation'
 import { getCurrentProfile } from '@/lib/auth/role'
+import { getUserAccess } from '@/lib/auth/access'
 import { SettingsBoxes } from '@/components/settings/settings-boxes'
 
 export default async function SettingsPage() {
   const profile = await getCurrentProfile()
   if (profile?.role !== 'admin') redirect('/')
+  const access = await getUserAccess()
 
   return (
     <div className="space-y-5">
@@ -19,7 +21,7 @@ export default async function SettingsPage() {
         <h1 className="text-lg font-semibold text-gray-900">Configurações</h1>
         <p className="mt-0.5 text-sm text-gray-500">Tudo o que é da sua empresa, organizado por assunto.</p>
       </div>
-      <SettingsBoxes />
+      <SettingsBoxes features={access?.features ?? []} />
     </div>
   )
 }

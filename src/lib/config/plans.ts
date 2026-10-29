@@ -17,23 +17,24 @@ export const PLANS: { id: PlanId; label: string }[] = [
 export type FeatureDef = { key: string; label: string; paths: string[] }
 
 // Ordem = ordem do menu. paths = prefixos de URL bloqueados quando a aba não é liberada.
+// Inclui as telas de Configurações que só servem para aquela aba (somem do plano que não a tem).
 export const FEATURES: FeatureDef[] = [
   { key: 'dashboard',           label: 'Dashboard',            paths: ['/'] },
   { key: 'painel',              label: 'Painel gerencial',     paths: ['/painel'] },
   { key: 'financeiro',          label: 'Financeiro',           paths: ['/financeiro'] },
-  { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines'] },
-  { key: 'leads',               label: 'Leads',                paths: ['/leads'] },
+  { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines', '/settings/campos-oportunidade', '/custom-fields', '/settings/layout-abas', '/settings/plano-de-acao', '/settings/motivos-perda', '/settings/numeracao', '/tags', '/automations', '/email-templates', '/settings/email'] },
+  { key: 'leads',               label: 'Leads',                paths: ['/leads', '/settings/lead-scoring', '/settings/lead-routing'] },
   { key: 'marketing',           label: 'Marketing',            paths: ['/marketing'] },
-  { key: 'sdr',                 label: 'SDR de IA',            paths: ['/sdr'] },
-  { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts'] },
-  { key: 'propostas',           label: 'Propostas',            paths: ['/propostas', '/proposals'] },
-  { key: 'carteira',            label: 'Gestão de Carteira',   paths: ['/carteira'] },
-  { key: 'companies',           label: 'Empresas',             paths: ['/companies'] },
+  { key: 'sdr',                 label: 'SDR de IA',            paths: ['/sdr', '/settings/sdr'] },
+  { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts', '/settings/zapsign', '/zapsign'] },
+  { key: 'propostas',           label: 'Propostas',            paths: ['/propostas', '/proposals', '/settings/price-users'] },
+  { key: 'carteira',            label: 'Gestão de Carteira',   paths: ['/carteira', '/settings/carteira', '/settings/curva-abc', '/settings/regua-renovacao', '/settings/implementation-templates'] },
+  { key: 'companies',           label: 'Empresas',             paths: ['/companies', '/settings/segmentos'] },
   { key: 'tickets',             label: 'Atendimento',          paths: ['/tickets'] },
-  { key: 'whatsapp',            label: 'WhatsApp',             paths: ['/whatsapp'] },
+  { key: 'whatsapp',            label: 'WhatsApp',             paths: ['/whatsapp', '/settings/whatsapp-conexoes', '/settings/whatsapp-bot'] },
   { key: 'whatsapp-relatorios', label: 'Relatórios WPP',       paths: ['/whatsapp/relatorios'] },
-  { key: 'surveys',             label: 'Pesquisas & NPS',      paths: ['/surveys-dashboard', '/surveys', '/nps-dashboard'] },
-  { key: 'copiloto',            label: 'Agentes IA',          paths: ['/briefing', '/copiloto'] },
+  { key: 'surveys',             label: 'Pesquisas & NPS',      paths: ['/surveys-dashboard', '/surveys', '/nps-dashboard', '/settings/forms'] },
+  { key: 'copiloto',            label: 'Agentes IA',          paths: ['/briefing', '/copiloto', '/settings/copiloto'] },
   // Módulo opcional (varejo / pessoa física): fora de todos os planos; liberado por empresa
   { key: 'varejo',              label: 'Varejo (catálogo)',    paths: ['/varejo'] },
 ]
