@@ -10,7 +10,7 @@ export const metadata = {
 
 const S: LegalSection[] = [
   { title: '1. Quem somos e a quem se aplica', body: [
-    `O ${OPERATOR.product} é um CRM vendido por licença a empresas (as "empresas clientes"), operado pela ${OPERATOR.name}${OPERATOR.cnpj ? `, CNPJ ${OPERATOR.cnpj}` : ''}, e acessado em https://${OPERATOR.site}.`,
+    `O ${OPERATOR.product} é um CRM vendido por licença a empresas (as "empresas clientes"), operado pela ${OPERATOR.legalName}${OPERATOR.cnpj ? `, CNPJ ${OPERATOR.cnpj}` : ''}, e acessado em https://${OPERATOR.site}.`,
     'Cada empresa cliente é a CONTROLADORA dos dados pessoais que coloca no sistema (seus clientes, contatos, leads e conversas) e decide para que os usa. A 2B é a OPERADORA desses dados: trata-os somente em nome e conforme as instruções da empresa cliente, nos termos da LGPD (Lei nº 13.709/2018) e do Contrato de Tratamento de Dados.',
     'A 2B é a controladora apenas dos dados de cadastro e acesso dos usuários do sistema e dos dados necessários para cobrar e dar suporte à licença.',
   ] },

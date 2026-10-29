@@ -21,7 +21,7 @@ export function LegalPage({ title, updated, intro, sections, children }: { title
         ))}
         <hr className="mb-6 mt-12 border-gray-200" />
         <p className="text-center text-xs text-gray-400">
-          {OPERATOR.name}{OPERATOR.cnpj ? ` · CNPJ ${OPERATOR.cnpj}` : ''} · {OPERATOR.product} · {OPERATOR.site} ·{' '}
+          {OPERATOR.legalName}{OPERATOR.cnpj ? ` · CNPJ ${OPERATOR.cnpj}` : ''} · {OPERATOR.product} · {OPERATOR.site} ·{' '}
           <a href="/privacy" className="underline">Privacidade</a> · <a href="/terms" className="underline">Termos</a> · <a href="/exclusao-de-dados" className="underline">Exclusão de dados</a> · <a href="/contrato-de-dados" className="underline">Contrato de tratamento de dados</a>
         </p>
       </div>

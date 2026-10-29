@@ -14,7 +14,7 @@ export default function TermsPage() {
           <h2 className="text-xl font-semibold text-gray-800 mb-3">1. Aceitação dos Termos</h2>
           <p className="text-gray-600 leading-relaxed">
             Ao acessar ou utilizar o <strong>Comercial Drone CRM</strong>, operado pela
-            <strong> 2B Soluções Comerciais</strong>, você concorda com estes Termos de Uso.
+            <strong> 2B Soluções Comerciais Ltda</strong> (CNPJ 43.038.578/0001-40), você concorda com estes Termos de Uso.
             Caso não concorde com qualquer disposição aqui prevista, não utilize o sistema.
           </p>
         </section>
