@@ -29,3 +29,15 @@ export async function loadMetaMonths(db: Db, adAccountId: string | null): Promis
   const { data } = await db.from('ads_meta_campaign_months').select('meta_campaign_id, year, month, spend').eq('ad_account_id', adAccountId).limit(20000)
   return ((data ?? []) as MetaMonth[]).map(m => ({ ...m, spend: Number(m.spend) }))
 }
+
+// Páginas (sem o acesso) e formulários de cadastro (Lead Ads)
+export type MetaPageInfo = { page_id: string; name: string; subscribed: boolean; last_error: string | null }
+export type MetaFormInfo = { form_id: string; page_id: string; name: string; status: string | null; active: boolean; campaign_id: string | null; leads_count: number; last_lead_at: string | null }
+export async function loadMetaLeadForms(db: Db): Promise<{ pages: MetaPageInfo[]; forms: MetaFormInfo[]; recent: { created_at: string; status: string; error: string | null; form_id: string | null }[] }> {
+  const [{ data: pages }, { data: forms }, { data: recent }] = await Promise.all([
+    db.from('ads_meta_pages').select('page_id, name, subscribed, last_error').order('name'),
+    db.from('ads_meta_lead_forms').select('form_id, page_id, name, status, active, campaign_id, leads_count, last_lead_at').order('name'),
+    db.from('ads_meta_lead_events').select('created_at, status, error, form_id').order('created_at', { ascending: false }).limit(10),
+  ])
+  return { pages: (pages ?? []) as MetaPageInfo[], forms: (forms ?? []) as MetaFormInfo[], recent: (recent ?? []) as { created_at: string; status: string; error: string | null; form_id: string | null }[] }
+}

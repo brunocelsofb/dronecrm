@@ -22,7 +22,7 @@ const STEPS: { title: string; text: string; where: string }[] = [
 
 const TOOLS: { name: string; what: string; status: Status; how: string }[] = [
   { name: 'Meta Ads (Facebook e Instagram)', what: 'Anúncios no feed, stories e reels.', status: 'pronto', how: 'Use o link da campanha como destino do anúncio. O CRM guarda a origem e o clique do Meta (fbclid).' },
-  { name: 'Meta Lead Ads (formulário dentro do anúncio)', what: 'A pessoa preenche sem sair do Facebook/Instagram.', status: 'ponte', how: 'Configurações → Integrações → Anúncios → Facebook / Instagram Lead Ads: endereço próprio + passo a passo no Zapier/Make. Ligação direta depende de aprovação do Meta.' },
+  { name: 'Meta Lead Ads (formulário dentro do anúncio)', what: 'A pessoa preenche sem sair do Facebook/Instagram.', status: 'ponte', how: 'Configurações → Integrações → Anúncios → Facebook / Instagram Lead Ads: endereço próprio + passo a passo no Zapier/Make. Ligação direta (sem Zapier): Marketing → Anúncios (Meta), assim que o app da plataforma for aprovado pelo Meta.' },
   { name: 'Google Ads (Pesquisa, Display, YouTube)', what: 'Anúncios no Google, em sites parceiros e no YouTube.', status: 'pronto', how: 'Use o link da campanha. Com a marcação automática do Google ligada, o CRM guarda também o clique do Google (gclid).' },
   { name: 'Formulário de lead do Google Ads', what: 'Formulário dentro do anúncio do Google.', status: 'pronto', how: 'Configurações → Integrações → Anúncios: o Google Ads manda direto para o endereço do CRM (webhook). Teste com "Enviar dados de teste".' },
   { name: 'LinkedIn Ads', what: 'Anúncios para decisores por cargo, setor e empresa — forte no B2B.', status: 'pronto', how: 'Use o link da campanha (sai marcado como LinkedIn).' },

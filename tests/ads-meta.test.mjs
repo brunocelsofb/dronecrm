@@ -30,7 +30,7 @@ test('situação do acesso e endereço de autorização', () => {
   assert.equal(tokenState('2026-12-20T12:00:00Z', now), 'ok')
   const u = new URL(metaAuthUrl({ version: 'v23.0', appId: '123', redirectUri: 'https://app/x', state: 's1' }))
   assert.equal(u.pathname, '/v23.0/dialog/oauth')
-  assert.equal(u.searchParams.get('scope'), 'ads_read')
+  assert.equal(u.searchParams.get('scope'), 'ads_read,pages_show_list,pages_manage_metadata,pages_read_engagement,leads_retrieval')
   const u2 = new URL(metaAuthUrl({ version: 'v23.0', appId: '123', redirectUri: 'https://app/x', state: 's1', configId: '999' }))
   assert.equal(u2.searchParams.get('config_id'), '999')
   assert.equal(u2.searchParams.get('scope'), null)
@@ -51,4 +51,34 @@ test('Marketing: utm_campaign no link liga a campanha e o gasto entra por mês',
   const out = metaMonthlyCosts(stats, months, [{ id: 'mk1', utm_campaign: 'black_friday', meta_campaign_ids: ['5'] }, { id: 'mk2', utm_campaign: 'outra', meta_campaign_ids: [] }])
   assert.deepEqual(out.sort((a, b) => a.month - b.month), [{ campaign_id: 'mk1', year: 2026, month: 10, amount: 70.1 }, { campaign_id: 'mk1', year: 2026, month: 11, amount: 29.9 }])
   assert.equal(linkedMeta(stats, { code: 'black_friday' }, 'varejo').length, 0)
+})
+
+test('lead do formulário: campos padrão do Meta e perguntas extras na mensagem', async () => {
+  const { metaLeadFields, leadgenChanges } = await import('../src/lib/ads/meta.ts')
+  const f = metaLeadFields([
+    { name: 'full_name', values: ['Ana Souza'] }, { name: 'email', values: ['ANA@Ex.com '] }, { name: 'phone_number', values: ['+5511999990000'] },
+    { name: 'company_name', values: ['Acme'] }, { name: 'qual_o_tamanho_da_equipe?', values: ['10 a 50'] }, { name: 'vazio', values: [] },
+  ])
+  assert.deepEqual(f, { name: 'Ana Souza', email: 'ana@ex.com', phone: '+5511999990000', company_name: 'Acme', cnpj: null, message: 'qual o tamanho da equipe: 10 a 50' })
+  assert.equal(metaLeadFields([{ name: 'first_name', values: ['Rui'] }, { name: 'last_name', values: ['Lima'] }, { name: 'email', values: ['ruim'] }]).name, 'Rui Lima')
+  assert.equal(metaLeadFields([{ name: 'email', values: ['ruim'] }]).email, null)
+  const ch = leadgenChanges({ object: 'page', entry: [{ changes: [{ field: 'leadgen', value: { leadgen_id: 11, page_id: 22, form_id: 33, created_time: 1 } }, { field: 'feed', value: {} }] }] })
+  assert.deepEqual(ch, [{ leadgen_id: '11', page_id: '22', form_id: '33', ad_id: null, created_time: 1 }])
+  assert.deepEqual(leadgenChanges({ object: 'user', entry: [] }), [])
+})
+
+test('assinaturas do Meta: aviso (X-Hub-Signature-256) e pedido de exclusão (signed_request)', async () => {
+  const { createHmac } = await import('node:crypto')
+  const { validWebhookSignature, parseSignedRequest } = await import('../src/lib/ads/meta-crypto.ts')
+  const body = '{"object":"page"}'
+  const sig = 'sha256=' + createHmac('sha256', 'segredo').update(body).digest('hex')
+  assert.equal(validWebhookSignature(body, sig, 'segredo'), true)
+  assert.equal(validWebhookSignature(body + ' ', sig, 'segredo'), false)
+  assert.equal(validWebhookSignature(body, null, 'segredo'), false)
+  const b64 = b => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const payload = b64(JSON.stringify({ algorithm: 'HMAC-SHA256', user_id: '123' }))
+  const s = b64(createHmac('sha256', 'segredo').update(payload).digest())
+  assert.equal(parseSignedRequest(`${s}.${payload}`, 'segredo')?.user_id, '123')
+  assert.equal(parseSignedRequest(`${s}.${payload}`, 'outro'), null)
+  assert.equal(parseSignedRequest('lixo', 'segredo'), null)
 })

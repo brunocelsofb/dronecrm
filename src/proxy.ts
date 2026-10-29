@@ -109,7 +109,8 @@ export async function proxy(request: NextRequest) {
     // Políticas públicas — exigidas pelo Google para publicar o OAuth (Gmail)
     request.nextUrl.pathname === '/privacy' ||
     request.nextUrl.pathname === '/terms' ||
-    request.nextUrl.pathname === '/contrato-de-dados'
+    request.nextUrl.pathname === '/contrato-de-dados' ||
+    request.nextUrl.pathname === '/exclusao-de-dados' // exigida pelo Meta (app da plataforma)
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone()

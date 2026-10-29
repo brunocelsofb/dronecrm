@@ -46,7 +46,8 @@ export function MetaAdsView({ mod, enabled, readOnly, notice, error, conn, rows,
       {banner}
       <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
         <li>Entre com o Facebook que gerencia os anúncios da empresa e escolha a conta de anúncios.</li>
-        <li>Só leitura: o Drone lê gasto, alcance e cliques. Não cria, não altera anúncios e não vê o cartão.</li>
+        {mod === 'marketing' && <li>Os leads dos formulários de cadastro dos anúncios (Lead Ads) entram direto em Leads inbound, sem Zapier.</li>}
+        <li>O Drone só lê: gasto, alcance, cliques{mod === 'marketing' ? ' e os leads dos formulários' : ''}. Não cria nem altera anúncios e não vê o cartão.{mod === 'marketing' ? ' A única configuração na página é ligar o aviso de novos leads.' : ''}</li>
         <li>{mod === 'marketing' ? 'Use o link da campanha (com utm_campaign) como destino do anúncio: o Drone liga os dois sozinho.' : 'Use o link da campanha do Drone como destino do anúncio: o Drone liga os dois sozinho.'}</li>
         <li>A conexão é da empresa: se a empresa usa Varejo e Marketing, conecta uma vez só.</li>
       </ul>

@@ -6,7 +6,7 @@ import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { syncMetaAds } from '@/lib/ads/meta-server'
+import { syncMetaAds, refreshMetaForms, unsubscribeMetaPages } from '@/lib/ads/meta-server'
 import { adAccountNumber, type AdsModule } from '@/lib/ads/meta'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
@@ -48,7 +48,10 @@ export async function syncMetaNow(): Promise<Result<{ campaigns: number }>> {
 export async function disconnectMeta(): Promise<Result> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
+  await unsubscribeMetaPages(g.tenantId)
   const db = await createScopedAdmin(g.tenantId)
+  await db.from('ads_meta_lead_forms').delete().eq('tenant_id', g.tenantId)
+  await db.from('ads_meta_pages').delete().eq('tenant_id', g.tenantId)
   const [a, b, c] = await Promise.all([
     db.from('ads_meta_campaigns').delete().eq('tenant_id', g.tenantId),
     db.from('ads_meta_campaign_months').delete().eq('tenant_id', g.tenantId),
@@ -80,5 +83,31 @@ export async function linkMetaCampaign(metaCampaignId: string, mod: AdsModule, c
     if (error) return { ok: false, error: error.message }
   }
   refresh(); if (campaignId && mod === 'varejo') revalidatePath(`/varejo/campanhas/${campaignId}`)
+  return { ok: true }
+}
+
+// ─── Formulários de cadastro (Lead Ads) ──────────────────────────────────────
+export async function refreshMetaFormsNow(): Promise<Result<{ forms: number }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const r = await refreshMetaForms(g.tenantId)
+  refresh()
+  return r.ok ? { ok: true, forms: r.forms } : { ok: false, error: r.error }
+}
+
+export async function updateMetaForm(formId: string, patch: { active?: boolean; campaignId?: string | null }): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!/^\d{1,30}$/.test(formId)) return { ok: false, error: 'Formulário inválido.' }
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (typeof patch.active === 'boolean') row.active = patch.active
+  if (patch.campaignId !== undefined) {
+    if (patch.campaignId && !UUID.test(patch.campaignId)) return { ok: false, error: 'Campanha inválida.' }
+    row.campaign_id = patch.campaignId || null
+  }
+  const db = await createScopedAdmin(g.tenantId)
+  const { error } = await db.from('ads_meta_lead_forms').update(row).eq('form_id', formId)
+  if (error) return { ok: false, error: error.message }
+  refresh()
   return { ok: true }
 }

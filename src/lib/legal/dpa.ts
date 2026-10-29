@@ -13,6 +13,7 @@ export const OPERATOR = {
   product: 'Comercial Drone CRM',
   site: 'app.comercialdrone.com.br',
   email: 'contato@comercialdrone.com.br',
+  cnpj: '', // preencher com o CNPJ da 2B (aparece nas páginas públicas quando preenchido)
 }
 
 export type DpaParty = { name: string | null; cnpj: string | null }

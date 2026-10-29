@@ -33,7 +33,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       'Mapeie os campos: name (nome), email, phone (telefone), company_name (empresa), cnpj e, se quiser, utm_campaign com o código da campanha do CRM.',
       'Faça um teste no Zapier/Make: o lead aparece em Leads, com canal Meta.',
     ],
-    note: 'Ligação direta com o Meta (sem Zapier/Make) depende de aprovação do app da plataforma pelo Meta.',
+    note: 'Ligação direta (sem Zapier/Make): Marketing → Anúncios (Meta) → Conectar com o Facebook. Aparece como "Em breve" até o app da plataforma ser aprovado pelo Meta.',
   },
   {
     kind: 'linkedin_lead_forms', name: 'LinkedIn Lead Gen Forms', category: 'ads', short: 'Formulário dentro do anúncio do LinkedIn', how: 'ponte', source: 'anuncio',

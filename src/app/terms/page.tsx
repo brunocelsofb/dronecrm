@@ -8,7 +8,7 @@ export default function TermsPage() {
     <main className="min-h-screen bg-white py-16 px-4">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Termos de Uso</h1>
-        <p className="text-sm text-gray-500 mb-10">Última atualização: outubro de 2026</p>
+        <p className="text-sm text-gray-500 mb-10">Última atualização: 29 de outubro de 2026</p>
 
         <section className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-3">1. Aceitação dos Termos</h2>
@@ -22,10 +22,10 @@ export default function TermsPage() {
         <section className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-3">2. Descrição do Serviço</h2>
           <p className="text-gray-600 leading-relaxed">
-            O Comercial Drone CRM é um sistema de gestão de contratos, clientes e processos comerciais,
-            acessado em <strong>https://app.comercialdrone.com.br</strong>. O sistema inclui funcionalidades
-            de alertas automáticos, pipeline comercial, envio de notificações via e-mail e WhatsApp,
-            e geração de propostas.
+            O Comercial Drone CRM é um sistema de gestão comercial (CRM) vendido por licença a empresas,
+            acessado em <strong>https://app.comercialdrone.com.br</strong>. Inclui funil comercial, leads,
+            marketing, contratos, propostas, loja (varejo), WhatsApp, e-mail e integrações com ferramentas de
+            terceiros (como Meta, Google e LinkedIn) que cada empresa escolhe ligar.
           </p>
         </section>
 
@@ -77,6 +77,17 @@ export default function TermsPage() {
             A 2B Soluções Comerciais não se responsabiliza por danos indiretos, incidentais ou
             consequentes decorrentes do uso ou impossibilidade de uso do sistema, incluindo perda
             de dados, lucros cessantes ou interrupção de negócios.
+          </p>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-800 mb-3">7-A. Integrações com terceiros (Meta, Google e outras)</h2>
+          <p className="text-gray-600 leading-relaxed">
+            Ao conectar uma conta de terceiros (por exemplo, &quot;Continuar com o Facebook&quot;), o usuário declara ter
+            autorização da empresa para isso e para as permissões concedidas. O uso dessas integrações também segue os
+            termos e políticas do terceiro (como os Termos da Plataforma do Meta). A empresa pode desconectar a qualquer
+            momento no sistema; os dados recebidos são tratados conforme a <a href="/privacy" className="underline">Política de Privacidade</a> e
+            podem ser excluídos como descrito em <a href="/exclusao-de-dados" className="underline">Exclusão de dados</a>.
           </p>
         </section>
 

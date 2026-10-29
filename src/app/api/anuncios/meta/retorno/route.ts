@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   try {
     const tenantId = await requireTenantId()
     const r = await finishMetaLogin(cfg, code, new URL('/api/anuncios/meta/retorno', request.url).toString())
-    if (!r.accounts.length) return fail('Esta conta do Facebook não tem nenhuma conta de anúncios. Entre com a conta que gerencia os anúncios da empresa.')
+    if (!r.accounts.length && !r.pages.length) return fail('Esta conta do Facebook não tem conta de anúncios nem página autorizada. Entre com a conta que gerencia os anúncios da empresa e marque as páginas e contas na tela do Facebook.')
     await saveMetaConnection(tenantId, access.userId, r)
     if (r.accounts.length === 1) await syncMetaAds(tenantId)
     back.searchParams.set('meta', 'ok')

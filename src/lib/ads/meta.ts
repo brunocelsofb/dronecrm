@@ -61,12 +61,17 @@ export function tokenState(expiresAt: string | null, now: Date): 'ok' | 'vence-l
   return left < 10 * 86_400_000 ? 'vence-logo' : 'ok'
 }
 
+// Permissões pedidas no login (sem configId):
+// - ads_read: gasto, alcance e cliques das campanhas
+// - pages_show_list, pages_manage_metadata, pages_read_engagement, leads_retrieval: leads dos formulários (Lead Ads)
+export const META_SCOPES = ['ads_read', 'pages_show_list', 'pages_manage_metadata', 'pages_read_engagement', 'leads_retrieval']
+
 // Endereço da tela de autorização do Meta. Com configId (Login do Facebook para Empresas)
-// as permissões vêm da configuração do app; sem ele, pede só ads_read.
-export function metaAuthUrl(o: { version: string; appId: string; redirectUri: string; state: string; configId?: string | null }): string {
+// as permissões vêm da configuração do app; sem ele, pede a lista acima.
+export function metaAuthUrl(o: { version: string; appId: string; redirectUri: string; state: string; configId?: string | null; scopes?: string[] }): string {
   const q = new URLSearchParams({ client_id: o.appId, redirect_uri: o.redirectUri, state: o.state, response_type: 'code' })
   if (o.configId) q.set('config_id', o.configId)
-  else q.set('scope', 'ads_read')
+  else q.set('scope', (o.scopes?.length ? o.scopes : META_SCOPES).join(','))
   return `https://www.facebook.com/${o.version}/dialog/oauth?${q.toString()}`
 }
 
@@ -78,3 +83,44 @@ export const isAdsModule = (v: unknown): v is AdsModule => v === 'varejo' || v =
 export const adAccountNumber = (v: string) => String(v ?? '').replace(/^act_/, '').replace(/\D/g, '')
 
 export function num(v: unknown): number { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+
+// Respostas do formulário (field_data do Meta) → campos do lead.
+// Perguntas padrão do Meta: full_name, first_name, last_name, email, phone_number, company_name,
+// job_title, city… As demais (perguntas personalizadas) vão para a mensagem, "pergunta: resposta".
+export type MetaFieldData = { name?: string; values?: unknown[] }[]
+export function metaLeadFields(fields: MetaFieldData) {
+  const map = new Map<string, string>()
+  const extra: string[] = []
+  const KNOWN = new Set(['full_name', 'first_name', 'last_name', 'email', 'phone_number', 'phone', 'company_name', 'company', 'cnpj'])
+  for (const f of fields ?? []) {
+    const key = String(f?.name ?? '').trim().toLowerCase()
+    const val = (f?.values ?? []).map(v => String(v ?? '').trim()).filter(Boolean).join(', ')
+    if (!key || !val) continue
+    if (KNOWN.has(key)) { if (!map.has(key)) map.set(key, val); continue }
+    extra.push(`${String(f.name).replace(/_/g, ' ').replace(/\?$/, '')}: ${val}`)
+  }
+  const name = map.get('full_name') || [map.get('first_name'), map.get('last_name')].filter(Boolean).join(' ')
+  const email = map.get('email') ?? null
+  return {
+    name: (name || email || 'Lead do Meta').slice(0, 200),
+    email: email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email.toLowerCase().slice(0, 200) : null,
+    phone: (map.get('phone_number') ?? map.get('phone') ?? null)?.slice(0, 40) ?? null,
+    company_name: (map.get('company_name') ?? map.get('company') ?? null)?.slice(0, 200) ?? null,
+    cnpj: map.get('cnpj')?.slice(0, 20) ?? null,
+    message: extra.length ? extra.join('\n').slice(0, 2000) : null,
+  }
+}
+
+// Aviso do Meta (webhook "leadgen" da página) → lista de leads novos
+export type LeadgenChange = { leadgen_id: string; page_id: string; form_id: string | null; ad_id: string | null; created_time: number | null }
+export function leadgenChanges(body: unknown): LeadgenChange[] {
+  const b = (body && typeof body === 'object' ? body : {}) as { object?: string; entry?: { changes?: { field?: string; value?: Record<string, unknown> }[] }[] }
+  if (b.object !== 'page') return []
+  const out: LeadgenChange[] = []
+  for (const e of b.entry ?? []) for (const c of e.changes ?? []) {
+    const v = c.value ?? {}
+    if (c.field !== 'leadgen' || !v.leadgen_id || !v.page_id) continue
+    out.push({ leadgen_id: String(v.leadgen_id), page_id: String(v.page_id), form_id: v.form_id ? String(v.form_id) : null, ad_id: v.ad_id ? String(v.ad_id) : null, created_time: Number(v.created_time) || null })
+  }
+  return out
+}
