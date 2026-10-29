@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export function LoginForm() {
-  const router = useRouter()
   const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,8 +16,9 @@ export function LoginForm() {
     setError(null)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) { setError(error.message); setLoading(false); return }
-    router.push('/')
-    router.refresh()
+    // Abre a página inteira (não troca de tela por dentro): lê o login novo no servidor e os
+    // arquivos da versão publicada agora. Trocar por dentro às vezes deixava a tela em branco.
+    window.location.assign('/')
   }
 
   return (
