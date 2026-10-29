@@ -104,7 +104,9 @@
   }
   const productPhoto = (p, color, i = 0, seal = true) => {
     const list = photosFor(p, color), ph = list[i] || list[0] || null
-    const extra = (seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '') + (ph && ph.ai ? AI_TAG : '')
+    // A cor escolhida ainda não tem foto: avisa de que cor é a foto mostrada (não engana a cliente)
+    const other = ph && ph.color && color && color !== ONE_COLOR && ph.color !== color ? `<span class="color-tag">Foto na cor ${esc(ph.color)}</span>` : ''
+    const extra = (seal && p.seal ? `<span class="seal">${esc(p.seal)}</span>` : '') + (ph && ph.ai ? AI_TAG : '') + other
     return phBox(ph ? ph.url : null, colorHex(color), `${p.name}${color && color !== ONE_COLOR ? ` na cor ${color}` : ''}`, extra)
   }
   // Preço por cor: cada variação traz o preço da sua cor (igual ao da peça quando a cor não tem preço próprio)

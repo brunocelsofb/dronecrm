@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   const [{ data: sf }, { data: org }, { data: prods }] = await Promise.all([
     db.from('retail_storefronts').select('title, tagline, content, occasions').maybeSingle(),
     db.from('organization_settings').select('company_name, name').eq('tenant_id', tenantId).maybeSingle(),
-    pieceIds.length ? db.from('retail_products').select('name, category, composition').in('id', pieceIds) : Promise.resolve({ data: [] as { name: string; category: string | null; composition: string | null }[] }),
+    pieceIds.length ? db.from('retail_products').select('name, category, composition, retail_product_variants(color, active)').in('id', pieceIds) : Promise.resolve({ data: [] as { name: string; category: string | null; composition: string | null; retail_product_variants?: { color: string | null; active: boolean }[] }[] }),
   ])
   const content = readContent(sf?.content)
   const occasions = readOccasions(sf?.occasions).map(o => ({ id: o.id, name: o.name }))
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   const essence = content.hero_title || (sf?.tagline as string | null) || 'moda feminina elegante para o dia a dia'
   const pieces = (prods ?? []).map(p => [p.name, p.category, p.composition].filter(Boolean).join(', '))
 
-  const r = await describeImage({ provider, key, model: AI_TEXT_MODEL[provider], prompt: copyPrompt({ store, essence, pieces, occasions }), imageUrl: retailPhotoUrl(img.path as string) })
+  const r = await describeImage({ provider, key, model: AI_TEXT_MODEL[provider], prompt: copyPrompt({ store, essence, pieces, occasions, multiColor: (prods ?? []).length === 1 && new Set(((prods ?? [])[0]?.retail_product_variants ?? []).filter(v => v.active && v.color).map(v => v.color)).size > 1 }), imageUrl: retailPhotoUrl(img.path as string) })
   if (!r.ok) return bad(r.error, 502)
   const copy = [...r.texts].reverse().map(t => parseLookCopy(t, occasions.map(o => o.id))).find(Boolean)
   if (!copy) return bad('A IA respondeu fora do formato. Tente "Refazer texto".', 502)

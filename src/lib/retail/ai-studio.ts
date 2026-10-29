@@ -145,11 +145,12 @@ export function isAiPhotoUrl(url: string | null | undefined, tenantId: string): 
 export const AI_TEXT_MODEL: Record<AiProvider, string> = { openai: 'gpt-6-astra', gemini: 'gemini-3.8-flash' }
 export type LookCopy = { site: string; social: string; hashtags: string[]; occasion: { id: string | null; name: string; why: string } }
 
-export function copyPrompt(o: { store: string; essence: string; pieces: string[]; occasions: { id: string; name: string }[] }): string {
+export function copyPrompt(o: { store: string; essence: string; pieces: string[]; occasions: { id: string; name: string }[]; multiColor?: boolean }): string {
   return [
     `Você é redatora de moda da loja ${o.store}. Essência da marca: "${o.essence}".`,
     'Olhe a foto do look (modelo vestindo as peças) e escreva em português do Brasil, com tom elegante, acolhedor e direto, sem exagero e sem prometer o que não está na foto.',
     o.pieces.length ? `Peças do look: ${o.pieces.join('; ')}.` : '',
+    o.multiColor ? 'A peça é vendida em mais de uma cor: no texto para o site NÃO cite a cor (ele aparece para todas as cores). Na legenda da rede social pode citar a cor da foto.' : '',
     `Ocasiões que a loja já usa: ${o.occasions.length ? o.occasions.map(x => `${x.id} = ${x.name}`).join('; ') : 'nenhuma ainda'}.`,
     'Responda SOMENTE com um JSON neste formato:',
     '{"site": "texto curto para a vitrine (2 a 3 frases, até 300 caracteres)", "social": "legenda para Instagram (até 600 caracteres, pode ter 1 ou 2 emojis discretos e uma chamada para comprar pelo site ou WhatsApp)", "hashtags": ["até 8 hashtags sem o #"], "occasion": {"id": "id de uma ocasião da lista que combine, ou null", "name": "nome da ocasião (da lista ou uma nova sugestão curta)", "why": "uma frase explicando a escolha"}}',
