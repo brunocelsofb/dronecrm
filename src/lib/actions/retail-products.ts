@@ -570,3 +570,18 @@ export async function applyRetailScan(mode: 'entrada' | 'contagem', rows: { vari
   revalidatePath('/varejo/estoque'); revalidatePath('/varejo/produtos')
   return { ok: true, changed: clean.length }
 }
+
+// Publicar (ou voltar a rascunho) direto da lista "Pronta para vender"
+export async function setRetailProductStatus(productId: string, status: 'publicado' | 'rascunho'): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (status !== 'publicado' && status !== 'rascunho') return { ok: false, error: 'Situação inválida.' }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: p } = await db.from('retail_products').select('price').eq('id', productId).maybeSingle()
+  if (!p) return { ok: false, error: 'Peça não encontrada.' }
+  if (status === 'publicado' && p.price === null) return { ok: false, error: 'Defina o preço antes de publicar.' }
+  const { error } = await db.from('retail_products').update({ status, updated_at: new Date().toISOString() }).eq('id', productId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/varejo/produtos'); revalidatePath('/varejo/produtos/prontas'); revalidatePath(`/varejo/produtos/${productId}`)
+  return { ok: true }
+}

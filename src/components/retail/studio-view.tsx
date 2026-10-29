@@ -38,7 +38,7 @@ const btn = 'rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white ho
 const btnLine = 'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50'
 type Tab = 'look' | 'modelo' | 'cenario' | 'banco'
 
-export function StudioView({ connections, images, products, looks, occasions }: { connections: Conn[]; images: StudioImage[]; products: StudioProduct[]; looks: Opt[]; occasions: Opt[] }) {
+export function StudioView({ connections, images, products, looks, occasions, startProductId = null }: { connections: Conn[]; images: StudioImage[]; products: StudioProduct[]; looks: Opt[]; occasions: Opt[]; startProductId?: string | null }) {
   const [tab, setTab] = useState<Tab>('look')
   const connected = connections.map(c => c.provider)
   return (
@@ -51,7 +51,7 @@ export function StudioView({ connections, images, products, looks, occasions }: 
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-full px-4 py-1.5 text-sm ${tab === t ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>{l}</button>
         ))}
       </div>
-      {tab === 'look' && <LookTab images={images} products={products} connected={connected} goTo={setTab} looks={looks} occasions={occasions} />}
+      {tab === 'look' && <LookTab images={images} products={products} connected={connected} goTo={setTab} looks={looks} occasions={occasions} startProductId={startProductId} />}
       {tab === 'modelo' && <ModelTab images={images.filter(i => i.kind === 'modelo')} connected={connected} />}
       {tab === 'cenario' && <SceneTab images={images.filter(i => i.kind === 'cenario')} connected={connected} />}
       {tab === 'banco' && <BankTab images={images} looks={looks} occasions={occasions} />}
@@ -285,18 +285,37 @@ function Pickable({ url, selected, label, onClick, badge }: { url: string; selec
 }
 
 // ── Foto do look ──────────────────────────────────────────────────────────────
-function LookTab({ images, products, connected, goTo, looks, occasions }: { images: StudioImage[]; products: StudioProduct[]; connected: AiProvider[]; goTo: (t: Tab) => void; looks: Opt[]; occasions: Opt[] }) {
+// Vindo de "Pronta para vender" (?peca=): já deixa a peça escolhida (todas as cores que faltam, uma cor ou a peça)
+type Batch = { product: StudioProduct; colors: { color: string; ref: number }[]; baseId: string | null; baseColor: string | null }
+function batchFor(p: StudioProduct, images: StudioImage[]): Batch {
+  const miss = missingModelColors(p.paths, p.meta, p.colors).filter(c => c.reference !== null).map(c => ({ color: c.color, ref: c.reference as number }))
+  const bi = p.paths.findIndex(path => p.meta[path]?.model && /(^|\/)ia\//.test(path))
+  const baseImg = bi >= 0 ? images.find(im => im.kind === 'look' && im.url === p.photos[bi]) : undefined
+  return { product: p, colors: miss, baseId: baseImg?.id ?? null, baseColor: baseImg ? p.meta[p.paths[bi]]?.color ?? null : null }
+}
+function initialPick(products: StudioProduct[], images: StudioImage[], id: string | null) {
+  const p = id ? products.find(x => x.id === id) : undefined
+  if (!p) return { picked: [] as { product_id: string; photo: number }[], target: null as Target | null, title: '', batch: null as Batch | null }
+  const b = batchFor(p, images)
+  if (b.colors.length >= 2 || (b.colors.length === 1 && b.baseId)) return { picked: b.baseId ? [] : [{ product_id: p.id, photo: b.colors[0].ref }], target: null, title: '', batch: b }
+  if (b.colors.length === 1) return { picked: [{ product_id: p.id, photo: b.colors[0].ref }], target: { product_id: p.id, color: b.colors[0].color }, title: `${p.name} · ${b.colors[0].color}`, batch: null }
+  const i = p.paths.findIndex(path => !p.meta[path]?.model)
+  return { picked: i >= 0 ? [{ product_id: p.id, photo: i }] : [], target: null, title: p.name, batch: null }
+}
+
+function LookTab({ images, products, connected, goTo, looks, occasions, startProductId = null }: { images: StudioImage[]; products: StudioProduct[]; connected: AiProvider[]; goTo: (t: Tab) => void; looks: Opt[]; occasions: Opt[]; startProductId?: string | null }) {
+  const [init] = useState(() => initialPick(products, images, startProductId))
   const models = images.filter(i => i.kind === 'modelo'), scenes = images.filter(i => i.kind === 'cenario')
   const [model, setModel] = useState<string | null>(models[0]?.id ?? null)
   const [scene, setScene] = useState<string | null>(null)
-  const [picked, setPicked] = useState<{ product_id: string; photo: number }[]>([])
+  const [picked, setPicked] = useState<{ product_id: string; photo: number }[]>(init.picked)
   const [q, setQ] = useState('')
-  const [title, setTitle] = useState('')
+  const [title, setTitle] = useState(init.title)
   const [provider, setProvider] = useState<AiProvider | ''>(connected[0] ?? '')
   const [custom, setCustom] = useState<string | null>(null)
   const [times, setTimes] = useState(1)
   const [pose, setPose] = useState<string>('auto')
-  const [target, setTarget] = useState<Target | null>(null)
+  const [target, setTarget] = useState<Target | null>(init.target)
   // Completar o look: com 1 peça, a IA completa por padrão; com 2 ou mais, só as peças escolhidas
   const [completeChoice, setCompleteChoice] = useState<boolean | null>(null)
   const complete = completeChoice ?? picked.length === 1
@@ -308,15 +327,12 @@ function LookTab({ images, products, connected, goTo, looks, occasions }: { imag
     document.getElementById('estudio-look')?.scrollIntoView({ behavior: 'smooth' })
   }
   // Todas as cores de uma peça: 1ª foto com a modelo (ou a que já existe) e as outras cores trocando só a peça
-  type Batch = { product: StudioProduct; colors: { color: string; ref: number }[]; baseId: string | null; baseColor: string | null }
-  const [batch, setBatch] = useState<Batch | null>(null)
+  const [batch, setBatch] = useState<Batch | null>(init.batch)
   function startAll(p: StudioProduct) {
-    const miss = missingModelColors(p.paths, p.meta, p.colors).filter(c => c.reference !== null).map(c => ({ color: c.color, ref: c.reference as number }))
-    const bi = p.paths.findIndex(path => p.meta[path]?.model && /(^|\/)ia\//.test(path))
-    const baseImg = bi >= 0 ? images.find(im => im.kind === 'look' && im.url === p.photos[bi]) : undefined
-    setBatch({ product: p, colors: miss, baseId: baseImg?.id ?? null, baseColor: baseImg ? p.meta[p.paths[bi]]?.color ?? null : null })
+    const b = batchFor(p, images)
+    setBatch(b)
     setTarget(null); setCustom(null); setQ('')
-    if (!baseImg && miss[0]) setPicked([{ product_id: p.id, photo: miss[0].ref }])
+    if (!b.baseId && b.colors[0]) setPicked([{ product_id: p.id, photo: b.colors[0].ref }])
     document.getElementById('estudio-look')?.scrollIntoView({ behavior: 'smooth' })
   }
   function generateAll(b: Batch) {

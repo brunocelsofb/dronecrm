@@ -10,7 +10,8 @@ import { SplitView, type SplitItem } from '@/components/retail/split-view'
 export const dynamic = 'force-dynamic'
 
 // Separar cores e tamanhos: linhas da planilha com várias cores/tamanhos numa célula
-export default async function RetailSplitPage() {
+export default async function RetailSplitPage({ searchParams }: { searchParams: Promise<{ produto?: string }> }) {
+  const { produto } = await searchParams
   const access = await hasFeature('varejo')
   if (!access) redirect('/')
   const support = await getSupportSession()
@@ -20,7 +21,7 @@ export default async function RetailSplitPage() {
     .or('color.like.*/*,size.like.*/*').limit(2000)
   type R = { id: string; color: string | null; size: string | null; stock: number; product_id: string; retail_products: { code: string; name: string; status: string } }
   const items: SplitItem[] = ((data ?? []) as unknown as R[])
-    .filter(v => v.retail_products.status !== 'arquivado' && needsSplit(v.color, v.size))
+    .filter(v => v.retail_products.status !== 'arquivado' && needsSplit(v.color, v.size) && (!produto || v.product_id === produto))
     .map(v => ({ id: v.id, productId: v.product_id, code: v.retail_products.code, name: v.retail_products.name, color: v.color, size: v.size, stock: Number(v.stock), proposal: proposeSplit(v.color, v.size, Number(v.stock)) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   return (

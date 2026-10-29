@@ -11,7 +11,8 @@ import { StudioView, type StudioImage, type StudioProduct } from '@/components/r
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export default async function RetailStudioPage() {
+export default async function RetailStudioPage({ searchParams }: { searchParams: Promise<{ peca?: string }> }) {
+  const { peca } = await searchParams
   const access = await hasFeature('varejo')
   if (!access) redirect('/')
   const support = await getSupportSession()
@@ -59,6 +60,7 @@ export default async function RetailStudioPage() {
         connections={(conns ?? []).map(c => ({ provider: c.provider as 'gemini' | 'openai', last4: c.key_last4 as string | null, model: c.model as string | null }))}
         images={images} products={products} looks={(looks ?? []).map(l => ({ id: l.id as string, name: l.name as string }))}
         occasions={readOccasions(sf?.occasions).map(o => ({ id: o.id, name: o.name }))}
+        startProductId={peca && /^[0-9a-f-]{36}$/i.test(peca) ? peca : null}
       />
     </div>
   )
