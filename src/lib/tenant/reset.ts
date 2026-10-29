@@ -10,7 +10,7 @@ import { seedTenantDefaults } from './seed'
 // Ordem respeita as referências entre tabelas (filhas antes das mães)
 const RESET_TABLES = [
   // filhas primeiro (dependem de contratos, propostas, chamados, leads, funis)
-  'retail_ai_images', 'retail_ai_connections', 'retail_stock_movements', 'retail_order_messages', 'retail_order_events', 'retail_looks', 'retail_storefronts', 'retail_loyalty_entries', 'retail_order_items', 'retail_campaign_sends', 'retail_orders', 'retail_campaigns', 'retail_customers', 'retail_product_variants', 'retail_products',
+  'retail_meta_campaigns', 'retail_meta_connections', 'retail_ai_images', 'retail_ai_connections', 'retail_stock_movements', 'retail_order_messages', 'retail_order_events', 'retail_looks', 'retail_storefronts', 'retail_loyalty_entries', 'retail_order_items', 'retail_campaign_sends', 'retail_orders', 'retail_campaigns', 'retail_customers', 'retail_product_variants', 'retail_products',
   'action_plan_items', 'assistant_action_log', 'automation_rule_triggers', 'contract_contacts', 'contract_custom_field_values', 'contract_emails', 'contract_files', 'contract_tags', 'dimensioning_reviews', 'transfer_requests', 'proposal_status', 'company_tags', 'lead_activities', 'stage_history', 'pipeline_field_configs', 'proposal_approvals', 'proposal_items', 'proposal_content_blocks', 'ticket_messages', 'task_comments', 'implementation_tasks', 'implementation_template_tasks',
   'activities', 'notifications', 'contract_whatsapp_messages', 'whatsapp_conversation_status',
   'whatsapp_conversation_assignments', 'whatsapp_capture_prompts', 'whatsapp_protocol_counters',
@@ -36,7 +36,7 @@ const EXPORT_TABLES = [
 
 // Nunca exportar segredos
 const SECRET_COLUMNS = new Set(['anthropic_api_key_enc', 'evo_api_key', 'evo_instance_token', 'zapi_token', 'zapi_client_token',
-  'zapi_webhook_secret', 'zapsign_api_token', 'mailgun_webhook_signing_key', 'smtp_password', 'access_token', 'refresh_token', 'marketing_tools', 'billing_erp', 'zapsign_hook_secret', 'sdr_meta_token_enc', 'key_enc'])
+  'zapi_webhook_secret', 'zapsign_api_token', 'mailgun_webhook_signing_key', 'smtp_password', 'access_token', 'refresh_token', 'marketing_tools', 'billing_erp', 'zapsign_hook_secret', 'sdr_meta_token_enc', 'key_enc', 'token_enc'])
 
 function clean(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map(r => {

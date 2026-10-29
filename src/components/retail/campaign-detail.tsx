@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 // Uma campanha: link para divulgar, mensagem (editável), quem vai receber (revisar e enviar uma a uma)
 // e o resultado com a conta aberta.
 import { useState } from 'react'
@@ -15,10 +17,12 @@ const inp = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:bo
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }) : '')
 const waDigits = (p: string) => { const d = p.replace(/\D/g, ''); return d.startsWith('55') ? d : `55${d}` }
 
-export function CampaignDetail({ campaign, people, sends, result, link, store, instances, readOnly, optinMissing }: {
-  campaign: { id: string; name: string; code: string; audience: Audience; params: AudienceParams; message: string; investment: number; status: string }
+export type CampaignMeta = { enabled: boolean; connected: boolean; names: string[]; spend: number; reach: number; clicks: number }
+
+export function CampaignDetail({ campaign, people, sends, result, link, store, instances, readOnly, optinMissing, meta }: {
+  campaign: { id: string; name: string; code: string; audience: Audience; params: AudienceParams; message: string; investment: number; status: string; kind: string }
   people: Person[]; sends: Record<string, Send>; result: Result; link: string | null; store: string
-  instances: { name: string; label: string }[]; readOnly: boolean; optinMissing: number
+  instances: { name: string; label: string }[]; readOnly: boolean; optinMissing: number; meta: CampaignMeta
 }) {
   const router = useRouter()
   const [message, setMessage] = useState(campaign.message)
@@ -29,6 +33,11 @@ export function CampaignDetail({ campaign, people, sends, result, link, store, i
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const closed = campaign.status !== 'ativa'
+  const bio = campaign.kind === 'bio'
+  const linked = meta.names.length > 0
+  // Investimento total = lançado aqui + gasto no Meta dos anúncios ligados
+  const totalInv = campaign.investment + (linked ? meta.spend : 0)
+  const invText = linked && campaign.investment > 0 ? `(${fmtBRL(meta.spend)} Meta + ${fmtBRL(campaign.investment)})` : fmtBRL(totalInv)
   const pending = people.filter(p => !sends[p.id])
   const sentCount = people.filter(p => sends[p.id]?.status === 'enviada').length
   const textFor = (p: Person) => renderCampaignMessage(message, { nome: p.name, loja: store, link: link ?? '' })
@@ -66,9 +75,9 @@ export function CampaignDetail({ campaign, people, sends, result, link, store, i
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{campaign.name}</h1>
-          <p className="text-sm text-gray-600">{AUDIENCES.find(a => a.id === campaign.audience)?.label}{closed ? ' · encerrada' : ''}</p>
+          <p className="text-sm text-gray-600">{bio ? 'Link fixo para a bio do Instagram' : AUDIENCES.find(a => a.id === campaign.audience)?.label}{closed ? ' · encerrada' : ''}</p>
         </div>
-        {!readOnly && (
+        {!readOnly && !bio && (
           <div className="flex gap-2 text-sm">
             <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700" onClick={() => save({ status: closed ? 'ativa' : 'encerrada' })}>{closed ? 'Reabrir' : 'Encerrar'}</button>
             <button type="button" className="px-2 text-negative-700" onClick={async () => { if (confirm('Excluir esta campanha? Os pedidos continuam, só perdem a marca da campanha.')) { const r = await deleteRetailCampaign(campaign.id); if (r.ok) router.push('/varejo/campanhas'); else setMsg({ ok: false, text: r.error }) } }}>Excluir</button>
@@ -80,8 +89,8 @@ export function CampaignDetail({ campaign, people, sends, result, link, store, i
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label="Vendido (pago, sem frete)" value={fmtBRL(result.sold)} />
         <Stat label="Pedidos pagos" value={`${result.paid} de ${result.orders}`} />
-        <Stat label="Retorno" value={result.roas !== null ? `${fmtNum1(result.roas)} vezes` : '—'} sub={result.roas !== null ? `${fmtBRL(result.sold)} ÷ ${fmtBRL(campaign.investment)}` : 'lance o investimento'} />
-        <Stat label="Custo por venda" value={result.costPerSale !== null ? fmtBRL(result.costPerSale) : '—'} sub={result.costPerSale !== null ? `${fmtBRL(campaign.investment)} ÷ ${result.paid}` : ''} />
+        <Stat label="Retorno" value={result.roas !== null ? `${fmtNum1(result.roas)} vezes` : '—'} sub={result.roas !== null ? `${fmtBRL(result.sold)} ÷ ${invText}` : 'lance o investimento'} />
+        <Stat label="Custo por venda" value={result.costPerSale !== null ? fmtBRL(result.costPerSale) : '—'} sub={result.costPerSale !== null ? `${invText} ÷ ${result.paid}` : ''} />
       </section>
       {result.grossMargin !== null && result.paid > 0 && <p className="text-xs text-gray-600">Vendido − custo das peças = <strong>{fmtBRL(result.grossMargin)}</strong> (antes de impostos e taxas).</p>}
       <p className="text-[11px] text-gray-500">Conta: pedido feito pelo link da campanha, ou por cliente que recebeu a mensagem nos 7 dias antes do pedido. Pedido cancelado não entra.</p>
@@ -92,19 +101,34 @@ export function CampaignDetail({ campaign, people, sends, result, link, store, i
           <div className="flex flex-wrap items-center gap-2"><code className="min-w-0 flex-1 truncate rounded bg-gray-50 px-2 py-1.5 text-xs text-gray-800">{link}</code>
             <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700" onClick={copyLink}>{copied ? 'Copiado' : 'Copiar'}</button></div>
         ) : <p className="text-sm text-warn-700">Configure a vitrine (Configurar loja → Vitrine) para ter o link.</p>}
-        <p className="text-xs text-gray-500">Use no Instagram, no anúncio, no QR Code da loja ou mande para quem quiser: a venda por ele conta para a campanha.</p>
+        <p className="text-xs text-gray-500">{bio ? 'Coloque este link na bio do Instagram: o pedido de quem entrar por ele conta aqui.' : 'Use no Instagram, no anúncio, no QR Code da loja ou mande para quem quiser: a venda por ele conta para a campanha.'}</p>
+      </section>
+
+      <section className="space-y-1 rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-900">Anúncios do Meta (Instagram/Facebook)</h2>
+        {linked ? (
+          <>
+            <p className="text-sm text-gray-800">Gasto <strong>{fmtBRL(meta.spend)}</strong> · alcance {meta.reach.toLocaleString('pt-BR')} pessoas · {meta.clicks.toLocaleString('pt-BR')} cliques no link</p>
+            <p className="text-xs text-gray-500">Ligados: {meta.names.join(', ')}. O gasto entra sozinho no investimento (atualiza todo dia).</p>
+          </>
+        ) : meta.connected ? (
+          <p className="text-xs text-gray-600">Nenhum anúncio ligado. Use o link acima como destino do anúncio e o Drone liga sozinho na próxima atualização, ou ligue em <Link href="/varejo/anuncios" className="text-brand-700 hover:underline">Anúncios (Meta)</Link>.</p>
+        ) : (
+          <p className="text-xs text-gray-600">{meta.enabled ? <>Conecte a conta de anúncios em <Link href="/varejo/anuncios" className="text-brand-700 hover:underline">Anúncios (Meta)</Link> e o gasto entra sozinho aqui.</> : 'Em breve: conectar a conta de anúncios para o gasto entrar sozinho. Até lá, lance o valor no investimento.'}</p>
+        )}
       </section>
 
       <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        {!bio && <><div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-gray-900">Mensagem</h2>
           <span className="text-[11px] text-gray-500">{'{nome}'} = primeiro nome · {'{link}'} = link da campanha · {'{loja}'} = nome da loja</span>
         </div>
-        <textarea className={inp} rows={3} value={message} onChange={e => setMessage(e.target.value)} disabled={readOnly} />
+        <textarea className={inp} rows={3} value={message} onChange={e => setMessage(e.target.value)} disabled={readOnly} /></>}
         <div className="flex flex-wrap items-end gap-3">
-          <div className="w-48"><label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="inv">Investimento (R$)</label><input id="inv" className={inp} inputMode="decimal" value={investment} onChange={e => setInvestment(e.target.value)} disabled={readOnly} placeholder="0,00" /></div>
-          {!readOnly && <button type="button" disabled={busy === 'save'} onClick={() => save()} className="rounded-lg border border-brand-700 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">Salvar mensagem e investimento</button>}
+          <div className="w-48"><label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="inv">{linked ? 'Outros gastos fora do Meta (R$)' : 'Investimento (R$)'}</label><input id="inv" className={inp} inputMode="decimal" value={investment} onChange={e => setInvestment(e.target.value)} disabled={readOnly} placeholder="0,00" /></div>
+          {!readOnly && <button type="button" disabled={busy === 'save'} onClick={() => save()} className="rounded-lg border border-brand-700 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">{bio ? 'Salvar investimento' : 'Salvar mensagem e investimento'}</button>}
         </div>
+        {linked && campaign.investment > 0 && <p className="text-[11px] text-warn-700">Se este valor já era o gasto do anúncio, apague: o gasto do Meta já entra sozinho e contaria duas vezes.</p>}
       </section>
 
       {campaign.audience !== 'nenhum' && (

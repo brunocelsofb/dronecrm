@@ -22,6 +22,7 @@ export default async function RetailConfigPage() {
     { href: '/varejo/vitrine', title: 'Vitrine', text: 'Aparência do site: capa, cores, textos, ocasiões, looks e políticas.' },
     { href: '/varejo/precificacao', title: 'Custos e preço', text: 'Impostos, taxas, custos fixos, margem e fidelidade. O preço de referência das peças sai daqui.' },
     { href: '/varejo/mensagens', title: 'Mensagens do pedido', text: 'Textos que o Drone prepara em cada etapa do pedido (WhatsApp e e-mail).' },
+    { href: '/varejo/anuncios', title: 'Anúncios (Meta)', text: 'Conecte o Instagram/Facebook Ads: gasto, alcance e cliques entram sozinhos nas campanhas.' },
   ]
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -29,7 +30,7 @@ export default async function RetailConfigPage() {
         <h1 className="text-xl font-semibold text-gray-900">Configurar loja</h1>
         <p className="text-sm text-gray-600">O que se ajusta uma vez e quase não muda.</p>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map(c => (
           <Link key={c.href} href={c.href} className="rounded-xl border border-gray-200 bg-white p-4 hover:border-brand-700">
             <p className="text-sm font-semibold text-gray-900">{c.title}</p>

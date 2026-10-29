@@ -8,6 +8,9 @@ import { campaignLink, campaignResult, readParams, selectAudience, type Audience
 import { loadCampaignCustomers, loadCampaignOrders, storefrontLinkBase } from '@/lib/retail/campaigns-data'
 import { SectionTabs, CUSTOMER_TABS } from '@/components/retail/section-tabs'
 import { CampaignDetail } from '@/components/retail/campaign-detail'
+import { loadMeta } from '@/lib/retail/meta-ads-data'
+import { linkedMeta, sumMeta } from '@/lib/retail/meta-ads'
+import { metaConfig } from '@/lib/retail/meta-ads-server'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -20,7 +23,7 @@ export default async function RetailCampaignPage({ params }: { params: Promise<{
   const db = await createScopedAdmin(tenantId)
   const support = await getSupportSession()
   const [{ data: c }, { data: sends }, { data: org }, link, customers] = await Promise.all([
-    db.from('retail_campaigns').select('id, name, code, audience, audience_params, message, investment, status, created_at').eq('id', id).maybeSingle(),
+    db.from('retail_campaigns').select('id, name, code, kind, meta_campaign_ids, audience, audience_params, message, investment, status, created_at').eq('id', id).maybeSingle(),
     db.from('retail_campaign_sends').select('customer_id, status, channel, sent_at').eq('campaign_id', id).limit(20000),
     db.from('organization_settings').select('company_name, name, evo_instance_name, evo_instance_aliases').eq('tenant_id', tenantId).maybeSingle(),
     storefrontLinkBase(db),
@@ -33,7 +36,10 @@ export default async function RetailCampaignPage({ params }: { params: Promise<{
   // Quem já recebeu e saiu do público (ex.: fez aniversário) continua na lista
   const extra = customers.filter(x => sendMap[x.id] && !people.some(p => p.id === x.id))
   const orders = (await loadCampaignOrders(db, [id]))[id] ?? []
-  const result = campaignResult(orders, Number(c.investment))
+  const meta = await loadMeta(db)
+  const mine = linkedMeta(meta.stats, { code: c.code as string, meta_campaign_ids: (c.meta_campaign_ids ?? []) as string[] })
+  const metaSum = sumMeta(mine)
+  const result = campaignResult(orders, Number(c.investment) + metaSum.spend)
   type Alias = string | { label?: string; private?: boolean }
   const aliases = (org?.evo_instance_aliases ?? {}) as Record<string, Alias>
   const instances = Object.entries(aliases).filter(([, v]) => !(typeof v === 'object' && v?.private)).map(([name, v]) => ({ name, label: typeof v === 'string' ? v : v?.label ?? name }))
@@ -46,7 +52,8 @@ export default async function RetailCampaignPage({ params }: { params: Promise<{
       <SectionTabs tabs={CUSTOMER_TABS} active="/varejo/campanhas" />
       <Link href="/varejo/campanhas" className="text-sm text-brand-700 hover:underline">← Campanhas</Link>
       <CampaignDetail
-        campaign={{ id: c.id as string, name: c.name as string, code: c.code as string, audience, params: readParams(c.audience_params), message: (c.message as string | null) ?? '', investment: Number(c.investment), status: c.status as string }}
+        campaign={{ id: c.id as string, name: c.name as string, code: c.code as string, audience, params: readParams(c.audience_params), message: (c.message as string | null) ?? '', investment: Number(c.investment), status: c.status as string, kind: (c.kind as string) ?? 'campanha' }}
+        meta={{ enabled: !!metaConfig(), connected: !!meta.conn?.adAccountId, names: mine.map(m => m.name), spend: metaSum.spend, reach: metaSum.reach, clicks: metaSum.clicks }}
         people={[...people, ...extra].map(p => ({ id: p.id, name: p.name, phone: p.phone, birth_date: p.birth_date, last_purchase: p.last_purchase }))}
         sends={sendMap} result={result} link={url} store={store} instances={instances} readOnly={!!support} optinMissing={optinMissing}
       />
