@@ -3,10 +3,10 @@ import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { getSupportSession } from '@/lib/tenant/support'
-import { loadMeta } from '@/lib/retail/meta-ads-data'
-import { metaConfig } from '@/lib/retail/meta-ads-server'
-import { tokenState } from '@/lib/retail/meta-ads'
-import { MetaAdsView } from '@/components/retail/meta-ads-view'
+import { loadMeta } from '@/lib/ads/meta-data'
+import { metaConfig } from '@/lib/ads/meta-server'
+import { tokenState } from '@/lib/ads/meta'
+import { MetaAdsView } from '@/components/ads/meta-ads-view'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +34,7 @@ export default async function RetailAdsPage({ searchParams }: { searchParams: Pr
         <p className="text-sm text-gray-600">Conecte a conta de anúncios do Instagram/Facebook: o Drone lê todo dia quanto foi gasto, o alcance e os cliques de cada campanha e soma no resultado das suas campanhas.</p>
       </div>
       <MetaAdsView
-        enabled={!!metaConfig()} readOnly={!!support} notice={sp.meta === 'ok' ? 'Conectado.' : null} error={sp.meta_erro ? String(sp.meta_erro).slice(0, 300) : null}
+        mod="varejo" enabled={!!metaConfig()} readOnly={!!support} notice={sp.meta === 'ok' ? 'Conectado.' : null} error={sp.meta_erro ? String(sp.meta_erro).slice(0, 300) : null}
         conn={conn ? { ...conn, token: tokenState(conn.expiresAt, new Date()) } : null}
         rows={rows} campaigns={drone.map(d => ({ id: d.id, name: d.status === 'ativa' ? d.name : `${d.name} (encerrada)` }))}
       />

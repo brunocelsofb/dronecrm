@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ensureBioCampaign } from '@/lib/actions/retail-meta'
+import { ensureBioCampaign } from '@/lib/actions/retail-campaigns'
 import { fmtBRL } from '@/lib/format'
 
 export function BioLink({ bio, readOnly }: { bio: { id: string; link: string | null; sold: number; paid: number } | null; readOnly: boolean }) {

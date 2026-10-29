@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 // Tela Marketing: Resultados (investimento → leads → oportunidades → ganhos →
 // faturado), Campanhas (cadastro + investimento por mês) e Links (link da
 // campanha e formulário do site com a origem).
@@ -29,6 +31,8 @@ type Props = {
   listOptions: { segments: string[]; ufs: string[]; tags: { id: string; name: string }[]; companySegments: string[] }
   campaigns: CampaignFull[]
   costs: { campaign_id: string; year: number; month: number; amount: number }[]
+  metaCosts: { campaign_id: string; year: number; month: number; amount: number }[]
+  metaConnected: boolean
   report: Report
   people: { id: string; name: string }[]
   baseUrl: string
@@ -84,6 +88,7 @@ export function MarketingView(p: Props) {
             {label}
           </button>
         ))}
+        <Link href="/marketing/anuncios" className="-mb-px whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-gray-500 hover:text-gray-800">Anúncios (Meta)</Link>
       </nav>
 
       {p.tab === 'resultados' && <Results report={p.report} periodLabel={periodLabel} hasCampaigns={p.campaigns.length > 0} onNew={() => go({ aba: 'campanhas' })} />}
@@ -208,9 +213,9 @@ function Campaigns(p: Props) {
   const rowById = useMemo(() => new Map(p.report.campaignRows.map(r => [r.campaignId, r])), [p.report.campaignRows])
   const spentYear = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const c of p.costs) if (c.year === p.year) m[c.campaign_id] = (m[c.campaign_id] ?? 0) + c.amount
+    for (const c of [...p.costs, ...p.metaCosts]) if (c.year === p.year) m[c.campaign_id] = (m[c.campaign_id] ?? 0) + c.amount
     return m
-  }, [p.costs, p.year])
+  }, [p.costs, p.metaCosts, p.year])
 
   const open = (c?: CampaignFull) => {
     setMsg(null)
@@ -323,7 +328,7 @@ function Campaigns(p: Props) {
                 <Mini label="Faturado" value={fmtBRL(r?.invoiced ?? 0)} />
                 <Mini label="ROAS" value={roasTxt(r?.roas ?? null)} />
               </div>
-              {costsOpen === c.id && <CostGrid campaignId={c.id} year={p.year} nowYear={p.nowYear} nowMonth={p.nowMonth} costs={p.costs.filter(x => x.campaign_id === c.id && x.year === p.year)} />}
+              {costsOpen === c.id && <CostGrid campaignId={c.id} year={p.year} nowYear={p.nowYear} nowMonth={p.nowMonth} costs={p.costs.filter(x => x.campaign_id === c.id && x.year === p.year)} meta={p.metaCosts.filter(x => x.campaign_id === c.id && x.year === p.year)} />}
             </div>
           )
         })}
@@ -334,7 +339,7 @@ function Campaigns(p: Props) {
   )
 }
 
-function CostGrid({ campaignId, year, nowYear, nowMonth, costs }: { campaignId: string; year: number; nowYear: number; nowMonth: number; costs: { month: number; amount: number }[] }) {
+function CostGrid({ campaignId, year, nowYear, nowMonth, costs, meta }: { campaignId: string; year: number; nowYear: number; nowMonth: number; costs: { month: number; amount: number }[]; meta: { month: number; amount: number }[] }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [vals, setVals] = useState<Record<number, string>>(() => Object.fromEntries(costs.map(c => [c.month, String(c.amount).replace('.', ',')])))
@@ -353,7 +358,7 @@ function CostGrid({ campaignId, year, nowYear, nowMonth, costs }: { campaignId: 
   }
   return (
     <div className="mt-3 rounded-xl bg-gray-50 p-3">
-      <p className="text-xs text-gray-600">Quanto foi gasto em cada mês de {year} (o que saiu na fatura do Meta, Google etc.). Salva ao sair do campo.</p>
+      <p className="text-xs text-gray-600">{meta.length ? `Outros gastos de cada mês de ${year} (Google, LinkedIn, brindes…). O gasto do Meta entra sozinho e já está somado no investido.` : `Quanto foi gasto em cada mês de ${year} (o que saiu na fatura do Meta, Google etc.). Salva ao sair do campo.`}</p>
       <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
         {MON.map((label, i) => {
           const m = i + 1
@@ -368,6 +373,10 @@ function CostGrid({ campaignId, year, nowYear, nowMonth, costs }: { campaignId: 
           )
         })}
       </div>
+      {meta.length > 0 && (
+        <p className="mt-2 text-[11px] text-gray-600">Do Meta (automático): {meta.slice().sort((a, b) => a.month - b.month).map(x => `${MON[x.month - 1]} ${fmtBRL(x.amount)}`).join(' · ')}.
+          {costs.some(c => meta.some(x => x.month === c.month) && c.amount > 0) && <span className="text-warn-700"> Se o valor lançado à mão nesses meses era o gasto do Meta, apague para não contar duas vezes.</span>}</p>
+      )}
       {msg && <p role="status" className="mt-1 text-xs text-gray-600">{msg}</p>}
     </div>
   )

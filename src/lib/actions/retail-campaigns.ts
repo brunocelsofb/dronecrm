@@ -16,6 +16,7 @@ import { getTenantEvoCreds } from '@/lib/whatsapp/tenant-evo'
 import { sendEvoTextMessage } from '@/lib/whatsapp/evolution'
 import { isWhatsAppOptedOut } from '@/lib/whatsapp/guardrails'
 import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
+import { BIO_CODE } from '@/lib/ads/meta'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -133,4 +134,22 @@ export async function skipRetailCampaignCustomer(campaignId: string, customerId:
   if (error) return { ok: false, error: error.message }
   revalidatePath(`/varejo/campanhas/${campaignId}`)
   return { ok: true }
+}
+
+// Cria (uma vez) o link fixo da bio do Instagram
+export async function ensureBioCampaign(): Promise<Result<{ id: string }>> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: cur } = await db.from('retail_campaigns').select('id').eq('kind', 'bio').maybeSingle()
+  if (cur) return { ok: true, id: cur.id as string }
+  // O código "bio" pode já existir numa campanha comum: usa bio-2, bio-3…
+  const { data: taken } = await db.from('retail_campaigns').select('code').like('code', `${BIO_CODE}%`)
+  const used = new Set((taken ?? []).map(t => t.code as string))
+  let code = BIO_CODE, n = 1
+  while (used.has(code)) { n += 1; code = `${BIO_CODE}-${n}` }
+  const { data, error } = await db.from('retail_campaigns').insert({ name: 'Instagram (link da bio)', code, kind: 'bio', audience: 'nenhum', audience_params: {}, message: '', investment: 0, status: 'ativa', created_by: g.userId }).select('id').single()
+  if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao criar o link.' }
+  revalidatePath('/varejo/campanhas')
+  return { ok: true, id: data.id as string }
 }

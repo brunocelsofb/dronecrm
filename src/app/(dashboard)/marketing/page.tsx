@@ -63,6 +63,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
       isAdmin={!!access?.isAdmin}
       campaigns={data.campaigns}
       costs={data.costs}
+      metaCosts={data.metaCosts}
+      metaConnected={data.metaConnected}
       report={data.report}
       people={(people ?? []).map(p => ({ id: p.id, name: p.full_name ?? '' }))}
       baseUrl={base}

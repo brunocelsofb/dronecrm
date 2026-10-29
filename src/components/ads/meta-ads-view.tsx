@@ -1,11 +1,13 @@
 'use client'
 
-// Anúncios do Meta: conectar (um clique), escolher a conta, ver os números e ligar às campanhas do Drone
+// Anúncios do Meta: conectar (um clique), escolher a conta, ver os números e ligar às campanhas do Drone.
+// A conexão é da empresa; a mesma tela serve ao Varejo e ao Marketing (cada um liga às suas campanhas).
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { chooseMetaAdAccount, disconnectMeta, linkMetaCampaign, syncMetaNow } from '@/lib/actions/retail-meta'
+import { chooseMetaAdAccount, disconnectMeta, linkMetaCampaign, syncMetaNow } from '@/lib/actions/ads-meta'
 import { fmtBRL } from '@/lib/format'
-import type { MetaConnectionInfo } from '@/lib/retail/meta-ads-data'
+import type { MetaConnectionInfo } from '@/lib/ads/meta-data'
+import type { AdsModule } from '@/lib/ads/meta'
 
 type Row = { meta_campaign_id: string; name: string; status: string | null; spend: number; reach: number; clicks: number; auto: { id: string; name: string } | null; manual: string | null }
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'nunca')
@@ -13,8 +15,8 @@ const n = (v: number) => v.toLocaleString('pt-BR')
 const STATUS: Record<string, string> = { ACTIVE: 'ativa', PAUSED: 'pausada', ARCHIVED: 'arquivada', DELETED: 'excluída', CAMPAIGN_PAUSED: 'pausada', IN_PROCESS: 'em análise', WITH_ISSUES: 'com problema' }
 const btn = 'rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50'
 
-export function MetaAdsView({ enabled, readOnly, notice, error, conn, rows, campaigns }: {
-  enabled: boolean; readOnly: boolean; notice: string | null; error: string | null
+export function MetaAdsView({ mod, enabled, readOnly, notice, error, conn, rows, campaigns }: {
+  mod: AdsModule; enabled: boolean; readOnly: boolean; notice: string | null; error: string | null
   conn: (MetaConnectionInfo & { token: 'ok' | 'vence-logo' | 'vencido' }) | null; rows: Row[]; campaigns: { id: string; name: string }[]
 }) {
   const router = useRouter()
@@ -33,19 +35,20 @@ export function MetaAdsView({ enabled, readOnly, notice, error, conn, rows, camp
     <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
       {banner}
       <p className="text-sm font-semibold text-gray-900">Em breve</p>
-      <p className="text-sm text-gray-600">A conexão com o Meta ainda está sendo liberada pela plataforma. Enquanto isso: crie a campanha no Drone, use o link dela como destino do anúncio e lance o valor gasto no investimento da campanha.</p>
+      <p className="text-sm text-gray-600">A conexão com o Meta ainda está sendo liberada pela plataforma. Enquanto isso: crie a campanha no Drone, use o link dela como destino do anúncio e lance o valor gasto no investimento da campanha{mod === 'marketing' ? ' (por mês)' : ''}.</p>
     </section>
   )
 
-  const connectBtn = (label: string) => <a href="/api/varejo/meta/conectar" className="inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">{label}</a>
+  const connectBtn = (label: string) => <a href={`/api/anuncios/meta/conectar?volta=${mod}`} className="inline-block rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">{label}</a>
 
   if (!conn) return (
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
       {banner}
       <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
-        <li>Entre com o Facebook que gerencia os anúncios da loja e escolha a conta de anúncios.</li>
+        <li>Entre com o Facebook que gerencia os anúncios da empresa e escolha a conta de anúncios.</li>
         <li>Só leitura: o Drone lê gasto, alcance e cliques. Não cria, não altera anúncios e não vê o cartão.</li>
-        <li>Use o link da campanha do Drone como destino do anúncio: o Drone liga os dois sozinho.</li>
+        <li>{mod === 'marketing' ? 'Use o link da campanha (com utm_campaign) como destino do anúncio: o Drone liga os dois sozinho.' : 'Use o link da campanha do Drone como destino do anúncio: o Drone liga os dois sozinho.'}</li>
+        <li>A conexão é da empresa: se a empresa usa Varejo e Marketing, conecta uma vez só.</li>
       </ul>
       {!readOnly && connectBtn('Conectar com o Facebook')}
     </section>
@@ -64,7 +67,7 @@ export function MetaAdsView({ enabled, readOnly, notice, error, conn, rows, camp
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               {conn.adAccountId && <button type="button" className={btn} disabled={!!busy} onClick={() => run('sync', syncMetaNow, 'Números atualizados.')}>{busy === 'sync' ? 'Atualizando…' : 'Atualizar agora'}</button>}
-              <button type="button" className={`${btn} text-negative-700`} disabled={!!busy} onClick={() => { if (confirm('Desconectar o Meta? Os números lidos somem do Drone; as campanhas continuam.')) run('off', disconnectMeta, 'Desconectado.') }}>Desconectar</button>
+              <button type="button" className={`${btn} text-negative-700`} disabled={!!busy} onClick={() => { if (confirm('Desconectar o Meta da empresa? Vale para todas as telas que usam anúncios. Os números lidos somem do Drone; as campanhas continuam.')) run('off', disconnectMeta, 'Desconectado.') }}>Desconectar</button>
             </div>
           )}
         </div>
@@ -99,7 +102,7 @@ export function MetaAdsView({ enabled, readOnly, notice, error, conn, rows, camp
                   <div className="w-full text-xs sm:w-64">
                     {r.auto ? <p className="text-positive-700">Ligada a <strong>{r.auto.name}</strong> (pelo link do anúncio)</p> : (
                       <select aria-label={`Campanha do Drone para ${r.name}`} className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm" value={r.manual ?? ''} disabled={readOnly || !!busy}
-                        onChange={e => run(r.meta_campaign_id, () => linkMetaCampaign(r.meta_campaign_id, e.target.value || null), 'Ligação salva.')}>
+                        onChange={e => run(r.meta_campaign_id, () => linkMetaCampaign(r.meta_campaign_id, mod, e.target.value || null), 'Ligação salva.')}>
                         <option value="">Ligar a uma campanha do Drone…</option>
                         {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>

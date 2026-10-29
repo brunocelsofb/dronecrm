@@ -8,9 +8,9 @@ import { campaignLink, campaignResult, readParams, selectAudience, type Audience
 import { loadCampaignCustomers, loadCampaignOrders, storefrontLinkBase } from '@/lib/retail/campaigns-data'
 import { SectionTabs, CUSTOMER_TABS } from '@/components/retail/section-tabs'
 import { CampaignDetail } from '@/components/retail/campaign-detail'
-import { loadMeta } from '@/lib/retail/meta-ads-data'
-import { linkedMeta, sumMeta } from '@/lib/retail/meta-ads'
-import { metaConfig } from '@/lib/retail/meta-ads-server'
+import { loadMeta } from '@/lib/ads/meta-data'
+import { linkedMeta, sumMeta } from '@/lib/ads/meta'
+import { metaConfig } from '@/lib/ads/meta-server'
 
 export const dynamic = 'force-dynamic'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

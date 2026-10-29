@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isCronAuthorized } from '@/lib/tenant/cron'
 import { runAsTenant } from '@/lib/tenant/context'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { metaConfig, syncMetaAds } from '@/lib/retail/meta-ads-server'
+import { metaConfig, syncMetaAds } from '@/lib/ads/meta-server'
 
 export const maxDuration = 60
 
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!metaConfig()) return NextResponse.json({ ok: true, skipped: 'meta não configurado' })
   const admin = createAdminClient()
   const [{ data: conns }, { data: tenants }] = await Promise.all([
-    admin.from('retail_meta_connections').select('tenant_id').not('ad_account_id', 'is', null),
+    admin.from('ads_meta_connections').select('tenant_id').not('ad_account_id', 'is', null),
     admin.from('tenants').select('id, is_active'),
   ])
   const active = new Set((tenants ?? []).filter(t => t.is_active).map(t => t.id as string))
