@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SectionTabs, PRODUCT_TABS } from '@/components/retail/section-tabs'
 import { suggestGroups } from '@/lib/retail/merge'
 import { needsSplit } from '@/lib/retail/split'
 import { redirect } from 'next/navigation'
@@ -68,19 +69,18 @@ export default async function RetailProductsPage({ searchParams }: { searchParam
   return (
     <div className="space-y-5">
       <RetailSetupGuide db={db} tenantId={await requireTenantId()} only="produtos" />
+      <SectionTabs tabs={PRODUCT_TABS} active="/varejo/produtos" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Produtos</h1>
           <p className="mt-1 text-sm text-gray-500">Peças da vitrine, com preço, fotos e estoque por cor e tamanho.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/varejo/estoque" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Histórico do estoque</Link>
           {sameName.length > 0 && <Link href="/varejo/produtos/juntar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Juntar cores <span className="ml-1 rounded-full bg-brand-100 px-1.5 text-xs font-semibold text-brand-800">{sameName.length}</span></Link>}
           {combined.length > 0 && <Link href="/varejo/produtos/separar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Separar cores e tamanhos <span className="ml-1 rounded-full bg-warn-100 px-1.5 text-xs font-semibold text-warn-700">{combined.length}</span></Link>}
-          <Link href="/varejo/produtos/prontas" className="rounded-lg border border-brand-700 bg-brand-100 px-3 py-2 text-sm font-medium text-brand-800 hover:bg-brand-100/70">Pronta para vender</Link>
           <a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" title="Todas as peças com o estoque de agora, no formato da importação">Baixar planilha preenchida</a>
           <ProductImport mode="cadastro" />
-          <ProductImport mode="entrada" />
+          <Link href="/varejo/estoque/contar" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Somar peças</Link>
           <Link href="/varejo/produtos/nova" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>
         </div>
       </div>

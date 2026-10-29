@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SectionTabs, ORDER_TABS } from '@/components/retail/section-tabs'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
@@ -72,13 +73,13 @@ export default async function RetailFunnelPage() {
 
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={ORDER_TABS} active="/varejo/funil" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Funil da loja</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Pedidos</h1>
           <p className="mt-1 text-sm text-gray-500">Cada pedido anda do carrinho até a entrega. Laranja = parado há mais tempo que o combinado: mande o lembrete.</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/varejo/pedidos" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Lista de pedidos</Link>
           <Link href="/varejo/pedidos/novo" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Novo pedido</Link>
         </div>
       </div>

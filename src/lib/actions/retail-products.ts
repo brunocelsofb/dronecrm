@@ -585,3 +585,24 @@ export async function setRetailProductStatus(productId: string, status: 'publica
   revalidatePath('/varejo/produtos'); revalidatePath('/varejo/produtos/prontas'); revalidatePath(`/varejo/produtos/${productId}`)
   return { ok: true }
 }
+
+// ── Zerar a loja (recomeçar do zero) ─────────────────────────────────────────
+// Apaga peças, estoque, looks e pedidos. NÃO mexe no Estúdio IA (modelos, cenários e fotos geradas),
+// na aparência da vitrine, em Custos e preço, Mensagens e Clientes. Só a administradora.
+export async function resetRetailStore(confirmText: string): Promise<Result<{ summary: Record<string, number> }>> {
+  const access = await hasFeature('varejo')
+  if (!access) return { ok: false, error: 'Sem acesso ao módulo Varejo.' }
+  if (await getSupportSession()) return { ok: false, error: 'Acesso de suporte é só leitura.' }
+  if (!access.isAdmin) return { ok: false, error: 'Só a administradora pode zerar a loja.' }
+  if (String(confirmText ?? '').trim().toUpperCase() !== 'ZERAR') return { ok: false, error: 'Digite ZERAR para confirmar.' }
+  const tenantId = await requireTenantId()
+  const db = await createScopedAdmin(tenantId)
+  // Fotos das peças (pasta produtos/) saem do armazenamento depois; as do Estúdio IA (pasta ia/) ficam
+  const { data: prods } = await db.from('retail_products').select('photos').limit(10000)
+  const files = [...new Set(((prods ?? []) as { photos: string[] | null }[]).flatMap(p => p.photos ?? []).filter(x => typeof x === 'string' && x.startsWith(`${tenantId}/produtos/`)))]
+  const { data, error } = await db.rpc('retail_reset_store', { p_tenant: tenantId })
+  if (error) return { ok: false, error: error.message }
+  for (let i = 0; i < files.length; i += 100) await db.storage.from(RETAIL_MEDIA_BUCKET).remove(files.slice(i, i + 100))
+  for (const path of ['/varejo/produtos', '/varejo/produtos/prontas', '/varejo/estoque', '/varejo/funil', '/varejo/pedidos', '/varejo/painel', '/varejo/vitrine', '/varejo/estudio']) revalidatePath(path)
+  return { ok: true, summary: (data ?? {}) as Record<string, number> }
+}

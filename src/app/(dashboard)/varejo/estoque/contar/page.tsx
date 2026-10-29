@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ProductImport } from '@/components/retail/product-import'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -28,6 +29,13 @@ export default async function RetailScanPage() {
         <p className="text-sm text-gray-600">Chegou mercadoria? Busque a peça e toque em +1, ou bipe a etiqueta com o leitor de código de barras. Nada muda no estoque até você tocar em <strong>Lançar</strong>.</p>
       </div>
       {support ? <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">Acesso de suporte é só leitura.</p> : <ScanCount variants={variants} />}
+      {!support && (
+        <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-gray-900">Muitas peças de uma vez? Use planilha</h2>
+          <p className="text-xs text-gray-600">Entrada: a quantidade da planilha é somada. Contagem: o estoque fica igual ao da planilha (baixe a planilha preenchida, corrija a coluna estoque e importe).</p>
+          <div className="flex flex-wrap gap-2"><ProductImport mode="entrada" /><ProductImport mode="contagem" /><a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha preenchida</a></div>
+        </section>
+      )}
     </div>
   )
 }

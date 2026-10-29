@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SectionTabs, PRODUCT_TABS } from '@/components/retail/section-tabs'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -38,10 +39,13 @@ export default async function RetailReadyPage() {
   })
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Link href="/varejo/produtos" className="text-sm text-brand-700 hover:underline">← Produtos</Link>
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Pronta para vender</h1>
+      <SectionTabs tabs={PRODUCT_TABS} active="/varejo/produtos/prontas" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+       <div>
+        <h1 className="text-xl font-semibold text-gray-900">Produtos: o que falta</h1>
         <p className="text-sm text-gray-600">Cada peça mostra o que falta para aparecer certinha no site. Toque em <strong>Resolver</strong>: o Drone leva direto ao lugar certo. As que estão mais perto de ficar prontas aparecem primeiro.</p>
+       </div>
+       <Link href="/varejo/produtos/nova" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Nova peça</Link>
       </div>
       <ReadyBoard items={items} readOnly={!!support} />
     </div>

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
@@ -30,6 +31,7 @@ export default async function RetailStorefrontPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
+        <Link href="/varejo/configurar" className="block text-sm text-brand-700 hover:underline">← Configurar loja</Link>
         <h1 className="text-xl font-semibold text-gray-900">Vitrine</h1>
         <p className="mt-1 text-sm text-gray-500">A landing da loja: as clientes escolhem por ocasião, montam a sacola, fazem um cadastro rápido e caem no seu WhatsApp. O pedido entra sozinho no Funil da loja como &quot;Novo pedido&quot;.</p>
       </div>

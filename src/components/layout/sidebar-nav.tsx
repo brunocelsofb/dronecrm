@@ -15,16 +15,15 @@ import { isSettingsChild } from '@/lib/config/settings-nav'
 import {
   LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3,
   Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset, Bot,
-  ShoppingBag, Package, Calculator,
+  ShoppingBag, Package,
   SquareKanban,
   Store,
-  MessageSquareText,
   Sparkles,
-  ListChecks,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
-type NavItem = { href: string; label: string; icon: Icon; feature: string }
+// also: outros endereços em que este item fica marcado (telas que moraram juntas num item só)
+type NavItem = { href: string; label: string; icon: Icon; feature: string; also?: string[] }
 type NavGroup = { key: string; label: string; icon: Icon; items: NavItem[] }
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -64,16 +63,12 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     key: 'varejo', label: 'Varejo', icon: ShoppingBag, items: [
-      { href: '/varejo/precificacao', label: 'Custos e preço', icon: Calculator, feature: 'varejo' },
-      { href: '/varejo/produtos/prontas', label: 'Pronta para vender', icon: ListChecks, feature: 'varejo' },
-      { href: '/varejo/produtos', label: 'Produtos', icon: Package, feature: 'varejo' },
-      { href: '/varejo/vitrine', label: 'Vitrine', icon: Store, feature: 'varejo' },
-      { href: '/varejo/estudio', label: 'Estúdio IA', icon: Sparkles, feature: 'varejo' },
-      { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo' },
-      { href: '/varejo/funil', label: 'Funil da loja', icon: SquareKanban, feature: 'varejo' },
-      { href: '/varejo/pedidos', label: 'Pedidos', icon: Receipt, feature: 'varejo' },
-      { href: '/varejo/mensagens', label: 'Mensagens do pedido', icon: MessageSquareText, feature: 'varejo' },
       { href: '/varejo/painel', label: 'Painel da loja', icon: Gauge, feature: 'varejo' },
+      { href: '/varejo/produtos/prontas', label: 'Produtos', icon: Package, feature: 'varejo', also: ['/varejo/produtos', '/varejo/estoque'] },
+      { href: '/varejo/funil', label: 'Pedidos', icon: SquareKanban, feature: 'varejo', also: ['/varejo/pedidos'] },
+      { href: '/varejo/clientes', label: 'Clientes', icon: Users, feature: 'varejo' },
+      { href: '/varejo/estudio', label: 'Estúdio IA', icon: Sparkles, feature: 'varejo' },
+      { href: '/varejo/configurar', label: 'Configurar loja', icon: Store, feature: 'varejo', also: ['/varejo/vitrine', '/varejo/precificacao', '/varejo/mensagens'] },
     ],
   },
   {
@@ -94,8 +89,10 @@ export function matches(pathname: string, href: string) {
 
 // Tela ativa = a de endereço mais específico (ex.: /whatsapp/relatorios ganha de /whatsapp)
 export function activeHref(pathname: string, items: NavItem[]): string | null {
-  let best: string | null = null
-  for (const it of items) if (matches(pathname, it.href) && (!best || it.href.length > best.length)) best = it.href
+  let best: string | null = null, bestLen = -1
+  for (const it of items) for (const h of [it.href, ...(it.also ?? [])]) {
+    if (matches(pathname, h) && h.length > bestLen) { best = it.href; bestLen = h.length }
+  }
   return best
 }
 

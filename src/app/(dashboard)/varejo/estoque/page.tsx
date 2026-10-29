@@ -1,11 +1,11 @@
 import Link from 'next/link'
+import { SectionTabs, PRODUCT_TABS } from '@/components/retail/section-tabs'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { STOCK_KINDS } from '@/lib/retail/stock'
 import { loadStockMoves } from '@/lib/retail/stock-server'
 import { StockHistory } from '@/components/retail/stock-history'
-import { ProductImport } from '@/components/retail/product-import'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,13 +17,13 @@ export default async function RetailStockHistoryPage({ searchParams }: { searchP
   const moves = await loadStockMoves(db, { kind, limit: 300 })
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Link href="/varejo/produtos" className="text-sm text-brand-700 hover:underline">← Produtos</Link>
+      <SectionTabs tabs={PRODUCT_TABS} active="/varejo/estoque" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Histórico do estoque</h1>
           <p className="text-sm text-gray-500">Toda mudança de saldo, com o motivo, quem fez e o saldo antes e depois. Mostra as 300 mais recentes.</p>
         </div>
-        <div className="flex flex-wrap gap-2"><Link href="/varejo/estoque/contar" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Somar peças (leitor ou à mão)</Link><a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha preenchida</a><ProductImport mode="entrada" /><ProductImport mode="contagem" /></div>
+        <div className="flex flex-wrap gap-2"><Link href="/varejo/estoque/contar" className="rounded-lg bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800">Somar peças (leitor ou à mão)</Link><a href="/api/varejo/planilha" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Baixar planilha preenchida</a></div>
       </div>
       <div className="flex flex-wrap gap-2 text-sm">
         <Link href="/varejo/estoque" className={`rounded-full border px-3 py-1 ${!kind ? 'border-brand-700 bg-brand-100 text-brand-800' : 'border-gray-300 text-gray-700'}`}>Todos</Link>

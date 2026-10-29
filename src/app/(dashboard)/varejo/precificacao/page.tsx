@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { hasFeature } from '@/lib/auth/access'
 import { requireTenantId } from '@/lib/tenant/context'
@@ -36,6 +37,7 @@ export default async function RetailPricingPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
+        <Link href="/varejo/configurar" className="block text-sm text-brand-700 hover:underline">← Configurar loja</Link>
         <h1 className="text-xl font-semibold text-gray-900">Custos e preço</h1>
         <p className="mt-1 text-sm text-gray-500">Suas peças com a conta completa, os impostos da loja, a margem que você quer e a fidelidade. Toda peça cadastrada entra aqui sozinha.</p>
       </div>
