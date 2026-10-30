@@ -184,6 +184,11 @@ footer h4 { font-weight: 500; color: var(--charcoal); margin: 0 0 10px; font-siz
 footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 footer button.lnk { background: none; border: 0; padding: 0; color: var(--muted); text-align: left; }
 footer button.lnk:hover, footer a:hover { color: var(--espresso); }
+/* Selo da plataforma no rodapé (discreto, nas cores da própria loja) */
+footer .made-by { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; justify-content: center; }
+.made-by-seal { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); letter-spacing: .01em; }
+.made-by-seal strong { color: var(--charcoal); font-weight: 600; }
+.made-by-2b { opacity: .8; }
 
 /* Barra fixa no celular e botão flutuante */
 .sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; gap: 8px; padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom)); background: rgba(250,248,245,.96); border-top: 1px solid var(--border); }

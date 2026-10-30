@@ -4,6 +4,7 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { sessionOnly } from '@/lib/supabase/session-cookie'
 
 const COOKIE_TENANT_ID = 'orbis_imp_tid'
 
@@ -51,8 +52,9 @@ export async function proxy(request: NextRequest) {
             request.cookies.set(name, value)
           )
           response = NextResponse.next({ request: { headers: requestHeaders } })
+          // Sem validade: o login acaba quando o navegador fecha
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, sessionOnly(options))
           )
         },
       },

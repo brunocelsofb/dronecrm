@@ -11,6 +11,7 @@ import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { withContentCrypto } from './content-crypto'
 import { resolveRowTenant } from './row-tenant'
+import { sessionOnly } from './session-cookie'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -28,7 +29,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, sessionOnly(options))
             )
           } catch {
             // setAll pode ser chamado de um Server Component, onde
