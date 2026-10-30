@@ -10,6 +10,7 @@ import { UserDepartmentSelect } from '@/components/users/user-department-select'
 import { NewUserForm } from '@/components/users/new-user-form'
 import { DeleteUserButton, ToggleUserButton } from '@/components/users/delete-user-button'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { ResetPasswordButton } from '@/components/users/reset-password-button'
 
 export default async function UsersPage() {
   const currentProfile = await getCurrentProfile()
@@ -94,7 +95,8 @@ export default async function UsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     {!isMe && (
-                      <div className="flex items-center gap-2 justify-end">
+                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                        <ResetPasswordButton userId={p.id} name={p.full_name ?? p.email ?? ''} />
                         <ToggleUserButton action={toggleUserActive.bind(null, p.id, isBanned)} name={p.full_name} isBanned={isBanned} />
                         <DeleteUserButton action={deleteUser.bind(null, p.id)} name={p.full_name} />
                       </div>

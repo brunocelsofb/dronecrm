@@ -51,7 +51,7 @@ const S: LegalSection[] = [
     'Provedores de IA indicados no item 6, com a chave da empresa cliente.',
   ] }] },
   { title: '8. Segurança', body: [
-    'Criptografia em trânsito (HTTPS/TLS), isolamento por empresa no banco de dados (Row-Level Security), criptografia de chaves e acessos de integrações e de conteúdos sensíveis (como mensagens), controle de acesso por perfil e registro de acessos. O suporte da 2B só vê dados de uma empresa com liberação do administrador dela, por tempo limitado, somente leitura e com registro.',
+    'Criptografia em trânsito (HTTPS/TLS), isolamento por empresa no banco de dados (Row-Level Security), criptografia de chaves e acessos de integrações e de conteúdos sensíveis (como mensagens), controle de acesso por perfil e registro de acessos. Senhas são guardadas pelo provedor de autenticação apenas em forma cifrada (hash), nunca em texto; o login termina ao fechar o navegador; senha provisória definida por um administrador precisa ser trocada pela pessoa no próximo acesso. O suporte da 2B só vê dados de uma empresa com liberação do administrador dela, por tempo limitado, somente leitura e com registro.',
   ] },
   { title: '9. Retenção e exclusão', body: [
     'Os dados ficam enquanto a licença da empresa cliente estiver ativa ou pelo prazo que ela configurar; mensagens podem ter retenção automática. Ao fim da licença, a empresa pode exportar os dados e pedir a eliminação. Dados recebidos do Meta são apagados quando a empresa desconecta ou quando o Meta envia um pedido de exclusão (ver /exclusao-de-dados).',

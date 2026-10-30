@@ -35,6 +35,11 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
+  // Senha provisória (definida pelo admin): só Minha conta até trocar
+  if (user.app_metadata?.must_change_password === true && !((await headers()).get('x-pathname') ?? '').startsWith('/minha-conta')) {
+    redirect('/minha-conta?trocar-senha=1')
+  }
+
   const { data: profile } = await supabase
     .from('profiles')
     .select('role, access_profile, full_name, is_super_admin, tenant_id, impersonating_tenant_id')

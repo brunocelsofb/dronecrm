@@ -5,11 +5,13 @@ import { EmailConnectionSettings } from '@/components/settings/email-connection-
 import { EmailSignatureForm } from '@/components/email/email-signature-form'
 import { getConnectedEmailAccount, getEmailSignature } from '@/lib/actions/email'
 import { JobTitleForm } from '@/components/settings/job-title-form'
+import { ChangePasswordForm } from '@/components/account/change-password-form'
 
 export default async function MyAccountPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  const forced = user.app_metadata?.must_change_password === true
 
   const { data: profile } = await supabase.from('profiles').select('full_name, email, job_title').eq('id', user.id).maybeSingle()
   const connectedAccount = await getConnectedEmailAccount()
@@ -22,6 +24,8 @@ export default async function MyAccountPage() {
         <p className="mt-0.5 text-sm text-gray-500">{profile?.full_name} · {profile?.email}</p>
       </div>
 
+      {forced && <ChangePasswordForm forced />}
+
       <JobTitleForm currentJobTitle={(profile as any)?.job_title ?? null} userId={user.id} />
 
       <Suspense fallback={null}>
@@ -33,6 +37,8 @@ export default async function MyAccountPage() {
       </Suspense>
 
       <EmailSignatureForm currentSignature={signature} />
+
+      {!forced && <ChangePasswordForm forced={false} />}
     </div>
   )
 }

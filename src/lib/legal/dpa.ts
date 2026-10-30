@@ -5,8 +5,8 @@
 // que o sistema faz de fato. Mudou o texto → suba DPA_VERSION: todas as empresas
 // precisam aceitar de novo. ATENÇÃO: modelo técnico; revisar com advogado.
 
-export const DPA_VERSION = '1.0'
-export const DPA_UPDATED_AT = '2026-10-20'
+export const DPA_VERSION = '1.1'
+export const DPA_UPDATED_AT = '2026-10-30'
 
 export const OPERATOR = {
   name: '2B Soluções Comerciais',
@@ -31,7 +31,7 @@ export function buildDpa(controller: DpaParty): DpaSection[] {
       title: '1. Partes e papéis',
       paragraphs: [
         `CONTROLADORA: ${ctrl}, que contrata a licença do ${OPERATOR.product} e decide quais dados pessoais coloca no sistema e para quê.`,
-        `OPERADORA: ${OPERATOR.name}, que fornece o ${OPERATOR.product} e trata os dados pessoais somente em nome da Controladora e conforme as instruções dela, nos termos dos arts. 5º, VI e VII, e 39 da Lei nº 13.709/2018 (LGPD).`,
+        `OPERADORA: ${OPERATOR.legalName}, CNPJ ${OPERATOR.cnpj}, que fornece o ${OPERATOR.product} e trata os dados pessoais somente em nome da Controladora e conforme as instruções dela, nos termos dos arts. 5º, VI e VII, e 39 da Lei nº 13.709/2018 (LGPD).`,
         'Instruções da Controladora são as configurações que ela faz no sistema (funis, automações, integrações, agentes de IA, retenção) e as solicitações por escrito ao contato da Operadora.',
       ],
     },
@@ -80,6 +80,8 @@ export function buildDpa(controller: DpaParty): DpaSection[] {
         'Chaves de integração da Controladora (IA, e-mail marketing etc.) guardadas criptografadas.',
         'Acesso por perfil dentro da Controladora e acesso de suporte com liberação, prazo, somente leitura e registro.',
         'Retenção configurável: a Controladora pode definir em quantos dias as mensagens de WhatsApp são apagadas automaticamente.',
+        'Login: senhas guardadas só em forma cifrada (hash) pelo provedor de autenticação; o acesso termina ao fechar o navegador; senha provisória definida por administrador precisa ser trocada pela pessoa no próximo acesso.',
+        'Acessos a integrações de anúncios (Meta) guardados criptografados, com exclusão dos dados lidos ao desconectar.',
       ],
     },
     {
@@ -91,8 +93,10 @@ export function buildDpa(controller: DpaParty): DpaSection[] {
         'Supabase — banco de dados, autenticação e armazenamento de arquivos (servidores nos Estados Unidos).',
         'Vercel — hospedagem e execução do sistema.',
         'Servidor de WhatsApp (Evolution API) contratado pela Operadora — envio e recebimento de mensagens; e o próprio WhatsApp (Meta), por onde as mensagens trafegam.',
-        'Anthropic — agentes de IA, somente quando a Controladora ativa e com a chave da própria Controladora.',
-        'Usados apenas se a Controladora conectar: ZapSign (assinatura eletrônica), Google (login e e-mail), Mailchimp e RD Station (e-mail marketing), ERPs de faturamento.',
+        'Cloudflare — DNS do domínio da plataforma e vitrine (site) das lojas.',
+        'Mailgun e Resend — envio e recebimento de e-mails do sistema.',
+        'Provedores de IA (Anthropic, OpenAI, Google) — somente quando a Controladora ativa o recurso e com a chave da própria Controladora.',
+        'Usados apenas se a Controladora conectar: Meta/Facebook e Instagram (leads de formulários e números dos anúncios), LinkedIn e Google Ads (leads), Zapier e Make (pontes de integração), ZapSign (assinatura eletrônica), Google (login e e-mail), Mailchimp e RD Station (e-mail marketing), Mercado Pago (pagamentos da loja), ERPs de faturamento.',
         'BrasilAPI — consulta de dados públicos de empresas pelo CNPJ (só o número do CNPJ é enviado).',
       ],
     },
