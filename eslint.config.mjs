@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vitrine do Varejo (projeto separado, publicado na Cloudflare)
     "storefront/**",
+    // Skills do Claude Code (instruções e scripts de terceiros, não fazem parte do app)
+    ".claude/**",
   ]),
 ]);
 
