@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { searchWhatsAppConversations, type WhatsAppSearchHit } from '@/lib/actions/whatsapp-search'
 import { ContactKindBadge } from './contact-kind-badge'
+import { PhotoViewer } from './photo-viewer'
 
 // Sem acento e minúsculo, para comparar textos
 const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -39,13 +40,22 @@ export function ContactAvatar({ phone, name, instance, size = 40 }: { phone: str
     return () => { alive = false; io.disconnect() }
   }, [phone, instance])
   const initial = (name || phone || '?').trim().charAt(0).toUpperCase()
+  const [zoom, setZoom] = useState(false)
+  const hasPhoto = !!url && failedUrl !== url
   return (
-    <span ref={ref} className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-semibold text-gray-500"
-      style={{ width: size, height: size }} aria-hidden="true">
-      {url && failedUrl !== url
-        ? <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />
+    <>
+    <span ref={ref}
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-semibold text-gray-500 ${hasPhoto ? 'cursor-zoom-in hover:ring-2 hover:ring-brand-700/30' : ''}`}
+      style={{ width: size, height: size }}
+      title={hasPhoto ? 'Ver foto' : undefined}
+      // Clicar na foto amplia (sem abrir a conversa)
+      onClick={hasPhoto ? (e => { e.stopPropagation(); e.preventDefault(); setZoom(true) }) : undefined}>
+      {hasPhoto
+        ? <img src={url!} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />
         : initial}
     </span>
+    {zoom && url && <PhotoViewer url={url} name={name !== phone ? name : null} phone={phone} onClose={() => setZoom(false)} />}
+    </>
   )
 }
 

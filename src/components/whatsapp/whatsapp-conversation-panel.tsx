@@ -28,6 +28,7 @@ import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead
 import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply, REVOKED_TYPE, revokedText } from '@/lib/whatsapp/chat'
 import { EmojiPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
 import { QuickRepliesModal } from '@/components/whatsapp/quick-replies-modal'
+import { PhotoViewer } from '@/components/whatsapp/photo-viewer'
 
 type Message = {
   id: string
@@ -163,6 +164,7 @@ export function WhatsAppConversationPanel({
   const [isArchived, setIsArchived] = useState(initialIsArchived ?? false)
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null)
+  const [showPhoto, setShowPhoto] = useState(false)
   const [localMessages, setLocalMessages] = useState<Message[]>(messages)
   const processedIds = useRef(new Set<string>(messages.map(m => m.id)))
   // Sempre do passado para o presente (mensagens importadas ou atrasadas chegam fora de ordem)
@@ -578,7 +580,7 @@ export function WhatsAppConversationPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             {profilePicUrl ? (
-              <img src={profilePicUrl} alt="" referrerPolicy="no-referrer" className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+              <img src={profilePicUrl} alt="Foto do contato" referrerPolicy="no-referrer" title="Ver foto" onClick={() => setShowPhoto(true)} className="h-9 w-9 cursor-zoom-in rounded-full object-cover flex-shrink-0 hover:ring-2 hover:ring-brand-700/30"
                 onError={() => setProfilePicUrl(null)} />
             ) : (
               <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-500 flex-shrink-0">
@@ -1046,6 +1048,9 @@ export function WhatsAppConversationPanel({
       )}
       {showConvertModal && (
         <ConvertLeadModal phone={phone} leadId={leadId} displayName={localDisplayName} onClose={() => setShowConvertModal(false)} />
+      )}
+      {showPhoto && profilePicUrl && (
+        <PhotoViewer url={profilePicUrl} name={localDisplayName} phone={phone} onClose={() => setShowPhoto(false)} />
       )}
       {showQuickModal && (
         <QuickRepliesModal replies={quickReplies} onChange={setQuickReplies} onClose={() => setShowQuickModal(false)} />
