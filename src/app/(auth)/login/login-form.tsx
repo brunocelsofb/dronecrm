@@ -38,9 +38,8 @@ export function LoginForm() {
         className="w-full rounded-lg bg-[#1B556B] py-2.5 text-sm font-semibold text-white hover:bg-[#164659] disabled:opacity-50 transition-colors">
         {loading ? 'Entrando...' : 'Entrar'}
       </button>
-      <p className="text-center text-sm text-gray-500">
-        Não tem conta?{' '}
-        <a href="/register" className="font-medium text-[#1B556B] underline">Criar conta</a>
+      <p className="text-center text-xs text-gray-500">
+        Sem acesso? Peça ao administrador da sua empresa.
       </p>
     </form>
   )
