@@ -44,7 +44,7 @@ async function markRevoked(supabase: ReturnType<typeof createAdminClient>, tenan
     await supabase.from('contract_whatsapp_messages').update({
       tenant_id: tenantId, message: revokedText(r.direction), media_type: REVOKED_TYPE,
       media_url: null, media_filename: null, reactions: {},
-    }).eq('id', r.id).eq('tenant_id', tenantId)
+    }).eq('id', r.id).eq('tenant_id', tenantId).then(({ error }) => { if (error) console.error('[evo-webhook] apagada:', error.message) })
   }
 }
 
