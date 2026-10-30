@@ -12,6 +12,7 @@ import { isPrivateInstance } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo, getTenantEvoCreds, instanceNameForTenant, canTenantUseInstance, getWhatsAppLimit, getTenantInstanceNames, registerInstanceForTenant } from '@/lib/whatsapp/tenant-evo'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { quotedLabel } from '@/lib/whatsapp/chat'
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getTenantId(_admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
@@ -659,11 +660,13 @@ export async function searchContractsForLinking(query: string): Promise<{ id: st
 }
 
 // Mensagem citada (responder citando): id no WhatsApp e texto da original
-async function quotedOfRow(rowId?: string | null): Promise<{ id: string; text: string } | null> {
+async function quotedOfRow(rowId?: string | null): Promise<{ id: string; text: string; fromMe: boolean; phone: string } | null> {
   if (!rowId) return null
-  const admin = await createScopedAdmin()
-  const { data } = await admin.from('contract_whatsapp_messages').select('zapi_message_id, message').eq('id', rowId).maybeSingle()
-  return data?.zapi_message_id ? { id: data.zapi_message_id, text: String(data.message ?? '') } : null
+  const db = await createScopedAdmin()
+  const { data } = await db.from('contract_whatsapp_messages')
+    .select('zapi_message_id, message, direction, phone, media_type, media_filename').eq('id', rowId).maybeSingle()
+  if (!data?.zapi_message_id) return null
+  return { id: data.zapi_message_id, text: quotedLabel(data), fromMe: data.direction === 'enviado', phone: String(data.phone ?? '') }
 }
 
 export async function sendUnlinkedWhatsAppMessage(phone: string, message: string, instanceName?: string, opts?: { quotedRowId?: string | null }): Promise<ActionState> {

@@ -179,3 +179,17 @@ export function phoneVariants(raw: unknown): string[] {
   if (c.length === 11 && c[2] === '9') { const no9 = c.slice(0, 2) + c.slice(3); out.add(no9); out.add(`55${no9}`) }
   return [...out].filter(Boolean)
 }
+
+// Texto que vai na citação enviada ao WhatsApp (mídia vira rótulo; assinatura *Nome:* sai)
+export function quotedLabel(m: { message?: string | null; media_type?: string | null; media_filename?: string | null }): string {
+  const raw = String(m.message ?? '').replace(/^\*[^*]{1,80}:\*\s*/, '').trim()
+  const isLabel = /^\[[^\]]+\]/.test(raw)
+  switch (m.media_type) {
+    case 'image': return isLabel || !raw ? '📷 Foto' : `📷 ${raw}`
+    case 'video': return isLabel || !raw ? '🎥 Vídeo' : `🎥 ${raw}`
+    case 'audio': return '🎤 Áudio'
+    case 'document': return `📄 ${m.media_filename ?? 'Documento'}`
+    case 'sticker': return 'Figurinha'
+    default: return raw
+  }
+}

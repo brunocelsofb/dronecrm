@@ -8,7 +8,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo, canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
 import { sendEvoVoice, sendEvoReaction, markEvoRead, type EvoCredentials } from '@/lib/whatsapp/evolution'
-import { applyReaction, normShortcut } from '@/lib/whatsapp/chat'
+import { applyReaction, normShortcut, quotedLabel } from '@/lib/whatsapp/chat'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string }
@@ -43,11 +43,13 @@ const normPhone = (p: string) => { const d = String(p ?? '').replace(/\D/g, '');
 const MSG_COLS = 'id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, zapi_message_id, quoted_id, reactions, instance_name'
 
 // Mensagem citada: id no WhatsApp + texto (para o balão de citação do contato)
-async function quotedFrom(rowId?: string | null): Promise<{ id: string; text: string } | null> {
+async function quotedFrom(rowId?: string | null): Promise<{ id: string; text: string; fromMe: boolean; phone: string } | null> {
   if (!rowId) return null
   const db = await createScopedAdmin()
-  const { data } = await db.from('contract_whatsapp_messages').select('zapi_message_id, message').eq('id', rowId).maybeSingle()
-  return data?.zapi_message_id ? { id: data.zapi_message_id, text: String(data.message ?? '') } : null
+  const { data } = await db.from('contract_whatsapp_messages')
+    .select('zapi_message_id, message, direction, phone, media_type, media_filename').eq('id', rowId).maybeSingle()
+  if (!data?.zapi_message_id) return null
+  return { id: data.zapi_message_id, text: quotedLabel(data), fromMe: data.direction === 'enviado', phone: String(data.phone ?? '') }
 }
 
 // ─── Áudio de voz gravado no navegador ───────────────────────────────────────

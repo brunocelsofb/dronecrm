@@ -95,3 +95,12 @@ test('mesmo número com e sem 55 / com e sem o 9', () => {
   assert.ok(!samePhone('5511999677609', '62999677609'))
   assert.deepEqual(phoneVariants('62999677609').sort(), ['556299677609', '5562999677609', '6299677609', '62999677609'].sort())
 })
+
+import { quotedLabel } from '../src/lib/whatsapp/chat.ts'
+test('texto da citação enviada ao WhatsApp', () => {
+  assert.equal(quotedLabel({ message: '*Bruno - Comercial:* oi tudo bem' }), 'oi tudo bem')
+  assert.equal(quotedLabel({ message: '[Imagem]', media_type: 'image' }), '📷 Foto')
+  assert.equal(quotedLabel({ message: 'olha isso', media_type: 'image' }), '📷 olha isso')
+  assert.equal(quotedLabel({ message: '[Áudio]', media_type: 'audio' }), '🎤 Áudio')
+  assert.equal(quotedLabel({ message: '[document] a.pdf', media_type: 'document', media_filename: 'a.pdf' }), '📄 a.pdf')
+})

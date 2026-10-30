@@ -19,8 +19,15 @@ export function sanitizePhoneForEvo(phone: string): string {
 }
 
 // Mensagem citada (responder citando): id do WhatsApp + texto curto da original
-export type EvoQuoted = { id: string; text?: string | null }
-const quotedBody = (q?: EvoQuoted | null) => q?.id ? { quoted: { key: { id: q.id }, message: { conversation: (q.text ?? '').slice(0, 500) } } } : {}
+// O WhatsApp só mostra a citação quando sabe de qual conversa ela é e quem mandou a original:
+// sem remoteJid/fromMe, a mensagem chega solta no celular do contato.
+export type EvoQuoted = { id: string; text?: string | null; fromMe?: boolean | null; phone?: string | null }
+const quotedBody = (q?: EvoQuoted | null) => q?.id ? {
+  quoted: {
+    key: { id: q.id, fromMe: !!q.fromMe, ...(q.phone ? { remoteJid: `${sanitizePhoneForEvo(q.phone)}@s.whatsapp.net` } : {}) },
+    message: { conversation: (q.text ?? '').slice(0, 500) },
+  },
+} : {}
 
 export async function sendEvoTextMessage({
   serverUrl, apiKey, instanceName, phone, message, quoted
