@@ -32,6 +32,8 @@ interface WhatsAppChatViewProps {
   // Opcionais (Central de WhatsApp): responder citando e reagir
   onReply?: (msg: any) => void
   onReact?: (msg: any, emoji: string) => void
+  // ⭐ guardar figurinha (ou imagem) na biblioteca da empresa
+  onSaveSticker?: (msg: any) => void
 }
 
 // Labels automáticos que não devem aparecer como texto debaixo da mídia
@@ -200,6 +202,13 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
     )
   }
 
+  // ─── FIGURINHA: solta, sem balão, como no WhatsApp ─────────────────────
+  if (mediaType === 'sticker') {
+    return mediaUrl
+      ? <img src={mediaUrl} alt="Figurinha" loading="lazy" className="h-32 w-32 object-contain" />
+      : <span className="text-sm italic text-gray-500">Figurinha</span>
+  }
+
   // ─── RENDERIZAÇÃO DE IMAGEM COM ZOOM (NOVO) ────────────────────────────
   if (mediaType === 'image' && mediaUrl) {
     return (
@@ -312,7 +321,7 @@ function QuotedBlock({ quoted, isSent, onJump }: { quoted: any | null; isSent: b
           <span className="line-clamp-2 block text-xs text-gray-600">{quoted ? text || '…' : 'Mensagem fora do histórico carregado'}</span>
         </span>
         {/* Miniatura da foto citada, como no WhatsApp */}
-        {quoted?.media_type === 'image' && quoted.media_url && (
+        {(quoted?.media_type === 'image' || quoted?.media_type === 'sticker') && quoted.media_url && (
           <img src={quoted.media_url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded object-cover" />
         )}
       </span>
@@ -320,7 +329,7 @@ function QuotedBlock({ quoted, isSent, onJump }: { quoted: any | null; isSent: b
   )
 }
 
-export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onReply, onReact }: WhatsAppChatViewProps) {
+export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onReply, onReact, onSaveSticker }: WhatsAppChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const [pickerFor, setPickerFor] = useState<string | null>(null)
@@ -381,6 +390,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
             const quoted = msg.quoted_id ? byWid.get(msg.quoted_id) ?? null : null
             const reactions = [msg.reactions?.them, msg.reactions?.me].filter(Boolean) as string[]
             const revoked = msg.media_type === REVOKED_TYPE
+            const isSticker = msg.media_type === 'sticker' && !!msg.media_url
             const canReact = !revoked && !!onReact && !!msg.zapi_message_id && !String(msg.id).startsWith('opt-')
 
             return (
@@ -391,10 +401,10 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                 <div
                   data-msg-id={msg.id}
                   className={`
-                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm transition-shadow
-                    ${isSent
-                      ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none'
-                      : 'bg-white text-gray-900 rounded-tl-none'
+                    group relative max-w-[75%] rounded-lg px-3 py-2 transition-shadow
+                    ${isSticker ? 'bg-transparent' : isSent
+                      ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none shadow-sm'
+                      : 'bg-white text-gray-900 rounded-tl-none shadow-sm'
                     }
                   `}
                 >
@@ -421,7 +431,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                   />
                   )}
 
-                  <div className="mt-1 flex items-center justify-end gap-1">
+                  <div className={`mt-1 flex items-center justify-end gap-1 ${isSticker ? "ml-auto w-fit rounded-full bg-white/80 px-1.5" : ""}`}>
                     <span className="text-[10px] text-gray-400">
                       {formatTime(msg.created_at)}
                     </span>
@@ -435,6 +445,17 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                         aria-label="Responder"
                       >
                         ↩
+                      </button>
+                    )}
+
+                    {onSaveSticker && !revoked && (msg.media_type === 'sticker' || msg.media_type === 'image') && msg.media_url && !String(msg.id).startsWith('opt-') && (
+                      <button
+                        onClick={() => onSaveSticker(msg)}
+                        className="ml-0.5 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-gray-100 group-hover:opacity-100 focus:opacity-100"
+                        title={msg.media_type === 'sticker' ? 'Salvar figurinha' : 'Salvar como figurinha'}
+                        aria-label="Salvar figurinha"
+                      >
+                        ⭐
                       </button>
                     )}
 

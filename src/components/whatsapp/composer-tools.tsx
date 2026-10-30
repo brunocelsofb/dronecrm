@@ -120,3 +120,55 @@ export function useVoiceRecorder() {
 }
 
 export const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+// Figurinhas da empresa: clique envia; ＋ cria de uma imagem; × tira da biblioteca
+export function StickerPicker({ stickers, busy, onPick, onUpload, onDelete, onClose }: {
+  stickers: { id: string; url: string }[]
+  busy?: boolean
+  onPick: (id: string) => void
+  onUpload: (file: File) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} />
+      <div role="dialog" aria-label="Figurinhas"
+        className="absolute bottom-full left-0 z-30 mb-2 w-80 rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
+        <div className="mb-1 flex items-center justify-between px-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Figurinhas da empresa</p>
+          <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}
+            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+            title="Criar figurinha de uma imagem (WEBP, PNG, JPG ou GIF, até 1 MB)">＋ Criar de imagem</button>
+          <input ref={fileRef} type="file" accept="image/webp,image/png,image/jpeg,image/gif" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) onUpload(f); e.target.value = '' }} />
+        </div>
+        {stickers.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-gray-400">
+            Nenhuma figurinha ainda. Passe o mouse numa figurinha recebida e clique em ⭐, ou crie de uma imagem.
+          </p>
+        ) : (
+          <div className="grid max-h-64 grid-cols-4 gap-1 overflow-y-auto">
+            {stickers.map(s => (
+              <div key={s.id} className="group/st relative">
+                <button type="button" disabled={busy} onClick={() => onPick(s.id)}
+                  className="flex h-16 w-full items-center justify-center rounded hover:bg-gray-100 disabled:opacity-50" title="Enviar figurinha">
+                  <img src={s.url} alt="Figurinha" loading="lazy" className="max-h-14 max-w-full object-contain" />
+                </button>
+                <button type="button" onClick={() => { if (confirm('Tirar esta figurinha da biblioteca?')) onDelete(s.id) }}
+                  className="absolute right-0 top-0 hidden h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] text-gray-500 shadow hover:text-red-600 group-hover/st:flex"
+                  aria-label="Tirar da biblioteca" title="Tirar da biblioteca">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}

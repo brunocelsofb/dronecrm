@@ -280,3 +280,32 @@ export async function setEvoWebhook({
     return { ok: false, error: e.message }
   }
 }
+
+// Arquivo de uma mídia recebida (foto, figurinha…) guardado no servidor, pelo id da mensagem
+export async function fetchEvoMedia({ serverUrl, apiKey, instanceName }: EvoCredentials, messageId: string): Promise<{ data: Buffer; mime: string } | null> {
+  try {
+    const res = await fetch(`${serverUrl}/chat/getBase64FromMediaMessage/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { key: { id: messageId } }, convertToMp4: false }),
+    })
+    if (!res.ok) return null
+    const d = await res.json().catch(() => null)
+    const raw: string | undefined = d?.base64
+    if (!raw) return null
+    const b64 = raw.includes(',') ? raw.split(',')[1] : raw
+    return { data: Buffer.from(b64, 'base64'), mime: String(d?.mimetype ?? 'image/webp').split(';')[0] }
+  } catch { return null }
+}
+
+// Figurinha (o servidor converte imagem para o formato de figurinha)
+export async function sendEvoSticker({
+  serverUrl, apiKey, instanceName, phone, stickerUrl, quoted,
+}: EvoCredentials & { phone: string; stickerUrl: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
+  const res = await postWithQuote({ serverUrl, apiKey, instanceName }, '/message/sendSticker', { number: sanitizePhoneForEvo(phone), sticker: stickerUrl }, quoted)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Evolution API ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json().catch(() => ({}))
+}

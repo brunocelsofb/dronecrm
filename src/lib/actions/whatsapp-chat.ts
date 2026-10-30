@@ -7,7 +7,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { withPlatformEvo, canTenantUseInstance } from '@/lib/whatsapp/tenant-evo'
-import { sendEvoVoice, sendEvoReaction, markEvoRead, type EvoCredentials } from '@/lib/whatsapp/evolution'
+import { sendEvoVoice, sendEvoReaction, markEvoRead, sendEvoSticker, fetchEvoMedia, type EvoCredentials } from '@/lib/whatsapp/evolution'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { appBaseUrl } from '@/lib/whatsapp/webhook-token'
+import { createHash } from 'node:crypto'
 import { applyReaction, normShortcut, quotedLabel } from '@/lib/whatsapp/chat'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 
@@ -167,4 +170,116 @@ export async function deleteQuickReply(id: string): Promise<Result> {
   const db = await createScopedAdmin()
   const { error } = await db.from('whatsapp_quick_replies').delete().eq('id', id)
   return error ? { ok: false, error: error.message } : { ok: true }
+}
+
+// ─── Figurinhas da empresa ───────────────────────────────────────────────────
+// Biblioteca por empresa: salvas das recebidas (⭐ na figurinha) ou criadas de uma imagem.
+// O arquivo fica em proposal-files/<empresa>/whatsapp-media/stickers/<hash> e é servido
+// por /api/email-assets (o servidor do WhatsApp precisa de um endereço público para enviar).
+export type Sticker = { id: string; url: string }
+const STICKER_MAX = 1024 * 1024 // 1 MB
+const STICKER_EXT: Record<string, string> = { 'image/webp': 'webp', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif' }
+const stickerUrl = (path: string) => `${appBaseUrl()}/api/email-assets/${path}`
+
+async function storeSticker(data: Buffer, mime: string, uid: string): Promise<Result<{ sticker?: Sticker }>> {
+  const ext = STICKER_EXT[mime]
+  if (!ext) return { ok: false, error: 'Use uma imagem WEBP, PNG, JPG ou GIF.' }
+  if (!data.length || data.length > STICKER_MAX) return { ok: false, error: 'A figurinha precisa ter até 1 MB.' }
+  const tenantId = await resolveTenantId()
+  if (!tenantId) return { ok: false, error: 'Empresa não identificada.' }
+  const db = await createScopedAdmin()
+  const sha = createHash('sha256').update(data).digest('hex')
+  const { data: existing } = await db.from('whatsapp_stickers').select('id, storage_path').eq('sha256', sha).maybeSingle()
+  if (existing) return { ok: true, sticker: { id: existing.id, url: stickerUrl(existing.storage_path) } }
+  const path = `${tenantId}/whatsapp-media/stickers/${sha.slice(0, 32)}.${ext}`
+  const { error: upErr } = await createAdminClient().storage.from('proposal-files').upload(path, data, { contentType: mime, upsert: true })
+  if (upErr) return { ok: false, error: `Falha ao guardar a figurinha: ${upErr.message}` }
+  const { data: row, error } = await db.from('whatsapp_stickers').insert({ storage_path: path, mime, sha256: sha, created_by: uid }).select('id, storage_path').single()
+  if (error || !row) return { ok: false, error: error?.message ?? 'Falha ao salvar a figurinha.' }
+  revalidatePath('/whatsapp')
+  return { ok: true, sticker: { id: row.id, url: stickerUrl(row.storage_path) } }
+}
+
+export async function listStickers(): Promise<Sticker[]> {
+  if (!(await userId())) return []
+  const db = await createScopedAdmin()
+  const { data } = await db.from('whatsapp_stickers').select('id, storage_path').order('created_at', { ascending: false }).limit(300)
+  return (data ?? []).map(r => ({ id: r.id as string, url: stickerUrl(r.storage_path as string) }))
+}
+
+// ⭐ numa figurinha (ou foto) recebida/enviada na conversa
+export async function saveStickerFromMessage(rowId: string): Promise<Result<{ sticker?: Sticker }>> {
+  const uid = await userId()
+  if (!uid) return { ok: false, error: 'Usuário não autenticado.' }
+  if (await readOnlySupport()) return { ok: false, error: SUPPORT_READONLY_MESSAGE }
+  const db = await createScopedAdmin()
+  const { data: m } = await db.from('contract_whatsapp_messages')
+    .select('id, media_type, media_url, zapi_message_id, instance_name').eq('id', rowId).maybeSingle()
+  if (!m || !['sticker', 'image'].includes(String(m.media_type))) return { ok: false, error: 'Esta mensagem não é figurinha nem imagem.' }
+  const tenantId = await resolveTenantId()
+  // Arquivo que já está no nosso armazenamento (enviado pela Central)
+  const own = String(m.media_url ?? '').match(/\/api\/email-assets\/(.+)$/)?.[1]
+  if (own && tenantId && own.startsWith(`${tenantId}/`)) {
+    const { data: blob } = await createAdminClient().storage.from('proposal-files').download(decodeURIComponent(own))
+    if (!blob) return { ok: false, error: 'Arquivo não encontrado.' }
+    return storeSticker(Buffer.from(await blob.arrayBuffer()), blob.type || 'image/webp', uid)
+  }
+  // Recebida: busca no servidor do WhatsApp
+  if (!m.zapi_message_id) return { ok: false, error: 'Esta mensagem não tem o código do WhatsApp.' }
+  const creds = await credsFor(m.instance_name)
+  if (!creds) return { ok: false, error: 'WhatsApp não conectado ou instância não disponível.' }
+  const media = await fetchEvoMedia(creds, m.zapi_message_id)
+  if (!media) return { ok: false, error: 'O WhatsApp não devolveu o arquivo (mensagens antigas expiram). Peça para reenviar.' }
+  return storeSticker(media.data, media.mime, uid)
+}
+
+// Criar figurinha de uma imagem já enviada para o armazenamento pela tela
+export async function addStickerFromUpload(storagePath: string): Promise<Result<{ sticker?: Sticker }>> {
+  const uid = await userId()
+  if (!uid) return { ok: false, error: 'Usuário não autenticado.' }
+  if (await readOnlySupport()) return { ok: false, error: SUPPORT_READONLY_MESSAGE }
+  const tenantId = await resolveTenantId()
+  if (!tenantId || !storagePath.startsWith(`${tenantId}/whatsapp-media/`) || storagePath.includes('..')) return { ok: false, error: 'Arquivo inválido.' }
+  const admin = createAdminClient()
+  const { data: blob } = await admin.storage.from('proposal-files').download(storagePath)
+  if (!blob) return { ok: false, error: 'Arquivo não encontrado.' }
+  const r = await storeSticker(Buffer.from(await blob.arrayBuffer()), blob.type, uid)
+  // O original enviado pela tela não é mais necessário (a figurinha guarda uma cópia)
+  if (r.ok) await admin.storage.from('proposal-files').remove([storagePath])
+  return r
+}
+
+export async function deleteSticker(id: string): Promise<Result> {
+  if (!(await userId())) return { ok: false, error: 'Usuário não autenticado.' }
+  if (await readOnlySupport()) return { ok: false, error: SUPPORT_READONLY_MESSAGE }
+  const db = await createScopedAdmin()
+  // Só sai da biblioteca; o arquivo fica, para as figurinhas já enviadas continuarem aparecendo
+  const { error } = await db.from('whatsapp_stickers').delete().eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function sendWhatsAppSticker(phone: string, stickerId: string, instanceName?: string | null, quotedRowId?: string | null): Promise<Result<{ message?: unknown }>> {
+  const uid = await userId()
+  if (!uid) return { ok: false, error: 'Usuário não autenticado.' }
+  if (await readOnlySupport()) return { ok: false, error: SUPPORT_READONLY_MESSAGE }
+  const db = await createScopedAdmin()
+  const { data: st } = await db.from('whatsapp_stickers').select('storage_path').eq('id', stickerId).maybeSingle()
+  if (!st) return { ok: false, error: 'Figurinha não encontrada.' }
+  const creds = await credsFor(instanceName)
+  if (!creds) return { ok: false, error: 'WhatsApp não conectado ou instância não disponível.' }
+  const url = stickerUrl(st.storage_path as string)
+  const to = normPhone(phone)
+  const quoted = await quotedFrom(quotedRowId)
+  const row = { sent_by: uid, direction: 'enviado', phone: to, message: '[Figurinha]', media_url: url, media_type: 'sticker', instance_name: creds.instanceName, quoted_id: quoted?.id ?? null }
+  try {
+    const r = await sendEvoSticker({ ...creds, phone: to, stickerUrl: url, quoted })
+    const { data } = await db.from('contract_whatsapp_messages').insert({ ...row, status: 'enviado', zapi_message_id: r?.key?.id ?? null }).select(MSG_COLS).single()
+    revalidatePath('/whatsapp')
+    return { ok: true, message: data ?? undefined }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'Falha ao enviar a figurinha.'
+    await db.from('contract_whatsapp_messages').insert({ ...row, status: 'falhou', error_message: error })
+    return { ok: false, error }
+  }
 }

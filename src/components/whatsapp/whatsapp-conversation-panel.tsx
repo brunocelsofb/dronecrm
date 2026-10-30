@@ -24,9 +24,9 @@ import { ConvertLeadModal } from '@/components/whatsapp/convert-lead-modal'
 import { ContactKindPicker } from '@/components/whatsapp/contact-kind-badge'
 import { SaveNoteModal } from '@/components/whatsapp/save-note-modal'
 import type { ContactKind } from '@/lib/whatsapp/contact-kind'
-import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead, listQuickReplies, type QuickReply } from '@/lib/actions/whatsapp-chat'
+import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead, listQuickReplies, listStickers, saveStickerFromMessage, addStickerFromUpload, deleteSticker, sendWhatsAppSticker, type QuickReply, type Sticker } from '@/lib/actions/whatsapp-chat'
 import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply, REVOKED_TYPE, revokedText, phoneVariants } from '@/lib/whatsapp/chat'
-import { EmojiPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
+import { EmojiPicker, StickerPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
 import { QuickRepliesModal } from '@/components/whatsapp/quick-replies-modal'
 import { PhotoViewer } from '@/components/whatsapp/photo-viewer'
 
@@ -57,6 +57,7 @@ function previewOf(m: Message): string {
   if (m.media_type === 'image') return /^\[(imagem|Imagem)\]$/.test(m.message ?? '') ? '📷 Foto' : `📷 ${m.message}`
   if (m.media_type === 'video') return '🎥 Vídeo'
   if (m.media_type === 'document') return `📄 ${m.media_filename ?? 'Documento'}`
+  if (m.media_type === 'sticker') return 'Figurinha'
   return String(m.message ?? '').replace(/^\*[^*]{1,80}:\*\s*/, '')
 }
 
@@ -217,6 +218,9 @@ export function WhatsAppConversationPanel({
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [pendingPreview, setPendingPreview] = useState<string | null>(null)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [showStickers, setShowStickers] = useState(false)
+  const [stickers, setStickers] = useState<Sticker[]>([])
+  const [stickerInfo, setStickerInfo] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const voice = useVoiceRecorder()
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
@@ -310,6 +314,7 @@ export function WhatsAppConversationPanel({
   }, [phone, readInstance])
 
   useEffect(() => { void listQuickReplies().then(setQuickReplies).catch(() => {}) }, [])
+  useEffect(() => { void listStickers().then(setStickers).catch(() => {}) }, [])
 
   // Prévia da foto colada/arrastada
   useEffect(() => {
@@ -423,6 +428,48 @@ export function WhatsAppConversationPanel({
     setReplyTo(null)
     if (r.message) addMessageSafe(r.message as Message)
     router.refresh()
+  }
+
+  // ─── Figurinhas ────────────────────────────────────────────────────────────
+  async function handleSaveSticker(msg: Message) {
+    setStickerInfo('Salvando figurinha…')
+    const r = await saveStickerFromMessage(msg.id)
+    if (!r.ok) { setStickerInfo(null); setError(r.error); return }
+    const st = r.sticker!
+    setStickers(prev => (prev.some(x => x.id === st.id) ? prev : [st, ...prev]))
+    setStickerInfo('⭐ Figurinha salva. Envie pelo botão de figurinhas no campo de mensagem.')
+    setTimeout(() => setStickerInfo(null), 4000)
+  }
+
+  async function handleSendSticker(id: string) {
+    setShowStickers(false)
+    setBusy(true); setError(null)
+    const r = await sendWhatsAppSticker(phone, id, selectedInstance || instanceName || null, replyTo?.id ?? null)
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    setReplyTo(null)
+    if (r.message) addMessageSafe(r.message as Message)
+    router.refresh()
+  }
+
+  async function handleUploadSticker(file: File) {
+    if (file.size > 1024 * 1024) { setError('A figurinha precisa ter até 1 MB.'); return }
+    setBusy(true); setError(null)
+    const ext = file.type === 'image/webp' ? 'webp' : file.type === 'image/png' ? 'png' : file.type === 'image/gif' ? 'gif' : 'jpg'
+    const path = await tenantStoragePath(supabase, `whatsapp-media/stickers-upload/${Date.now()}.${ext}`)
+    const { error: upErr } = await supabase.storage.from('proposal-files').upload(path, file, { contentType: file.type })
+    if (upErr) { setBusy(false); setError(`Falha no upload: ${upErr.message}`); return }
+    const r = await addStickerFromUpload(path)
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    const st = r.sticker!
+    setStickers(prev => (prev.some(x => x.id === st.id) ? prev : [st, ...prev]))
+  }
+
+  async function handleDeleteSticker(id: string) {
+    const r = await deleteSticker(id)
+    if (!r.ok) { setError(r.error); return }
+    setStickers(prev => prev.filter(x => x.id !== id))
   }
 
   // Reação: aparece na hora; volta se o WhatsApp recusar
@@ -855,6 +902,7 @@ export function WhatsAppConversationPanel({
             onSaveNote={(id: string) => setNoteFor(id)}
             onReply={isArchived ? undefined : (m: Message) => { setReplyTo(m); textareaRef.current?.focus() }}
             onReact={handleReact}
+            onSaveSticker={isArchived ? undefined : handleSaveSticker}
           />
         </div>
       </div>
@@ -964,6 +1012,18 @@ export function WhatsAppConversationPanel({
               {showEmoji && <EmojiPicker onPick={insertEmoji} onClose={() => setShowEmoji(false)} />}
             </div>
 
+            <div className="relative self-end mb-[2px]">
+              <button type="button" onClick={() => setShowStickers(v => !v)}
+                className={`p-2 rounded-full transition-colors ${showStickers ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="Figurinhas" aria-label="Figurinhas" aria-expanded={showStickers}>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M14.5 21H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v7.5M14.5 21 21 14.5M14.5 21v-3.5a3 3 0 0 1 3-3H21M8.5 10h.01M15.5 10h.01M8.5 14.5s1.25 1.5 3.5 1.5" /></svg>
+              </button>
+              {showStickers && (
+                <StickerPicker stickers={stickers} busy={busy} onPick={handleSendSticker} onUpload={handleUploadSticker}
+                  onDelete={handleDeleteSticker} onClose={() => setShowStickers(false)} />
+              )}
+            </div>
+
             <label className={`cursor-pointer p-2 rounded-full transition-colors self-end mb-[2px]
               ${selectedFileName ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
               title="Anexar arquivo (ou cole/arraste uma imagem)">
@@ -1045,6 +1105,7 @@ export function WhatsAppConversationPanel({
             )}
           </div>
           {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
+          {stickerInfo && <p className="text-xs text-positive-700" role="status">{stickerInfo}</p>}
           <p className="hidden text-[10px] text-gray-400 md:block">Enter envia · Shift+Enter quebra a linha · cole ou arraste imagens · / abre as respostas rápidas</p>
 
           {busy && <p className="text-xs text-[#1B556B] mt-1 text-right">Enviando... aguarde.</p>}

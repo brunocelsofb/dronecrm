@@ -395,7 +395,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       if (messageId) mediaUrl = buildMediaProxyUrl(messageId, instanceName)
     }
 
-    const dbMediaType = mediaType === 'sticker' ? 'image' : mediaType
+    // Figurinha fica como figurinha (antes virava foto; o banco não aceitava o tipo)
+    const dbMediaType = mediaType
 
     // Texto final consolidado — nunca cai em '[Formato não suportado]' para tipos conhecidos
     const finalText: string =
