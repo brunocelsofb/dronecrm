@@ -585,6 +585,29 @@
   $('#openSearch').onclick = () => { if (!STORE) return; $('#searchBar').classList.add('on'); document.getElementById('novidades').scrollIntoView({ behavior: smooth() }); setTimeout(() => $('#q').focus(), 350) }
   $('#q').addEventListener('input', renderGrid)
 
+  // ── Estatísticas da vitrine (sem cookies, nada guardado no navegador) ──────────
+  // Conta a visita, o tempo com a página visível e se a pessoa rolou/clicou; o Drone mostra em
+  // Varejo → Clientes → Visitas. Robôs e prévias de link são ignorados no Drone.
+  function trackVisit() {
+    if (navigator.webdriver) return
+    let id = null, shown = 0, since = document.visibilityState === 'visible' ? Date.now() : null, acted = false, done = false
+    const tick = () => { if (since !== null) { shown += Date.now() - since; since = document.visibilityState === 'visible' ? Date.now() : null } else if (document.visibilityState === 'visible') since = Date.now() }
+    const report = () => {
+      if (!id || done) return
+      tick()
+      const body = JSON.stringify({ id, d: shown, i: acted })
+      try { if (navigator.sendBeacon && navigator.sendBeacon(api('visita-fim'), new Blob([body], { type: 'text/plain' }))) return } catch { /* segue */ }
+      fetch(api('visita-fim'), { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(() => {})
+    }
+    const act = () => { acted = true }
+    addEventListener('scroll', () => { if (scrollY > 200) act() }, { passive: true })
+    addEventListener('click', act, true)
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tick(); else report() })
+    addEventListener('pagehide', () => { report(); done = true })
+    fetch(api('visita'), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ u: location.href, r: document.referrer, t: document.title, w: innerWidth }) })
+      .then(r => r.json()).then(j => { if (j && j.id) id = j.id }).catch(() => {})
+  }
+
   // ── Início ──────────────────────────────────────────────────────────────────
   function showState(html) { $('#state').innerHTML = `<p>${html}</p>` }
   async function start() {
@@ -607,6 +630,7 @@
       ;['#inicio', '#foot', '#stickyBar'].forEach(s => { $(s).hidden = false })
       $('#waFloat').hidden = !WA
       if (location.hash) document.querySelector(location.hash)?.scrollIntoView()
+      trackVisit()
     } catch (e) {
       console.error(e)
       showState('A loja não carregou agora. <button class="text-link" type="button" onclick="location.reload()">Tentar de novo</button>')

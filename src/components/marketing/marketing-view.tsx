@@ -88,6 +88,7 @@ export function MarketingView(p: Props) {
             {label}
           </button>
         ))}
+        <Link href="/marketing/paginas" className="-mb-px whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-gray-500 hover:text-gray-800">Páginas</Link>
         <Link href="/marketing/anuncios" className="-mb-px whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-gray-500 hover:text-gray-800">Anúncios (Meta)</Link>
       </nav>
 

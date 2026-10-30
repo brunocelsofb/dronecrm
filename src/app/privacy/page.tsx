@@ -18,6 +18,7 @@ const S: LegalSection[] = [
     'Usuários do sistema: nome, e-mail, perfil de acesso e registros de acesso e atividade (auditoria).',
     'Dados que a empresa cliente coloca no CRM: empresas, contatos, leads, oportunidades, contratos, propostas, pedidos, clientes de loja, mensagens de WhatsApp e e-mail, arquivos e anotações.',
     'Dados recebidos de integrações que a empresa cliente liga: formulários do site, anúncios (Meta, Google, LinkedIn), ferramentas de marketing e pagamentos — detalhes abaixo.',
+    'Estatísticas de visitas do site e da vitrine da empresa cliente, sem cookies: página, horário, tempo na página, origem do link e tipo de aparelho. O endereço IP e o navegador do visitante só formam um código que muda todo dia e não são guardados; ninguém é identificado. Guardadas por 13 meses.',
   ] }] },
   { title: '3. Finalidades', body: [
     'Os dados são usados exclusivamente para prestar o serviço contratado pela empresa cliente: organizar o funil comercial, registrar e responder clientes e leads, enviar mensagens e e-mails que a empresa pede, gerar propostas e contratos, emitir relatórios e manter a segurança do sistema.',

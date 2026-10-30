@@ -5,7 +5,7 @@
 // que o sistema faz de fato. Mudou o texto → suba DPA_VERSION: todas as empresas
 // precisam aceitar de novo. ATENÇÃO: modelo técnico; revisar com advogado.
 
-export const DPA_VERSION = '1.1'
+export const DPA_VERSION = '1.2'
 export const DPA_UPDATED_AT = '2026-10-30'
 
 export const OPERATOR = {
@@ -60,13 +60,14 @@ export function buildDpa(controller: DpaParty): DpaSection[] {
     },
     {
       title: '4. Dados pessoais e titulares envolvidos',
-      paragraphs: ['Titulares: usuários da Controladora; contatos de clientes e prospects; leads; pessoas que conversam com a Controladora pelo WhatsApp ou e-mail.'],
+      paragraphs: ['Titulares: usuários da Controladora; contatos de clientes e prospects; leads; pessoas que conversam com a Controladora pelo WhatsApp ou e-mail; visitantes do site e da vitrine da Controladora.'],
       items: [
         'Identificação e contato: nome, e-mail, telefone/WhatsApp, cargo.',
         'Dados da empresa do contato: razão social, CNPJ, endereço.',
         'Dados comerciais: oportunidades, propostas, contratos, valores, histórico de atendimento.',
         'Comunicações: mensagens de WhatsApp (texto e áudio), e-mails registrados, notas e atividades.',
         'Arquivos anexados pela Controladora e registros de uso (acessos e ações no sistema).',
+        'Estatísticas de visitas do site e da vitrine (quando a Controladora instala o código ou usa a vitrine): página, horário, tempo na página, origem do link e tipo de aparelho. Sem cookies: o endereço IP e o navegador do visitante são usados só para formar um código que muda todo dia e não são guardados; não é possível identificar a pessoa nem ligar visitas de dias diferentes. Guardadas por 13 meses.',
         'O sistema não foi feito para dados pessoais sensíveis (art. 5º, II, da LGPD). A Controladora não deve inseri-los, salvo quando indispensável e sob sua responsabilidade. Outras categorias só com autorização prévia e por escrito da Controladora.',
       ],
     },

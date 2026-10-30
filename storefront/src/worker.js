@@ -12,6 +12,7 @@ export default {
     try {
       if (url.pathname === '/api/catalogo' && request.method === 'GET') return await catalog(request, url, env, ctx)
       if (url.pathname === '/api/pedido' && request.method === 'POST') return await order(request, url, env)
+      if ((url.pathname === '/api/visita' || url.pathname === '/api/visita-fim') && request.method === 'POST') return await visit(request, url, env)
       return json({ error: 'Não encontrado.' }, 404)
     } catch (e) {
       console.error('vitrine', e && e.message)
@@ -45,6 +46,19 @@ async function order(request, url, env) {
   if (body.length > 20000) return json({ error: 'Pedido grande demais.' }, 413)
   const r = await fetch(`${env.DRONE_API}/pedido?${storeParams(url)}`, {
     method: 'POST', body, headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+  })
+  return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } })
+}
+
+// Estatísticas da vitrine (sem cookies): repassa ao Drone o IP e o navegador de quem abriu a
+// página, só para formar o código diário do visitante (o Drone não guarda nenhum dos dois).
+async function visit(request, url, env) {
+  const body = await request.text()
+  if (body.length > 4000) return json({ ok: false }, 413)
+  const path = url.pathname === '/api/visita' ? 'visita' : 'visita-fim'
+  const r = await fetch(`${env.DRONE_API}/${path}?${storeParams(url)}`, {
+    method: 'POST', body,
+    headers: { 'Content-Type': 'text/plain', Accept: 'application/json', 'x-visitor-ip': request.headers.get('cf-connecting-ip') || '', 'x-visitor-ua': request.headers.get('user-agent') || '' },
   })
   return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } })
 }
