@@ -74,3 +74,13 @@ test('apagada para todos: protocolo REVOKE e aviso DELETED', () => {
   assert.equal(revokedText('enviado'), '🚫 Você apagou esta mensagem')
   assert.equal(revokedText('recebido'), '🚫 Esta mensagem foi apagada')
 })
+
+import { unwrapMessage } from '../src/lib/whatsapp/chat.ts'
+test('envelope: outro aparelho, temporária e camadas', () => {
+  const t = { extendedTextMessage: { text: 'oi', contextInfo: { stanzaId: 'Q' } } }
+  assert.deepEqual(unwrapMessage({ deviceSentMessage: { destinationJid: 'x', message: t } }), t)
+  assert.deepEqual(unwrapMessage({ ephemeralMessage: { message: { deviceSentMessage: { message: { conversation: 'a' } } } } }), { conversation: 'a' })
+  assert.deepEqual(unwrapMessage({ conversation: 'b' }), { conversation: 'b' })
+  assert.equal(unwrapMessage(null), null)
+  assert.deepEqual(unwrapMessage({ messageContextInfo: { a: 1 }, ephemeralMessage: { message: { conversation: 'c' } } }), { messageContextInfo: { a: 1 }, conversation: 'c' })
+})

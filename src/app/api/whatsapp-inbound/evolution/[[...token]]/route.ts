@@ -6,7 +6,7 @@ import { tenantIdForInstance } from '@/lib/tenant/context'
 import { isValidEvoWebhookToken } from '@/lib/whatsapp/webhook-token'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { routeInboundToSdr, startSdrFromTriage } from '@/lib/sdr/engine'
-import { applyReaction, evoDeletedIds, evoStatusUpdates, nextDelivery, quotedIdOf, reactionOf, revokedIdOf, revokedText, REVOKED_TYPE } from '@/lib/whatsapp/chat'
+import { applyReaction, evoDeletedIds, evoStatusUpdates, nextDelivery, quotedIdOf, reactionOf, revokedIdOf, revokedText, REVOKED_TYPE, unwrapMessage } from '@/lib/whatsapp/chat'
 
 // O SDR de IA responde depois de devolver o 200 (after); espera a sequência de mensagens
 export const maxDuration = 60
@@ -174,7 +174,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
     const msgData = Array.isArray(body?.data) ? body.data[0] : (body?.data ?? body)
     const key = msgData?.key ?? msgData?.message?.key
-    const msg = msgData?.message ?? msgData?.data?.message ?? null
+    // Abre o "envelope" (outro aparelho conectado, conversa temporária…) antes de ler o conteúdo
+    const msg = unwrapMessage(msgData?.message ?? msgData?.data?.message ?? null)
     const pushName = msgData?.contactName ?? msgData?.pushName ?? msgData?.contact?.name ?? null
     const messageTimestamp = msgData?.messageTimestamp ?? msgData?.data?.messageTimestamp ?? null
 

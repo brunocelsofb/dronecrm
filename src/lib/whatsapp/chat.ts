@@ -143,3 +143,20 @@ export function evoDeletedIds(data: unknown): string[] {
   }
   return out
 }
+
+// ─── Mensagem dentro de "envelope" ───────────────────────────────────────────
+// Enviada por outro aparelho conectado (WhatsApp Web/celular: deviceSentMessage), em
+// conversa temporária (ephemeralMessage), visualização única, documento com legenda,
+// edição ou formato futuro: o conteúdo de verdade fica dentro. Abre até 5 camadas.
+const WRAPPERS = ['deviceSentMessage', 'ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage', 'futureProofMessage', 'groupMentionedMessage']
+export function unwrapMessage<T = Record<string, any>>(msg: T | null | undefined): T | null {
+  let cur = (msg ?? null) as Record<string, any> | null
+  for (let i = 0; i < 5 && cur && typeof cur === 'object'; i++) {
+    const key = WRAPPERS.find(k => cur![k]?.message && typeof cur![k].message === 'object')
+    if (!key) break
+    // Mantém o que vier ao lado do envelope (ex.: messageContextInfo)
+    const { [key]: env, ...rest } = cur
+    cur = { ...rest, ...env.message }
+  }
+  return cur as T | null
+}

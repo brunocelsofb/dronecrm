@@ -7,6 +7,7 @@
 // empresa, ligado ao mesmo lead/oportunidade da conversa.
 
 import { NextResponse } from 'next/server'
+import { unwrapMessage } from '@/lib/whatsapp/chat'
 import { createClient } from '@/lib/supabase/server'
 import { isPrivateInstance, PRIVATE_INSTANCE_ERROR } from '@/lib/whatsapp/private-instances'
 import { resolveTenantId } from '@/lib/tenant/context'
@@ -32,7 +33,7 @@ function readList(d: any): { list: EvoMsg[]; pages: number } {
 }
 
 function describe(msg: Record<string, any>): { text: string; mediaType: string | null; filename: string | null } {
-  const inner = msg.viewOnceMessage?.message ?? msg.viewOnceMessageV2?.message ?? msg.ephemeralMessage?.message ?? msg
+  const inner = unwrapMessage(msg) ?? msg
   const doc = inner.documentMessage ?? inner.documentWithCaptionMessage?.message?.documentMessage
   const caption = inner.imageMessage?.caption ?? inner.videoMessage?.caption ?? doc?.caption ?? null
   const text = inner.conversation ?? inner.extendedTextMessage?.text ?? caption ?? null
