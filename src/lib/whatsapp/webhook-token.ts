@@ -40,4 +40,5 @@ export function isValidEvoWebhookToken(instanceName: string, token: string): boo
   return got.length === expected.length && timingSafeEqual(got, expected)
 }
 
-export const EVO_WEBHOOK_EVENTS = ['MESSAGES_UPSERT', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CONNECTION_UPDATE']
+// MESSAGES_UPDATE: tiques de entregue e lido
+export const EVO_WEBHOOK_EVENTS = ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CONNECTION_UPDATE']

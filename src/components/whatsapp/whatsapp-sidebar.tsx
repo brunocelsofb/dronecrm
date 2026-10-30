@@ -8,6 +8,47 @@ import { ContactKindBadge } from './contact-kind-badge'
 const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const last8 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-8)
 
+// Foto do contato (WhatsApp), pedida só quando o item aparece na tela; guardada na sessão
+const picCache = new Map<string, string | null>()
+const picPending = new Map<string, Promise<string | null>>()
+function loadPic(phone: string): Promise<string | null> {
+  const k = last8(phone)
+  if (picCache.has(k)) return Promise.resolve(picCache.get(k) ?? null)
+  if (!picPending.has(k)) {
+    picPending.set(k, fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : { url: null })).then(d => (typeof d?.url === 'string' ? d.url : null)).catch(() => null)
+      .then(url => { picCache.set(k, url); picPending.delete(k); return url }))
+  }
+  return picPending.get(k)!
+}
+
+export function ContactAvatar({ phone, name, size = 40 }: { phone: string; name: string; size?: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [url, setUrl] = useState<string | null>(() => picCache.get(last8(phone)) ?? null)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let alive = true
+    const io = new IntersectionObserver(entries => {
+      if (!entries.some(e => e.isIntersecting)) return
+      io.disconnect()
+      void loadPic(phone).then(u => { if (alive) setUrl(u) })
+    }, { rootMargin: '120px' })
+    io.observe(el)
+    return () => { alive = false; io.disconnect() }
+  }, [phone])
+  const initial = (name || phone || '?').trim().charAt(0).toUpperCase()
+  return (
+    <span ref={ref} className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-semibold text-gray-500"
+      style={{ width: size, height: size }} aria-hidden="true">
+      {url && failedUrl !== url
+        ? <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} />
+        : initial}
+    </span>
+  )
+}
+
 export interface WhatsAppSidebarProps {
   open?: any[]
   archived?: any[]
@@ -204,29 +245,41 @@ export function WhatsAppSidebar({
           const protocol = item.protocol_number ?? item.protocolNumber
           const state = item.triage_state
           const isArchived = tab === 'archived'
+          // Não lidas (a conversa aberta conta como lida)
+          const unread = isSelected ? 0 : Number(item.unread ?? 0)
 
           return (
             <button
               key={`${item.phone}-${instanceKey || 'default'}`}
               onClick={() => handleSelect(item.phone, instanceKey)}
-              className={`w-full p-3 text-left transition-colors hover:bg-gray-50 ${
+              className={`flex w-full gap-2.5 p-3 text-left transition-colors hover:bg-gray-50 ${
                 isSelected ? 'bg-brand-50/60' : ''
               }`}
             >
+              <ContactAvatar phone={item.phone} name={String(displayName ?? '')} />
+              <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <p className={`text-xs font-semibold truncate min-w-0 ${isArchived ? 'text-gray-500' : 'text-gray-900'}`}>
                   {isArchived && <span className="mr-1 text-gray-400">🔒</span>}
                   {displayName}
                 </p>
-                <span className="text-[10px] text-gray-400 shrink-0">{lastTime}</span>
+                <span className={`text-[10px] shrink-0 ${unread ? 'font-semibold text-positive-600' : 'text-gray-400'}`}>{lastTime}</span>
               </div>
 
               {item.linked_label && (
                 <p className="mt-0.5 truncate text-[11px] font-medium text-brand-700">🔗 {item.linked_label}</p>
               )}
-              <p className="mt-0.5 text-xs text-gray-500 truncate">
-                {lastMsg}
-              </p>
+              <div className="mt-0.5 flex items-center gap-2">
+                <p className={`min-w-0 flex-1 truncate text-xs ${unread ? 'font-medium text-gray-800' : 'text-gray-500'}`}>
+                  {lastMsg}
+                </p>
+                {unread > 0 && (
+                  <span className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-positive-600 px-1 text-[10px] font-bold text-white"
+                    aria-label={`${unread} mensagem(ns) não lida(s)`}>
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </div>
 
               {/* Badges de Setor, Protocolo e Estado da Triagem */}
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
@@ -256,6 +309,7 @@ export function WhatsAppSidebar({
                     Arquivado
                   </span>
                 )}
+              </div>
               </div>
             </button>
           )

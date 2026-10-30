@@ -120,6 +120,29 @@ export function WhatsAppClientShell({
     router.refresh()
   }
 
+  // Não lidas no título da aba, como no WhatsApp Web: "(3) Central…"
+  const selected8 = (selectedPhone ?? '').replace(/\D/g, '').slice(-8)
+  const totalUnread = open.reduce((t: number, c: any) => t + ((c.phone ?? '').replace(/\D/g, '').slice(-8) === selected8 ? 0 : Number(c.unread ?? 0)), 0)
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\+?\)\s*/, '')
+    document.title = totalUnread ? `(${totalUnread > 99 ? '99+' : totalUnread}) ${base}` : base
+    return () => { document.title = document.title.replace(/^\(\d+\+?\)\s*/, '') }
+  }, [totalUnread])
+
+  // Nomes para o aviso do navegador (só o nome, nunca o texto da mensagem)
+  const names = (() => {
+    const out: Record<string, string> = {}
+    for (const c of [...open, ...archived] as any[]) {
+      const n = c.contact_name || c.latest?.unlinked_sender_name
+      if (n) out[(c.phone ?? '').replace(/\D/g, '').slice(-8)] = n
+    }
+    return out
+  })()
+
+  // Aviso do navegador: pede permissão só quando a pessoa clica
+  const [notifPerm, setNotifPerm] = useState<string>('granted')
+  useEffect(() => { setNotifPerm(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission) }, [])
+
   const isArchived = archived.some(
     (c: any) => c.phone === selectedPhone && (c.instance ?? '') === (selectedInstance ?? '')
   )
@@ -130,7 +153,7 @@ export function WhatsAppClientShell({
       className="grid w-full h-full min-h-0 grid-cols-1 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm md:[grid-template-columns:var(--wa-sb)_4px_1fr]"
       style={{ '--wa-sb': `${sidebarWidth}px` } as React.CSSProperties}
     >
-      <WhatsAppInboxRealtimeWatcher />
+      <WhatsAppInboxRealtimeWatcher selectedPhone={selectedPhone} names={names} />
 
       {/* Sidebar — largura imposta pela 1ª coluna do Grid */}
       <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col min-h-0 min-w-0 border-r border-gray-200 bg-white shrink-0 overflow-hidden`}>
@@ -142,6 +165,14 @@ export function WhatsAppClientShell({
           >
             ✏️ Nova Conversa
           </button>
+          {notifPerm === 'default' && (
+            <button type="button"
+              onClick={async () => { try { setNotifPerm(await Notification.requestPermission()) } catch { setNotifPerm('denied') } }}
+              className="mt-1.5 w-full max-w-[220px] mx-auto block rounded-md border border-gray-200 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+              title="Mostra um aviso no computador quando chegar mensagem com esta aba em segundo plano">
+              🔔 Ativar avisos de mensagem
+            </button>
+          )}
         </div>
 
         {/* Lista de contatos: sem barra horizontal, com respiro no fim */}

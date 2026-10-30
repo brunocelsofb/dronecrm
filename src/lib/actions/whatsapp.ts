@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
-import { sendEvoTextMessage, sendEvoImageMessage, sendEvoDocumentMessage, verifyEvoConnection, getEvoQrCode, getEvoInstanceStatus, setEvoWebhook } from '@/lib/whatsapp/evolution'
+import { sendEvoTextMessage, sendEvoImageMessage, sendEvoDocumentMessage, sendEvoVideoMessage, verifyEvoConnection, getEvoQrCode, getEvoInstanceStatus, setEvoWebhook } from '@/lib/whatsapp/evolution'
 import type { EvoCredentials } from '@/lib/whatsapp/evolution'
 import { canSendAutomatedWhatsApp } from '@/lib/whatsapp/guardrails'
 import { getActiveTenantId } from '@/lib/supabase/server'
@@ -658,7 +658,15 @@ export async function searchContractsForLinking(query: string): Promise<{ id: st
   return (data ?? []).map((c) => ({ id: c.id, label: c.client_name || c.title }))
 }
 
-export async function sendUnlinkedWhatsAppMessage(phone: string, message: string, instanceName?: string): Promise<ActionState> {
+// Mensagem citada (responder citando): id no WhatsApp e texto da original
+async function quotedOfRow(rowId?: string | null): Promise<{ id: string; text: string } | null> {
+  if (!rowId) return null
+  const admin = await createScopedAdmin()
+  const { data } = await admin.from('contract_whatsapp_messages').select('zapi_message_id, message').eq('id', rowId).maybeSingle()
+  return data?.zapi_message_id ? { id: data.zapi_message_id, text: String(data.message ?? '') } : null
+}
+
+export async function sendUnlinkedWhatsAppMessage(phone: string, message: string, instanceName?: string, opts?: { quotedRowId?: string | null }): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
@@ -705,7 +713,8 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
   // 3. Envio e insert com normalizedPhone
   let insertedMsg: any = null
   try {
-    const result: any = await sendEvoTextMessage({ ...targetCreds, phone: normalizedPhone, message: signedMessage })
+    const quoted = await quotedOfRow(opts?.quotedRowId)
+    const result: any = await sendEvoTextMessage({ ...targetCreds, phone: normalizedPhone, message: signedMessage, quoted })
     await unarchiveWhatsAppConversation(normalizedPhone, targetCreds.instanceName)
     const { data: inserted } = await admin.from('contract_whatsapp_messages').insert({
       contract_id: contractId,
@@ -716,9 +725,10 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
       status: 'enviado',
       instance_name: targetCreds.instanceName,
       zapi_message_id: result?.key?.id ?? null,
+      quoted_id: quoted?.id ?? null,
       tenant_id: tenantId,
     })
-    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, sent_by, lead_id, zapi_message_id')
+    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, sent_by, lead_id, zapi_message_id, quoted_id, reactions, instance_name')
     .single()
     insertedMsg = inserted
   } catch (e) {
@@ -747,7 +757,8 @@ export async function sendUnlinkedWhatsAppMedia(
   mediaUrl: string,
   mediaType: 'image' | 'document' | 'video' | 'audio',
   filename: string | null,
-  instanceName?: string
+  instanceName?: string,
+  opts?: { caption?: string | null; quotedRowId?: string | null }
 ): Promise<ActionState> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -788,16 +799,22 @@ export async function sendUnlinkedWhatsAppMedia(
     await unarchiveWhatsAppConversation(normalizedPhone, targetCreds.instanceName)
 
     const isImage = mediaType === 'image'
+    // Legenda (o texto digitado junto com o arquivo) vai junto, como no WhatsApp
+    const caption = (opts?.caption ?? '').trim().slice(0, 1024)
+    const quoted = await quotedOfRow(opts?.quotedRowId)
     const result: any = isImage
-      ? await sendEvoImageMessage({ ...targetCreds, phone: normalizedPhone, imageUrl: mediaUrl })
-      : await sendEvoDocumentMessage({ ...targetCreds, phone: normalizedPhone, documentUrl: mediaUrl, fileName: filename ?? 'arquivo' })
+      ? await sendEvoImageMessage({ ...targetCreds, phone: normalizedPhone, imageUrl: mediaUrl, caption, quoted })
+      : mediaType === 'video'
+        ? await sendEvoVideoMessage({ ...targetCreds, phone: normalizedPhone, videoUrl: mediaUrl, caption, quoted })
+        : await sendEvoDocumentMessage({ ...targetCreds, phone: normalizedPhone, documentUrl: mediaUrl, fileName: filename ?? 'arquivo', caption, quoted })
 
     await admin.from('contract_whatsapp_messages').insert({
       contract_id: contractId,
       sent_by: user.id,
       direction: 'enviado',
       phone: normalizedPhone,
-      message: isImage ? '[imagem]' : `[${mediaType}] ${filename ?? ''}`,
+      message: caption || (isImage ? '[imagem]' : `[${mediaType}] ${filename ?? ''}`),
+      quoted_id: quoted?.id ?? null,
       media_url: mediaUrl,
       media_type: mediaType,
       media_filename: filename,

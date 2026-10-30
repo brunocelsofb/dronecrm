@@ -6,6 +6,7 @@ import { tenantIdForInstance } from '@/lib/tenant/context'
 import { isValidEvoWebhookToken } from '@/lib/whatsapp/webhook-token'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { routeInboundToSdr, startSdrFromTriage } from '@/lib/sdr/engine'
+import { applyReaction, evoStatusUpdates, nextDelivery, quotedIdOf, reactionOf } from '@/lib/whatsapp/chat'
 
 // O SDR de IA responde depois de devolver o 200 (after); espera a sequência de mensagens
 export const maxDuration = 60
@@ -72,6 +73,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     // Instância privada (ex.: WhatsApp pessoal do gestor): nada entra no CRM
     if (await isPrivateInstance(instanceName, hookTenantId)) {
       return NextResponse.json({ ok: true, skipped: 'private instance' })
+    }
+
+    // ── Tiques: entregue / lido das mensagens enviadas ──────────────────────
+    if (event === 'messages_update') {
+      try {
+        for (const u of evoStatusUpdates(body?.data)) {
+          if (u.fromMe === false) continue // aviso de leitura de mensagem recebida: não muda tique
+          const { data: row } = await supabase.from('contract_whatsapp_messages')
+            .select('id, delivery_status').eq('tenant_id', hookTenantId).eq('zapi_message_id', u.id).limit(1).maybeSingle()
+          const next = row ? nextDelivery(row.delivery_status, u.status) : null
+          if (!row || !next) continue
+          await supabase.from('contract_whatsapp_messages')
+            .update({ delivery_status: next, ...(next === 'read' ? { read_at: new Date().toISOString() } : {}) })
+            .eq('id', row.id).eq('tenant_id', hookTenantId)
+        }
+      } catch (e) {
+        console.error('[evo-webhook] erro update:', e)
+      }
+      return NextResponse.json({ ok: true })
     }
 
     if (!['messages_upsert', 'messages_delete', 'messages.delete', 'call'].includes(event)) {
@@ -161,11 +181,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     // ── Extracção de texto (todos os formatos conhecidos da Evolution/Baileys) ──
 
     // Eventos de sistema a ignorar silenciosamente (não geram registo no chat)
-    const isReaction   = !!(msg?.reactionMessage)
+    // Reação: não vira mensagem; fica guardada na mensagem reagida (👍 embaixo do balão)
+    const reaction = reactionOf(msg)
+    if (reaction) {
+      try {
+        const { data: target } = await supabase.from('contract_whatsapp_messages')
+          .select('id, reactions').eq('tenant_id', hookTenantId).eq('zapi_message_id', reaction.targetId).limit(1).maybeSingle()
+        if (target) {
+          await supabase.from('contract_whatsapp_messages')
+            .update({ reactions: applyReaction(target.reactions, isFromMe ? 'me' : 'them', reaction.emoji) })
+            .eq('id', target.id).eq('tenant_id', hookTenantId)
+        }
+      } catch (e) {
+        console.error('[evo-webhook] erro reação:', e)
+      }
+      return NextResponse.json({ ok: true, type: 'reaction' })
+    }
     const isPollUpdate = !!(msg?.pollUpdateMessage)
-    if (isReaction || isPollUpdate) {
+    if (isPollUpdate) {
       return NextResponse.json({ ok: true, skipped: 'reaction-or-poll-update' })
     }
+
+    // Resposta citando outra mensagem: guarda o id da citada
+    const quotedId = quotedIdOf(msg, msgData)
 
     // ── Chamadas perdidas via messageStubType (messages_upsert) ──────────────
     // event='call' já foi tratado acima com early-return.
@@ -392,6 +430,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
             status: 'enviado',
             triggered_automatically: false,
             zapi_message_id: messageId ?? null,   // null aceite — sem dedup neste caso
+            quoted_id: quotedId,
             instance_name: instanceName,
             tenant_id: tenantId,
             media_url: mediaUrl,
@@ -455,6 +494,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         status: 'recebido',
         triggered_automatically: false,
         zapi_message_id: messageId ?? null,
+        quoted_id: quotedId,
         unlinked_sender_name: pushName,
         instance_name: instanceName,
         tenant_id: tenantId,

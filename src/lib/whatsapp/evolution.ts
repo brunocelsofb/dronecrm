@@ -18,15 +18,19 @@ export function sanitizePhoneForEvo(phone: string): string {
   return `55${digits}`
 }
 
+// Mensagem citada (responder citando): id do WhatsApp + texto curto da original
+export type EvoQuoted = { id: string; text?: string | null }
+const quotedBody = (q?: EvoQuoted | null) => q?.id ? { quoted: { key: { id: q.id }, message: { conversation: (q.text ?? '').slice(0, 500) } } } : {}
+
 export async function sendEvoTextMessage({
-  serverUrl, apiKey, instanceName, phone, message
-}: EvoCredentials & { phone: string; message: string }): Promise<{ key?: { id: string } }> {
+  serverUrl, apiKey, instanceName, phone, message, quoted
+}: EvoCredentials & { phone: string; message: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
   const cleanPhone = sanitizePhoneForEvo(phone)
   console.log('[evo] sendText phone:', phone, '→', cleanPhone)
   const res = await fetch(`${serverUrl}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number: cleanPhone, text: message }),
+    body: JSON.stringify({ number: cleanPhone, text: message, ...quotedBody(quoted) }),
   })
   if (!res.ok) {
     const text = await res.text()
@@ -36,26 +40,90 @@ export async function sendEvoTextMessage({
   return res.json()
 }
 
-export async function sendEvoImageMessage({
-  serverUrl, apiKey, instanceName, phone, imageUrl, caption
-}: EvoCredentials & { phone: string; imageUrl: string; caption?: string }): Promise<void> {
-  const cleanPhone = sanitizePhoneForEvo(phone)
-  await fetch(`${serverUrl}/message/sendMedia/${instanceName}`, {
+// Foto, vídeo ou documento. Devolve a resposta do servidor (key.id = id no WhatsApp) e
+// falha quando o servidor recusa — assim a mensagem fica como "falhou", e não como enviada.
+async function sendEvoMedia(
+  { serverUrl, apiKey, instanceName }: EvoCredentials,
+  body: Record<string, unknown>,
+): Promise<{ key?: { id: string } }> {
+  const res = await fetch(`${serverUrl}/message/sendMedia/${instanceName}`, {
     method: 'POST',
     headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number: cleanPhone, mediatype: 'image', media: imageUrl, caption: caption ?? '' }),
+    body: JSON.stringify(body),
   })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    console.error('[evo] sendMedia falhou:', res.status, text.slice(0, 300))
+    throw new Error(`Evolution API ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json().catch(() => ({}))
+}
+
+export async function sendEvoImageMessage({
+  phone, imageUrl, caption, quoted, ...creds
+}: EvoCredentials & { phone: string; imageUrl: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'image', media: imageUrl, caption: caption ?? '', ...quotedBody(quoted) })
+}
+
+export async function sendEvoVideoMessage({
+  phone, videoUrl, caption, quoted, ...creds
+}: EvoCredentials & { phone: string; videoUrl: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'video', media: videoUrl, caption: caption ?? '', ...quotedBody(quoted) })
 }
 
 export async function sendEvoDocumentMessage({
-  serverUrl, apiKey, instanceName, phone, documentUrl, fileName, caption
-}: EvoCredentials & { phone: string; documentUrl: string; fileName: string; caption?: string }): Promise<void> {
-  const cleanPhone = sanitizePhoneForEvo(phone)
-  await fetch(`${serverUrl}/message/sendMedia/${instanceName}`, {
+  phone, documentUrl, fileName, caption, quoted, ...creds
+}: EvoCredentials & { phone: string; documentUrl: string; fileName: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'document', media: documentUrl, fileName, caption: caption ?? '', ...quotedBody(quoted) })
+}
+
+// Áudio de voz (aparece como mensagem de voz gravada, com o microfone azul)
+export async function sendEvoVoice({
+  serverUrl, apiKey, instanceName, phone, audioUrl, quoted,
+}: EvoCredentials & { phone: string; audioUrl: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
+  const res = await fetch(`${serverUrl}/message/sendWhatsAppAudio/${instanceName}`, {
     method: 'POST',
     headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number: cleanPhone, mediatype: 'document', media: documentUrl, fileName, caption: caption ?? '' }),
+    body: JSON.stringify({ number: sanitizePhoneForEvo(phone), audio: audioUrl, ...quotedBody(quoted) }),
   })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Evolution API ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json().catch(() => ({}))
+}
+
+const jidOf = (phone: string) => `${sanitizePhoneForEvo(phone)}@s.whatsapp.net`
+
+// Reação numa mensagem (emoji vazio tira a reação)
+export async function sendEvoReaction({
+  serverUrl, apiKey, instanceName, phone, messageId, fromMe, emoji,
+}: EvoCredentials & { phone: string; messageId: string; fromMe: boolean; emoji: string }): Promise<void> {
+  const res = await fetch(`${serverUrl}/message/sendReaction/${instanceName}`, {
+    method: 'POST',
+    headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: { id: messageId, remoteJid: jidOf(phone), fromMe }, reaction: emoji }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Evolution API ${res.status}: ${text.slice(0, 200)}`)
+  }
+}
+
+// Avisa o WhatsApp que as mensagens recebidas foram lidas (tiques azuis para o contato)
+export async function markEvoRead({
+  serverUrl, apiKey, instanceName, phone, messageIds,
+}: EvoCredentials & { phone: string; messageIds: string[] }): Promise<boolean> {
+  if (!messageIds.length) return true
+  try {
+    const remoteJid = jidOf(phone)
+    const res = await fetch(`${serverUrl}/chat/markMessageAsRead/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ readMessages: messageIds.map(id => ({ id, fromMe: false, remoteJid })) }),
+    })
+    return res.ok
+  } catch { return false }
 }
 
 export async function getEvoQrCode({

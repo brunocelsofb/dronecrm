@@ -1,6 +1,7 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
+import { QUICK_REACTIONS } from '@/lib/whatsapp/chat'
 
 interface Message {
   id: string
@@ -17,6 +18,9 @@ interface Message {
   sender_photo_url?: string | null
   delivery_status?: string | null
   unlinked_sender_name?: string | null
+  quoted_id?: string | null
+  reactions?: { me?: string; them?: string } | null
+  error_message?: string | null
 }
 
 interface WhatsAppChatViewProps {
@@ -25,6 +29,9 @@ interface WhatsAppChatViewProps {
   contactPhone?: string | null
   onDeleteMessage?: (messageId: string) => void
   onSaveNote?: (messageId: string) => void
+  // Opcionais (Central de WhatsApp): responder citando e reagir
+  onReply?: (msg: any) => void
+  onReact?: (msg: any, emoji: string) => void
 }
 
 // Labels automáticos que não devem aparecer como texto debaixo da mídia
@@ -63,8 +70,11 @@ function getDateKey(dateStr: string) {
   }
 }
 
-function DeliveryTick({ status, direction }: { status?: string | null; direction: string }) {
+function DeliveryTick({ status, direction, error }: { status?: string | null; direction: string; error?: string | null }) {
   if (direction !== 'enviado') return null
+  if (status === 'falhou') {
+    return <span className="ml-1 text-[10px] font-bold text-red-500" title={error ? `Não enviada: ${error}` : 'Não enviada'}>⚠</span>
+  }
   if (status === 'lido' || status === 'read') {
     return <span className="ml-1 text-[10px] text-blue-400">✓✓</span>
   }
@@ -255,16 +265,21 @@ function MediaContent({ mediaType, mediaUrl, mediaFilename, message }: {
     )
   }
   if (mediaType === 'document') {
+    // Legenda de verdade (não o rótulo automático "[document] arquivo.pdf")
+    const docCaption = hasRealCaption && mediaFilename && message !== mediaFilename && !/^\[(document|documento|video|audio|imagem|image)\]/i.test(message) ? message : null
     return mediaUrl ? (
-      <a
-        href={mediaUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-2 text-sm text-blue-600 hover:underline break-words"
-      >
-        <span>📎</span>
-        <span>{mediaFilename ?? (hasRealCaption ? message : 'Documento')}</span>
-      </a>
+      <div className="flex flex-col gap-1">
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-blue-600 hover:underline break-words"
+        >
+          <span>📎</span>
+          <span>{mediaFilename ?? (hasRealCaption ? message : 'Documento')}</span>
+        </a>
+        {docCaption && <span className="text-sm whitespace-pre-wrap break-words">{formatMessageWithLinks(docCaption)}</span>}
+      </div>
     ) : <span className="text-sm italic">{mediaFilename ?? message}</span>
   }
   return <span className="text-sm whitespace-pre-wrap break-words">{formatMessageWithLinks(message)}</span>
@@ -278,12 +293,49 @@ function TrashIcon() {
   )
 }
 
-export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: WhatsAppChatViewProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+// Trecho da mensagem citada, dentro do balão (como no WhatsApp)
+function QuotedBlock({ quoted, isSent, onJump }: { quoted: any | null; isSent: boolean; onJump?: () => void }) {
+  const who = !quoted ? '' : quoted.direction === 'enviado' ? 'Você' : (quoted.unlinked_sender_name || 'Contato')
+  const raw = String(quoted?.message ?? '')
+  const text = quoted?.media_type === 'image' && MEDIA_PLACEHOLDER_LABELS.has(raw) ? '📷 Foto'
+    : quoted?.media_type === 'audio' ? '🎤 Áudio'
+    : quoted?.media_type === 'video' && MEDIA_PLACEHOLDER_LABELS.has(raw) ? '🎥 Vídeo'
+    : quoted?.media_type === 'document' ? `📄 ${quoted.media_filename ?? 'Documento'}`
+    : raw.replace(/^\*[^*]{1,80}:\*\s*/, '')
+  return (
+    <button type="button" onClick={onJump} disabled={!quoted}
+      className={`mb-1 block w-full rounded-md border-l-4 px-2 py-1 text-left ${isSent ? 'border-positive-600 bg-black/5' : 'border-brand-700 bg-gray-100'} ${quoted ? 'cursor-pointer hover:bg-black/10' : 'cursor-default'}`}>
+      <span className={`block text-[11px] font-semibold ${quoted?.direction === 'enviado' ? 'text-positive-700' : 'text-brand-700'}`}>{quoted ? who : 'Mensagem citada'}</span>
+      <span className="line-clamp-2 block text-xs text-gray-600">{quoted ? text || '…' : 'Mensagem fora do histórico carregado'}</span>
+    </button>
+  )
+}
 
+export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onReply, onReact }: WhatsAppChatViewProps) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [pickerFor, setPickerFor] = useState<string | null>(null)
+
+  // Desce para o fim só quando chega mensagem nova (reação ou tique não mexem na rolagem)
+  const lastId = messages?.length ? messages[messages.length - 1]?.id : null
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [lastId, messages?.length])
+
+  // Mensagens pelo id do WhatsApp, para mostrar a citada
+  const byWid = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const x of messages ?? []) if (x?.zapi_message_id) m.set(x.zapi_message_id, x)
+    return m
   }, [messages])
+
+  function jumpTo(id: string) {
+    const el = boxRef.current?.querySelector(`[data-msg-id="${CSS.escape(id)}"]`) as HTMLElement | null
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-warn-600')
+    setTimeout(() => el.classList.remove('ring-2', 'ring-warn-600'), 1400)
+  }
 
   if (!messages || messages.length === 0) {
     return (
@@ -305,7 +357,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: What
   }
 
   return (
-    <div className="absolute inset-0 bg-[#E5DDD5] overflow-y-auto p-4 space-y-3">
+    <div ref={boxRef} className="absolute inset-0 bg-[#E5DDD5] overflow-y-auto p-4 space-y-3">
       {grouped.map((group) => (
         <div key={group.dateKey}>
           <div className="flex items-center justify-center my-3">
@@ -317,15 +369,19 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: What
           {group.messages.map((msg) => {
             const isSent = msg.direction === 'enviado'
             const isBot = msg.triggered_automatically === true
+            const quoted = msg.quoted_id ? byWid.get(msg.quoted_id) ?? null : null
+            const reactions = [msg.reactions?.them, msg.reactions?.me].filter(Boolean) as string[]
+            const canReact = !!onReact && !!msg.zapi_message_id && !String(msg.id).startsWith('opt-')
 
             return (
               <div
                 key={msg.id}
-                className={`flex mb-1.5 ${isSent ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${reactions.length ? 'mb-4' : 'mb-1.5'} ${isSent ? 'justify-end' : 'justify-start'}`}
               >
                 <div
+                  data-msg-id={msg.id}
                   className={`
-                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm
+                    group relative max-w-[75%] rounded-lg px-3 py-2 shadow-sm transition-shadow
                     ${isSent
                       ? 'bg-[#dcf8c6] text-gray-900 rounded-tr-none'
                       : 'bg-white text-gray-900 rounded-tl-none'
@@ -340,6 +396,10 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: What
                     </div>
                   )}
 
+                  {msg.quoted_id && (
+                    <QuotedBlock quoted={quoted} isSent={isSent} onJump={quoted ? () => jumpTo(quoted.id) : undefined} />
+                  )}
+
                   <MediaContent
                     mediaType={msg.media_type}
                     mediaUrl={msg.media_url}
@@ -351,7 +411,30 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: What
                     <span className="text-[10px] text-gray-400">
                       {formatTime(msg.created_at)}
                     </span>
-                    <DeliveryTick status={msg.status} direction={msg.direction} />
+                    <DeliveryTick status={msg.status === 'falhou' ? 'falhou' : (msg.delivery_status ?? msg.status)} direction={msg.direction} error={msg.error_message} />
+
+                    {onReply && !String(msg.id).startsWith('opt-') && (
+                      <button
+                        onClick={() => onReply(msg)}
+                        className="ml-1 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-gray-100 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100"
+                        title="Responder citando esta mensagem"
+                        aria-label="Responder"
+                      >
+                        ↩
+                      </button>
+                    )}
+
+                    {canReact && (
+                      <button
+                        onClick={() => setPickerFor(v => (v === msg.id ? null : msg.id))}
+                        className="ml-0.5 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-gray-100 group-hover:opacity-100 focus:opacity-100"
+                        title="Reagir"
+                        aria-label="Reagir"
+                        aria-expanded={pickerFor === msg.id}
+                      >
+                        😊
+                      </button>
+                    )}
 
                     {onSaveNote && (
                       <button
@@ -380,6 +463,33 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote }: What
                       </button>
                     )}
                   </div>
+
+                  {pickerFor === msg.id && (
+                    <>
+                      <div className="fixed inset-0 z-20" onClick={() => setPickerFor(null)} />
+                      <div className={`absolute bottom-full z-30 mb-1 flex gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 py-1 shadow-lg ${isSent ? 'right-0' : 'left-0'}`}
+                        role="menu" aria-label="Escolha uma reação">
+                        {QUICK_REACTIONS.map(e => (
+                          <button key={e} type="button" role="menuitem"
+                            onClick={() => { setPickerFor(null); onReact?.(msg, msg.reactions?.me === e ? '' : e) }}
+                            className={`rounded-full px-1 text-lg leading-none transition-transform hover:scale-125 ${msg.reactions?.me === e ? 'bg-gray-100' : ''}`}
+                            title={msg.reactions?.me === e ? 'Tirar reação' : `Reagir com ${e}`}>
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {reactions.length > 0 && (
+                    <button type="button"
+                      onClick={() => canReact && setPickerFor(msg.id)}
+                      className={`absolute -bottom-3 ${isSent ? 'right-2' : 'left-2'} flex items-center gap-0.5 rounded-full border border-gray-200 bg-white px-1.5 text-sm leading-5 shadow-sm`}
+                      title={[msg.reactions?.them ? `Contato: ${msg.reactions.them}` : '', msg.reactions?.me ? `Você: ${msg.reactions.me}` : ''].filter(Boolean).join(' · ')}>
+                      {[...new Set(reactions)].join('')}
+                      {reactions.length > 1 && <span className="text-[10px] text-gray-500">{reactions.length}</span>}
+                    </button>
+                  )}
                 </div>
               </div>
             )

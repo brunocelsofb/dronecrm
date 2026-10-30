@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     ]) {
       let q = phoneFilter(
         admin.from('contract_whatsapp_messages')
-          .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name')
+          .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name, zapi_message_id, quoted_id, reactions')
           // As 500 mais recentes (antes pegava as 500 mais antigas e escondia as novas)
           .order('created_at', { ascending: false })
           .limit(500)

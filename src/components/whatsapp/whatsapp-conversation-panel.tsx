@@ -24,6 +24,10 @@ import { ConvertLeadModal } from '@/components/whatsapp/convert-lead-modal'
 import { ContactKindPicker } from '@/components/whatsapp/contact-kind-badge'
 import { SaveNoteModal } from '@/components/whatsapp/save-note-modal'
 import type { ContactKind } from '@/lib/whatsapp/contact-kind'
+import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead, listQuickReplies, type QuickReply } from '@/lib/actions/whatsapp-chat'
+import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply } from '@/lib/whatsapp/chat'
+import { EmojiPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
+import { QuickRepliesModal } from '@/components/whatsapp/quick-replies-modal'
 
 type Message = {
   id: string
@@ -40,6 +44,19 @@ type Message = {
   sender_photo_url: string | null
   delivery_status: string | null
   unlinked_sender_name?: string | null
+  zapi_message_id?: string | null
+  quoted_id?: string | null
+  reactions?: { me?: string; them?: string } | null
+  instance_name?: string | null
+}
+
+// Texto curto de uma mensagem (barra "respondendo a…")
+function previewOf(m: Message): string {
+  if (m.media_type === 'audio') return '🎤 Áudio'
+  if (m.media_type === 'image') return /^\[(imagem|Imagem)\]$/.test(m.message ?? '') ? '📷 Foto' : `📷 ${m.message}`
+  if (m.media_type === 'video') return '🎥 Vídeo'
+  if (m.media_type === 'document') return `📄 ${m.media_filename ?? 'Documento'}`
+  return String(m.message ?? '').replace(/^\*[^*]{1,80}:\*\s*/, '')
 }
 
 type ContractOption = { id: string; label: string }
@@ -165,7 +182,8 @@ export function WhatsAppConversationPanel({
       const uniqueById = new Map(all.map(m => [m.id, m]))
       const visualSeen = new Set<string>()
       return Array.from(uniqueById.values()).filter(m => {
-        const key = `${m.direction}:${m.message}:${(m.created_at ?? '').slice(0, 16)}`
+        // Mídia entra na chave: dois áudios ou fotos no mesmo minuto não são a mesma mensagem
+        const key = `${m.direction}:${m.message}:${m.media_url ?? ''}:${(m.created_at ?? '').slice(0, 16)}`
         if (visualSeen.has(key)) return false
         visualSeen.add(key)
         return true
@@ -191,6 +209,19 @@ export function WhatsAppConversationPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Responder citando, arquivo colado/arrastado, emojis, áudio e respostas rápidas
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const voice = useVoiceRecorder()
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
+  const [showQuickModal, setShowQuickModal] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [slashClosed, setSlashClosed] = useState(false)
+  const me = users.find(u => u.id === currentUserId)
   const [availableInstances, setAvailableInstances] = useState<{ name: string; label: string }[]>([])
   const [selectedInstance, setSelectedInstance] = useState<string>(instanceName ?? '')
 
@@ -218,6 +249,24 @@ export function WhatsAppConversationPanel({
         void revealMessage(newMsg).then(addMessageSafe)
       })
       .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'contract_crm',
+        table: 'contract_whatsapp_messages',
+        filter: `phone=eq.${phone}`,
+      }, (payload) => {
+        // Tiques, reações e citação mudam sem recarregar (o texto não vem: está cifrado)
+        const n = payload.new as Partial<Message>
+        if (!n?.id) return
+        setLocalMessages(prev => prev.map(m => m.id === n.id ? {
+          ...m,
+          delivery_status: n.delivery_status ?? m.delivery_status,
+          status: n.status ?? m.status,
+          reactions: n.reactions ?? m.reactions,
+          quoted_id: n.quoted_id ?? m.quoted_id,
+          zapi_message_id: n.zapi_message_id ?? m.zapi_message_id,
+        } : m))
+      })
+      .on('postgres_changes', {
         event: 'DELETE',
         schema: 'contract_crm',
         table: 'contract_whatsapp_messages',
@@ -228,6 +277,39 @@ export function WhatsAppConversationPanel({
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [phone, supabase])
+
+  // Conversa aberta = lida (zera o contador e manda os tiques azuis ao contato)
+  const readInstance = instanceName ?? null
+  const inboundCount = useMemo(() => localMessages.filter(m => m.direction === 'recebido').length, [localMessages])
+  const firstRead = useRef(true)
+  useEffect(() => { firstRead.current = true }, [phone, readInstance])
+  useEffect(() => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    const t = setTimeout(() => {
+      void markWhatsAppConversationRead(phone, readInstance).then(r => {
+        if (r.ok && firstRead.current) { firstRead.current = false; router.refresh() }
+      })
+    }, firstRead.current ? 300 : 1500)
+    return () => clearTimeout(t)
+  }, [phone, readInstance, inboundCount, router])
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') void markWhatsAppConversationRead(phone, readInstance) }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [phone, readInstance])
+
+  useEffect(() => { void listQuickReplies().then(setQuickReplies).catch(() => {}) }, [])
+
+  // Prévia da foto colada/arrastada
+  useEffect(() => {
+    if (!pendingFile || !pendingFile.type.startsWith('image/')) { setPendingPreview(null); return }
+    const url = URL.createObjectURL(pendingFile)
+    setPendingPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [pendingFile])
+
+  // Trocou de conversa: limpa o que estava sendo escrito para a anterior
+  useEffect(() => { setReplyTo(null); setPendingFile(null); setShowEmoji(false) }, [phone])
 
   useEffect(() => {
     fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}`)
@@ -267,48 +349,133 @@ export function WhatsAppConversationPanel({
     router.refresh()
   }
 
+  function clearAttachment() {
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setPendingFile(null)
+    setSelectedFileName(null)
+  }
+
+  function attachFile(file: File | null | undefined) {
+    if (!file) return
+    if (file.size > 60 * 1024 * 1024) { setError('Arquivo grande demais (máximo 60 MB).'); return }
+    setPendingFile(file)
+    setSelectedFileName(file.name || 'imagem-colada.png')
+    setError(null)
+    textareaRef.current?.focus()
+  }
+
+  async function uploadToStorage(file: Blob, name: string): Promise<string | null> {
+    const safeName = name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const storagePath = await tenantStoragePath(supabase, `whatsapp-media/central/${Date.now()}-${safeName}`)
+    const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file, { contentType: file.type || undefined })
+    if (uploadError) { setError(`Falha no upload: ${uploadError.message}`); return null }
+    return `${window.location.origin}/api/email-assets/${storagePath}`
+  }
+
   async function handleFileUpload() {
-    const file = fileInputRef.current?.files?.[0]
+    const file = pendingFile ?? fileInputRef.current?.files?.[0]
     if (!file) return
 
     setBusy(true)
     setError(null)
 
-    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
-    const storagePath = await tenantStoragePath(supabase, `whatsapp-media/central/${Date.now()}-${safeName}`)
-
-    const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
-
-    if (uploadError) {
-      setBusy(false)
-      setError(`Falha no upload: ${uploadError.message}`)
-      return
-    }
-
-    const publicUrl = `${window.location.origin}/api/email-assets/${storagePath}`
+    const fileName = file.name || `imagem-${Date.now()}.png`
+    const publicUrl = await uploadToStorage(file, fileName)
+    if (!publicUrl) { setBusy(false); return }
     const mediaType = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('video/') ? 'video' : (file.type.startsWith('audio/') ? 'audio' : 'document'))
 
-    const result = await sendUnlinkedWhatsAppMedia(phone, publicUrl, mediaType as any, file.name, selectedInstance || instanceName || undefined)
+    // O texto digitado vai como legenda, e a citação junto
+    const result = await sendUnlinkedWhatsAppMedia(phone, publicUrl, mediaType as any, fileName, selectedInstance || instanceName || undefined,
+      { caption: replyText, quotedRowId: replyTo?.id ?? null })
 
     setBusy(false)
     if (result?.error) {
       setError(result.error)
     } else {
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      setSelectedFileName(null)
+      clearAttachment()
       setReplyText('')
+      setReplyTo(null)
       router.refresh()
     }
   }
 
+  // Áudio gravado: sobe e manda como mensagem de voz
+  async function handleSendVoice() {
+    const clip = await voice.stop()
+    if (!clip) { voice.setError('Áudio curto demais.'); return }
+    setBusy(true); setError(null)
+    const url = await uploadToStorage(clip.blob, `voz-${Date.now()}.${clip.ext}`)
+    if (!url) { setBusy(false); return }
+    const r = await sendWhatsAppVoice(phone, url, selectedInstance || instanceName || null, replyTo?.id ?? null)
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    setReplyTo(null)
+    if (r.message) addMessageSafe(r.message as Message)
+    router.refresh()
+  }
+
+  // Reação: aparece na hora; volta se o WhatsApp recusar
+  async function handleReact(msg: Message, emoji: string) {
+    const before = msg.reactions ?? {}
+    setLocalMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: applyReaction(before, 'me', emoji) } : m))
+    const r = await reactToWhatsAppMessage(msg.id, emoji)
+    if (!r.ok) {
+      setError(r.error)
+      setLocalMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: before } : m))
+    }
+  }
+
+  // Respostas rápidas: "/" no campo abre a lista
+  const slash = slashClosed ? null : slashQuery(replyText)
+  const slashMatches = slash === null ? [] : matchQuickReplies(quickReplies, slash)
+  useEffect(() => { setSlashIndex(0) }, [slash])
+  function pickQuickReply(q: QuickReply) {
+    const text = fillQuickReply(q.body, { nome: localDisplayName, atendente: me?.full_name ?? null })
+    setReplyText(t => insertQuickReply(t, text))
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) { el.focus(); el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px' }
+    })
+  }
+
+  function insertEmoji(e: string) {
+    const el = textareaRef.current
+    if (!el) { setReplyText(t => t + e); return }
+    const start = el.selectionStart ?? replyText.length, end = el.selectionEnd ?? replyText.length
+    const next = replyText.slice(0, start) + e + replyText.slice(end)
+    setReplyText(next)
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(start + e.length, start + e.length) })
+  }
+
+  function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashMatches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex(i => (i + 1) % slashMatches.length); return }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex(i => (i - 1 + slashMatches.length) % slashMatches.length); return }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickQuickReply(slashMatches[Math.min(slashIndex, slashMatches.length - 1)]); return }
+      if (e.key === 'Escape') { e.preventDefault(); setSlashClosed(true); return }
+    }
+    if (e.key === 'Escape' && replyTo) { setReplyTo(null); return }
+    // Enter envia; Shift+Enter quebra a linha (como no WhatsApp Web)
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      if (!busy && (replyText.trim() || selectedFileName)) void handleReply()
+    }
+  }
+
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = Array.from(e.clipboardData?.files ?? []).find(f => f.type.startsWith('image/'))
+    if (file) { e.preventDefault(); attachFile(file) }
+  }
+
   async function handleReply() {
-    if (fileInputRef.current?.files?.[0]) {
+    if (pendingFile || fileInputRef.current?.files?.[0]) {
       await handleFileUpload()
       return
     }
 
     if (!replyText.trim()) return
 
+    const quoting = replyTo
     const optimistic: Message = {
       id: `opt-${Date.now()}`,
       phone, message: replyText, direction: 'enviado',
@@ -316,15 +483,18 @@ export function WhatsAppConversationPanel({
       error_message: null, created_at: new Date().toISOString(),
       media_url: null, media_type: null, media_filename: null,
       sender_photo_url: null, delivery_status: null,
+      quoted_id: quoting?.zapi_message_id ?? null,
     }
     setLocalMessages(prev => [...prev, optimistic])
     setReplyText('')
+    setReplyTo(null)
+    setSlashClosed(false)
 
-    const ta = document.querySelector('textarea[placeholder="Responder..."]') as HTMLTextAreaElement | null
+    const ta = textareaRef.current
     if (ta) ta.style.height = '34px'
 
     setBusy(true)
-    const result = await sendUnlinkedWhatsAppMessage(phone, replyText, selectedInstance || instanceName || undefined)
+    const result = await sendUnlinkedWhatsAppMessage(phone, optimistic.message, selectedInstance || instanceName || undefined, { quotedRowId: quoting?.id ?? null })
     setBusy(false)
 
     if (result.error) {
@@ -672,6 +842,8 @@ export function WhatsAppConversationPanel({
             contactPhone={phone}
             onDeleteMessage={handleDeleteMessage}
             onSaveNote={(id: string) => setNoteFor(id)}
+            onReply={isArchived ? undefined : (m: Message) => { setReplyTo(m); textareaRef.current?.focus() }}
+            onReact={handleReact}
           />
         </div>
       </div>
@@ -716,11 +888,71 @@ export function WhatsAppConversationPanel({
             </select>
           </div>
 
-          <div className="flex items-end gap-2 bg-white rounded-md border border-gray-300 p-1 focus-within:border-[#1B556B]">
+          {/* Respondendo a… (citação) */}
+          {replyTo && (
+            <div className="flex items-stretch gap-2 rounded-md bg-gray-50 p-1.5">
+              <div className={`min-w-0 flex-1 rounded border-l-4 px-2 py-1 ${replyTo.direction === 'enviado' ? 'border-positive-600' : 'border-brand-700'}`}>
+                <p className={`text-[11px] font-semibold ${replyTo.direction === 'enviado' ? 'text-positive-700' : 'text-brand-700'}`}>
+                  Respondendo a {replyTo.direction === 'enviado' ? 'você' : (localDisplayName || 'contato')}
+                </p>
+                <p className="truncate text-xs text-gray-600">{previewOf(replyTo)}</p>
+              </div>
+              <button type="button" onClick={() => setReplyTo(null)} className="px-2 text-gray-400 hover:text-gray-700" aria-label="Cancelar resposta" title="Cancelar (Esc)">✕</button>
+            </div>
+          )}
+
+          {/* Respostas rápidas ("/") */}
+          {slashMatches.length > 0 && (
+            <div role="listbox" aria-label="Respostas rápidas" className="max-h-52 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-md">
+              {slashMatches.map((q, i) => (
+                <button key={q.id} type="button" role="option" aria-selected={i === slashIndex}
+                  onMouseDown={e => { e.preventDefault(); pickQuickReply(q) }}
+                  onMouseEnter={() => setSlashIndex(i)}
+                  className={`block w-full px-3 py-1.5 text-left ${i === slashIndex ? 'bg-brand-50' : 'hover:bg-gray-50'}`}>
+                  <span className="text-xs font-semibold text-brand-700">/{q.shortcut}</span>
+                  <span className="ml-2 line-clamp-1 text-xs text-gray-600">{q.body}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {slash !== null && !slashMatches.length && (
+            <p className="px-1 text-[11px] text-gray-400">
+              {quickReplies.length ? 'Nenhuma resposta rápida com esse atalho.' : 'Nenhuma resposta rápida ainda.'}{' '}
+              <button type="button" onClick={() => setShowQuickModal(true)} className="font-medium text-brand-700 hover:underline">Criar</button>
+            </p>
+          )}
+
+          <div
+            className={`relative flex items-end gap-1 bg-white rounded-md border p-1 focus-within:border-[#1B556B] ${dragOver ? 'border-dashed border-[#1B556B] bg-[#1B556B]/5' : 'border-gray-300'}`}
+            onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true) } }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); attachFile(e.dataTransfer?.files?.[0]) }}
+          >
+            {voice.recording ? (
+              <div className="flex flex-1 items-center gap-3 px-2 py-1.5">
+                <button type="button" onClick={() => voice.cancel()} className="rounded-full p-2 text-gray-500 hover:bg-red-50 hover:text-red-600" title="Descartar áudio" aria-label="Descartar áudio">🗑</button>
+                <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+                <span className="font-mono text-sm text-gray-700" aria-live="polite">{mmss(voice.seconds)}</span>
+                <span className="flex-1 text-xs text-gray-400">Gravando…</span>
+                <button type="button" onClick={handleSendVoice} disabled={busy}
+                  className="rounded-full bg-[#1B556B] p-2 text-white hover:bg-[#164659] disabled:opacity-50" title="Enviar áudio" aria-label="Enviar áudio">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" /></svg>
+                </button>
+              </div>
+            ) : (
+            <>
+            <div className="relative self-end mb-[2px]">
+              <button type="button" onClick={() => setShowEmoji(v => !v)}
+                className={`p-2 rounded-full transition-colors ${showEmoji ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="Emojis" aria-label="Emojis" aria-expanded={showEmoji}>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" /></svg>
+              </button>
+              {showEmoji && <EmojiPicker onPick={insertEmoji} onClose={() => setShowEmoji(false)} />}
+            </div>
 
             <label className={`cursor-pointer p-2 rounded-full transition-colors self-end mb-[2px]
               ${selectedFileName ? 'text-[#1B556B] bg-[#1B556B]/10' : 'text-gray-500 hover:bg-gray-100'}`}
-              title="Anexar arquivo">
+              title="Anexar arquivo (ou cole/arraste uma imagem)">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 transform -rotate-45">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
               </svg>
@@ -730,22 +962,25 @@ export function WhatsAppConversationPanel({
                 className="hidden"
                 accept="image/*, video/*, audio/*, application/pdf, .doc, .docx, .xls, .xlsx"
                 onChange={(e) => {
-                  if (e.target.files?.[0]) setSelectedFileName(e.target.files[0].name)
-                  else setSelectedFileName(null)
+                  if (e.target.files?.[0]) attachFile(e.target.files[0])
+                  else clearAttachment()
                 }}
               />
             </label>
 
+            <button type="button" onClick={() => setShowQuickModal(true)}
+              className="p-2 mb-[2px] self-end rounded-full text-gray-500 hover:bg-gray-100" title="Respostas rápidas (digite / no campo)" aria-label="Respostas rápidas">
+              ⚡
+            </button>
+
             <div className="flex-1 min-w-0 flex flex-col">
               {selectedFileName && (
-                <div className="flex items-center justify-between bg-[#1B556B]/10 text-[#1B556B] text-xs px-2 py-1 rounded mb-1 mr-2 mt-1">
+                <div className="flex items-center gap-2 bg-[#1B556B]/10 text-[#1B556B] text-xs px-2 py-1 rounded mb-1 mr-2 mt-1">
+                  {pendingPreview && <img src={pendingPreview} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />}
                   <span className="truncate flex-1">📎 {selectedFileName}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                      setSelectedFileName(null)
-                    }}
+                    onClick={clearAttachment}
                     className="ml-2 text-[#1B556B] hover:text-red-600 shrink-0 font-bold px-1"
                     title="Remover anexo">
                     ✕
@@ -754,9 +989,13 @@ export function WhatsAppConversationPanel({
               )}
 
               <textarea
+                ref={textareaRef}
                 value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                placeholder={selectedFileName ? "Adicione uma legenda..." : "Responder..."}
+                onChange={(e) => { setReplyText(e.target.value); setSlashClosed(false) }}
+                onKeyDown={onComposerKeyDown}
+                onPaste={onComposerPaste}
+                placeholder={selectedFileName ? "Adicione uma legenda..." : "Digite uma mensagem (/ para respostas rápidas)"}
+                aria-label="Mensagem"
                 onInput={(e) => {
                   const el = e.currentTarget
                   el.style.height = 'auto'
@@ -768,16 +1007,31 @@ export function WhatsAppConversationPanel({
               />
             </div>
 
+            {!replyText.trim() && !selectedFileName ? (
+              <button
+                type="button"
+                onClick={() => void voice.start()}
+                disabled={busy}
+                className="p-2 mb-[2px] rounded-full bg-[#1B556B] text-white hover:bg-[#164659] disabled:opacity-50 transition-colors shrink-0"
+                title="Gravar áudio" aria-label="Gravar áudio">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v8.25a3.75 3.75 0 1 1-7.5 0V4.5Z" /><path d="M6 10.5a.75.75 0 0 1 .75.75v1.5a5.25 5.25 0 1 0 10.5 0v-1.5a.75.75 0 0 1 1.5 0v1.5a6.751 6.751 0 0 1-6 6.709v2.291h3a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1 0-1.5h3v-2.291a6.751 6.751 0 0 1-6-6.709v-1.5A.75.75 0 0 1 6 10.5Z" /></svg>
+              </button>
+            ) : (
             <button
               onClick={handleReply}
               disabled={busy || (!replyText.trim() && !selectedFileName)}
               className="p-2 mb-[2px] rounded-full bg-[#1B556B] text-white hover:bg-[#164659] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 transition-colors shrink-0"
-              title="Enviar mensagem">
+              title="Enviar mensagem (Enter)">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                 <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
               </svg>
             </button>
+            )}
+            </>
+            )}
           </div>
+          {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
+          <p className="hidden text-[10px] text-gray-400 md:block">Enter envia · Shift+Enter quebra a linha · cole ou arraste imagens · / abre as respostas rápidas</p>
 
           {busy && <p className="text-xs text-[#1B556B] mt-1 text-right">Enviando... aguarde.</p>}
 
@@ -785,6 +1039,9 @@ export function WhatsAppConversationPanel({
       )}
       {showConvertModal && (
         <ConvertLeadModal phone={phone} leadId={leadId} displayName={localDisplayName} onClose={() => setShowConvertModal(false)} />
+      )}
+      {showQuickModal && (
+        <QuickRepliesModal replies={quickReplies} onChange={setQuickReplies} onClose={() => setShowQuickModal(false)} />
       )}
       {noteFor && (
         <SaveNoteModal phone={phone} messages={orderedMessages as any} initialId={noteFor} onClose={() => setNoteFor(null)} />

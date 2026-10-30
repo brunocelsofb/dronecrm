@@ -10,6 +10,13 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { identifyPhones } from '@/lib/whatsapp/contact-identity'
 import { classifyPhones, phoneKey } from '@/lib/whatsapp/contact-kind'
+import { unreadCount } from '@/lib/whatsapp/chat'
+import { ensureEvoWebhookEvents } from '@/lib/whatsapp/webhook-sync'
+import { after } from 'next/server'
+import { getSupportSession } from '@/lib/tenant/support'
+
+// Antes disto não havia registro de leitura: o que veio antes não conta como não lido
+const UNREAD_SINCE = '2026-10-30T20:40:00.000Z'
 
 export default async function WhatsAppInboxPage({
   searchParams,
@@ -34,7 +41,7 @@ export default async function WhatsAppInboxPage({
       .order('created_at', { ascending: false })
       .limit(500),
     admin.from('whatsapp_conversation_status')
-      .select('phone, instance_name, department, protocol_number, triage_state'),
+      .select('phone, instance_name, department, protocol_number, triage_state, last_read_at'),
   ])
 
   const teamUsersQuery = admin.from('profiles').select('id, full_name, job_title')
@@ -42,7 +49,7 @@ export default async function WhatsAppInboxPage({
     ? await (teamUsersQuery as any).eq('tenant_id', activeTenantId)
     : await teamUsersQuery
 
-  const statusMap = new Map<string, { department: string | null; protocol_number: string | null; triage_state: string | null }>()
+  const statusMap = new Map<string, { department: string | null; protocol_number: string | null; triage_state: string | null; last_read_at: string | null }>()
   for (const row of statusRows ?? []) {
     const base8 = (row.phone ?? '').replace(/\D/g, '').slice(-8)
     const key = `${row.instance_name ?? ''}-${base8}`
@@ -50,15 +57,21 @@ export default async function WhatsAppInboxPage({
       department: (row as any).department ?? null,
       protocol_number: (row as any).protocol_number ?? null,
       triage_state: (row as any).triage_state ?? null,
+      last_read_at: (row as any).last_read_at ?? null,
     })
   }
 
   const latestByKey = new Map<string, any>()
+  const msgsByKey = new Map<string, { direction: string; created_at: string }[]>()
   for (const m of openMessages ?? []) {
     const base8 = (m.phone ?? '').replace(/\D/g, '').slice(-8)
     const key = `${m.instance_name ?? ''}-${base8}`
     if (!latestByKey.has(key)) latestByKey.set(key, m)
+    const list = msgsByKey.get(key) ?? []
+    list.push({ direction: m.direction, created_at: m.created_at })
+    msgsByKey.set(key, list)
   }
+  const unreadOf = (key: string) => unreadCount(msgsByKey.get(key) ?? [], statusMap.get(key)?.last_read_at, UNREAD_SINCE)
 
   const archivedSet = new Set(
     (archivedRows ?? []).map((r: any) => {
@@ -76,6 +89,7 @@ export default async function WhatsAppInboxPage({
         instance: m.instance_name ?? '',
         latest: m,
         lead: null,
+        unread: unreadOf(key),
         department: status?.department ?? null,
         protocol_number: status?.protocol_number ?? null,
         triage_state: status?.triage_state ?? null,
@@ -99,6 +113,8 @@ export default async function WhatsAppInboxPage({
     .sort((a, b) => new Date(b.latest.created_at).getTime() - new Date(a.latest.created_at).getTime())
 
   const tenantId = await resolveTenantId()
+  // Tiques de entregue/lido: registra o evento novo no servidor do WhatsApp (uma vez por empresa)
+  if (!(await getSupportSession())) after(() => ensureEvoWebhookEvents(tenantId).catch(e => console.error('[webhook-sync]', e)))
   const { data: orgData } = await admin
     .from('organization_settings')
     .select('evo_instance_aliases')
