@@ -25,7 +25,7 @@ import { ContactKindPicker } from '@/components/whatsapp/contact-kind-badge'
 import { SaveNoteModal } from '@/components/whatsapp/save-note-modal'
 import type { ContactKind } from '@/lib/whatsapp/contact-kind'
 import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead, listQuickReplies, type QuickReply } from '@/lib/actions/whatsapp-chat'
-import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply, REVOKED_TYPE, revokedText } from '@/lib/whatsapp/chat'
+import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply, REVOKED_TYPE, revokedText, phoneVariants } from '@/lib/whatsapp/chat'
 import { EmojiPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
 import { QuickRepliesModal } from '@/components/whatsapp/quick-replies-modal'
 import { PhotoViewer } from '@/components/whatsapp/photo-viewer'
@@ -238,13 +238,15 @@ export function WhatsAppConversationPanel({
   }, [messages])
 
   useEffect(() => {
+    // Todas as formas gravadas do número (com e sem 55): enviadas e recebidas chegam juntas
+    const phoneFilter = `phone=in.(${phoneVariants(phone).join(',')})`
     const channel = supabase
       .channel(`wpp-${phone}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'contract_crm',
         table: 'contract_whatsapp_messages',
-        filter: `phone=eq.${phone}`,
+        filter: phoneFilter,
       }, (payload) => {
         const newMsg = payload.new as Message
         // O texto vem cifrado do banco: abre antes de mostrar
@@ -254,7 +256,7 @@ export function WhatsAppConversationPanel({
         event: 'UPDATE',
         schema: 'contract_crm',
         table: 'contract_whatsapp_messages',
-        filter: `phone=eq.${phone}`,
+        filter: phoneFilter,
       }, (payload) => {
         // Tiques, reações e citação mudam sem recarregar (o texto não vem: está cifrado)
         const n = payload.new as Partial<Message>

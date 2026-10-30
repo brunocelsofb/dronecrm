@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { identifyPhones } from '@/lib/whatsapp/contact-identity'
+import { samePhone } from '@/lib/whatsapp/chat'
 
 export async function GET(req: Request) {
   try {
@@ -20,33 +21,28 @@ export async function GET(req: Request) {
     const cleanPhone = phone.replace(/\D/g, '')
     const last8 = cleanPhone.slice(-8)
 
-    let messages: any[] = []
-    for (const phoneFilter of [
-      (q: any) => q.eq('phone', cleanPhone),
-      (q: any) => q.ilike('phone', `%${last8}`),
-    ]) {
-      let q = phoneFilter(
-        admin.from('contract_whatsapp_messages')
-          .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name, zapi_message_id, quoted_id, reactions')
-          // As 500 mais recentes (antes pegava as 500 mais antigas e escondia as novas)
-          .order('created_at', { ascending: false })
-          .limit(500)
-      )
-      if (instance) q = q.eq('instance_name', instance)
-
-      const { data } = await q
-      if (data?.length) {
-        const seen = new Set<string>()
-        // Passado → presente
-        messages = [...data].reverse().filter((m: any) => {
-          const key = `${m.direction}:${m.message}:${m.created_at?.slice(0, 19)}`
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
-        })
-        break
-      }
-    }
+    // Mesmo número em formatos diferentes (recebidas sem 55, enviadas pela Central com 55):
+    // busca pelos 8 últimos dígitos e fica só com o que é o mesmo número.
+    // Antes pegava só o formato exato e escondia as mensagens do outro formato.
+    let q = admin.from('contract_whatsapp_messages')
+      .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name, zapi_message_id, quoted_id, reactions')
+      .ilike('phone', `%${last8}`)
+      // As 500 mais recentes (antes pegava as 500 mais antigas e escondia as novas)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (instance) q = q.eq('instance_name', instance)
+    const { data } = await q
+    const seen = new Set<string>()
+    // Passado → presente
+    let messages: any[] = [...(data ?? [])].reverse().filter((m: any) => {
+      if (!samePhone(m.phone, cleanPhone)) return false
+      const key = `${m.direction}:${m.message}:${m.created_at?.slice(0, 19)}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    // Número sem nenhuma mensagem no formato canônico (caso raro): mostra o que achou pelos 8 dígitos
+    if (!messages.length && data?.length) messages = [...data].reverse()
 
     const leadId = messages.find(m => m.lead_id)?.lead_id ?? null
     // instanceName da mensagem mais recente

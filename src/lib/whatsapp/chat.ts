@@ -160,3 +160,22 @@ export function unwrapMessage<T = Record<string, any>>(msg: T | null | undefined
   }
   return cur as T | null
 }
+
+// ─── Mesmo número em formatos diferentes ─────────────────────────────────────
+// Recebidas chegam sem DDI (62999677609); enviadas pela Central são gravadas com 55.
+// Forma canônica: sem 55, com o 9 do celular.
+export function canonPhone(raw: unknown): string {
+  let d = String(raw ?? '').replace(/\D/g, '')
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) d = d.slice(2)
+  if (d.length === 10 && /^[6-9]/.test(d.slice(2))) d = `${d.slice(0, 2)}9${d.slice(2)}`
+  return d
+}
+export const samePhone = (a: unknown, b: unknown) => !!canonPhone(a) && canonPhone(a) === canonPhone(b)
+// Formas gravadas possíveis do número (filtro do tempo real)
+export function phoneVariants(raw: unknown): string[] {
+  const c = canonPhone(raw)
+  if (!c) return []
+  const out = new Set([c, `55${c}`, String(raw ?? '').replace(/\D/g, '')])
+  if (c.length === 11 && c[2] === '9') { const no9 = c.slice(0, 2) + c.slice(3); out.add(no9); out.add(`55${no9}`) }
+  return [...out].filter(Boolean)
+}

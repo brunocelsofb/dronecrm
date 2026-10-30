@@ -84,3 +84,14 @@ test('envelope: outro aparelho, temporária e camadas', () => {
   assert.equal(unwrapMessage(null), null)
   assert.deepEqual(unwrapMessage({ messageContextInfo: { a: 1 }, ephemeralMessage: { message: { conversation: 'c' } } }), { messageContextInfo: { a: 1 }, conversation: 'c' })
 })
+
+import { canonPhone, samePhone, phoneVariants } from '../src/lib/whatsapp/chat.ts'
+test('mesmo número com e sem 55 / com e sem o 9', () => {
+  assert.equal(canonPhone('5562999677609'), '62999677609')
+  assert.equal(canonPhone('62999677609'), '62999677609')
+  assert.equal(canonPhone('556299677609'), '62999677609')
+  assert.ok(samePhone('5562999677609', '62999677609'))
+  assert.ok(!samePhone('5562999677609', '6299967760'))
+  assert.ok(!samePhone('5511999677609', '62999677609'))
+  assert.deepEqual(phoneVariants('62999677609').sort(), ['556299677609', '5562999677609', '6299677609', '62999677609'].sort())
+})
