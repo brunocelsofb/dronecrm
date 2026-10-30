@@ -42,11 +42,11 @@ export function NewUserForm() {
           name="password"
           type="text"
           required
-          minLength={6}
-          placeholder="Mín. 6 caracteres"
+          minLength={8}
+          placeholder="Mín. 8, letras e números"
           className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
         />
-        <p className="mt-1 text-xs text-gray-400">Repasse essa senha à pessoa; ela pode trocar depois.</p>
+        <p className="mt-1 text-xs text-gray-400">Mínimo de 8 caracteres, com letras e números. Repasse à pessoa: no primeiro acesso o Drone pede para ela criar a própria senha.</p>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-700">Papel</label>

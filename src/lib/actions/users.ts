@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { requireTenantId } from '@/lib/tenant/context'
 import { isAccessProfile } from '@/lib/auth/access-profiles'
+import { passwordProblem } from '@/lib/auth/password'
 
 // Só mexe em usuário da MESMA empresa e nunca no Super Admin (login da plataforma)
 async function canManage(targetUserId: string): Promise<boolean> {
@@ -50,9 +51,8 @@ export async function createUserByAdmin(
   if (!email || !fullName || !password) {
     return { error: 'Preencha nome, e-mail e senha.' }
   }
-  if (password.length < 6) {
-    return { error: 'A senha precisa ter pelo menos 6 caracteres.' }
-  }
+  const problem = passwordProblem(password, { email })
+  if (problem) return { error: problem }
 
   const adminClient = createAdminClient()
   const tenantId = await requireTenantId()
@@ -83,7 +83,8 @@ export async function createUserByAdmin(
     password,
     email_confirm: true,
     user_metadata: { full_name: fullName },
-    app_metadata: { tenant_id: tenantId },
+    // Senha provisória: a pessoa cria a própria no primeiro acesso
+    app_metadata: { tenant_id: tenantId, must_change_password: true },
   })
 
   if (created?.user) {
@@ -101,7 +102,7 @@ export async function createUserByAdmin(
       email_confirm: true,
       ban_duration: 'none',
       user_metadata: { full_name: fullName },
-      app_metadata: { tenant_id: tenantId },
+      app_metadata: { tenant_id: tenantId, must_change_password: true },
     })
     if (updErr) return { error: `Falha ao reativar o login existente: ${updErr.message}` }
     userId = orphan
