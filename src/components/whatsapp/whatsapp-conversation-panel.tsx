@@ -25,7 +25,7 @@ import { ContactKindPicker } from '@/components/whatsapp/contact-kind-badge'
 import { SaveNoteModal } from '@/components/whatsapp/save-note-modal'
 import type { ContactKind } from '@/lib/whatsapp/contact-kind'
 import { sendWhatsAppVoice, reactToWhatsAppMessage, markWhatsAppConversationRead, listQuickReplies, type QuickReply } from '@/lib/actions/whatsapp-chat'
-import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply } from '@/lib/whatsapp/chat'
+import { applyReaction, slashQuery, matchQuickReplies, fillQuickReply, insertQuickReply, REVOKED_TYPE, revokedText } from '@/lib/whatsapp/chat'
 import { EmojiPicker, useVoiceRecorder, mmss } from '@/components/whatsapp/composer-tools'
 import { QuickRepliesModal } from '@/components/whatsapp/quick-replies-modal'
 
@@ -257,6 +257,13 @@ export function WhatsAppConversationPanel({
         // Tiques, reações e citação mudam sem recarregar (o texto não vem: está cifrado)
         const n = payload.new as Partial<Message>
         if (!n?.id) return
+        // Apagada para todos: troca o conteúdo pelo aviso na hora
+        if (n.media_type === REVOKED_TYPE) {
+          setLocalMessages(prev => prev.map(m => m.id === n.id ? {
+            ...m, media_type: REVOKED_TYPE, media_url: null, media_filename: null, reactions: {}, message: revokedText(m.direction),
+          } : m))
+          return
+        }
         setLocalMessages(prev => prev.map(m => m.id === n.id ? {
           ...m,
           delivery_status: n.delivery_status ?? m.delivery_status,
@@ -312,11 +319,11 @@ export function WhatsAppConversationPanel({
   useEffect(() => { setReplyTo(null); setPendingFile(null); setShowEmoji(false) }, [phone])
 
   useEffect(() => {
-    fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}`)
+    fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}${instanceName ? `&instance=${encodeURIComponent(instanceName)}` : ''}`)
       .then(r => r.json())
-      .then(d => { if (d.url) setProfilePicUrl(d.url) })
-      .catch(() => {})
-  }, [phone])
+      .then(d => setProfilePicUrl(typeof d?.url === 'string' ? d.url : null))
+      .catch(() => setProfilePicUrl(null))
+  }, [phone, instanceName])
 
   const loadInstances = useCallback(async () => {
     try {
@@ -571,7 +578,7 @@ export function WhatsAppConversationPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             {profilePicUrl ? (
-              <img src={profilePicUrl} alt="" className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+              <img src={profilePicUrl} alt="" referrerPolicy="no-referrer" className="h-9 w-9 rounded-full object-cover flex-shrink-0"
                 onError={() => setProfilePicUrl(null)} />
             ) : (
               <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-500 flex-shrink-0">

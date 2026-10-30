@@ -6,7 +6,7 @@ import { tenantIdForInstance } from '@/lib/tenant/context'
 import { isValidEvoWebhookToken } from '@/lib/whatsapp/webhook-token'
 import { withPlatformEvo } from '@/lib/whatsapp/tenant-evo'
 import { routeInboundToSdr, startSdrFromTriage } from '@/lib/sdr/engine'
-import { applyReaction, evoStatusUpdates, nextDelivery, quotedIdOf, reactionOf } from '@/lib/whatsapp/chat'
+import { applyReaction, evoDeletedIds, evoStatusUpdates, nextDelivery, quotedIdOf, reactionOf, revokedIdOf, revokedText, REVOKED_TYPE } from '@/lib/whatsapp/chat'
 
 // O SDR de IA responde depois de devolver o 200 (after); espera a sequência de mensagens
 export const maxDuration = 60
@@ -34,6 +34,18 @@ function buildMediaProxyUrl(messageId: string, instanceName: string | null): str
   const params = new URLSearchParams({ id: messageId })
   if (instanceName) params.set('instance', instanceName)
   return `/api/whatsapp/media?${params.toString()}`
+}
+
+// "Apagar para todos": a mensagem fica no lugar com o aviso, sem o conteúdo (como no WhatsApp)
+async function markRevoked(supabase: ReturnType<typeof createAdminClient>, tenantId: string, waId: string) {
+  const { data: rows } = await supabase.from('contract_whatsapp_messages')
+    .select('id, direction').eq('tenant_id', tenantId).eq('zapi_message_id', waId)
+  for (const r of rows ?? []) {
+    await supabase.from('contract_whatsapp_messages').update({
+      tenant_id: tenantId, message: revokedText(r.direction), media_type: REVOKED_TYPE,
+      media_url: null, media_filename: null, reactions: {},
+    }).eq('id', r.id).eq('tenant_id', tenantId)
+  }
 }
 
 // Quem chama: só o servidor Evolution. A URL de cada instância leva um token
@@ -78,6 +90,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
     // ── Tiques: entregue / lido das mensagens enviadas ──────────────────────
     if (event === 'messages_update') {
       try {
+        for (const id of evoDeletedIds(body?.data)) await markRevoked(supabase, hookTenantId, id)
         for (const u of evoStatusUpdates(body?.data)) {
           if (u.fromMe === false) continue // aviso de leitura de mensagem recebida: não muda tique
           const { data: row } = await supabase.from('contract_whatsapp_messages')
@@ -100,18 +113,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
     if (event === 'messages_delete' || event === 'messages.delete') {
       try {
-        const admin = createAdminClient()
         let keys: any[] = []
         if (body?.data?.keys) keys = body.data.keys
         else if (body?.keys) keys = body.keys
-        else if (body?.data?.messageId) keys = [{ id: body.data.messageId }]
-        else if (body?.data?.id) keys = [{ id: body.data.id }]
+        else {
+          // Formatos variam entre versões: tenta todos os ids que vierem (o que não existir não muda nada)
+          const d = Array.isArray(body?.data) ? body.data[0] : body?.data
+          keys = [d?.keyId, d?.key?.id, d?.id, d?.messageId].filter(Boolean).map((id: string) => ({ id }))
+        }
 
+        // Antes a mensagem sumia da Central; agora fica o aviso "mensagem apagada"
         for (const k of keys) {
-          const msgId = k?.id ?? k?.messageId ?? k?.key?.id
+          const msgId = k?.id ?? k?.keyId ?? k?.messageId ?? k?.key?.id
           if (!msgId) continue
-          await admin.from('contract_whatsapp_messages').delete()
-            .eq('tenant_id', hookTenantId).eq('zapi_message_id', msgId)
+          await markRevoked(supabase, hookTenantId, String(msgId))
         }
       } catch (e) {
         console.error('[evo-webhook] erro delete:', e)
@@ -196,6 +211,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         console.error('[evo-webhook] erro reação:', e)
       }
       return NextResponse.json({ ok: true, type: 'reaction' })
+    }
+    // Apagada para todos (chega como mensagem de protocolo REVOKE)
+    const revokedId = revokedIdOf(msg)
+    if (revokedId) {
+      try { await markRevoked(supabase, hookTenantId, revokedId) } catch (e) { console.error('[evo-webhook] erro apagada:', e) }
+      return NextResponse.json({ ok: true, type: 'revoked' })
     }
     const isPollUpdate = !!(msg?.pollUpdateMessage)
     if (isPollUpdate) {

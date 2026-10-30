@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useMemo } from 'react'
-import { QUICK_REACTIONS } from '@/lib/whatsapp/chat'
+import { QUICK_REACTIONS, REVOKED_TYPE, revokedText } from '@/lib/whatsapp/chat'
 
 interface Message {
   id: string
@@ -297,7 +297,8 @@ function TrashIcon() {
 function QuotedBlock({ quoted, isSent, onJump }: { quoted: any | null; isSent: boolean; onJump?: () => void }) {
   const who = !quoted ? '' : quoted.direction === 'enviado' ? 'Você' : (quoted.unlinked_sender_name || 'Contato')
   const raw = String(quoted?.message ?? '')
-  const text = quoted?.media_type === 'image' && MEDIA_PLACEHOLDER_LABELS.has(raw) ? '📷 Foto'
+  const text = quoted?.media_type === REVOKED_TYPE ? revokedText(quoted.direction)
+    : quoted?.media_type === 'image' && MEDIA_PLACEHOLDER_LABELS.has(raw) ? '📷 Foto'
     : quoted?.media_type === 'audio' ? '🎤 Áudio'
     : quoted?.media_type === 'video' && MEDIA_PLACEHOLDER_LABELS.has(raw) ? '🎥 Vídeo'
     : quoted?.media_type === 'document' ? `📄 ${quoted.media_filename ?? 'Documento'}`
@@ -371,7 +372,8 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
             const isBot = msg.triggered_automatically === true
             const quoted = msg.quoted_id ? byWid.get(msg.quoted_id) ?? null : null
             const reactions = [msg.reactions?.them, msg.reactions?.me].filter(Boolean) as string[]
-            const canReact = !!onReact && !!msg.zapi_message_id && !String(msg.id).startsWith('opt-')
+            const revoked = msg.media_type === REVOKED_TYPE
+            const canReact = !revoked && !!onReact && !!msg.zapi_message_id && !String(msg.id).startsWith('opt-')
 
             return (
               <div
@@ -400,12 +402,16 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                     <QuotedBlock quoted={quoted} isSent={isSent} onJump={quoted ? () => jumpTo(quoted.id) : undefined} />
                   )}
 
+                  {revoked ? (
+                    <span className="flex items-center gap-1 text-sm italic text-gray-500">{revokedText(msg.direction)}</span>
+                  ) : (
                   <MediaContent
                     mediaType={msg.media_type}
                     mediaUrl={msg.media_url}
                     mediaFilename={msg.media_filename}
                     message={msg.message}
                   />
+                  )}
 
                   <div className="mt-1 flex items-center justify-end gap-1">
                     <span className="text-[10px] text-gray-400">
@@ -413,7 +419,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                     </span>
                     <DeliveryTick status={msg.status === 'falhou' ? 'falhou' : (msg.delivery_status ?? msg.status)} direction={msg.direction} error={msg.error_message} />
 
-                    {onReply && !String(msg.id).startsWith('opt-') && (
+                    {onReply && !revoked && !String(msg.id).startsWith('opt-') && (
                       <button
                         onClick={() => onReply(msg)}
                         className="ml-1 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-gray-100 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100"
@@ -436,7 +442,7 @@ export function WhatsAppChatView({ messages, onDeleteMessage, onSaveNote, onRepl
                       </button>
                     )}
 
-                    {onSaveNote && (
+                    {onSaveNote && !revoked && (
                       <button
                         onClick={() => onSaveNote(msg.id)}
                         className="ml-1 rounded p-0.5 text-[11px] text-gray-400 opacity-0 transition-all duration-150 hover:bg-brand-100 hover:text-brand-700 group-hover:opacity-100 focus:opacity-100"

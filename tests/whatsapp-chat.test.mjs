@@ -63,3 +63,14 @@ test('respostas rápidas: atalho, busca e variáveis', () => {
   assert.equal(insertQuickReply('Bom dia /oi', 'Olá Maria'), 'Bom dia Olá Maria')
   assert.equal(insertQuickReply('/oi', 'Olá'), 'Olá')
 })
+
+import { revokedIdOf, evoDeletedIds, revokedText } from '../src/lib/whatsapp/chat.ts'
+test('apagada para todos: protocolo REVOKE e aviso DELETED', () => {
+  assert.equal(revokedIdOf({ protocolMessage: { type: 'REVOKE', key: { id: 'R1' } } }), 'R1')
+  assert.equal(revokedIdOf({ protocolMessage: { type: 0, key: { id: 'R2' } } }), 'R2')
+  assert.equal(revokedIdOf({ protocolMessage: { type: 14, editedMessage: {} } }), null)
+  assert.deepEqual(evoDeletedIds({ keyId: 'D1', status: 'DELETED' }), ['D1'])
+  assert.deepEqual(evoDeletedIds([{ keyId: 'X', status: 'READ' }]), [])
+  assert.equal(revokedText('enviado'), '🚫 Você apagou esta mensagem')
+  assert.equal(revokedText('recebido'), '🚫 Esta mensagem foi apagada')
+})

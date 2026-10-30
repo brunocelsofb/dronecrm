@@ -114,3 +114,32 @@ export function insertQuickReply(text: string, reply: string): string {
 }
 
 export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+
+// ─── Apagada para todos ──────────────────────────────────────────────────────
+// A mensagem continua no lugar, só com o aviso (como no WhatsApp); o conteúdo sai.
+export const REVOKED_TYPE = 'revoked'
+export const revokedText = (direction: string) => direction === 'enviado' ? '🚫 Você apagou esta mensagem' : '🚫 Esta mensagem foi apagada'
+
+// "Apagar para todos" pode chegar como mensagem de protocolo (REVOKE, tipo 0)
+export function revokedIdOf(msg: unknown): string | null {
+  const p = (msg as Record<string, any> | null)?.protocolMessage
+  if (!p) return null
+  const t = p.type
+  if (!(t === 0 || t === '0' || String(t).toUpperCase() === 'REVOKE')) return null
+  return p.key?.id ? String(p.key.id) : null
+}
+
+// …ou como aviso de situação "DELETED" no messages.update
+export function evoDeletedIds(data: unknown): string[] {
+  const list = Array.isArray(data) ? data : data ? [data] : []
+  const out: string[] = []
+  for (const d of list as Record<string, any>[]) {
+    if (!d || typeof d !== 'object') continue
+    const st = String(d.status ?? d.update?.status ?? '').toUpperCase()
+    const id = d.keyId ?? d.key?.id ?? null
+    const viaProto = revokedIdOf(d.update?.message ?? d.message)
+    if (viaProto) out.push(viaProto)
+    else if (id && st === 'DELETED') out.push(String(id))
+  }
+  return out
+}

@@ -11,18 +11,18 @@ const last8 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-8)
 // Foto do contato (WhatsApp), pedida só quando o item aparece na tela; guardada na sessão
 const picCache = new Map<string, string | null>()
 const picPending = new Map<string, Promise<string | null>>()
-function loadPic(phone: string): Promise<string | null> {
+function loadPic(phone: string, instance?: string | null): Promise<string | null> {
   const k = last8(phone)
   if (picCache.has(k)) return Promise.resolve(picCache.get(k) ?? null)
   if (!picPending.has(k)) {
-    picPending.set(k, fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}`, { credentials: 'include' })
+    picPending.set(k, fetch(`/api/whatsapp/profile-pic?phone=${encodeURIComponent(phone)}${instance ? `&instance=${encodeURIComponent(instance)}` : ''}`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : { url: null })).then(d => (typeof d?.url === 'string' ? d.url : null)).catch(() => null)
       .then(url => { picCache.set(k, url); picPending.delete(k); return url }))
   }
   return picPending.get(k)!
 }
 
-export function ContactAvatar({ phone, name, size = 40 }: { phone: string; name: string; size?: number }) {
+export function ContactAvatar({ phone, name, instance, size = 40 }: { phone: string; name: string; instance?: string | null; size?: number }) {
   const ref = useRef<HTMLSpanElement>(null)
   const [url, setUrl] = useState<string | null>(() => picCache.get(last8(phone)) ?? null)
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
@@ -33,11 +33,11 @@ export function ContactAvatar({ phone, name, size = 40 }: { phone: string; name:
     const io = new IntersectionObserver(entries => {
       if (!entries.some(e => e.isIntersecting)) return
       io.disconnect()
-      void loadPic(phone).then(u => { if (alive) setUrl(u) })
+      void loadPic(phone, instance).then(u => { if (alive) setUrl(u) })
     }, { rootMargin: '120px' })
     io.observe(el)
     return () => { alive = false; io.disconnect() }
-  }, [phone])
+  }, [phone, instance])
   const initial = (name || phone || '?').trim().charAt(0).toUpperCase()
   return (
     <span ref={ref} className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-sm font-semibold text-gray-500"
@@ -256,7 +256,7 @@ export function WhatsAppSidebar({
                 isSelected ? 'bg-brand-50/60' : ''
               }`}
             >
-              <ContactAvatar phone={item.phone} name={String(displayName ?? '')} />
+              <ContactAvatar phone={item.phone} name={String(displayName ?? '')} instance={instanceKey || null} />
               <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <p className={`text-xs font-semibold truncate min-w-0 ${isArchived ? 'text-gray-500' : 'text-gray-900'}`}>
