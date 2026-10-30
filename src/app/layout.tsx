@@ -10,6 +10,8 @@ export const metadata: Metadata = {
       'AqPkROuMdsFqF1dyK70O6tACN6O0-AZOabWeGxBLuvw',
     ],
   },
+  // Verificação do domínio no portfólio empresarial do Meta (2B) — também há o registro TXT no DNS
+  other: { 'facebook-domain-verification': '7xnmfmscosscarcg0yhntu7ek6msgm' },
 };
 
 // Celular: largura do aparelho, sem travar o zoom (acessibilidade); cor da barra do navegador
