@@ -306,8 +306,16 @@ function QuotedBlock({ quoted, isSent, onJump }: { quoted: any | null; isSent: b
   return (
     <button type="button" onClick={onJump} disabled={!quoted}
       className={`mb-1 block w-full rounded-md border-l-4 px-2 py-1 text-left ${isSent ? 'border-positive-600 bg-black/5' : 'border-brand-700 bg-gray-100'} ${quoted ? 'cursor-pointer hover:bg-black/10' : 'cursor-default'}`}>
-      <span className={`block text-[11px] font-semibold ${quoted?.direction === 'enviado' ? 'text-positive-700' : 'text-brand-700'}`}>{quoted ? who : 'Mensagem citada'}</span>
-      <span className="line-clamp-2 block text-xs text-gray-600">{quoted ? text || '…' : 'Mensagem fora do histórico carregado'}</span>
+      <span className="flex items-center gap-2">
+        <span className="min-w-0 flex-1">
+          <span className={`block text-[11px] font-semibold ${quoted?.direction === 'enviado' ? 'text-positive-700' : 'text-brand-700'}`}>{quoted ? who : 'Mensagem citada'}</span>
+          <span className="line-clamp-2 block text-xs text-gray-600">{quoted ? text || '…' : 'Mensagem fora do histórico carregado'}</span>
+        </span>
+        {/* Miniatura da foto citada, como no WhatsApp */}
+        {quoted?.media_type === 'image' && quoted.media_url && (
+          <img src={quoted.media_url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded object-cover" />
+        )}
+      </span>
     </button>
   )
 }

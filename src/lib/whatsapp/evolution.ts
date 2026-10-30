@@ -29,16 +29,54 @@ const quotedBody = (q?: EvoQuoted | null) => q?.id ? {
   },
 } : {}
 
+// A mensagem original guardada no servidor (com a miniatura da foto e o identificador
+// exato da conversa, que no Brasil às vezes não tem o 9). Melhor esforço: 4 s.
+async function findEvoMessage({ serverUrl, apiKey, instanceName }: EvoCredentials, id: string): Promise<{ key: Record<string, unknown>; message: Record<string, unknown> } | null> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 4000)
+    const res = await fetch(`${serverUrl}/chat/findMessages/${instanceName}`, {
+      method: 'POST',
+      headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ where: { key: { id } }, page: 1, offset: 5 }),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(t))
+    if (!res.ok) return null
+    const d = await res.json().catch(() => null)
+    const list: any[] = Array.isArray(d) ? d : Array.isArray(d?.messages) ? d.messages : Array.isArray(d?.messages?.records) ? d.messages.records : Array.isArray(d?.records) ? d.records : []
+    const m = list.find(x => x?.key?.id === id)
+    if (!m?.key?.remoteJid || !m?.message || typeof m.message !== 'object') return null
+    // Só o conteúdo: tira mídia em base64, se o servidor guardar
+    const { base64: _b, ...message } = m.message
+    void _b
+    return { key: { id: m.key.id, remoteJid: m.key.remoteJid, fromMe: !!m.key.fromMe, ...(m.key.participant ? { participant: m.key.participant } : {}) }, message }
+  } catch { return null }
+}
+
+// Envia com citação: primeiro com a original do servidor (miniatura etc.); se o servidor
+// recusar esse formato, repete com a citação simples, que sempre funcionou.
+async function postWithQuote(creds: EvoCredentials, path: string, body: Record<string, unknown>, q?: EvoQuoted | null): Promise<Response> {
+  const send = (extra: Record<string, unknown>) => fetch(`${creds.serverUrl}${path}/${creds.instanceName}`, {
+    method: 'POST',
+    headers: { 'apikey': creds.apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, ...extra }),
+  })
+  if (!q?.id) return send({})
+  const original = await findEvoMessage(creds, q.id)
+  if (original) {
+    const res = await send({ quoted: original })
+    if (res.ok || res.status !== 400) return res
+    console.warn('[evo] citação completa recusada; usando a simples')
+  }
+  return send(quotedBody(q))
+}
+
 export async function sendEvoTextMessage({
   serverUrl, apiKey, instanceName, phone, message, quoted
 }: EvoCredentials & { phone: string; message: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
   const cleanPhone = sanitizePhoneForEvo(phone)
   console.log('[evo] sendText phone:', phone, '→', cleanPhone)
-  const res = await fetch(`${serverUrl}/message/sendText/${instanceName}`, {
-    method: 'POST',
-    headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number: cleanPhone, text: message, ...quotedBody(quoted) }),
-  })
+  const res = await postWithQuote({ serverUrl, apiKey, instanceName }, '/message/sendText', { number: cleanPhone, text: message }, quoted)
   if (!res.ok) {
     const text = await res.text()
     console.error('[evo] sendText falhou:', res.status, text)
@@ -52,12 +90,9 @@ export async function sendEvoTextMessage({
 async function sendEvoMedia(
   { serverUrl, apiKey, instanceName }: EvoCredentials,
   body: Record<string, unknown>,
+  quoted?: EvoQuoted | null,
 ): Promise<{ key?: { id: string } }> {
-  const res = await fetch(`${serverUrl}/message/sendMedia/${instanceName}`, {
-    method: 'POST',
-    headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  const res = await postWithQuote({ serverUrl, apiKey, instanceName }, '/message/sendMedia', body, quoted)
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     console.error('[evo] sendMedia falhou:', res.status, text.slice(0, 300))
@@ -69,30 +104,26 @@ async function sendEvoMedia(
 export async function sendEvoImageMessage({
   phone, imageUrl, caption, quoted, ...creds
 }: EvoCredentials & { phone: string; imageUrl: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
-  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'image', media: imageUrl, caption: caption ?? '', ...quotedBody(quoted) })
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'image', media: imageUrl, caption: caption ?? '' }, quoted)
 }
 
 export async function sendEvoVideoMessage({
   phone, videoUrl, caption, quoted, ...creds
 }: EvoCredentials & { phone: string; videoUrl: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
-  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'video', media: videoUrl, caption: caption ?? '', ...quotedBody(quoted) })
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'video', media: videoUrl, caption: caption ?? '' }, quoted)
 }
 
 export async function sendEvoDocumentMessage({
   phone, documentUrl, fileName, caption, quoted, ...creds
 }: EvoCredentials & { phone: string; documentUrl: string; fileName: string; caption?: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
-  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'document', media: documentUrl, fileName, caption: caption ?? '', ...quotedBody(quoted) })
+  return sendEvoMedia(creds, { number: sanitizePhoneForEvo(phone), mediatype: 'document', media: documentUrl, fileName, caption: caption ?? '' }, quoted)
 }
 
 // Áudio de voz (aparece como mensagem de voz gravada, com o microfone azul)
 export async function sendEvoVoice({
   serverUrl, apiKey, instanceName, phone, audioUrl, quoted,
 }: EvoCredentials & { phone: string; audioUrl: string; quoted?: EvoQuoted | null }): Promise<{ key?: { id: string } }> {
-  const res = await fetch(`${serverUrl}/message/sendWhatsAppAudio/${instanceName}`, {
-    method: 'POST',
-    headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number: sanitizePhoneForEvo(phone), audio: audioUrl, ...quotedBody(quoted) }),
-  })
+  const res = await postWithQuote({ serverUrl, apiKey, instanceName }, '/message/sendWhatsAppAudio', { number: sanitizePhoneForEvo(phone), audio: audioUrl }, quoted)
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(`Evolution API ${res.status}: ${text.slice(0, 200)}`)

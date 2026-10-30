@@ -908,6 +908,9 @@ export function WhatsAppConversationPanel({
                 </p>
                 <p className="truncate text-xs text-gray-600">{previewOf(replyTo)}</p>
               </div>
+              {replyTo.media_type === 'image' && replyTo.media_url && (
+                <img src={replyTo.media_url} alt="" className="h-11 w-11 shrink-0 self-center rounded object-cover" />
+              )}
               <button type="button" onClick={() => setReplyTo(null)} className="px-2 text-gray-400 hover:text-gray-700" aria-label="Cancelar resposta" title="Cancelar (Esc)">✕</button>
             </div>
           )}
