@@ -6,9 +6,9 @@
 // nesse ambiente. A biblioteca (nodemailer) é bem estabelecida, mas
 // confirme com a mensagem de erro exata se a conexão falhar.
 //
-// NOTA DE SEGURANÇA: a senha SMTP fica salva em texto simples no
-// banco (mesmo padrão usado hoje para os tokens do Gmail) — dá pra
-// criptografar em repouso depois, mas não bloqueia o uso normal.
+// NOTA DE SEGURANÇA: a senha SMTP fica salva cifrada (AES-256-GCM com
+// SETTINGS_ENCRYPTION_KEY, ver lib/actions/email.ts e lib/email/send.ts);
+// só o servidor abre na hora de enviar.
 
 import nodemailer from 'nodemailer'
 

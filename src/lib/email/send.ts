@@ -4,6 +4,17 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getValidAccessToken, sendGmailMessage } from '@/lib/email/gmail'
 import { sendSmtpMessage } from '@/lib/email/smtp'
+import { decryptSecret, encryptSecret } from '@/lib/ai/tenant-key'
+
+// Senha SMTP: guardada cifrada ("v1:…"). Senha antiga em texto puro ainda funciona e
+// é cifrada na primeira vez que for usada.
+async function openSmtpPassword(db: ReturnType<typeof createAdminClient>, userId: string, stored: string): Promise<string> {
+  if (/^v1:[^:]+:[^:]+:[^:]+$/.test(stored)) {
+    try { return decryptSecret(stored) } catch { /* não era cifrada: segue como texto */ }
+  }
+  try { await db.from('email_accounts').update({ smtp_password: encryptSecret(stored) }).eq('user_id', userId) } catch { /* tenta de novo no próximo envio */ }
+  return stored
+}
 
 export type EmailAccountInfo = { connectionType: 'oauth_google' | 'smtp'; fromEmail: string }
 
@@ -50,7 +61,7 @@ export async function sendEmailForUser(
         host: account.smtp_host,
         port: account.smtp_port,
         username: account.smtp_username,
-        password: account.smtp_password,
+        password: await openSmtpPassword(supabase, userId, account.smtp_password),
         secure: account.smtp_secure,
       },
       fromEmail: account.email,

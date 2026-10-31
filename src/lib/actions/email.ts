@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmailForUser, getEmailAccountInfo, wrapEmailHtml } from '@/lib/email/send'
 import { verifySmtpConnection } from '@/lib/email/smtp'
+import { encryptSecret } from '@/lib/ai/tenant-key'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
@@ -63,7 +64,8 @@ export async function connectSmtpAccount(formData: FormData): Promise<ActionStat
       smtp_host:    host,
       smtp_port:    port,
       smtp_username: username,
-      smtp_password: password,
+      // Guardada cifrada (AES-256-GCM, SETTINGS_ENCRYPTION_KEY); só o servidor abre para enviar
+      smtp_password: encryptSecret(password),
       smtp_secure:  secure,
       connected_at: new Date().toISOString(),
     },
