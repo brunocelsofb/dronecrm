@@ -14,6 +14,8 @@ import { listProductPhotos, PHOTOS_PER_PART } from '@/lib/retail/photo-export'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+// Destino fixo do próprio sistema (só a origem vem da requisição): não é redirecionamento aberto
+// nosemgrep: rules.ajinabraham.njsscan.redirect.open_redirect.express_open_redirect
 const back = (req: NextRequest, erro: string) => NextResponse.redirect(new URL(`/settings/privacidade?erro=${encodeURIComponent(erro)}#exportar`, req.url), 303)
 
 export async function GET(req: NextRequest) {

@@ -9,5 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params
   const db = await createScopedAdmin()
   await db.from('zapsign_templates').delete().eq('id', id)
+  // Destino fixo do próprio sistema (só a origem vem da requisição): não é redirecionamento aberto
+  // nosemgrep: rules.ajinabraham.njsscan.redirect.open_redirect.express_open_redirect
   return NextResponse.redirect(new URL('/zapsign', request.url), 303)
 }

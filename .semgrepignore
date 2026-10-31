@@ -1,0 +1,4 @@
+# Ferramentas de desenvolvimento (skills do Claude Code) — não vão para o ar
+.claude/
+node_modules/
+.next/
