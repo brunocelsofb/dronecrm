@@ -68,7 +68,7 @@ export function decryptValue(v: unknown): unknown {
   const body = v.slice(json ? ENC_JSON_PREFIX.length : ENC_PREFIX.length)
   const [tenantId, iv, tag, data] = body.split(':')
   try {
-    const d = createDecipheriv('aes-256-gcm', tenantKey(tenantId), Buffer.from(iv, 'base64'))
+    const d = createDecipheriv('aes-256-gcm', tenantKey(tenantId), Buffer.from(iv, 'base64'), { authTagLength: 16 })
     d.setAAD(Buffer.from(tenantId))
     d.setAuthTag(Buffer.from(tag, 'base64'))
     const plain = Buffer.concat([d.update(Buffer.from(data, 'base64')), d.final()]).toString('utf8')
