@@ -108,7 +108,8 @@ const BOXES: Box[] = [
     title: 'Inteligência artificial', icon: BrainCircuit, description: 'Agentes Farmer e Hunter, o assistente e o SDR de IA.',
     items: [
       { href: '/settings/copiloto', label: 'Agentes IA (Farmer e Hunter)', description: 'Chave da IA, gestor e avisos de renovação', keywords: 'renovação renovar aviso ao cliente vencimento 60 30 15 dias farmer hunter chave anthropic briefing gestor e-mail interno ganho renovado implantação' },
-      { href: '/settings/assistente', label: 'Assistente Théo', description: 'Limite de gasto mensal', keywords: 'théo ia gasto custo' },
+      { href: '/ia', label: 'IA da empresa', description: 'O que o Théo e os agentes fazem na sua licença', keywords: 'ia inteligência artificial o que faz théo agentes licença plano' },
+      { href: '/settings/assistente', label: 'Assistente Théo', description: 'IA e chave da empresa (Anthropic, OpenAI ou Gemini), gasto e quem usa', keywords: 'théo ia gasto custo chave anthropic openai chatgpt gemini google modelo usuários' },
       { href: '/settings/sdr', label: 'SDR de IA', description: 'Assistente no WhatsApp que qualifica e passa leads', keywords: 'sdr ia whatsapp lead qualificação pré-vendas agenda' },
     ],
   },

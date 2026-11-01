@@ -1,113 +1,52 @@
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { isCurrentUserAdmin } from '@/lib/auth/role'
-import { ALL_TOOLS, WRITE_TOOL_NAMES } from '@/lib/ai/assistant-tools'
-import { executeReadTool } from '@/lib/ai/read-tools'
-import { checkBudgetAvailable, logAssistantUsage } from '@/lib/ai/budget'
-import { resolveTenantId } from '@/lib/tenant/context'
-import { getAnthropicKeyForTenant, NO_AI_KEY_MESSAGE } from '@/lib/ai/tenant-key'
+import { loadTheoContext, monthUsage } from '@/lib/ai/theo-server'
+import { runTheo, type TheoTurn } from '@/lib/ai/theo-engine'
+import { runTheoRead, describeAction } from '@/lib/ai/theo-tools'
+import { estimateCostUsd, theoSystemPrompt, toolByName } from '@/lib/ai/theo-catalog'
 
-// NOTA DE INCERTEZA: a API do SDK @anthropic-ai/sdk usada aqui é a que
-// eu conheço, mas nunca rodei isso de verdade neste ambiente — se algo
-// der erro (formato de resposta, nomes de campo), me avise a mensagem
-// exata do erro.
-//
-// IMPORTANTE: essa rota exige a variável de ambiente ANTHROPIC_API_KEY
-// configurada no projeto (Vercel → Settings → Environment Variables).
-// Sem isso, toda chamada aqui falha.
-
-const SYSTEM_PROMPT = `Você é o Théo, o assistente de IA do CRM da ORBIS Gestão de Tecnologia em Saúde. Você ajuda a equipe a consultar e atualizar dados do CRM usando linguagem natural em português.
-
-Regras importantes:
-- Para AÇÕES DE ESCRITA (criar empresa, adicionar nota, mover etapa), você propõe a ação através da ferramenta — ela só é executada depois que a pessoa confirmar na tela, então pode chamar a ferramenta normalmente.
-- Para encontrar o ID de um contrato ou empresa, use search_contracts ou search_companies primeiro — nunca invente um ID.
-- Se não encontrar o que foi pedido, diga isso claramente em vez de inventar informação.
-- Seja direto e conciso nas respostas em texto.
-- Hoje é ${new Date().toLocaleDateString('pt-BR')}.`
+// Théo: uma rodada de conversa com a IA que a empresa escolheu (Configurações → Théo).
+// A chave é da empresa (cada licença paga o próprio uso). Consultas rodam na hora;
+// ações voltam para a pessoa confirmar (/api/assistant/execute).
+export const maxDuration = 60
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
-
-  // Trava de custo: só admin usa o assistente, mesmo se alguém tentar
-  // chamar a rota direto (a tela já esconde o botão, mas isso sozinho
-  // não é suficiente).
-  if (!(await isCurrentUserAdmin())) {
-    return NextResponse.json({ error: 'Só administradores podem usar o Théo.' }, { status: 403 })
+  const ctx = await loadTheoContext()
+  if (!ctx) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+  if (ctx.support) return NextResponse.json({ error: 'O Théo não funciona no acesso de suporte.' }, { status: 403 })
+  if (!ctx.canUse) return NextResponse.json({ error: 'O Théo não está liberado para você. Fale com o administrador da empresa.' }, { status: 403 })
+  if (!ctx.provider || !ctx.key || !ctx.model) {
+    return NextResponse.json({ error: ctx.isAdmin
+      ? 'O Théo ainda não está ligado: escolha a IA e cadastre a chave da empresa em Configurações → Théo.'
+      : 'O Théo ainda não está ligado na empresa. Fale com o administrador.' }, { status: 400 })
+  }
+  const usage = await monthUsage(ctx.tenantId)
+  if (usage.total >= (ctx.settings.budget_usd ?? 10)) {
+    return NextResponse.json({ error: `Orçamento do mês do Théo atingido (US$ ${(ctx.settings.budget_usd ?? 10).toFixed(2)}, estimado). O administrador pode aumentar em Configurações → Théo.` }, { status: 402 })
   }
 
-  // Chave da Anthropic da empresa (Configurações → Copiloto IA)
-  const aiKey = await getAnthropicKeyForTenant(await resolveTenantId())
-  if (!aiKey.key) return NextResponse.json({ error: NO_AI_KEY_MESSAGE }, { status: 400 })
+  const body = await request.json().catch(() => ({}))
+  const history = (Array.isArray(body?.history) ? body.history : []) as TheoTurn[]
 
-  const budgetCheck = await checkBudgetAvailable()
-  if (!budgetCheck.ok) {
-    return NextResponse.json({ error: budgetCheck.message }, { status: 402 })
-  }
+  const r = await runTheo({
+    provider: ctx.provider, model: ctx.model, key: ctx.key,
+    system: theoSystemPrompt(ctx.companyName), history, tools: ctx.tools,
+    read: (name, input) => runTheoRead(name, input),
+  })
 
-  const { messages } = await request.json()
-
-  const anthropic = new Anthropic({ apiKey: aiKey.key })
-
-  const conversation = [...messages]
-  let iterations = 0
-
-  while (iterations < 6) {
-    iterations++
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      tools: ALL_TOOLS as unknown as Anthropic.Tool[],
-      messages: conversation,
+  if (r.tokensIn || r.tokensOut) {
+    const supabase = await createClient()
+    await supabase.from('assistant_usage_log').insert({
+      user_id: ctx.userId, input_tokens: r.tokensIn, output_tokens: r.tokensOut,
+      provider: ctx.provider, model: ctx.model, cost_usd: estimateCostUsd(ctx.provider, ctx.model, r.tokensIn, r.tokensOut),
     })
-
-    conversation.push({ role: 'assistant', content: response.content })
-    await logAssistantUsage(user.id, response.usage.input_tokens, response.usage.output_tokens)
-
-    if (response.stop_reason !== 'tool_use') {
-      const textBlock = response.content.find((b) => b.type === 'text')
-      return NextResponse.json({
-        messages: conversation,
-        finalText: textBlock && textBlock.type === 'text' ? textBlock.text : '',
-        pendingAction: null,
-      })
-    }
-
-    const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use')
-    const writeBlock = toolUseBlocks.find((b) => b.type === 'tool_use' && WRITE_TOOL_NAMES.has(b.name))
-
-    if (writeBlock && writeBlock.type === 'tool_use') {
-      // Ação de ESCRITA — para o loop aqui e devolve pra tela confirmar
-      // antes de executar de verdade.
-      return NextResponse.json({
-        messages: conversation,
-        finalText: null,
-        pendingAction: {
-          toolUseId: writeBlock.id,
-          toolName: writeBlock.name,
-          toolInput: writeBlock.input,
-        },
-      })
-    }
-
-    // Só ferramentas de LEITURA nesse turno — executa todas e continua
-    // o loop pra deixar a IA formular a resposta final (ou pedir mais
-    // alguma leitura).
-    const toolResults = []
-    for (const block of toolUseBlocks) {
-      if (block.type !== 'tool_use') continue
-      const result = await executeReadTool(block.name, block.input as Record<string, unknown>)
-      toolResults.push({ type: 'tool_result' as const, tool_use_id: block.id, content: result })
-    }
-    conversation.push({ role: 'user', content: toolResults })
   }
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 502 })
 
-  return NextResponse.json({ messages: conversation, finalText: 'Muitas etapas encadeadas — tente reformular seu pedido de forma mais direta.', pendingAction: null })
+  const pending = r.pending ? {
+    name: r.pending.name, input: r.pending.input,
+    label: toolByName(r.pending.name)?.label ?? r.pending.name,
+    lines: describeAction(r.pending.name, r.pending.input),
+  } : null
+  return NextResponse.json({ text: r.text, pending })
 }

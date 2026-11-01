@@ -1,0 +1,106 @@
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getCurrentProfile } from '@/lib/auth/role'
+import { resolveTenantId } from '@/lib/tenant/context'
+import { getTenantFeatures } from '@/lib/config/tenant-features'
+import { loadTheoContext, providerLabel } from '@/lib/ai/theo-server'
+import { THEO_TOOLS, type TheoTool } from '@/lib/ai/theo-catalog'
+
+export const dynamic = 'force-dynamic'
+
+// IA da empresa (só admin): o que o assistente e os agentes fazem — apenas o que a licença inclui
+type Agent = { feature: string; title: string; who: string; items: string[] }
+const AGENTS: Agent[] = [
+  { feature: 'copiloto', title: 'Resumo do dia (briefing)', who: 'Agentes IA', items: [
+    'De segunda a sexta, a IA escreve um resumo da carteira e dos novos negócios e envia no WhatsApp do gestor.',
+    'Os indicadores do resumo vêm direto dos dados do sistema; a IA não recalcula números.',
+  ] },
+  { feature: 'copiloto', title: 'Farmer — carteira de clientes', who: 'Agentes IA', items: [
+    'Lê o contrato e os aditivos em PDF e aponta cláusulas, prazos e próximos passos da renovação, citando o trecho (o admin pede; cada leitura tem custo de IA).',
+    'Avisos de renovação aos 90, 60, 30 e 15 dias e depois do vencimento: viram atividade com a mensagem pronta — nada vai ao cliente sem a pessoa revisar e enviar.',
+    'Medições pendentes, régua de renovação, confirmação de renovação, e-mails internos de implantação e relatório mensal.',
+  ] },
+  { feature: 'copiloto', title: 'Hunter — novos negócios', who: 'Agentes IA', items: [
+    'Oportunidades e propostas paradas, leads sem andamento e fechamentos do mês, na tela Agentes IA.',
+    'Toda segunda, resumo dos clientes inativos no WhatsApp do gestor e tarefas para recuperar.',
+  ] },
+  { feature: 'sdr', title: 'SDR de IA no WhatsApp', who: 'SDR de IA', items: [
+    'Atende os números ou setores escolhidos, apresenta-se como assistente virtual e faz as perguntas de qualificação.',
+    'Passa o lead ao comercial com resumo, encaminha à equipe ou descarta; sai da conversa quando alguém do time escreve.',
+    'Não fala com quem já é cliente nem inventa preço ou prazo.',
+  ] },
+  { feature: 'varejo', title: 'Estúdio e textos da loja', who: 'Varejo', items: [
+    'Estúdio: fotos de look com modelos virtuais e cenários; a vitrine marca essas fotos como “criada por IA”.',
+    'Texto do produto: descrição da peça a partir da foto.',
+    'Usa a conta de IA da responsável pela loja (Gemini ou ChatGPT).',
+  ] },
+]
+
+export default async function IaPage() {
+  const profile = await getCurrentProfile()
+  if (profile?.role !== 'admin') redirect('/')
+  const [ctx, tf] = await Promise.all([loadTheoContext(), getTenantFeatures(await resolveTenantId())])
+  if (!ctx) redirect('/login')
+  const agents = AGENTS.filter(a => tf.features.includes(a.feature))
+  const groups = [...new Set(THEO_TOOLS.map(t => t.group))]
+  const byGroup = (list: TheoTool[], g: string) => list.filter(t => t.group === g)
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-lg font-semibold text-gray-900">IA da empresa</h1>
+        <p className="text-sm text-gray-500">O que o assistente Théo e os agentes de IA fazem na licença da sua empresa. O uso de IA é pago com a conta de IA da própria empresa.</p>
+      </div>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">🤖 Théo — assistente de IA</h2>
+            <p className="mt-1 text-sm text-gray-600">Responde perguntas sobre os dados do CRM e faz ações por você. Toda ação só acontece depois de você confirmar na tela.
+              Usam o Théo os administradores e as pessoas que você liberar; cada uma só vê e faz o que o perfil dela já permite.</p>
+          </div>
+          <Link href="/settings/assistente" className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50">
+            {ctx.provider ? `Em uso: ${providerLabel(ctx.provider)}` : 'Ligar o Théo'}
+          </Link>
+        </div>
+        {ctx.planTools.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-500">Sua licença não inclui ações do Théo.</p>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {groups.filter(g => byGroup(ctx.planTools, g).length).map(g => (
+              <div key={g}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{g}</p>
+                <ul className="mt-1 space-y-1">
+                  {byGroup(ctx.planTools, g).map(t => (
+                    <li key={t.name} className="flex items-start gap-2 text-sm text-gray-800">
+                      <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${t.kind === 'acao' ? 'bg-warn-100 text-warn-700' : 'bg-brand-100 text-brand-700'}`}>{t.kind === 'acao' ? 'AÇÃO' : 'CONSULTA'}</span>
+                      {t.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {agents.length > 0 && (
+        <section className="rounded-lg border border-gray-200 bg-white p-5">
+          <h2 className="text-base font-semibold text-gray-900">Agentes de IA</h2>
+          <p className="mt-1 text-sm text-gray-600">Trabalham sozinhos, todos os dias, e deixam tudo pronto para a equipe revisar.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {agents.map(a => (
+              <div key={a.title} className="rounded-md border border-gray-100 p-4">
+                <p className="text-sm font-semibold text-gray-900">{a.title}</p>
+                <p className="text-[11px] text-gray-400">Menu: {a.who}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-gray-700">
+                  {a.items.map(i => <li key={i}>{i}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}

@@ -6,6 +6,8 @@ import { startImpersonation } from '@/lib/actions/impersonate'
 import { EditTenantRow } from './edit-tenant-row'
 import { ResetCrmCard } from '@/components/settings/reset-crm-card'
 import { PlanFeaturesMatrix, TenantFeaturesEditor } from './plan-features'
+import { TheoPlanTools } from './theo-plan-tools'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlanFeatureMatrix } from '@/lib/config/tenant-features'
 import { getEffectivePlan } from '@/lib/config/plans'
 
@@ -66,6 +68,9 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
   const { aviso, empresa, ok, falhas } = await searchParams
   const tenants = await getSuperAdminData()
   const planMatrix = await getPlanFeatureMatrix()
+  // Ações do Théo escolhidas em cada plano (null = todas as do plano)
+  const { data: theoRows } = await createAdminClient().from('plan_features').select('plan, theo_tools')
+  const theoTools = Object.fromEntries(PLANS.map(p => [p.id, ((theoRows ?? []).find(r => r.plan === p.id)?.theo_tools as string[] | null) ?? null])) as Record<(typeof PLANS)[number]['id'], string[] | null>
 
   return (
     <div className="space-y-8">
@@ -107,6 +112,8 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
       </div>
 
       <PlanFeaturesMatrix initial={planMatrix} />
+
+      <TheoPlanTools planFeatures={planMatrix} initial={theoTools} />
 
       {/* Tabela de Tenants */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">

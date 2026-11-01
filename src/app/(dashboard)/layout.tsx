@@ -9,6 +9,7 @@ import { signOut } from '@/lib/actions/auth'
 import { RefreshButton } from '@/components/layout/refresh-button'
 import { NotificationBell } from '@/components/layout/notification-bell'
 import { AssistantPanel } from '@/components/assistant/assistant-panel'
+import { canUseTheo } from '@/lib/ai/theo-catalog'
 import { RealtimeWatcher } from '@/components/layout/realtime-watcher'
 import { LogOut, Eye, ArrowLeft } from 'lucide-react'
 import { FEATURE_KEYS, FEATURES, featureForPath } from '@/lib/config/plans'
@@ -48,7 +49,7 @@ export default async function DashboardLayout({
 
   const { data: orgSettings } = await supabase
     .from('organization_settings')
-    .select('name, logo_storage_path, profile_features')
+    .select('name, logo_storage_path, profile_features, theo_settings')
     .eq('tenant_id', await resolveTenantId())
     .maybeSingle()
 
@@ -227,7 +228,8 @@ export default async function DashboardLayout({
         <PageFrame enabledFeatures={enabledFeatures} planFeatures={planFeatures}>{children}</PageFrame>
       </main>
       <RealtimeWatcher />
-      {profile?.role === 'admin' && <AssistantPanel />}
+      {/* Théo: admin sempre; outras pessoas só se o admin liberou (Configurações → Assistente Théo) */}
+      {(profile?.role === 'admin' || canUseTheo(profile?.role, user.id, (orgSettings as { theo_settings?: { allowed_user_ids?: unknown } } | null)?.theo_settings?.allowed_user_ids)) && <AssistantPanel />}
     </div>
   )
 }
