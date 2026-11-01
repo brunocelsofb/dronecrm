@@ -3,7 +3,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { createScopedAdmin, scopeAdminClient } from '@/lib/tenant/scoped-admin'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
@@ -19,11 +20,13 @@ async function adminGuard(): Promise<{ tenantId: string; userId: string } | { er
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
-  const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  const [{ data: me }, tenantId, s] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+    resolveTenantId(),
+    getSupportSession(),
+  ])
   if (me?.role !== 'admin') return { error: 'Só o administrador da empresa configura as tarefas.' }
-  const tenantId = await resolveTenantId()
   if (!tenantId) return { error: 'Empresa não identificada.' }
-  const s = await getSupportSession()
   if (s && s.tenantId === tenantId) return { error: SUPPORT_READONLY_MESSAGE }
   return { tenantId, userId: user.id }
 }
@@ -39,14 +42,17 @@ export async function saveBuiltinTask(key: string, schedule: Schedule): Promise<
   const g = await adminGuard()
   if ('error' in g) return { ok: false, error: g.error }
   if (!isAgentTaskKey(key)) return { ok: false, error: 'Tarefa desconhecida.' }
-  const tf = await getTenantFeatures(g.tenantId)
-  if (!tf.features.includes(agentTaskDef(key).feature)) return { ok: false, error: 'A licença não inclui esta tarefa.' }
   const s = cleanSchedule(schedule)
   if ('error' in s) return { ok: false, error: s.error }
 
-  const db = await createScopedAdmin(g.tenantId)
+  // A guarda já conferiu admin e suporte: cliente admin restrito à empresa, sem repetir a sessão
+  const db = scopeAdminClient(createAdminClient(), g.tenantId, g.userId)
   const fields = { enabled: s.enabled, days: s.days, paused_until: s.pausedUntil, updated_at: new Date().toISOString() }
-  const { data: row } = await db.from('agent_tasks').select('id').eq('task_key', key).maybeSingle()
+  const [tf, { data: row }] = await Promise.all([
+    getTenantFeatures(g.tenantId),
+    db.from('agent_tasks').select('id').eq('task_key', key).maybeSingle(),
+  ])
+  if (!tf.features.includes(agentTaskDef(key).feature)) return { ok: false, error: 'A licença não inclui esta tarefa.' }
   const { error } = row
     ? await db.from('agent_tasks').update(fields).eq('id', row.id as string)
     : await db.from('agent_tasks').insert({ ...fields, task_key: key, created_by: g.userId })
@@ -60,7 +66,7 @@ export async function saveBuiltinTask(key: string, schedule: Schedule): Promise<
       await db.from('organization_settings').update({ copilot_settings: { ...cs, briefing_enabled: s.enabled } }).eq('tenant_id', g.tenantId)
     }
   }
-  revalidatePath('/ia')
+  // Sem revalidatePath: a tela já mostra o novo estado (recarregar a página toda deixava cada clique lento)
   return { ok: true }
 }
 

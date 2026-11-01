@@ -1,7 +1,7 @@
 'use client'
 // Tarefas dos agentes (tela IA da empresa, só admin): liga/desliga, dias da semana,
 // pausa e tarefas escritas pelo admin.
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { WEEKDAYS, statusLabel, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS, type TaskState } from '@/lib/agent/agent-tasks'
 import { saveBuiltinTask, saveCustomTask, deleteCustomTask, testCustomTask } from '@/lib/actions/agent-tasks'
@@ -52,32 +52,40 @@ function PauseControl({ value, onChange, disabled, today }: { value: string | nu
 }
 
 function BuiltinRow({ t, today }: { t: BuiltinView; today: string }) {
+  // A tela muda na hora; salva um instante depois do último clique (vários dias de uma vez = um envio só)
   const [s, setS] = useState<TaskState>(t.state)
   const [msg, setMsg] = useState<string | null>(null)
-  const [pending, start] = useTransition()
+  const saved = useRef<TaskState>(t.state)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const seq = useRef(0)
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
   const save = (next: TaskState) => {
-    const prev = s
-    setS(next); setMsg(null)
-    start(async () => {
-      const r = await saveBuiltinTask(t.key, next)
-      if (!r.ok) { setS(prev); setMsg(r.error) } else setMsg('Salvo')
-    })
+    setS(next); setMsg('Salvando…')
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(async () => {
+      timer.current = null
+      const mine = ++seq.current
+      const r = await saveBuiltinTask(t.key, next).catch(() => ({ ok: false as const, error: 'Sem conexão. Tente de novo.' }))
+      if (mine !== seq.current || timer.current) return // houve outro clique depois: o envio mais novo vale
+      if (r.ok) { saved.current = next; setMsg('Salvo') }
+      else { setS(saved.current); setMsg(r.error) }
+    }, 600)
   }
   return (
     <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 gap-3">
-        <Switch on={s.enabled} disabled={pending} label={`Ligar ${t.title}`} onChange={v => save({ ...s, enabled: v })} />
+        <Switch on={s.enabled} label={`Ligar ${t.title}`} onChange={v => save({ ...s, enabled: v })} />
         <div className="min-w-0">
           <p className="text-sm font-medium text-gray-900">{t.title} <span className="text-[11px] font-normal text-gray-400">· {t.agent}</span></p>
           <p className="text-xs text-gray-500">{t.description} <span className="text-gray-400">Envia: {t.sends}.</span></p>
           <p className={`mt-0.5 text-[11px] font-medium ${s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'text-brand-700' : 'text-gray-400'}`}>
-            {statusLabel(s, today)}{msg && <span className={msg === 'Salvo' ? 'ml-2 text-gray-400' : 'ml-2 text-negative-600'}>{msg}</span>}
+            {statusLabel(s, today)}{msg && <span className={msg === 'Salvo' || msg === 'Salvando…' ? 'ml-2 text-gray-400' : 'ml-2 text-negative-600'}>{msg}</span>}
           </p>
         </div>
       </div>
       <div className={`flex flex-col gap-1.5 sm:items-end ${s.enabled ? '' : 'opacity-50'}`}>
-        <DayPicker days={s.days} disabled={pending || !s.enabled} onChange={d => save({ ...s, days: d })} />
-        <PauseControl value={s.pausedUntil} today={today} disabled={pending || !s.enabled} onChange={v => save({ ...s, pausedUntil: v })} />
+        <DayPicker days={s.days} disabled={!s.enabled} onChange={d => save({ ...s, days: d })} />
+        <PauseControl value={s.pausedUntil} today={today} disabled={!s.enabled} onChange={v => save({ ...s, pausedUntil: v })} />
       </div>
     </li>
   )
