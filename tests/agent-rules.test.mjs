@@ -50,3 +50,23 @@ test('sugeridas: só critérios da licença, desligadas e válidas', () => {
   assert.ok(suggestedRules(['leads']).every(r => criterionDef(r.criterion).feature === 'leads'))
   assert.equal(renderRuleText('{{nome}} há {{dias}} · {{x}}', { nome: 'ACME', dias: '3' }), 'ACME há 3 · {{x}}')
 })
+
+import { THEMES, themesFor, isThemeKey } from '../src/lib/rules/central.ts'
+import { AGENT_TASKS } from '../src/lib/agent/agent-tasks.ts'
+import { resolveSlaDays, validateSlaDays, PRIORITY_SLA_DAYS } from '../src/lib/utils/gut-matrix.ts'
+
+test('central: cada tarefa e cada critério estão em exatamente um tema', () => {
+  for (const t of AGENT_TASKS) assert.equal(THEMES.filter(th => th.tasks.includes(t.key)).length, 1, t.key)
+  for (const c of RULE_CRITERIA) assert.equal(THEMES.filter(th => th.criteria.includes(c.key)).length, 1, c.key)
+  assert.ok(isThemeKey('renovacao') && !isThemeKey('x'))
+  assert.deepEqual(themesFor(['leads']).map(t => t.key), ['leads'])
+  assert.ok(themesFor(['varejo']).length === 0)
+})
+
+test('prazo do chamado por prioridade: padrão, empresa e validação', () => {
+  assert.deepEqual(resolveSlaDays(null), PRIORITY_SLA_DAYS)
+  assert.equal(resolveSlaDays({ critica: 4, muito_critica: 0 }).critica, 4)
+  assert.equal(resolveSlaDays({ muito_critica: 0 }).muito_critica, 1)
+  assert.ok('error' in validateSlaDays({ muito_critica: 1, critica: 2, pouco_critica: 3 }))
+  assert.deepEqual(validateSlaDays({ muito_critica: '1', critica: 2, pouco_critica: 5, nao_critica: 10 }), { days: { muito_critica: 1, critica: 2, pouco_critica: 5, nao_critica: 10 } })
+})

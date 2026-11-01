@@ -1,5 +1,5 @@
 // ─── Regras dos agentes: catálogo de critérios e ações (regras puras) ────────
-// Cada empresa monta as próprias regras na tela Regras automáticas:
+// Cada empresa monta as próprias regras na Central de regras:
 //   QUANDO [critério com número] E [condições] → FAÇA [ações] PARA [quem], nos dias marcados.
 // Só o que está aqui o sistema sabe executar (nada de texto livre interpretado por IA):
 // a frase da tela descreve exatamente o que a regra faz.

@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { PRIORITY_SLA_DAYS, type PriorityTier } from '@/lib/utils/gut-matrix'
+import { type PriorityTier } from '@/lib/utils/gut-matrix'
 import { departmentLabel } from '@/lib/constants/departments'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { getTicketSlaDays } from '@/lib/tickets/sla'
 
 export type ActionState = { error?: string }
 
@@ -77,7 +78,9 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
     }
   }
 
-  const slaDays = PRIORITY_SLA_DAYS[priority] ?? PRIORITY_SLA_DAYS.pouco_critica
+  // Prazo da empresa por prioridade (Central de regras → Atendimento)
+  const sla = await getTicketSlaDays(tenantId)
+  const slaDays = sla[priority] ?? sla.pouco_critica
   const slaDueAt = new Date(Date.now() + slaDays * 86_400_000).toISOString()
 
   // Tenta algumas vezes se o número colidir (ex: sequência ficou "pra
@@ -225,7 +228,9 @@ export async function updateTicketStatus(ticketId: string, status: string): Prom
 
 export async function updateTicketPriority(ticketId: string, priority: string): Promise<ActionState> {
   const supabase = await createClient()
-  const slaDays = PRIORITY_SLA_DAYS[priority as PriorityTier] ?? PRIORITY_SLA_DAYS.pouco_critica
+  const { resolveTenantId } = await import('@/lib/tenant/context')
+  const sla = await getTicketSlaDays(await resolveTenantId())
+  const slaDays = sla[priority as PriorityTier] ?? sla.pouco_critica
   const slaDueAt = new Date(Date.now() + slaDays * 86_400_000).toISOString()
 
   const { error } = await supabase
@@ -448,4 +453,10 @@ export async function searchContractsForTicket(query: string): Promise<{ id: str
     .or(`client_name.ilike.%${query}%,process_number.ilike.%${query}%`)
     .limit(8)
   return data ?? []
+}
+
+// Prazos por prioridade da empresa (para mostrar nas telas de chamado)
+export async function getMyTicketSlaDays(): Promise<Record<PriorityTier, number>> {
+  const { resolveTenantId } = await import('@/lib/tenant/context')
+  return getTicketSlaDays(await resolveTenantId().catch(() => null))
 }

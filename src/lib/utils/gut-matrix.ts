@@ -19,6 +19,30 @@ export const PRIORITY_SLA_DAYS: Record<PriorityTier, number> = {
   muito_critica: 1,
 }
 
+export const PRIORITY_ORDER: PriorityTier[] = ['muito_critica', 'critica', 'pouco_critica', 'nao_critica']
+
+// Prazo por prioridade da empresa (organization_settings.ticket_sla_days); inválido/vazio = padrão
+export function resolveSlaDays(raw: unknown): Record<PriorityTier, number> {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const out = { ...PRIORITY_SLA_DAYS }
+  for (const k of PRIORITY_ORDER) {
+    const n = Number(r[k])
+    if (Number.isInteger(n) && n >= 1 && n <= 90) out[k] = n
+  }
+  return out
+}
+
+export function validateSlaDays(raw: unknown): { days: Record<PriorityTier, number> } | { error: string } {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const out = {} as Record<PriorityTier, number>
+  for (const k of PRIORITY_ORDER) {
+    const n = Number(r[k])
+    if (!Number.isInteger(n) || n < 1 || n > 90) return { error: `${PRIORITY_LABELS[k]}: use de 1 a 90 dias.` }
+    out[k] = n
+  }
+  return { days: out }
+}
+
 // Categorias do chamado — só pra classificar/filtrar, sem cálculo por
 // trás.
 export const GRAVITY_CATEGORIES: { value: string; label: string }[] = [

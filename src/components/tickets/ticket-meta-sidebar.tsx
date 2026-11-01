@@ -14,12 +14,9 @@ const STATUS_OPTIONS = [
   { value: 'resolvido', label: 'Resolvido' },
   { value: 'fechado', label: 'Fechado' },
 ]
-const PRIORITY_OPTIONS = [
-  { value: 'nao_critica', label: `${PRIORITY_LABELS.nao_critica} (${PRIORITY_SLA_DAYS.nao_critica}d)` },
-  { value: 'pouco_critica', label: `${PRIORITY_LABELS.pouco_critica} (${PRIORITY_SLA_DAYS.pouco_critica}d)` },
-  { value: 'critica', label: `${PRIORITY_LABELS.critica} (${PRIORITY_SLA_DAYS.critica}d)` },
-  { value: 'muito_critica', label: `${PRIORITY_LABELS.muito_critica} (${PRIORITY_SLA_DAYS.muito_critica}d)` },
-]
+// Prazo de cada prioridade: o da empresa (Central de regras → Atendimento), senão o padrão
+const priorityOptions = (sla: Record<string, number> = PRIORITY_SLA_DAYS) => (['nao_critica', 'pouco_critica', 'critica', 'muito_critica'] as const)
+  .map(k => ({ value: k, label: `${PRIORITY_LABELS[k]} (${sla[k] ?? PRIORITY_SLA_DAYS[k]}d)` }))
 
 // NOTA: cada ação tem seu próprio estado de "carregando" — não
 // compartilha com o formulário de resposta (bug antigo já corrigido).
@@ -30,6 +27,7 @@ export function TicketMetaSidebar({
   currentAssignee,
   users,
   isAdmin,
+  slaDays,
 }: {
   ticketId: string
   currentStatus: string
@@ -37,6 +35,7 @@ export function TicketMetaSidebar({
   currentAssignee: string | null
   users: UserOption[]
   isAdmin: boolean
+  slaDays?: Record<string, number>
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -115,7 +114,7 @@ export function TicketMetaSidebar({
         <div>
           <label className="block text-[10px] text-gray-500">Prioridade</label>
           <select value={currentPriority} onChange={(e) => handlePriorityChange(e.target.value)} disabled={priorityBusy} className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none">
-            {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {priorityOptions(slaDays).map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
         <div>

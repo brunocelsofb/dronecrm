@@ -6,12 +6,8 @@ import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { loadTheoContext, providerLabel } from '@/lib/ai/theo-server'
 import { THEO_TOOLS, type TheoTool } from '@/lib/ai/theo-catalog'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
-import { AGENT_TASKS, readOptions, taskState, todayBrIso, type AgentTaskKey, type TaskRow } from '@/lib/agent/agent-tasks'
-import { getManagerChannel } from '@/lib/agent/briefing-core'
-import { resolveInternalSettings } from '@/lib/agent/internal-settings'
-import { toCustomTask, readTaskParams, PARAM_COLUMNS, type ParamSource } from '@/lib/agent/agent-tasks-server'
+import { AGENT_TASKS } from '@/lib/agent/agent-tasks'
 import { resolveRenewalLevels } from '@/lib/agent/renewal-templates'
-import { AgentTasksPanel, type BuiltinView, type CustomView } from '@/components/ia/agent-tasks-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +20,7 @@ const AGENTS: Agent[] = [
   ] },
   { feature: 'copiloto', title: 'Farmer — carteira de clientes', who: 'Agentes IA', href: '/briefing', items: [
     'Lê o contrato e os aditivos em PDF e aponta cláusulas, prazos e próximos passos da renovação, citando o trecho (o admin pede; cada leitura tem custo de IA).',
-    'Avisos de renovação aos {marcos} dias e depois do vencimento (prazos editáveis em Tarefas agendadas): viram atividade com a mensagem pronta — nada vai ao cliente sem a pessoa revisar e enviar.',
+    'Avisos de renovação aos {marcos} dias e depois do vencimento (prazos editáveis na Central de regras → Renovação): viram atividade com a mensagem pronta — nada vai ao cliente sem a pessoa revisar e enviar.',
     'Medições pendentes, régua de renovação, confirmação de renovação, e-mails internos de implantação e relatório mensal.',
   ] },
   { feature: 'copiloto', title: 'Hunter — novos negócios', who: 'Agentes IA', href: '/briefing', items: [
@@ -49,35 +45,13 @@ export default async function IaPage() {
   const [ctx, tf] = await Promise.all([loadTheoContext(), getTenantFeatures(await resolveTenantId())])
   if (!ctx) redirect('/login')
 
-  // Tarefas agendadas: as do sistema que a licença inclui + as escritas pelo admin
+  // Prazos atuais dos avisos (para a descrição); critérios e ações ficam na Central de regras
   const db = await createScopedAdmin(ctx.tenantId)
-  const [{ data: taskRows }, { data: orgParams }, { data: people }, manager] = await Promise.all([
-    db.from('agent_tasks').select('*').order('created_at'),
-    db.from('organization_settings').select(PARAM_COLUMNS).maybeSingle(),
-    db.from('profiles').select('id, full_name').order('full_name'),
-    getManagerChannel(ctx.tenantId).catch(() => ({ number: null, email: null })),
-  ])
-  const team = ((people ?? []) as { id: string; full_name: string | null }[])
-    .filter(p => p.full_name).map(p => ({ id: p.id, name: p.full_name as string }))
-  const implOwner = resolveInternalSettings((orgParams as ParamSource | null)?.copilot_settings ?? {}).implReportOwnerId ?? ''
-  const paramValues = readTaskParams(orgParams as ParamSource | null)
-  const L = resolveRenewalLevels(((orgParams as ParamSource | null)?.copilot_settings as { renewal_levels?: unknown } | undefined)?.renewal_levels)
+  const { data: org } = await db.from('organization_settings').select('copilot_settings').maybeSingle()
+  const L = resolveRenewalLevels(((org as { copilot_settings?: { renewal_levels?: unknown } } | null)?.copilot_settings)?.renewal_levels)
   const marcos = `${L.prep}, ${L.a1}, ${L.a2} e ${L.a3}`
   const agents = AGENTS.filter(a => tf.features.includes(a.feature)).map(a => ({ ...a, items: a.items.map(i => i.replace('{marcos}', marcos)) }))
-  const rows = (taskRows ?? []) as Record<string, unknown>[]
-  const builtins: BuiltinView[] = AGENT_TASKS.filter(t => tf.features.includes(t.feature)).map(t => ({
-    key: t.key, agent: t.agent, title: t.title, description: t.description, sends: t.sends,
-    params: t.params ?? [], values: paramValues[t.key] ?? {},
-    state: taskState(t.key as AgentTaskKey, (rows.find(r => r.task_key === t.key) ?? null) as TaskRow | null),
-    recipients: t.recipients ?? [], assigneeDefault: t.assigneeDefault ?? '', recipientsNote: t.recipientsNote ?? '', monthly: !!t.monthly,
-    options: t.key === 'impl_report'
-      ? { assignee: implOwner || null }
-      : readOptions(rows.find(r => r.task_key === t.key)?.options),
-  }))
-  const customs: CustomView[] = rows.filter(r => !r.task_key).map(r => {
-    const c = toCustomTask(r)
-    return { id: c.id, title: c.title, prompt: c.prompt, recipientPhone: c.recipient_phone ?? '', monthDay: c.month_day, enabled: c.enabled, days: c.days, pausedUntil: c.paused_until, lastRunAt: c.last_run_at, lastStatus: c.last_status }
-  })
+  const builtins = AGENT_TASKS.filter(t => tf.features.includes(t.feature))
   const customAllowed = ctx.planTools.some(t => t.kind === 'consulta')
   const groups = [...new Set(THEO_TOOLS.map(t => t.group))]
   const byGroup = (list: TheoTool[], g: string) => list.filter(t => t.group === g)
@@ -140,11 +114,12 @@ export default async function IaPage() {
       )}
 
       {(builtins.length > 0 || customAllowed) && (
-        <p className="-mb-3 text-sm text-gray-600">Quer criar critérios próprios (ex.: oportunidade parada há X dias → tarefa para o responsável)? Use <Link href="/regras" className="font-medium text-brand-700 hover:underline">Regras automáticas</Link>.</p>
-      )}
-      {(builtins.length > 0 || customAllowed) && (
-        <AgentTasksPanel builtins={builtins} customs={customs} today={todayBrIso()} customAllowed={customAllowed} theoOn={!!ctx.provider}
-          team={team} managerPhone={manager.number ?? ''} managerEmail={manager.email ?? ''} />
+        <section className="rounded-lg border border-brand-100 bg-brand-100/40 p-5">
+          <h2 className="text-base font-semibold text-gray-900">Critérios, prazos e ações dos agentes</h2>
+          <p className="mt-1 text-sm text-gray-600">Ficam todos na <b>Central de regras</b>, por assunto (renovação, funil, leads, carteira, atendimento e envios da IA):
+            ligar e desligar, dias, prazos, quem faz, quem recebe, testar e criar regras próprias.</p>
+          <Link href="/regras" className="mt-3 inline-block rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800">Abrir a Central de regras →</Link>
+        </section>
       )}
     </div>
   )

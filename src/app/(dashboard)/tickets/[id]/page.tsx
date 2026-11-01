@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { isCurrentUserAdmin } from '@/lib/auth/role'
 import { TicketMetaSidebar } from '@/components/tickets/ticket-meta-sidebar'
+import { getMyTicketSlaDays } from '@/lib/actions/tickets'
 import { TicketReplyForm } from '@/components/tickets/ticket-reply-form'
 import { getSlaStatus, SLA_LABELS, SLA_STYLES } from '@/lib/utils/sla'
 import { CopyLinkButton } from '@/components/nps/copy-link-button'
@@ -92,6 +93,7 @@ export default async function TicketDetailPage({
         {/* Coluna lateral: contexto e ações */}
         <div className="space-y-4">
           <TicketMetaSidebar
+            slaDays={await getMyTicketSlaDays()}
             ticketId={ticket.id}
             currentStatus={ticket.status}
             currentPriority={ticket.priority}

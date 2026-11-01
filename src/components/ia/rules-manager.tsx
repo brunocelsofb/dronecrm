@@ -17,7 +17,7 @@ export type RuleView = {
   lastRunAt: string | null; lastStatus: string | null
 }
 type Opt = { id: string; name: string }
-type Ctx = { features: string[]; pipelines: Opt[]; stages: (Opt & { pipeline_id: string })[]; team: Opt[]; managerPhone: string }
+type Ctx = { features: string[]; only?: string[]; pipelines: Opt[]; stages: (Opt & { pipeline_id: string })[]; team: Opt[]; managerPhone: string }
 
 const AGENT_LABEL: Record<RuleAgent, string> = { hunter: 'Hunter — novos negócios', farmer: 'Farmer — carteira de clientes' }
 const input = 'mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900'
@@ -55,8 +55,8 @@ function PreviewResult({ p }: { p: RulePreview }) {
   )
 }
 
-const EMPTY = (features: string[]): Omit<RuleView, 'id' | 'lastRunAt' | 'lastStatus'> => {
-  const c = RULE_CRITERIA.find(x => features.includes(x.feature)) ?? RULE_CRITERIA[0]
+const EMPTY = (features: string[], only?: string[]): Omit<RuleView, 'id' | 'lastRunAt' | 'lastStatus'> => {
+  const c = RULE_CRITERIA.find(x => features.includes(x.feature) && (!only || only.includes(x.key))) ?? RULE_CRITERIA[0]
   return { agent: c.agent, name: '', criterion: c.key, threshold: c.def, conditions: {}, days: [1, 2, 3, 4, 5], enabled: true,
     actions: { task: { enabled: true, title: 'Verificar — {{nome}}', text: '', due_days: 1, assignee: 'owner' } } }
 }
@@ -110,7 +110,7 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
           <select value={r.criterion} onChange={e => pickCriterion(e.target.value)} className={input}>
             {(['hunter', 'farmer'] as const).map(ag => (
               <optgroup key={ag} label={AGENT_LABEL[ag]}>
-                {RULE_CRITERIA.filter(c => c.agent === ag && ctx.features.includes(c.feature)).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                {RULE_CRITERIA.filter(c => c.agent === ag && ctx.features.includes(c.feature) && (!ctx.only || ctx.only.includes(c.key))).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
               </optgroup>
             ))}
           </select>
@@ -270,30 +270,33 @@ function RuleCard({ r, ctx, onEdit }: { r: RuleView; ctx: Ctx; onEdit: () => voi
   )
 }
 
-export function RulesManager({ rules, ctx }: { rules: RuleView[]; ctx: Ctx }) {
+// criteria: só os critérios deste tema da Central de regras (vazio = todos)
+export function RulesManager({ rules: allRules, ctx: baseCtx, criteria }: { rules: RuleView[]; ctx: Ctx; criteria?: string[] }) {
+  const ctx: Ctx = criteria?.length ? { ...baseCtx, only: criteria } : baseCtx
+  const rules = criteria?.length ? allRules.filter(r => criteria.includes(r.criterion)) : allRules
   const router = useRouter()
   const [editing, setEditing] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [pending, start] = useTransition()
   const suggest = () => start(async () => { setErr(null); const r = await createSuggestedRules(); if (r.ok) router.refresh(); else setErr(r.error) })
-  const available = RULE_CRITERIA.some(c => ctx.features.includes(c.feature))
-  if (!available) return <p className="text-sm text-gray-500">A licença não inclui critérios para regras dos agentes.</p>
+  const available = RULE_CRITERIA.some(c => ctx.features.includes(c.feature) && (!ctx.only || ctx.only.includes(c.key)))
+  if (!available) return null
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {editing !== 'new' && <button type="button" onClick={() => setEditing('new')} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800">+ Nova regra</button>}
-        <button type="button" onClick={suggest} disabled={pending} className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+        {editing !== 'new' && <button type="button" onClick={() => setEditing('new')} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800">+ Nova regra do agente</button>}
+        {!criteria?.length && <button type="button" onClick={suggest} disabled={pending} className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50">
           {pending ? 'Criando…' : 'Criar regras sugeridas'}
-        </button>
+        </button>}
         {err && <span className="self-center text-xs text-negative-600">{err}</span>}
       </div>
-      {editing === 'new' && <div className="mt-3"><RuleEditor initial={EMPTY(ctx.features)} id={null} ctx={ctx} onDone={() => setEditing(null)} /></div>}
+      {editing === 'new' && <div className="mt-3"><RuleEditor initial={EMPTY(ctx.features, ctx.only)} id={null} ctx={ctx} onDone={() => setEditing(null)} /></div>}
       {(['hunter', 'farmer'] as const).map(ag => {
         const list = rules.filter(r => r.agent === ag)
         if (!list.length) return null
         return (
           <div key={ag} className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{AGENT_LABEL[ag]}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">🤖 Agente {AGENT_LABEL[ag]}</p>
             <ul className="divide-y divide-gray-100">
               {list.map(r => editing === r.id
                 ? <li key={r.id} className="py-3"><RuleEditor initial={r} id={r.id} ctx={ctx} onDone={() => setEditing(null)} /></li>
@@ -302,7 +305,7 @@ export function RulesManager({ rules, ctx }: { rules: RuleView[]; ctx: Ctx }) {
           </div>
         )
       })}
-      {!rules.length && editing !== 'new' && <p className="mt-3 text-xs text-gray-400">Nenhuma regra ainda. Crie as sugeridas (vêm desligadas, para você revisar) ou monte uma nova.</p>}
+      {!rules.length && editing !== 'new' && <p className="mt-3 text-xs text-gray-400">Nenhuma regra própria neste tema ainda.</p>}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 'use server'
-// ─── Regras dos agentes (tela Regras automáticas, só o admin) ─────────────────
+// ─── Regras dos agentes (Central de regras, só o admin) ─────────────────
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'

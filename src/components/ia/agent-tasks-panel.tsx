@@ -366,27 +366,30 @@ function CustomForm({ initial, today, onDone }: { initial: Omit<CustomView, 'id'
   )
 }
 
-export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoOn, team, managerPhone, managerEmail }: {
+// bare: sem a moldura e o título (dentro de um tema da Central de regras)
+export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoOn, team, managerPhone, managerEmail, bare }: {
   builtins: BuiltinView[]; customs: CustomView[]; today: string; customAllowed: boolean; theoOn: boolean
-  team: Person[]; managerPhone: string; managerEmail: string
+  team: Person[]; managerPhone: string; managerEmail: string; bare?: boolean
 }) {
   const ctx: Ctx = { team, managerPhone, managerEmail }
   const [editing, setEditing] = useState<string | null>(null) // id ou 'new'
   const groups = [...new Set(builtins.map(b => b.agent))]
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-gray-900">Tarefas agendadas</h2>
-      <p className="mt-1 text-sm text-gray-600">Ligue ou desligue cada tarefa, escolha os dias da semana ou pause até uma data. Os horários continuam os de sempre.</p>
+    <section className={bare ? '' : 'rounded-lg border border-gray-200 bg-white p-5'}>
+      {!bare && <>
+        <h2 className="text-base font-semibold text-gray-900">Tarefas agendadas</h2>
+        <p className="mt-1 text-sm text-gray-600">Ligue ou desligue cada tarefa, escolha os dias da semana ou pause até uma data. Os horários continuam os de sempre.</p>
+      </>}
 
       {builtins.length > 0 && groups.map(g => (
-        <div key={g} className="mt-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{g}</p>
+        <div key={g} className={bare ? '' : 'mt-4'}>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">🤖 {g}</p>
           <ul className="divide-y divide-gray-100">{builtins.filter(b => b.agent === g).map(t => <BuiltinRow key={t.key} t={t} today={today} ctx={ctx} />)}</ul>
         </div>
       ))}
 
       {customAllowed && (
-        <div className="mt-6 border-t border-gray-100 pt-4">
+        <div className={bare ? 'mt-2' : 'mt-6 border-t border-gray-100 pt-4'}>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Tarefas escritas por você</p>

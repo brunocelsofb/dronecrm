@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createTicket } from '@/lib/actions/tickets'
+import { createTicket, getMyTicketSlaDays } from '@/lib/actions/tickets'
 import { ContractSearchSelect } from '@/components/tickets/contract-search-select'
 import { PRIORITY_LABELS, PRIORITY_SLA_DAYS, GRAVITY_CATEGORIES } from '@/lib/utils/gut-matrix'
 
@@ -14,6 +14,9 @@ export default function NewTicketPage() {
   const prefilledClientName = searchParams.get('client_name')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Prazos da empresa por prioridade (Central de regras → Atendimento)
+  const [sla, setSla] = useState<Record<string, number>>(PRIORITY_SLA_DAYS)
+  useEffect(() => { getMyTicketSlaDays().then(setSla).catch(() => {}) }, [])
 
   async function handleSubmit(formData: FormData) {
     setBusy(true)
@@ -76,10 +79,10 @@ export default function NewTicketPage() {
         <div>
           <label className="block text-xs font-medium text-gray-600">Prioridade *</label>
           <select name="priority" required defaultValue="pouco_critica" className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none">
-            <option value="nao_critica">{PRIORITY_LABELS.nao_critica} ({PRIORITY_SLA_DAYS.nao_critica} dias)</option>
-            <option value="pouco_critica">{PRIORITY_LABELS.pouco_critica} ({PRIORITY_SLA_DAYS.pouco_critica} dias)</option>
-            <option value="critica">{PRIORITY_LABELS.critica} ({PRIORITY_SLA_DAYS.critica} dias)</option>
-            <option value="muito_critica">{PRIORITY_LABELS.muito_critica} ({PRIORITY_SLA_DAYS.muito_critica} dia)</option>
+            <option value="nao_critica">{PRIORITY_LABELS.nao_critica} ({sla.nao_critica} {sla.nao_critica === 1 ? 'dia' : 'dias'})</option>
+            <option value="pouco_critica">{PRIORITY_LABELS.pouco_critica} ({sla.pouco_critica} {sla.pouco_critica === 1 ? 'dia' : 'dias'})</option>
+            <option value="critica">{PRIORITY_LABELS.critica} ({sla.critica} {sla.critica === 1 ? 'dia' : 'dias'})</option>
+            <option value="muito_critica">{PRIORITY_LABELS.muito_critica} ({sla.muito_critica} {sla.muito_critica === 1 ? 'dia' : 'dias'})</option>
           </select>
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}
