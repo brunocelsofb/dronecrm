@@ -1,27 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
-import { AutomationsManager } from '@/components/automations/automations-manager'
+import { redirect } from 'next/navigation'
 
-export default async function AutomationsPage() {
-  const supabase = await createClient()
-
-  const [{ data: rules }, { data: pipelines }, { data: stages }, { data: templates }, { data: users }, { data: tags }] = await Promise.all([
-    supabase.from('automation_rules').select('*').order('created_at', { ascending: false }),
-    supabase.from('pipelines').select('id, name, type, won_label, lost_label').order('name'),
-    supabase.from('stages').select('id, name, pipeline_id').order('order_index'),
-    supabase.from('email_templates').select('id, name, context, channel').order('name'),
-    supabase.from('profiles').select('id, full_name').order('full_name'),
-    supabase.from('tags').select('id, name, color').order('name'),
-  ])
-
-  return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-gray-900">Automações</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          Configure regras do tipo &quot;quando X acontecer, faça Y&quot; — sem precisar de ninguém fazendo isso na mão.
-        </p>
-      </div>
-      <AutomationsManager initialRules={rules ?? []} pipelines={pipelines ?? []} stages={stages ?? []} templates={templates ?? []} users={users ?? []} tags={tags ?? []} />
-    </div>
-  )
+// Automações agora ficam na tela Regras automáticas (junto das regras dos agentes)
+export default function AutomationsPage() {
+  redirect('/regras#funil')
 }

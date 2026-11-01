@@ -67,7 +67,7 @@ export async function createAutomationRule(formData: FormData): Promise<ActionSt
   })
 
   if (error) return { error: error.message }
-  revalidatePath('/automations')
+  revalidatePath('/regras')
   return {}
 }
 
@@ -76,7 +76,7 @@ export async function toggleAutomationRule(ruleId: string, isActive: boolean): P
   const supabase = await createClient()
   const { error } = await supabase.from('automation_rules').update({ is_active: isActive }).eq('id', ruleId)
   if (error) return { error: error.message }
-  revalidatePath('/automations')
+  revalidatePath('/regras')
   return {}
 }
 
@@ -143,7 +143,7 @@ export async function executeAutomationAction(
 export async function deleteAutomationRule(ruleId: string) {
   const supabase = (await createScopedAdmin())
   await supabase.from('automation_rules').delete().eq('id', ruleId)
-  revalidatePath('/automations')
+  revalidatePath('/regras')
 }
 
 // ------------------------------------------------------------

@@ -9,6 +9,7 @@ export type PreviewItem =
   | { kind: 'atividade'; title: string; content: string; assignedTo: string | null; due: string | null; skipped?: string }
   | { kind: 'whatsapp'; to: string | null; text: string }
   | { kind: 'email'; to: string; subject: string; html: string }
+  | { kind: 'aviso'; to: string | null; text: string }
   | { kind: 'nota'; text: string }
 
 type Store = { items: PreviewItem[] }

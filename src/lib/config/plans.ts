@@ -22,7 +22,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'dashboard',           label: 'Dashboard',            paths: ['/'] },
   { key: 'painel',              label: 'Painel gerencial',     paths: ['/painel'] },
   { key: 'financeiro',          label: 'Financeiro',           paths: ['/financeiro'] },
-  { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines', '/settings/campos-oportunidade', '/custom-fields', '/settings/layout-abas', '/settings/plano-de-acao', '/settings/motivos-perda', '/settings/numeracao', '/tags', '/automations', '/email-templates', '/settings/email'] },
+  { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines', '/settings/campos-oportunidade', '/custom-fields', '/settings/layout-abas', '/settings/plano-de-acao', '/settings/motivos-perda', '/settings/numeracao', '/tags', '/automations', '/regras', '/email-templates', '/settings/email'] },
   { key: 'leads',               label: 'Leads',                paths: ['/leads', '/settings/lead-scoring', '/settings/lead-routing'] },
   { key: 'marketing',           label: 'Marketing',            paths: ['/marketing'] },
   { key: 'sdr',                 label: 'SDR de IA',            paths: ['/sdr', '/settings/sdr'] },

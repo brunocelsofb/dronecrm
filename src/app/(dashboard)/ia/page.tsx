@@ -140,6 +140,9 @@ export default async function IaPage() {
       )}
 
       {(builtins.length > 0 || customAllowed) && (
+        <p className="-mb-3 text-sm text-gray-600">Quer criar critérios próprios (ex.: oportunidade parada há X dias → tarefa para o responsável)? Use <Link href="/regras" className="font-medium text-brand-700 hover:underline">Regras automáticas</Link>.</p>
+      )}
+      {(builtins.length > 0 || customAllowed) && (
         <AgentTasksPanel builtins={builtins} customs={customs} today={todayBrIso()} customAllowed={customAllowed} theoOn={!!ctx.provider}
           team={team} managerPhone={manager.number ?? ''} managerEmail={manager.email ?? ''} />
       )}

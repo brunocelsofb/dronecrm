@@ -57,7 +57,7 @@ const BOXES: Box[] = [
       { href: '/settings/motivos-perda', label: 'Motivos de perda', description: 'Lista exigida ao marcar perda', keywords: 'perdido rescisão' },
       { href: '/settings/numeracao', label: 'Numeração de oportunidades', description: 'Prefixo e sequência automática' },
       { href: '/tags', label: 'Tags', description: 'Etiquetas para classificar' },
-      { href: '/automations', label: 'Automações', description: 'Regras por gatilho ou tempo', keywords: 'gatilho regra automático' },
+      { href: '/regras', label: 'Regras automáticas', description: 'Regras dos agentes e automações do funil', keywords: 'gatilho regra automático automações critério agente' },
     ],
   },
   {

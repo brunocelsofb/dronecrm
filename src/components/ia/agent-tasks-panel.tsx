@@ -16,7 +16,7 @@ export type CustomView = TaskState & { id: string; title: string; prompt: string
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
-function Switch({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
+export function Switch({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-brand-700' : 'bg-gray-300'}`}>
@@ -25,7 +25,7 @@ function Switch({ on, onChange, disabled, label }: { on: boolean; onChange: (v: 
   )
 }
 
-function DayPicker({ days, onChange, disabled }: { days: number[]; onChange: (d: number[]) => void; disabled?: boolean }) {
+export function DayPicker({ days, onChange, disabled }: { days: number[]; onChange: (d: number[]) => void; disabled?: boolean }) {
   return (
     <div className="flex flex-wrap gap-1" role="group" aria-label="Dias da semana">
       {DAY_ORDER.map(d => {

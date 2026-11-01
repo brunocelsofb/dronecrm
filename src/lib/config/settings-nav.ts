@@ -1,7 +1,7 @@
 // Telas que se abrem a partir de Configurações: todas mostram "← Configurações"
 // no topo (PageFrame). Prefixos de endereço; /settings sozinho não entra.
 const SETTINGS_CHILD_PREFIXES = [
-  '/settings/', '/users', '/minha-conta', '/pipelines', '/custom-fields', '/tags', '/automations',
+  '/settings/', '/users', '/minha-conta', '/pipelines', '/custom-fields', '/tags', '/automations', '/regras',
   '/proposals/templates', '/proposals/catalog', '/email-templates', '/zapsign',
 ]
 
