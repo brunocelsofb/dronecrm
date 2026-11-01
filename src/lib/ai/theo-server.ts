@@ -94,3 +94,30 @@ export async function loadTheoContext(): Promise<TheoContext | null> {
 }
 
 export const providerLabel = (p: TheoProvider | null) => (p ? THEO_PROVIDERS.find(x => x.id === p)?.label ?? p : null)
+
+// IA do Théo da empresa sem pessoa logada (tarefas agendadas): só as consultas da licença
+export async function loadTheoTenantAi(tenantId: string): Promise<{
+  provider: TheoProvider | null; model: string | null; key: string | null
+  companyName: string | null; readTools: TheoTool[]; budgetUsd: number
+}> {
+  const admin = createAdminClient()
+  const [{ data: org }, { data: tenant }, tf] = await Promise.all([
+    admin.from('organization_settings').select('theo_settings, company_name, assistant_monthly_budget_usd').eq('tenant_id', tenantId).maybeSingle(),
+    admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+    getTenantFeatures(tenantId),
+  ])
+  const { data: planRow } = await admin.from('plan_features').select('theo_tools').eq('plan', tf.plan).maybeSingle()
+  const o = org as { theo_settings?: unknown; company_name?: string | null; assistant_monthly_budget_usd?: number | null } | null
+  const settings = readTheoSettings({ ...((o?.theo_settings as object) ?? {}), budget_usd: o?.assistant_monthly_budget_usd ?? DEFAULT_BUDGET_USD })
+  const readTools = effectiveTheoTools((planRow as { theo_tools?: string[] | null } | null)?.theo_tools ?? null, tf.features).filter(t => t.kind === 'consulta')
+  const provider = settings.active && settings.keys?.[settings.active] ? settings.active : null
+  let key: string | null = null
+  if (provider) {
+    try { key = decryptSecret(settings.keys![provider]!.key_enc) } catch { key = null }
+  }
+  return {
+    provider: key ? provider : null, model: provider && key ? modelFor(settings, provider) : null, key,
+    companyName: o?.company_name || (tenant?.name as string | null) || null,
+    readTools, budgetUsd: settings.budget_usd ?? DEFAULT_BUDGET_USD,
+  }
+}

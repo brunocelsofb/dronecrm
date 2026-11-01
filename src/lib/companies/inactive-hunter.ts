@@ -5,16 +5,17 @@
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { loadInactiveCompanies, todayBr } from './inactive-data'
 import { bySegment } from './inactive'
+import { taskRunsToday } from '@/lib/agent/agent-tasks-server'
 
 const MAX_TASKS_PER_RUN = 40          // por empresa (tenant) e por semana
 const SKIP_AFTER_DONE_DAYS = 90       // tarefa concluída há menos que isso: não abre outra
 
-// Rodada semanal (segunda-feira, horário de Brasília). Chamada pelo cron dentro
+// Rodada nos dias marcados (padrão: segunda-feira, horário de Brasília). Chamada pelo cron dentro
 // de forEachActiveTenant. force = ignora o dia e a trava da semana (teste).
 export async function runInactiveHunter(tenantId: string, opts: { force?: boolean } = {}) {
   const today = todayBr()
-  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay()
-  if (!opts.force && weekday !== 1) return { skipped: 'só às segundas' }
+  // Dias da empresa (tela IA da empresa); padrão: segunda-feira
+  if (!opts.force && !(await taskRunsToday(tenantId, 'inactive_hunter', today))) return { skipped: 'desligado, pausado ou fora dos dias marcados' }
   const db = await createScopedAdmin(tenantId)
   const { data: org } = await db.from('organization_settings').select('inactive_hunter_last_run').eq('tenant_id', tenantId).maybeSingle()
   if (!opts.force && (org as { inactive_hunter_last_run?: string | null } | null)?.inactive_hunter_last_run === today) return { skipped: 'já rodou hoje' }

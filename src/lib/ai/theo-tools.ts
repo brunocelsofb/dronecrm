@@ -36,13 +36,16 @@ async function userIdByName(db: Db, name: unknown): Promise<{ id: string; name: 
 }
 
 // ─── Consultas ───────────────────────────────────────────────────────────────
-export async function runTheoRead(name: string, input: In): Promise<string> {
-  const db = await createClient()
-  const { data: { user } } = await db.auth.getUser()
-  if (!user) return 'Usuário não autenticado.'
+// scope: tarefa agendada (sem pessoa logada) — cliente admin já filtrado pela empresa
+// (scopeAdminClient; todas as tabelas daqui estão em TENANT_TABLES).
+export async function runTheoRead(name: string, input: In, scope?: { db: unknown; userId: string | null }): Promise<string> {
+  const db = scope ? (scope.db as Db) : await createClient()
+  const user = scope ? (scope.userId ? { id: scope.userId } : null) : (await db.auth.getUser()).data.user
+  if (!user && !scope) return 'Usuário não autenticado.'
 
   switch (name) {
     case 'minhas_atividades': {
+      if (!user) return 'Esta consulta depende de quem está logado; em tarefa agendada, peça por responsável ou por oportunidade.'
       const today = todaySP()
       const { data } = await db.from('activities').select('id, title, content, activity_type, activity_date, contract_id, company_id')
         .eq('assigned_to', user.id).eq('status', 'planned').lte('activity_date', today).order('activity_date').limit(40)

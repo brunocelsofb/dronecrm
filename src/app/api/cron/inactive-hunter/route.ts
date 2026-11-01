@@ -4,7 +4,7 @@ import { runInactiveHunter } from '@/lib/companies/inactive-hunter'
 
 export const maxDuration = 60
 
-// Vercel Cron (vercel.json): segunda-feira 08h de Brasília. Empresa por empresa:
+// Vercel Cron (vercel.json): todo dia 08h de Brasília; roda nos dias marcados (padrão segunda). Empresa por empresa:
 // resumo dos clientes inativos ao gestor e tarefas de reativação.
 // ?force=1 ignora o dia e a trava (teste manual, exige CRON_SECRET).
 export async function GET(req: NextRequest) {

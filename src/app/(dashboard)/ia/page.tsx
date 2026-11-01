@@ -5,6 +5,10 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import { loadTheoContext, providerLabel } from '@/lib/ai/theo-server'
 import { THEO_TOOLS, type TheoTool } from '@/lib/ai/theo-catalog'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
+import { AGENT_TASKS, taskState, todayBrIso, type AgentTaskKey, type TaskRow } from '@/lib/agent/agent-tasks'
+import { toCustomTask } from '@/lib/agent/agent-tasks-server'
+import { AgentTasksPanel, type BuiltinView, type CustomView } from '@/components/ia/agent-tasks-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +46,20 @@ export default async function IaPage() {
   const [ctx, tf] = await Promise.all([loadTheoContext(), getTenantFeatures(await resolveTenantId())])
   if (!ctx) redirect('/login')
   const agents = AGENTS.filter(a => tf.features.includes(a.feature))
+
+  // Tarefas agendadas: as do sistema que a licença inclui + as escritas pelo admin
+  const db = await createScopedAdmin(ctx.tenantId)
+  const { data: taskRows } = await db.from('agent_tasks').select('*').order('created_at')
+  const rows = (taskRows ?? []) as Record<string, unknown>[]
+  const builtins: BuiltinView[] = AGENT_TASKS.filter(t => tf.features.includes(t.feature)).map(t => ({
+    key: t.key, agent: t.agent, title: t.title, description: t.description, sends: t.sends,
+    state: taskState(t.key as AgentTaskKey, (rows.find(r => r.task_key === t.key) ?? null) as TaskRow | null),
+  }))
+  const customs: CustomView[] = rows.filter(r => !r.task_key).map(r => {
+    const c = toCustomTask(r)
+    return { id: c.id, title: c.title, prompt: c.prompt, recipientPhone: c.recipient_phone ?? '', enabled: c.enabled, days: c.days, pausedUntil: c.paused_until, lastRunAt: c.last_run_at, lastStatus: c.last_status }
+  })
+  const customAllowed = ctx.planTools.some(t => t.kind === 'consulta')
   const groups = [...new Set(THEO_TOOLS.map(t => t.group))]
   const byGroup = (list: TheoTool[], g: string) => list.filter(t => t.group === g)
 
@@ -59,7 +77,7 @@ export default async function IaPage() {
             <p className="mt-1 text-sm text-gray-600">Responde perguntas sobre os dados do CRM e faz ações por você. Toda ação só acontece depois de você confirmar na tela.
               Usam o Théo os administradores e as pessoas que você liberar; cada uma só vê e faz o que o perfil dela já permite.</p>
           </div>
-          <Link href="/settings/assistente" className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50">
+          <Link href="/settings/assistente" className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100">
             {ctx.provider ? `Em uso: ${providerLabel(ctx.provider)}` : 'Ligar o Théo'}
           </Link>
         </div>
@@ -100,6 +118,10 @@ export default async function IaPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {(builtins.length > 0 || customAllowed) && (
+        <AgentTasksPanel builtins={builtins} customs={customs} today={todayBrIso()} customAllowed={customAllowed} theoOn={!!ctx.provider} />
       )}
     </div>
   )

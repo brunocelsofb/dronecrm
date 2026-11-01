@@ -699,7 +699,8 @@ export async function getManagerChannel(tenantId: string): Promise<{
   }
 }
 
-export async function sendWhatsApp(text: string, tenantId?: string | null): Promise<WhatsAppResult> {
+// numberOverride: outro destinatário pelo mesmo WhatsApp do gestor (tarefas escritas pelo admin)
+export async function sendWhatsApp(text: string, tenantId?: string | null, numberOverride?: string | null): Promise<WhatsAppResult> {
   const { normalizeBaseUrl } = await import('@/lib/whatsapp/tenant-evo')
   let baseUrl: string | null | undefined = normalizeBaseUrl(process.env.EVOLUTION_API_URL)
   let apiKey: string | null | undefined  = process.env.EVOLUTION_API_KEY
@@ -708,7 +709,7 @@ export async function sendWhatsApp(text: string, tenantId?: string | null): Prom
   let number: string | null | undefined   = process.env.WHATSAPP_NUMBER
   if (tenantId) {
     const ch = await getManagerChannel(tenantId)
-    baseUrl = ch.baseUrl; apiKey = ch.apiKey; instance = ch.instance; number = ch.number
+    baseUrl = ch.baseUrl; apiKey = ch.apiKey; instance = ch.instance; number = numberOverride?.trim() || ch.number
   }
 
   if (!baseUrl || !apiKey || !instance || !number) {

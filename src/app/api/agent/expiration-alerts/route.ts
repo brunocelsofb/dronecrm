@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createMonthlyImplementationReport } from '@/lib/agent/internal-notices'
 import { runMeasurementAlerts } from '@/lib/agent/measurement-alerts'
 import { runRulerOverdue } from '@/lib/agent/renewal-ruler-engine'
+import { taskRunsToday } from '@/lib/agent/agent-tasks-server'
 
 export const maxDuration = 60  // segundos — Vercel Pro permite até 300s
 
@@ -43,22 +44,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const tenantId = o.tenant_id as string
       if (!activeIds.has(tenantId)) continue
       try {
-        const report = await runExpirationAlerts(tenantId)
+        // Cada rotina segue o liga/desliga, os dias e a pausa da empresa (tela IA da empresa).
+        // Os avisos usam limites (≤ 60 dias…) e não repetem: um dia pulado só adia.
+        const [onAlerts, onImpl, onMeasure, onRuler] = await Promise.all(
+          (['renewal_alerts', 'impl_report', 'measurement_alerts', 'ruler_overdue'] as const).map(k => taskRunsToday(tenantId, k)))
+        const off = { status: 'skipped', detail: 'desligado, pausado ou fora dos dias marcados' }
+        const report = onAlerts
+          ? await runExpirationAlerts(tenantId)
+          : { total: 0, by_level: {}, results: [], internal_whatsapp: null, internal_email: null, errors: [], skipped: off.detail }
         let implReport: { status: string; id?: string; detail?: string }
         try {
-          implReport = await createMonthlyImplementationReport(tenantId)
+          implReport = onImpl ? await createMonthlyImplementationReport(tenantId) : off
         } catch (e) {
           implReport = { status: 'error', detail: e instanceof Error ? e.message : String(e) }
         }
         let measurement: unknown
         try {
-          measurement = await runMeasurementAlerts(tenantId)
+          measurement = onMeasure ? await runMeasurementAlerts(tenantId) : off
         } catch (e) {
           measurement = { error: e instanceof Error ? e.message : String(e) }
         }
         let ruler: unknown
         try {
-          ruler = await runRulerOverdue(tenantId)
+          ruler = onRuler ? await runRulerOverdue(tenantId) : off
         } catch (e) {
           ruler = { error: e instanceof Error ? e.message : String(e) }
         }

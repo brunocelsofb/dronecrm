@@ -2,9 +2,9 @@
  * Copiloto Estratégico — API Route
  * GET /api/agent/briefing
  *
- * Cron: 07h de Brasília / 10h UTC, segunda a sexta (vercel.json).
- * Trava: só 1 envio por dia útil (copilot_settings.briefing_last_sent_at);
- * sábado/domingo não envia. ?force=1 ignora a trava (teste manual).
+ * Cron: 07h de Brasília / 10h UTC, todo dia (vercel.json); envia nos dias marcados
+ * pela empresa (tela IA da empresa; padrão segunda a sexta).
+ * Trava: só 1 envio por dia (copilot_settings.briefing_last_sent_at). ?force=1 ignora a trava (teste manual).
  * Toda a lógica de negócio vive em src/lib/agent/briefing-core.ts
  *
  * Env vars: CRON_SECRET, ANTHROPIC_API_KEY, NEXT_PUBLIC_SUPABASE_URL,
@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateBriefing } from '@/lib/agent/briefing-core'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { taskRunsToday } from '@/lib/agent/agent-tasks-server'
 
 export const maxDuration = 60  // queries + chamada ao modelo + envio WhatsApp
 
@@ -44,12 +45,8 @@ export async function GET(req: NextRequest) {
     const admin = createAdminClient()
 
     // Data/dia da semana em Brasília
-    const brNow = new Date(Date.now() - 3 * 3600 * 1000)
-    const todayBr = brNow.toISOString().slice(0, 10)
-    const weekday = brNow.getUTCDay() // 0 = domingo, 6 = sábado
-    if (!force && (weekday === 0 || weekday === 6)) {
-      return NextResponse.json({ ok: true, skipped: 'fim de semana — briefing só de segunda a sexta' })
-    }
+    // Dias de envio por empresa (tela IA da empresa); padrão: segunda a sexta
+    const todayBr = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10)
 
     // Uma rodada por empresa ativa (cada uma com a própria chave da IA e o próprio gestor)
     const [{ data: orgs }, { data: tenants }] = await Promise.all([
@@ -65,6 +62,7 @@ export async function GET(req: NextRequest) {
       if (onlyTenant && onlyTenant !== tenantId) continue
       const copilot = (org.copilot_settings ?? {}) as Record<string, unknown>
       if (copilot.briefing_enabled === false) { results.push({ tenantId, skipped: 'briefing desligado' }); continue }
+      if (!force && !(await taskRunsToday(tenantId, 'briefing', todayBr))) { results.push({ tenantId, skipped: 'desligado, pausado ou fora dos dias marcados' }); continue }
       const lastSentAt = typeof copilot.briefing_last_sent_at === 'string' ? copilot.briefing_last_sent_at : null
       const lastBr = lastSentAt ? new Date(new Date(lastSentAt).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10) : null
       if (!force && lastBr === todayBr) { results.push({ tenantId, skipped: `já enviado hoje (${lastSentAt})` }); continue }
