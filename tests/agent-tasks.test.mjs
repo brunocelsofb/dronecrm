@@ -44,3 +44,72 @@ test('mensagem da tarefa escrita e hoje em Brasília', () => {
   assert.equal(customTaskMessage(' Vencimentos ', ' a\nb '), '🤖 *Vencimentos*\n\na\nb')
   assert.equal(todayBrIso(Date.parse('2026-11-02T02:00:00Z')), '2026-11-01')
 })
+
+import { validateRenewalLevels, resolveRenewalLevels, renewalSlotFor, slotDays, renewalLevelLabel } from '../src/lib/agent/renewal-templates.ts'
+import { checkParams, agentTaskDef } from '../src/lib/agent/agent-tasks.ts'
+
+test('marcos dos avisos: padrão igual a antes', () => {
+  const L = resolveRenewalLevels(undefined)
+  assert.deepEqual(L, { prep: 90, a1: 60, a2: 30, a3: 15 })
+  assert.equal(renewalSlotFor(-1, L), 0)
+  assert.equal(renewalSlotFor(15, L), 15)
+  assert.equal(renewalSlotFor(16, L), 30)
+  assert.equal(renewalSlotFor(60, L), 60)
+  assert.equal(renewalSlotFor(90, L), 90)
+  assert.equal(renewalSlotFor(91, L), null)
+})
+
+test('marcos dos avisos: prazos da empresa', () => {
+  const L = { prep: 120, a1: 45, a2: 20, a3: 7 }
+  assert.equal(renewalSlotFor(100, L), 90)  // degrau "preparar"
+  assert.equal(renewalSlotFor(45, L), 60)
+  assert.equal(renewalSlotFor(21, L), 60)
+  assert.equal(renewalSlotFor(20, L), 30)
+  assert.equal(renewalSlotFor(7, L), 15)
+  assert.equal(slotDays(60, L), 45)
+  assert.equal(renewalLevelLabel('30', L), '20 dias antes')
+  assert.equal(renewalLevelLabel('0', L), 'Após o vencimento')
+})
+
+test('marcos inválidos: recusa ao salvar e cai no padrão ao ler', () => {
+  assert.ok('error' in validateRenewalLevels({ prep: 60, a1: 60, a2: 30, a3: 15 }))
+  assert.ok('error' in validateRenewalLevels({ prep: 90, a1: 60, a2: 30, a3: 0 }))
+  assert.ok('error' in validateRenewalLevels({ prep: 400, a1: 60, a2: 30, a3: 15 }))
+  assert.deepEqual(resolveRenewalLevels({ prep: 10, a1: 60 }), { prep: 90, a1: 60, a2: 30, a3: 15 })
+  assert.ok('levels' in validateRenewalLevels({ prep: '100', a1: 50, a2: 25, a3: 10 }))
+})
+
+test('prazos das tarefas: limites de cada campo', () => {
+  assert.ok('error' in checkParams(agentTaskDef('measurement_alerts'), { due_day: 29 }))
+  assert.deepEqual(checkParams(agentTaskDef('ruler_overdue'), { repeat_days: 0 }), { values: { repeat_days: 0 } })
+  assert.ok('error' in checkParams(agentTaskDef('inactive_hunter'), { inactive_months: 1.5 }))
+})
+
+import { checkOptions, briefingSections, customRunsOn, customStatusLabel, ALL_BRIEFING_SECTIONS } from '../src/lib/agent/agent-tasks.ts'
+
+test('destinatários: só os campos que a tarefa aceita, validados', () => {
+  const r = checkOptions(agentTaskDef('renewal_alerts'), { assignee: '', notify_whatsapp: '(62) 99999-0000', notify_email: ' Gestor@Empresa.com ', briefing_extra: 'x' })
+  assert.deepEqual(r, { options: { assignee: null, notify_whatsapp: '62999990000', notify_email: 'gestor@empresa.com' } })
+  assert.ok('error' in checkOptions(agentTaskDef('renewal_alerts'), { notify_whatsapp: '123' }))
+  assert.ok('error' in checkOptions(agentTaskDef('renewal_alerts'), { notify_email: 'sem-arroba' }))
+  assert.ok('error' in checkOptions(agentTaskDef('measurement_alerts'), { assignee: 'nao-e-uuid' }))
+  assert.deepEqual(checkOptions(agentTaskDef('measurement_alerts'), { notify_whatsapp: '62999990000' }), { options: { assignee: null } })
+})
+
+test('resumo do dia: seções (padrão = tudo) e pedido extra', () => {
+  assert.equal(briefingSections({}).size, ALL_BRIEFING_SECTIONS.length)
+  assert.deepEqual([...briefingSections({ briefing_sections: ['leads', 'xx'] })], ['leads'])
+  const ok = checkOptions(agentTaskDef('briefing'), { briefing_sections: ['renovacoes', 'urgentes'], briefing_extra: ' top 5 ' })
+  assert.deepEqual(ok, { options: { notify_whatsapp: null, briefing_sections: ['renovacoes', 'urgentes'], briefing_extra: 'top 5' } })
+  assert.ok('error' in checkOptions(agentTaskDef('briefing'), { briefing_sections: ['urgentes'] }))
+  assert.ok('options' in checkOptions(agentTaskDef('briefing'), { briefing_sections: [], briefing_extra: 'só isto' }))
+})
+
+test('tarefa escrita mensal', () => {
+  const s = { enabled: true, days: [], pausedUntil: null, monthDay: 5 }
+  assert.equal(customRunsOn(s, '2026-11-05'), true)
+  assert.equal(customRunsOn(s, '2026-11-06'), false)
+  assert.equal(customRunsOn({ ...s, pausedUntil: '2026-11-10' }, '2026-11-05'), false)
+  assert.equal(customRunsOn({ ...s, monthDay: null, days: [4] }, '2026-11-05'), true) // quinta
+  assert.equal(customStatusLabel(s, '2026-11-01'), 'Ativa · todo dia 5 do mês')
+})

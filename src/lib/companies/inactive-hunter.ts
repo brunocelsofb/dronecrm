@@ -21,6 +21,9 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
   if (!opts.force && (org as { inactive_hunter_last_run?: string | null } | null)?.inactive_hunter_last_run === today) return { skipped: 'já rodou hoje' }
 
   const { list, settings } = await loadInactiveCompanies(tenantId)
+  // Quem recebe o resumo e quem faz as tarefas (tela IA da empresa); vazio = gestor / responsável pela empresa
+  const { loadTaskOptions } = await import('@/lib/agent/agent-task-options')
+  const taskOpts = await loadTaskOptions(tenantId, 'inactive_hunter')
   const out = { inactive: list.length, summary: 'desligado' as string, tasks: 0 }
 
   // Marca antes de enviar: se o envio falhar, não repete várias vezes no dia
@@ -38,7 +41,7 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
       `\n\nPara campanha: Empresas → Inativas → filtre o segmento → Criar lista no Marketing.`
     try {
       const { sendWhatsApp } = await import('@/lib/agent/briefing-core')
-      const r = await sendWhatsApp(text, tenantId)
+      const r = await sendWhatsApp(text, tenantId, taskOpts.notify_whatsapp)
       out.summary = r.sent ? 'enviado' : `falhou: ${r.error ?? ''}`
     } catch (e) {
       out.summary = `falhou: ${e instanceof Error ? e.message : String(e)}`
@@ -47,7 +50,8 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
 
   // 2. Tarefa de reativação ao responsável (sem negociação aberta; não repete)
   if (settings.hunter_tasks && list.length) {
-    const candidates = list.filter(c => !c.negotiating && c.ownerId)
+    const fixed = taskOpts.assignee ?? null
+    const candidates = list.filter(c => !c.negotiating && (fixed || c.ownerId))
     const ids = candidates.map(c => c.id)
     const recent = new Set<string>()
     const cutoff = new Date(Date.now() - SKIP_AFTER_DONE_DAYS * 86_400_000).toISOString()
@@ -59,7 +63,7 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
     for (const c of candidates.filter(c => !recent.has(c.id)).slice(0, MAX_TASKS_PER_RUN)) {
       const why = c.lastWon ? `última compra há ${c.monthsSince} meses` : 'cliente sem compra registrada no CRM'
       const { error } = await db.from('activities').insert({
-        company_id: c.id, user_id: c.ownerId, assigned_to: c.ownerId,
+        company_id: c.id, user_id: fixed ?? c.ownerId, assigned_to: fixed ?? c.ownerId,
         type: 'task', activity_type: 'call', status: 'planned', completed: false,
         title: `Reativar cliente: ${c.tradeName || c.name}`,
         content: `O Hunter identificou esta empresa como inativa (sem contrato ativo; ${why}). Segmento: ${c.segment ?? 'sem segmento'}. Retome o contato e, havendo interesse, abra uma oportunidade.`,

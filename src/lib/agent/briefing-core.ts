@@ -461,7 +461,7 @@ export async function buildRenewalSendsSection(
     .eq('tenant_id', tenantId)
     .limit(300)
 
-  type Meta = { kind?: string; approval?: string; sent_at?: string; sent_by?: string; alert_level?: number; contact_name?: string }
+  type Meta = { kind?: string; approval?: string; sent_at?: string; sent_by?: string; alert_level?: number; alert_days?: number; contact_name?: string }
   const all = (rows ?? []) as { id: string; contract_id: string | null; assigned_to: string | null; metadata: Meta; created_at: string }[]
   const sent = all.filter(a => a.metadata.approval === 'sent' && (a.metadata.sent_at ?? '') >= sinceIso)
   const pending = all.filter(a => a.metadata.approval === 'pending')
@@ -476,7 +476,7 @@ export async function buildRenewalSendsSection(
   const cById = new Map(((contracts ?? []) as { id: string; process_number: string | null; client_name: string }[]).map(c => [c.id, c]))
   const uById = new Map(((users ?? []) as { id: string; full_name: string | null }[]).map(u => [u.id, u.full_name ?? '']))
 
-  const what = (m: Meta) => m.kind === 'renewal_confirmation' ? 'renovação concluída' : m.alert_level === 0 ? 'vencido' : `${m.alert_level} dias`
+  const what = (m: Meta) => m.kind === 'renewal_confirmation' ? 'renovação concluída' : m.alert_level === 0 ? 'vencido' : `${m.alert_days ?? m.alert_level} dias`
   const who = (id: string | null | undefined) => (id && uById.get(id)) || '(sem responsável)'
   const contractLabel = (id: string | null) => {
     const c = id ? cById.get(id) : null
@@ -514,7 +514,10 @@ export function buildPrompt(data: {
   proposals:      StuckProposal[]
   actionPlans:    PendingActionPlan[]
   today:          string
+  sections?:      Set<string>    // o que aparece (tela IA da empresa); sem = tudo
+  extra?:         string | null  // pedido extra do admin
 }): string {
+  const on = (k: string) => !data.sections || data.sections.has(k)
   const fmt = (rows: unknown[]) =>
     rows.length > 0 ? JSON.stringify(rows, null, 2) : '(nenhum registo nesta categoria hoje)'
 
@@ -532,7 +535,7 @@ Você tem acesso completo ao CRM e deve:
 
 ---
 
-### A. OPORTUNIDADES NO FUNIL SEM TOQUE (${data.dormant.length} identificadas)
+${on('oportunidades') ? `### A. OPORTUNIDADES NO FUNIL SEM TOQUE (${data.dormant.length} identificadas)
 ${fmt(data.dormant.map(d => ({
   cliente:     d.client_name,
   processo:    d.process_number,
@@ -546,7 +549,7 @@ ${fmt(data.dormant.map(d => ({
     : `desde entrada na etapa`,
 })))}
 
-### B. CONTRATOS A VENCER / VENCIDOS (${data.renewal.length} identificados)
+` : ''}${on('renovacoes') ? `### B. CONTRATOS A VENCER / VENCIDOS (${data.renewal.length} identificados)
 ${fmt(data.renewal.map(r => ({
   cliente:        r.client_name,
   processo:       r.process_number,
@@ -557,7 +560,7 @@ ${fmt(data.renewal.map(r => ({
   etapa_atual:    r.stage_name ?? '(sem etapa activa)',
 })))}
 
-### C. LEADS SEM QUALIFICAÇÃO (${data.stale.length} identificados)
+` : ''}${on('leads') ? `### C. LEADS SEM QUALIFICAÇÃO (${data.stale.length} identificados)
 ${fmt(data.stale.map(l => ({
   nome:      l.name,
   empresa:   l.company_name ?? '(sem empresa)',
@@ -567,7 +570,7 @@ ${fmt(data.stale.map(l => ({
   parado_ha: `${l.days_since_update} dias sem movimentação`,
 })))}
 
-### D. PROPOSTAS PARADAS (${data.proposals.length} identificadas)
+` : ''}${on('propostas') ? `### D. PROPOSTAS PARADAS (${data.proposals.length} identificadas)
 ${fmt(data.proposals.map(p => ({
   cliente:         p.client_name,
   codigo:          p.control_code,
@@ -577,7 +580,7 @@ ${fmt(data.proposals.map(p => ({
   valor_total:     fmtBRL(p.total_value),
 })))}
 
-### E. PLANOS DE ACÇÃO COM ITENS PENDENTES (${data.actionPlans.length} contratos)
+` : ''}${on('planos') ? `### E. PLANOS DE ACÇÃO COM ITENS PENDENTES (${data.actionPlans.length} contratos)
 ${fmt(data.actionPlans.map(a => ({
   cliente:          a.client_name,
   processo:         a.process_number,
@@ -586,36 +589,41 @@ ${fmt(data.actionPlans.map(a => ({
   departamentos:    a.departments.join(', ') || '(sem departamento)',
 })))}
 
----
+` : ''}---
 
 ## SUA TAREFA
 
 Gera um briefing executivo DIRECTO E NOMINAL (sempre diz o nome do cliente/lead).
 Actua como um consultor de vendas que vai reportar ao director comercial.
 
-🚨 TOP 3 ACÇÕES URGENTES
+${on('urgentes') ? `🚨 TOP 3 ACÇÕES URGENTES
 Liste as 3 situações mais críticas com:
 • Nome do cliente/lead
 • O que está parado e porquê é urgente
 • Acção concreta a tomar HOJE (quem faz o quê)
 
-💰 MAIOR OPORTUNIDADE DA SEMANA
+` : ''}${on('oportunidade') ? `💰 MAIOR OPORTUNIDADE DA SEMANA
 O negócio com maior impacto financeiro imediato:
 • Nome do cliente, valor em jogo
 • Contexto da situação actual
 • Próximo passo específico
 
-⚠️ SINAL DE ALERTA
+` : ''}${on('alerta') ? `⚠️ SINAL DE ALERTA
 Um padrão preocupante que o gestor precisa saber:
 • Exemplo: "3 propostas aguardam aprovação técnica há mais de X dias"
 • Ou: "Pipeline de vendas tem Y oportunidades paradas na mesma etapa"
 • Se não houver nada relevante: "Nenhum padrão crítico detectado esta semana."
 
-📊 SAÚDE DO PIPELINE
+` : ''}${on('saude') ? `📊 SAÚDE DO PIPELINE
 Uma linha com os números: X oportunidades activas | Y em risco | Z propostas paradas | W leads para qualificar
 
----
+` : ''}${data.extra?.trim() ? `📌 PEDIDO DO GESTOR
+${data.extra.trim().replace(/`/g, "'")}
+Responda a esse pedido com os dados acima, num bloco próprio com este título. Se os dados não bastarem, diga em uma linha o que faltou.
 
+` : ''}---
+
+Escreva só os blocos pedidos acima, nesta ordem.
 Regras obrigatórias:
 - SEMPRE menciona nomes reais (cliente, lead, responsável)
 - Nunca inventa dados ausentes; se faltar um campo, diz "(sem informação)"
@@ -814,6 +822,12 @@ export async function generateBriefing(opts: {
     ? ctxCfg.business_context.trim()
     : `uma empresa brasileira${ctxOrg?.company_name ? ` (${ctxOrg.company_name})` : ''}`
 
+  // O que aparece e quem recebe (tela IA da empresa → Tarefas agendadas → Resumo do dia)
+  const { loadTaskOptions } = await import('./agent-task-options')
+  const { briefingSections } = await import('./agent-tasks')
+  const taskOpts = await loadTaskOptions(opts.tenantId, 'briefing')
+  const sections = briefingSections(taskOpts)
+
   // ── Queries ao Supabase ──────────────────────────────────────────────────────
   const today    = format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
   const supabase = getAdminClient()
@@ -844,7 +858,7 @@ export async function generateBriefing(opts: {
 
   // ── Indicadores do mês (mesmos do Painel gerencial) ─────────────────────────
   let kpiSection = ''
-  try {
+  if (sections.has('indicadores')) try {
     const { buildKpiSection } = await import('./kpi-section')
     kpiSection = await buildKpiSection(opts.tenantId)
   } catch (err) {
@@ -868,7 +882,7 @@ Gera briefings executivos precisos, nominais e acionáveis em português do Bras
 Tom: consultor sénior directo, como se estivesse numa reunião de vendas.
 NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
       messages: [
-        { role: 'user', content: buildPrompt({ dormant, renewal, stale, proposals, actionPlans, today }) + (kpiSection
+        { role: 'user', content: buildPrompt({ dormant, renewal, stale, proposals, actionPlans, today, sections, extra: taskOpts.briefing_extra }) + (kpiSection
           ? `\n\nINDICADORES DO MÊS (números exatos do CRM — NÃO recalcule nem repita a lista; eles serão anexados ao final do briefing):\n${kpiSection}\n\nAo final do briefing, escreva no máximo 2 linhas de análise: uma do Hunter (conversão/ticket) e uma do Farmer (renovações que aumentaram ou reduziram valor, churn). Se não houver dados no mês, diga isso em uma linha.`
           : '') }
       ],
@@ -901,7 +915,7 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
   // ── Seção fixa: avisos de renovação enviados / aguardando ───────────────────
   try {
     const since = opts.renewalSince ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-    const section = await buildRenewalSendsSection(supabase, since, opts.tenantId)
+    const section = sections.has('avisos') ? await buildRenewalSendsSection(supabase, since, opts.tenantId) : ''
     if (section && briefing.trim()) briefing = `${briefing.trim()}\n\n${section}`
   } catch (err) {
     console.error('[agent] erro na seção de avisos de renovação:', serializeError(err))
@@ -929,7 +943,7 @@ NUNCA inventa dados. Sempre cita nomes reais dos clientes.`,
     console.error('[agent] ✗ briefing vazio, envio WhatsApp ignorado')
   } else if (opts.sendViaWhatsApp) {
     console.log('[agent] enviando via WhatsApp...')
-    whatsapp = await sendWhatsApp(briefing, opts.tenantId)
+    whatsapp = await sendWhatsApp(briefing, opts.tenantId, taskOpts.notify_whatsapp)
     if (whatsapp.sent) {
       console.log(`[agent] ✓ WhatsApp entregue (HTTP ${whatsapp.statusCode})`)
     } else {

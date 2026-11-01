@@ -207,3 +207,52 @@ export function buildRenewalEmailHtml(d: RenewalEmailData): string {
   </td></tr></table>
 </body></html>`
 }
+
+// ─── Marcos dos avisos (dias antes do vencimento), por empresa ───────────────
+// Editáveis na tela IA da empresa (Tarefas agendadas → Avisos de vencimento).
+// Gravados em organization_settings.copilot_settings.renewal_levels.
+// Os quatro marcos continuam sendo os mesmos "degraus" (preparar, 1º, 2º, urgente):
+// textos, e-mail e marcação de envio seguem o degrau; só muda em quantos dias cada um abre.
+export type RenewalLevels = { prep: number; a1: number; a2: number; a3: number }
+export const DEFAULT_RENEWAL_LEVELS: RenewalLevels = { prep: 90, a1: 60, a2: 30, a3: 15 }
+// Degrau → chave antiga (90/60/30/15; 0 = vencido): textos ('60'…), deduplicação e e-mail
+export type RenewalSlot = 90 | 60 | 30 | 15 | 0
+export const MAX_RENEWAL_DAYS = 365
+
+export function validateRenewalLevels(v: unknown): { levels: RenewalLevels } | { error: string } {
+  const r = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
+  const n = (k: keyof RenewalLevels) => Math.round(Number(r[k]))
+  const L: RenewalLevels = { prep: n('prep'), a1: n('a1'), a2: n('a2'), a3: n('a3') }
+  if (Object.values(L).some(x => !Number.isFinite(x) || x < 1 || x > MAX_RENEWAL_DAYS)) return { error: `Use de 1 a ${MAX_RENEWAL_DAYS} dias.` }
+  if (!(L.prep > L.a1 && L.a1 > L.a2 && L.a2 > L.a3)) return { error: 'Os marcos precisam ir do maior para o menor (preparar > 1º aviso > 2º aviso > urgente).' }
+  return { levels: L }
+}
+
+export function resolveRenewalLevels(raw: unknown): RenewalLevels {
+  if (!raw) return { ...DEFAULT_RENEWAL_LEVELS }
+  const r = validateRenewalLevels(raw)
+  return 'levels' in r ? r.levels : { ...DEFAULT_RENEWAL_LEVELS }
+}
+
+// Em que degrau o contrato está hoje (null = ainda longe do vencimento)
+export function renewalSlotFor(daysLeft: number, L: RenewalLevels = DEFAULT_RENEWAL_LEVELS): RenewalSlot | null {
+  if (daysLeft < 0) return 0
+  if (daysLeft <= L.a3) return 15
+  if (daysLeft <= L.a2) return 30
+  if (daysLeft <= L.a1) return 60
+  if (daysLeft <= L.prep) return 90
+  return null
+}
+
+// Dias do degrau na empresa (para mostrar: "marco de 45 dias")
+export function slotDays(slot: RenewalSlot, L: RenewalLevels = DEFAULT_RENEWAL_LEVELS): number {
+  return slot === 90 ? L.prep : slot === 60 ? L.a1 : slot === 30 ? L.a2 : slot === 15 ? L.a3 : 0
+}
+
+// Rótulo do texto de cada degrau na tela de modelos
+export function renewalLevelLabel(key: RenewalLevelKey, L: RenewalLevels = DEFAULT_RENEWAL_LEVELS): string {
+  if (key === '60') return `${L.a1} dias antes`
+  if (key === '30') return `${L.a2} dias antes`
+  if (key === '15') return `${L.a3} dias antes`
+  return RENEWAL_LEVELS.find(l => l.key === key)?.label ?? key
+}

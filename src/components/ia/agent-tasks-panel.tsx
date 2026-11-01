@@ -3,11 +3,16 @@
 // pausa e tarefas escritas pelo admin.
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { WEEKDAYS, statusLabel, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS, type TaskState } from '@/lib/agent/agent-tasks'
-import { saveBuiltinTask, saveCustomTask, deleteCustomTask, testCustomTask } from '@/lib/actions/agent-tasks'
+import { WEEKDAYS, statusLabel, customStatusLabel, BRIEFING_SECTIONS, ALL_BRIEFING_SECTIONS, MAX_BRIEFING_EXTRA, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS, type TaskState, type TaskParam, type TaskOptions } from '@/lib/agent/agent-tasks'
+import { saveBuiltinTask, saveCustomTask, deleteCustomTask, testCustomTask, saveTaskParams, saveTaskOptions } from '@/lib/actions/agent-tasks'
 
-export type BuiltinView = { key: string; agent: string; title: string; description: string; sends: string; state: TaskState }
-export type CustomView = TaskState & { id: string; title: string; prompt: string; recipientPhone: string; lastRunAt: string | null; lastStatus: string | null }
+export type BuiltinView = {
+  key: string; agent: string; title: string; description: string; sends: string; state: TaskState; params: TaskParam[]; values: Record<string, number>
+  recipients: ('assignee' | 'whatsapp' | 'email')[]; assigneeDefault: string; recipientsNote: string; monthly: boolean; options: TaskOptions
+}
+export type Person = { id: string; name: string }
+type Ctx = { team: Person[]; managerPhone: string; managerEmail: string }
+export type CustomView = TaskState & { id: string; title: string; prompt: string; recipientPhone: string; monthDay: number | null; lastRunAt: string | null; lastStatus: string | null }
 
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
@@ -51,7 +56,130 @@ function PauseControl({ value, onChange, disabled, today }: { value: string | nu
   )
 }
 
-function BuiltinRow({ t, today }: { t: BuiltinView; today: string }) {
+// Prazos da tarefa (ex.: avisos aos 90/60/30/15 dias): edita ali mesmo e salva no botão
+function ParamsEditor({ taskKey, params, initial }: { taskKey: string; params: TaskParam[]; initial: Record<string, number> }) {
+  const [v, setV] = useState<Record<string, string>>(() => Object.fromEntries(params.map(p => [p.key, String(initial[p.key] ?? p.def)])))
+  const [saved, setSaved] = useState(v)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [pending, start] = useTransition()
+  const dirty = params.some(p => v[p.key] !== saved[p.key])
+  const save = () => start(async () => {
+    setMsg(null)
+    const r = await saveTaskParams(taskKey, Object.fromEntries(params.map(p => [p.key, Number(v[p.key])])))
+    if (r.ok) { setSaved(v); setMsg('Salvo') } else setMsg(r.error)
+  })
+  return (
+    <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+      {params.map(p => (
+        <label key={p.key} className="text-[11px] text-gray-600">
+          <span className="block">{p.label}</span>
+          <span className="mt-0.5 flex items-center gap-1">
+            <input type="number" inputMode="numeric" min={p.min} max={p.max} value={v[p.key]}
+              onChange={e => { setV({ ...v, [p.key]: e.target.value }); setMsg(null) }}
+              onKeyDown={e => { if (e.key === 'Enter' && dirty) save() }}
+              className="w-16 rounded-md border border-gray-300 px-1.5 py-1 text-sm text-gray-900" />
+            <span className="text-gray-400">{p.unit}</span>
+          </span>
+        </label>
+      ))}
+      {dirty && (
+        <span className="flex items-center gap-2">
+          <button type="button" onClick={save} disabled={pending} className="rounded-md bg-brand-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">{pending ? 'Salvando…' : 'Salvar prazos'}</button>
+          <button type="button" onClick={() => { setV(saved); setMsg(null) }} className="text-xs text-gray-500 hover:underline">Desfazer</button>
+        </span>
+      )}
+      {msg && <span className={`text-xs ${msg === 'Salvo' ? 'text-gray-400' : 'text-negative-600'}`}>{msg}</span>}
+    </div>
+  )
+}
+
+// Quem faz, quem recebe e (no resumo do dia) o que aparece: edita ali mesmo e salva no botão
+function OptionsEditor({ t, ctx }: { t: BuiltinView; ctx: Ctx }) {
+  const isBriefing = t.key === 'briefing'
+  const initial = {
+    assignee: t.options.assignee ?? '',
+    notify_whatsapp: t.options.notify_whatsapp ?? '',
+    notify_email: t.options.notify_email ?? '',
+    briefing_sections: t.options.briefing_sections ?? ALL_BRIEFING_SECTIONS,
+    briefing_extra: t.options.briefing_extra ?? '',
+  }
+  const [v, setV] = useState(initial)
+  const [saved, setSaved] = useState(initial)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [pending, start] = useTransition()
+  const dirty = JSON.stringify(v) !== JSON.stringify(saved)
+  const save = () => start(async () => {
+    setMsg(null)
+    const r = await saveTaskOptions(t.key, v)
+    if (r.ok) { setSaved(v); setMsg('Salvo') } else setMsg(r.error)
+  })
+  const has = (k: 'assignee' | 'whatsapp' | 'email') => t.recipients.includes(k)
+  if (!t.recipients.length && !isBriefing) return t.recipientsNote ? <p className="mt-1 text-[11px] text-gray-400">{t.recipientsNote}</p> : null
+  const toggle = (k: string) => setV({ ...v, briefing_sections: v.briefing_sections.includes(k) ? v.briefing_sections.filter(x => x !== k) : [...v.briefing_sections, k] })
+  const input = 'mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900'
+  return (
+    <div className="mt-2 space-y-2">
+      {(has('assignee') || has('whatsapp') || has('email')) && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          {has('assignee') && (
+            <label className="text-[11px] text-gray-600">Quem faz a tarefa
+              <select value={v.assignee} onChange={e => { setV({ ...v, assignee: e.target.value }); setMsg(null) }} className={input}>
+                <option value="">{t.assigneeDefault || 'Padrão'} (padrão)</option>
+                {ctx.team.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
+          {has('whatsapp') && (
+            <label className="text-[11px] text-gray-600">WhatsApp que recebe
+              <input value={v.notify_whatsapp} inputMode="tel" onChange={e => { setV({ ...v, notify_whatsapp: e.target.value }); setMsg(null) }}
+                placeholder={ctx.managerPhone ? `Gestor: ${ctx.managerPhone}` : 'Gestor (Configurações → Agentes IA)'} className={input} />
+            </label>
+          )}
+          {has('email') && (
+            <label className="text-[11px] text-gray-600">E-mail que recebe
+              <input value={v.notify_email} type="email" onChange={e => { setV({ ...v, notify_email: e.target.value }); setMsg(null) }}
+                placeholder={ctx.managerEmail ? `Gestor: ${ctx.managerEmail}` : 'Gestor (Configurações → Agentes IA)'} className={input} />
+            </label>
+          )}
+        </div>
+      )}
+      {isBriefing && (
+        <div className="rounded-md border border-gray-100 p-2.5">
+          <p className="text-[11px] font-semibold text-gray-600">O que aparece no resumo</p>
+          {(['dados', 'blocos'] as const).map(g => (
+            <div key={g} className="mt-1.5">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">{g === 'dados' ? 'Assuntos' : 'Blocos que a IA escreve'}</p>
+              <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-1">
+                {BRIEFING_SECTIONS.filter(x => x.group === g).map(x => (
+                  <label key={x.key} className="flex items-center gap-1.5 text-xs text-gray-700">
+                    <input type="checkbox" checked={v.briefing_sections.includes(x.key)} onChange={() => { toggle(x.key); setMsg(null) }} className="h-3.5 w-3.5 accent-brand-700" />
+                    {x.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <label className="mt-2 block text-[11px] text-gray-600">Quero ver também (opcional)
+            <textarea value={v.briefing_extra} maxLength={MAX_BRIEFING_EXTRA} rows={2} onChange={e => { setV({ ...v, briefing_extra: e.target.value }); setMsg(null) }}
+              placeholder="Ex.: destaque os 5 contratos de maior valor que vencem nos próximos 60 dias."
+              className={input} />
+            <span className="text-[10px] text-gray-400">A IA responde com os dados do resumo. Para outros dados, crie uma tarefa escrita abaixo.</span>
+          </label>
+        </div>
+      )}
+      {t.recipientsNote && <p className="text-[11px] text-gray-400">{t.recipientsNote}</p>}
+      {(dirty || msg) && (
+        <span className="flex items-center gap-2">
+          {dirty && <button type="button" onClick={save} disabled={pending} className="rounded-md bg-brand-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">{pending ? 'Salvando…' : isBriefing ? 'Salvar resumo' : 'Salvar destinatários'}</button>}
+          {dirty && <button type="button" onClick={() => { setV(saved); setMsg(null) }} className="text-xs text-gray-500 hover:underline">Desfazer</button>}
+          {msg && <span className={`text-xs ${msg === 'Salvo' ? 'text-gray-400' : 'text-negative-600'}`}>{msg}</span>}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function BuiltinRow({ t, today, ctx }: { t: BuiltinView; today: string; ctx: Ctx }) {
   // A tela muda na hora; salva um instante depois do último clique (vários dias de uma vez = um envio só)
   const [s, setS] = useState<TaskState>(t.state)
   const [msg, setMsg] = useState<string | null>(null)
@@ -78,20 +206,24 @@ function BuiltinRow({ t, today }: { t: BuiltinView; today: string }) {
         <div className="min-w-0">
           <p className="text-sm font-medium text-gray-900">{t.title} <span className="text-[11px] font-normal text-gray-400">· {t.agent}</span></p>
           <p className="text-xs text-gray-500">{t.description} <span className="text-gray-400">Envia: {t.sends}.</span></p>
+          {t.params.length > 0 && <ParamsEditor taskKey={t.key} params={t.params} initial={t.values} />}
+          <OptionsEditor t={t} ctx={ctx} />
           <p className={`mt-0.5 text-[11px] font-medium ${s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'text-brand-700' : 'text-gray-400'}`}>
             {statusLabel(s, today)}{msg && <span className={msg === 'Salvo' || msg === 'Salvando…' ? 'ml-2 text-gray-400' : 'ml-2 text-negative-600'}>{msg}</span>}
           </p>
         </div>
       </div>
       <div className={`flex flex-col gap-1.5 sm:items-end ${s.enabled ? '' : 'opacity-50'}`}>
-        <DayPicker days={s.days} disabled={!s.enabled} onChange={d => save({ ...s, days: d })} />
+        {t.monthly
+          ? <p className="text-xs text-gray-600">Uma vez por mês{t.values.due_day ? `, a partir do dia ${t.values.due_day}` : t.values.report_day ? `, a partir do dia ${t.values.report_day}` : ''}</p>
+          : <DayPicker days={s.days} disabled={!s.enabled} onChange={d => save({ ...s, days: d })} />}
         <PauseControl value={s.pausedUntil} today={today} disabled={!s.enabled} onChange={v => save({ ...s, pausedUntil: v })} />
       </div>
     </li>
   )
 }
 
-const EMPTY: Omit<CustomView, 'id'> = { title: '', prompt: '', recipientPhone: '', enabled: true, days: [1, 2, 3, 4, 5], pausedUntil: null, lastRunAt: null, lastStatus: null }
+const EMPTY: Omit<CustomView, 'id'> = { title: '', prompt: '', recipientPhone: '', monthDay: null, enabled: true, days: [1, 2, 3, 4, 5], pausedUntil: null, lastRunAt: null, lastStatus: null }
 
 function CustomForm({ initial, today, onDone }: { initial: Omit<CustomView, 'id'> & { id?: string }; today: string; onDone: () => void }) {
   const router = useRouter()
@@ -103,7 +235,7 @@ function CustomForm({ initial, today, onDone }: { initial: Omit<CustomView, 'id'
 
   const save = () => start(async () => {
     setErr(null)
-    const r = await saveCustomTask({ id: f.id ?? null, title: f.title, prompt: f.prompt, recipientPhone: f.recipientPhone, enabled: f.enabled, days: f.days, pausedUntil: f.pausedUntil })
+    const r = await saveCustomTask({ id: f.id ?? null, title: f.title, prompt: f.prompt, recipientPhone: f.recipientPhone, monthDay: f.monthDay, enabled: f.enabled, days: f.days, pausedUntil: f.pausedUntil })
     if (!r.ok) { setErr(r.error); return }
     router.refresh(); onDone()
   })
@@ -137,8 +269,18 @@ function CustomForm({ initial, today, onDone }: { initial: Omit<CustomView, 'id'
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <p className="text-xs font-medium text-gray-700">Dias</p>
-          <div className="mt-1"><DayPicker days={f.days} onChange={d => setF({ ...f, days: d })} /></div>
+          <p className="text-xs font-medium text-gray-700">Quando</p>
+          <div className="mt-1 flex gap-3 text-xs text-gray-700">
+            <label className="flex items-center gap-1"><input type="radio" checked={f.monthDay == null} onChange={() => setF({ ...f, monthDay: null })} className="accent-brand-700" /> Dias da semana</label>
+            <label className="flex items-center gap-1"><input type="radio" checked={f.monthDay != null} onChange={() => setF({ ...f, monthDay: f.monthDay ?? 1 })} className="accent-brand-700" /> Uma vez por mês</label>
+          </div>
+          <div className="mt-1.5">
+            {f.monthDay == null
+              ? <DayPicker days={f.days} onChange={d => setF({ ...f, days: d })} />
+              : <label className="flex items-center gap-1.5 text-xs text-gray-600">No dia
+                  <input type="number" min={1} max={28} value={f.monthDay} onChange={e => setF({ ...f, monthDay: e.target.value === '' ? 1 : Number(e.target.value) })}
+                    className="w-16 rounded-md border border-gray-300 px-1.5 py-1 text-sm" /> de cada mês (1 a 28)</label>}
+          </div>
         </div>
         <label className="block text-xs font-medium text-gray-700">WhatsApp que recebe (opcional)
           <input value={f.recipientPhone} inputMode="tel" onChange={e => setF({ ...f, recipientPhone: e.target.value })}
@@ -169,9 +311,11 @@ function CustomForm({ initial, today, onDone }: { initial: Omit<CustomView, 'id'
   )
 }
 
-export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoOn }: {
+export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoOn, team, managerPhone, managerEmail }: {
   builtins: BuiltinView[]; customs: CustomView[]; today: string; customAllowed: boolean; theoOn: boolean
+  team: Person[]; managerPhone: string; managerEmail: string
 }) {
+  const ctx: Ctx = { team, managerPhone, managerEmail }
   const [editing, setEditing] = useState<string | null>(null) // id ou 'new'
   const groups = [...new Set(builtins.map(b => b.agent))]
   return (
@@ -182,7 +326,7 @@ export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoO
       {builtins.length > 0 && groups.map(g => (
         <div key={g} className="mt-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{g}</p>
-          <ul className="divide-y divide-gray-100">{builtins.filter(b => b.agent === g).map(t => <BuiltinRow key={t.key} t={t} today={today} />)}</ul>
+          <ul className="divide-y divide-gray-100">{builtins.filter(b => b.agent === g).map(t => <BuiltinRow key={t.key} t={t} today={today} ctx={ctx} />)}</ul>
         </div>
       ))}
 
@@ -208,7 +352,7 @@ export function AgentTasksPanel({ builtins, customs, today, customAllowed, theoO
                       <p className="text-sm font-medium text-gray-900">{c.title}</p>
                       <p className="line-clamp-2 text-xs text-gray-500">{c.prompt}</p>
                       <p className="mt-0.5 text-[11px] text-gray-400">
-                        {statusLabel(c, today)} · {c.recipientPhone ? `para ${c.recipientPhone}` : 'para o gestor'}
+                        {customStatusLabel(c, today)} · {c.recipientPhone ? `para ${c.recipientPhone}` : 'para o gestor'}
                         {c.lastRunAt && ` · última vez ${new Date(c.lastRunAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}: ${c.lastStatus ?? ''}`}
                       </p>
                     </div>

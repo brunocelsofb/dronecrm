@@ -41,6 +41,8 @@ export async function runMeasurementAlerts(tenantId: string): Promise<Measuremen
     .eq('tenant_id', tenantId).eq('year', ref.year).eq('month', ref.month).in('contract_id', due.map(c => c.id))
   const statusBy = new Map((recs ?? []).map(r => [r.contract_id as string, r.status as string]))
 
+  // Quem faz (tela IA da empresa); vazio = quem cuida do contrato
+  const assignee = (await (await import('./agent-task-options')).loadTaskOptions(tenantId, 'measurement_alerts')).assignee ?? null
   for (const c of due) {
     const st = statusBy.get(c.id)
     if (st === 'validado') continue
@@ -58,7 +60,7 @@ export async function runMeasurementAlerts(tenantId: string): Promise<Measuremen
             `Lance em Faturamento → "Lançar medição" com o relatório; sem relatório, só vale com aprovação do administrador.`),
       activityType: 'task',
       dueInDays: 0,
-      assignedTo: (c.current_assignee_id as string | null) ?? (c.owner_id as string | null) ?? null,
+      assignedTo: assignee ?? (c.current_assignee_id as string | null) ?? (c.owner_id as string | null) ?? null,
       metadata: { kind: 'measurement_pending', year: ref.year, month: ref.month },
     })
     if (r.status === 'created') report.created++

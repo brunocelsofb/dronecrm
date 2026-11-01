@@ -24,6 +24,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createAgentActivity } from './agent-activity'
 import { sendWhatsApp } from './briefing-core'
 import { formatBRL, formatDateBR, sendAgentEmail } from './notifications'
+import { DEFAULT_RENEWAL_LEVELS, renewalSlotFor, resolveRenewalLevels, slotDays, type RenewalLevels } from './renewal-templates'
 import { daysUntilBR, resolveRenewalTemplates, resolveRenewalEmailSubject, renderRenewalTemplate, type RenewalLevelKey } from './renewal-templates'
 import { getTenantNamesById } from './tenant-name'
 
@@ -94,13 +95,9 @@ function addDays(isoDate: string, days: number): string {
 }
 
 
-function levelFor(daysLeft: number): AlertLevel | null {
-  if (daysLeft < 0)   return 0
-  if (daysLeft <= 15) return 15
-  if (daysLeft <= 30) return 30
-  if (daysLeft <= 60) return 60
-  if (daysLeft <= 90) return 90
-  return null
+// Degrau do contrato pelos marcos da empresa (padrão 90/60/30/15)
+function levelFor(daysLeft: number, levels: RenewalLevels): AlertLevel | null {
+  return renewalSlotFor(daysLeft, levels)
 }
 
 // ─── Busca de contratos ───────────────────────────────────────────────────────
@@ -108,6 +105,7 @@ function levelFor(daysLeft: number): AlertLevel | null {
 async function fetchCandidates(
   supabase: ReturnType<typeof getAdminClient>,
   tenantId: string,
+  prepDays: number = DEFAULT_RENEWAL_LEVELS.prep,
 ): Promise<RenewalCandidate[]> {
   const today = todayBR()
 
@@ -116,7 +114,7 @@ async function fetchCandidates(
     .select('id, tenant_id, process_number, client_name, valid_until, monthly_value, contact_id, owner_id, current_assignee_id')
     .not('valid_until', 'is', null)
     .gte('valid_until', addDays(today, -90))
-    .lte('valid_until', addDays(today, 90))
+    .lte('valid_until', addDays(today, prepDays))
     .eq('tenant_id', tenantId)
 
   if (error) throw new Error(`erro ao buscar contratos: ${error.message}`)
@@ -170,7 +168,7 @@ async function fetchCandidates(
   })
 }
 
-type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string>; emailSubject: string }
+type OrgConfig = { companyName: string; templates: Record<RenewalLevelKey, string>; emailSubject: string; levels: RenewalLevels; assignee?: string | null }
 
 async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>, tenantId: string): Promise<OrgConfig> {
   const { data } = await supabase
@@ -178,11 +176,12 @@ async function fetchOrgConfig(supabase: ReturnType<typeof getAdminClient>, tenan
     .select('company_name, copilot_settings')
     .eq('tenant_id', tenantId)
     .maybeSingle()
-  const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown }
+  const copilot = (data?.copilot_settings ?? {}) as { renewal_templates?: unknown; renewal_email_subject?: unknown; renewal_levels?: unknown }
   return {
     companyName: data?.company_name?.trim() || 'Equipe Comercial',
     templates:   resolveRenewalTemplates(copilot.renewal_templates),
     emailSubject: resolveRenewalEmailSubject(copilot.renewal_email_subject),
+    levels:      resolveRenewalLevels(copilot.renewal_levels),
   }
 }
 
@@ -226,6 +225,7 @@ async function processContract(
     pending: (level === 90 ? 'preparar' : c.contact_phone && c.contact_email ? 'enviar' : 'sem_contato') as AlertResult['pending'],
   }
   const dedupeKey = `renewal:${c.valid_until}:${level}`
+  const markDays  = slotDays(level, org.levels) // dias do marco nesta empresa (só para mostrar)
   const dueInDays = level === 0 ? 0 : level === 15 ? 1 : level === 30 ? 3 : level === 60 ? 5 : 7
   const when      = levelLabel(level, c.days_until_expiry)
   const header    = `[Farmer] Contrato ${c.process_number ?? ''} — ${c.client_name} — ${when} (${formatDateBR(c.valid_until)}). Valor: ${formatBRL(c.monthly_value)}.`
@@ -242,13 +242,13 @@ async function processContract(
           `${i + 1}. ${st.acao}${st.prazo ? ` (até ${formatDateBR(st.prazo)})` : ''}${st.clausula ? ` — ${st.clausula}` : ''}`).join('\n')
       : `\n\nDica: anexe o contrato e os aditivos em PDF na aba "Contrato e aditivos" e peça a leitura (Admin) — o Farmer indica aviso prévio, reajuste e os próximos passos.`
     const r = await createAgentActivity(supabase, {
-      contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+      contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
       activityType: 'task',
       title: `Preparar renovação — ${c.client_name}`,
       content:
         `${header}\n\nPreparar a renovação: conferir cláusula de reajuste (índice e data-base), ` +
         `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.` + readingText,
-      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until },
+      metadata: { kind: 'renewal_alert', alert_level: level, alert_days: markDays, valid_until: c.valid_until },
     })
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
   }
@@ -258,13 +258,13 @@ async function processContract(
   const missing = [!c.contact_phone && 'WhatsApp', !c.contact_email && 'e-mail'].filter(Boolean) as string[]
   if (missing.length > 0) {
     const r = await createAgentActivity(supabase, {
-      contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+      contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
       activityType: 'task',
       title: `Aviso de renovação sem ${missing.join(' e ')} — ${c.client_name}`,
       content:
         `${header}\n\nO aviso de renovação vai por WhatsApp e e-mail juntos, mas o contato do contrato ` +
         `está sem ${missing.join(' e ')}. Cadastre no contato e fale com o cliente.`,
-      metadata: { kind: 'renewal_alert', alert_level: level, valid_until: c.valid_until, missing },
+      metadata: { kind: 'renewal_alert', alert_level: level, alert_days: markDays, valid_until: c.valid_until, missing },
     })
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : `sem ${missing.join(' e ')}` }
   }
@@ -272,11 +272,11 @@ async function processContract(
   const draft = buildClientMessage(c, level, org)
   const draftSubject = renderRenewalTemplate(org.emailSubject, templateVars(c, org))
   const r = await createAgentActivity(supabase, {
-    contractId: c.id, dedupeKey, dueInDays, assignedTo: c.owner_id,
+    contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
     activityType: 'whatsapp',
     title: level === 0
       ? `Enviar aviso de contrato vencido — ${c.client_name}`
-      : `Enviar aviso de renovação (marco de ${level} dias · vence ${formatDateBR(c.valid_until)}) — ${c.client_name}`,
+      : `Enviar aviso de renovação (marco de ${markDays} dias · vence ${formatDateBR(c.valid_until)}) — ${c.client_name}`,
     content:
       `${header}\n\n` +
       `Aviso ao cliente (WhatsApp + e-mail) pronto para revisão — para ${c.contact_name ?? 'o contato'} ` +
@@ -285,6 +285,7 @@ async function processContract(
     metadata: {
       kind:          'renewal_alert',
       alert_level:   level,
+      alert_days:    markDays,
       valid_until:   c.valid_until,
       draft_message: draft,
       target_phone:  c.contact_phone,
@@ -306,7 +307,7 @@ function escapeHtml(t: string): string {
 const PENDING_LABEL: Record<AlertResult['pending'], { text: string; color: string }> = {
   enviar:       { text: 'Aviso ao cliente aguardando revisão e envio', color: '#c2410c' },
   sem_contato:  { text: 'Falta WhatsApp e/ou e-mail do contato — cadastrar e falar com o cliente', color: '#8e4550' },
-  preparar:     { text: 'Preparar a renovação (90 dias)', color: '#1d4ed8' },
+  preparar:     { text: 'Preparar a renovação', color: '#1d4ed8' },
 }
 
 function buildSummaryEmail(items: AlertResult[], companyName: string): string {
@@ -365,14 +366,18 @@ export async function runExpirationAlerts(tenantId: string): Promise<ExpirationA
   console.log('[expiration] iniciando varredura de renovações...')
   const supabase = getAdminClient()
 
-  const [candidates, org] = await Promise.all([fetchCandidates(supabase, tenantId), fetchOrgConfig(supabase, tenantId)])
-  console.log(`[expiration] ${candidates.length} contrato(s) na janela de -90 a +90 dias`)
+  // Quem faz e quem recebe (tela IA da empresa); vazio = responsável do contrato / gestor
+  const { loadTaskOptions } = await import('./agent-task-options')
+  const [baseOrg, taskOpts] = await Promise.all([fetchOrgConfig(supabase, tenantId), loadTaskOptions(tenantId, 'renewal_alerts')])
+  const org: OrgConfig = { ...baseOrg, assignee: taskOpts.assignee ?? null }
+  const candidates = await fetchCandidates(supabase, tenantId, org.levels.prep)
+  console.log(`[expiration] ${candidates.length} contrato(s) na janela de -90 a +${org.levels.prep} dias`)
 
   const results: AlertResult[] = []
   const errors:  string[]      = []
 
   for (const c of candidates) {
-    const level = levelFor(c.days_until_expiry)
+    const level = levelFor(c.days_until_expiry, org.levels)
     if (level === null) continue
     try {
       const r = await processContract(supabase, c, level, org)
@@ -405,6 +410,7 @@ export async function runExpirationAlerts(tenantId: string): Promise<ExpirationA
       `${lines.join('\n')}\n\n` +
       `Os avisos aos clientes aguardam revisão do consultor no CRM.`,
       tenantId,
+      taskOpts.notify_whatsapp,
     )
   }
 
@@ -412,7 +418,7 @@ export async function runExpirationAlerts(tenantId: string): Promise<ExpirationA
   let internalEmail: ExpirationAlertsReport['internal_email'] = null
   if (created.length > 0) {
     const { getManagerChannel } = await import('./briefing-core')
-    const to = (await getManagerChannel(tenantId)).email
+    const to = taskOpts.notify_email || (await getManagerChannel(tenantId)).email
     internalEmail = to
       ? await sendAgentEmail({
           tenantId,

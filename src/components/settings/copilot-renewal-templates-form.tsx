@@ -3,6 +3,9 @@
 import { useState } from 'react'
 import { saveRenewalTemplates } from '@/lib/actions/copilot-settings'
 import {
+  DEFAULT_RENEWAL_LEVELS,
+  renewalLevelLabel,
+  type RenewalLevels,
   RENEWAL_LEVELS,
   RENEWAL_VARIABLES,
   DEFAULT_RENEWAL_TEMPLATES,
@@ -29,6 +32,7 @@ export function CopilotRenewalTemplatesForm({
   initialConfirmationSubject,
   initialCommercialEmail,
   initialExtraCc,
+  levels,
   companyName,
 }: {
   initial: Record<RenewalLevelKey, string>
@@ -36,8 +40,10 @@ export function CopilotRenewalTemplatesForm({
   initialConfirmationSubject: string
   initialCommercialEmail: string
   initialExtraCc: string
+  levels?: RenewalLevels
   companyName: string
 }) {
+  const L = levels ?? DEFAULT_RENEWAL_LEVELS
   const [templates, setTemplates] = useState(initial)
   const [subject, setSubject] = useState(initialSubject)
   const [confirmationSubject, setConfirmationSubject] = useState(initialConfirmationSubject)
@@ -84,7 +90,7 @@ export function CopilotRenewalTemplatesForm({
       </div>
 
       <div>
-        <label htmlFor="renewal-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail dos avisos (60, 30, 15 dias e vencido)</label>
+        <label htmlFor="renewal-subject" className="block text-xs font-semibold text-gray-700 mb-1">Assunto do e-mail dos avisos ({L.a1}, {L.a2}, {L.a3} dias e vencido)</label>
         <input
           id="renewal-subject"
           value={subject}
@@ -151,7 +157,7 @@ export function CopilotRenewalTemplatesForm({
               className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle ring-1 ring-black/10"
               style={{ background: RENEWAL_SEVERITY[l.key].bg }}
             />
-            {l.label}
+            {renewalLevelLabel(l.key, L)}
             <span className="ml-1.5 text-[10px] opacity-70">{RENEWAL_SEVERITY[l.key].label}</span>
           </button>
         ))}

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CopilotRenewalTemplatesForm } from '@/components/settings/copilot-renewal-templates-form'
-import { resolveRenewalTemplates, resolveRenewalEmailSubject, resolveRenewalConfirmationSubject, resolveCommercialEmail } from '@/lib/agent/renewal-templates'
+import { resolveRenewalTemplates, resolveRenewalEmailSubject, resolveRenewalConfirmationSubject, resolveCommercialEmail, resolveRenewalLevels } from '@/lib/agent/renewal-templates'
 import { resolveInternalSettings } from '@/lib/agent/internal-settings'
 import { CopilotInternalForm } from '@/components/settings/copilot-internal-form'
 import Link from 'next/link'
@@ -102,6 +102,7 @@ export default async function CopilotSettingsPage({ searchParams }: { searchPara
           initialConfirmationSubject={resolveRenewalConfirmationSubject(copilot.renewal_confirmation_subject)}
           initialCommercialEmail={resolveCommercialEmail(copilot.commercial_email)}
           initialExtraCc={internal.extraCcEmails.join(', ')}
+          levels={resolveRenewalLevels((copilot as { renewal_levels?: unknown }).renewal_levels)}
           companyName={companyName}
         />
       )}

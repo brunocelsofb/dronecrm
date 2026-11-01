@@ -9,8 +9,12 @@ import { loadTheoTenantAi, monthUsage } from '@/lib/ai/theo-server'
 import { runTheo } from '@/lib/ai/theo-engine'
 import { runTheoRead } from '@/lib/ai/theo-tools'
 import { estimateCostUsd, theoSystemPrompt } from '@/lib/ai/theo-catalog'
+import { resolveRenewalLevels } from './renewal-templates'
+import { resolveInternalSettings } from './internal-settings'
+import { resolveRulerSettings } from './renewal-ruler'
+import { resolveCompanySettings } from '@/lib/companies/settings'
 import {
-  customTaskMessage, normDays, runsOn, SCHEDULED_TASK_RULES, taskState, todayBrIso, isIsoDate,
+  customTaskMessage, customRunsOn, isMonthDay, normDays, runsOn, SCHEDULED_TASK_RULES, taskState, todayBrIso, isIsoDate,
   MAX_CUSTOM_TASKS, type AgentTaskKey,
 } from './agent-tasks'
 
@@ -28,7 +32,7 @@ export async function taskRunsToday(tenantId: string, key: AgentTaskKey, today =
 }
 
 export type CustomTask = {
-  id: string; title: string; prompt: string; recipient_phone: string | null
+  id: string; title: string; prompt: string; recipient_phone: string | null; month_day: number | null
   enabled: boolean; days: number[]; paused_until: string | null
   last_run_at: string | null; last_status: string | null; created_by: string | null
 }
@@ -37,6 +41,7 @@ export function toCustomTask(r: Record<string, unknown>): CustomTask {
   return {
     id: String(r.id), title: String(r.title ?? ''), prompt: String(r.prompt ?? ''),
     recipient_phone: (r.recipient_phone as string | null) ?? null,
+    month_day: isMonthDay(r.month_day) ? r.month_day : null,
     enabled: r.enabled !== false, days: normDays(r.days),
     paused_until: isIsoDate(r.paused_until) ? r.paused_until : null,
     last_run_at: (r.last_run_at as string | null) ?? null, last_status: (r.last_status as string | null) ?? null,
@@ -87,7 +92,7 @@ export async function runCustomTasksForTenant(tenantId: string, opts: { force?: 
   for (const row of data ?? []) {
     const t = toCustomTask(row as Record<string, unknown>)
     const lastBr = t.last_run_at ? todayBrIso(new Date(t.last_run_at).getTime()) : null
-    if (!opts.force && (!runsOn({ enabled: t.enabled, days: t.days, pausedUntil: t.paused_until }, today) || lastBr === today)) continue
+    if (!opts.force && (!customRunsOn({ enabled: t.enabled, days: t.days, pausedUntil: t.paused_until, monthDay: t.month_day }, today) || lastBr === today)) continue
     // Marca antes: se cair no meio, não repete no mesmo dia
     await admin.from('agent_tasks').update({ last_run_at: new Date().toISOString(), last_status: 'rodando' }).eq('id', t.id).eq('tenant_id', tenantId)
     let status: string
@@ -100,4 +105,42 @@ export async function runCustomTasksForTenant(tenantId: string, opts: { force?: 
     out.push({ id: t.id, status })
   }
   return { ran: out.length, tasks: out }
+}
+
+// Prazos editáveis de cada tarefa, lidos de onde cada rotina já lê (uma fonte só):
+//   renewal_alerts  → copilot_settings.renewal_levels
+//   measurement_alerts → organization_settings.measurement_due_day
+//   impl_report     → copilot_settings.impl_report_day
+//   ruler_overdue   → copilot_settings.renewal_ruler.overdue_repeat_days
+//   inactive_hunter → company_settings.inactive_months
+export type ParamSource = { copilot_settings?: unknown; measurement_due_day?: unknown; company_settings?: unknown }
+export const PARAM_COLUMNS = 'copilot_settings, measurement_due_day, company_settings'
+
+export function readTaskParams(org: ParamSource | null): Record<string, Record<string, number>> {
+  const cs = org?.copilot_settings ?? {}
+  const L = resolveRenewalLevels((cs as { renewal_levels?: unknown }).renewal_levels)
+  const due = Number(org?.measurement_due_day ?? 5)
+  return {
+    renewal_alerts: { ...L },
+    measurement_alerts: { due_day: Number.isInteger(due) && due >= 1 && due <= 28 ? due : 5 },
+    impl_report: { report_day: resolveInternalSettings(cs).implReportDay },
+    ruler_overdue: { repeat_days: resolveRulerSettings(cs).overdue_repeat_days },
+    inactive_hunter: { inactive_months: resolveCompanySettings(org?.company_settings).inactive_months },
+  }
+}
+
+// Monta a atualização de organization_settings para os prazos de uma tarefa
+export function paramsUpdate(key: AgentTaskKey, v: Record<string, number>, org: ParamSource | null): Record<string, unknown> | null {
+  const cs = { ...((org?.copilot_settings ?? {}) as Record<string, unknown>) }
+  switch (key) {
+    case 'renewal_alerts': return { copilot_settings: { ...cs, renewal_levels: { prep: v.prep, a1: v.a1, a2: v.a2, a3: v.a3 } } }
+    case 'measurement_alerts': return { measurement_due_day: v.due_day }
+    case 'impl_report': return { copilot_settings: { ...cs, impl_report_day: v.report_day } }
+    case 'ruler_overdue': {
+      const ruler = { ...((cs.renewal_ruler ?? {}) as Record<string, unknown>), overdue_repeat_days: v.repeat_days }
+      return { copilot_settings: { ...cs, renewal_ruler: ruler } }
+    }
+    case 'inactive_hunter': return { company_settings: { ...((org?.company_settings ?? {}) as Record<string, unknown>), inactive_months: v.inactive_months } }
+    default: return null
+  }
 }

@@ -309,7 +309,7 @@ export async function sendRenewalAlert(
   const quando = sentAt.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }).replace(',', ' às')
-  const marco = isConfirmation ? 'renovação concluída' : meta.alert_level === 0 ? 'contrato vencido' : `${meta.alert_level} dias`
+  const marco = isConfirmation ? 'renovação concluída' : meta.alert_level === 0 ? 'contrato vencido' : `${typeof meta.alert_days === 'number' ? meta.alert_days : meta.alert_level} dias`
   const contato = typeof meta.contact_name === 'string' ? `${meta.contact_name} ` : ''
   const sentTitle = isConfirmation ? 'Confirmação de renovação enviada ao cliente' : `Aviso de renovação (${marco}) enviado ao cliente`
   const sentContent =
@@ -367,7 +367,10 @@ export async function sendRenewalAlert(
       `Contrato: ${ci?.process_number ?? '—'} — ${ci?.client_name ?? ''}\n` +
       `Para: ${contato || 'contato '}(${phone} · ${toEmail})\n` +
       `WhatsApp + e-mail às ${hora}${ccEmail ? ` · cópia ${ccEmail}` : ''}`
-    const r = await sendWhatsApp(managerText, await resolveTenantId({ contractId: activity.contract_id }))
+    const tid = await resolveTenantId({ contractId: activity.contract_id })
+    const { loadTaskOptions } = await import('@/lib/agent/agent-task-options')
+    // Mesmo destinatário do resumo dos avisos (tela IA da empresa); vazio = gestor
+    const r = await sendWhatsApp(managerText, tid, (await loadTaskOptions(tid, 'renewal_alerts')).notify_whatsapp)
     if (!r.sent) console.error('[renewal] aviso ao gestor falhou:', r.error)
   } catch (e) {
     console.error('[renewal] aviso ao gestor falhou:', e)

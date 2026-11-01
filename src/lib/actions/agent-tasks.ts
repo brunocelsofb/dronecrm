@@ -9,9 +9,10 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import {
-  agentTaskDef, isAgentTaskKey, isIsoDate, normDays, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS,
+  agentTaskDef, isAgentTaskKey, checkParams, checkOptions, isMonthDay, isIsoDate, normDays, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS,
 } from '@/lib/agent/agent-tasks'
-import { runCustomTask, toCustomTask } from '@/lib/agent/agent-tasks-server'
+import { runCustomTask, toCustomTask, paramsUpdate, PARAM_COLUMNS, type ParamSource } from '@/lib/agent/agent-tasks-server'
+import { validateRenewalLevels } from '@/lib/agent/renewal-templates'
 
 type Result = { ok: true; id?: string } | { ok: false; error: string }
 type Schedule = { enabled: boolean; days: number[]; pausedUntil: string | null }
@@ -70,7 +71,7 @@ export async function saveBuiltinTask(key: string, schedule: Schedule): Promise<
   return { ok: true }
 }
 
-export type CustomTaskInput = Schedule & { id?: string | null; title: string; prompt: string; recipientPhone?: string | null }
+export type CustomTaskInput = Schedule & { id?: string | null; title: string; prompt: string; recipientPhone?: string | null; monthDay?: number | null }
 
 // Tarefa escrita pelo admin: criar ou alterar
 export async function saveCustomTask(input: CustomTaskInput): Promise<Result> {
@@ -86,11 +87,13 @@ export async function saveCustomTask(input: CustomTaskInput): Promise<Result> {
   if (phone && (phone.length < 10 || phone.length > 13)) return { ok: false, error: 'WhatsApp de destino inválido (DDD + número).' }
   const s = cleanSchedule(input)
   if ('error' in s) return { ok: false, error: s.error }
-  if (s.enabled && !s.days.length) return { ok: false, error: 'Marque pelo menos um dia.' }
+  const monthDay = input.monthDay == null || (input.monthDay as unknown) === '' ? null : Number(input.monthDay)
+  if (monthDay !== null && !isMonthDay(monthDay)) return { ok: false, error: 'Dia do mês: de 1 a 28.' }
+  if (s.enabled && monthDay === null && !s.days.length) return { ok: false, error: 'Marque pelo menos um dia.' }
 
   const db = await createScopedAdmin(g.tenantId)
   const fields = {
-    title, prompt, recipient_phone: phone || null,
+    title, prompt, recipient_phone: phone || null, month_day: monthDay,
     enabled: s.enabled, days: s.days, paused_until: s.pausedUntil, updated_at: new Date().toISOString(),
   }
   if (input.id) {
@@ -126,4 +129,61 @@ export async function testCustomTask(id: string): Promise<{ ok: true; text: stri
   if (!data) return { ok: false, error: 'Tarefa não encontrada. Salve antes de testar.' }
   const r = await runCustomTask(g.tenantId, toCustomTask(data as Record<string, unknown>), { send: false })
   return r.ok && r.text ? { ok: true, text: r.text } : { ok: false, error: r.status }
+}
+
+// Prazos da tarefa do sistema (ex.: avisos aos 90/60/30/15 dias), gravados onde a rotina já lê
+export async function saveTaskParams(key: string, values: Record<string, unknown>): Promise<Result> {
+  const g = await adminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!isAgentTaskKey(key)) return { ok: false, error: 'Tarefa desconhecida.' }
+  const def = agentTaskDef(key)
+  const c = checkParams(def, values)
+  if ('error' in c) return { ok: false, error: c.error }
+  if (key === 'renewal_alerts') {
+    const v = validateRenewalLevels(c.values)
+    if ('error' in v) return { ok: false, error: v.error }
+  }
+  const db = scopeAdminClient(createAdminClient(), g.tenantId, g.userId)
+  const [tf, { data: org }] = await Promise.all([
+    getTenantFeatures(g.tenantId),
+    db.from('organization_settings').select(PARAM_COLUMNS).maybeSingle(),
+  ])
+  if (!tf.features.includes(def.feature)) return { ok: false, error: 'A licença não inclui esta tarefa.' }
+  const upd = paramsUpdate(key, c.values, org as ParamSource | null)
+  if (!upd) return { ok: false, error: 'Esta tarefa não tem prazos editáveis.' }
+  const { error } = await db.from('organization_settings').update(upd).eq('tenant_id', g.tenantId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+// Destinatários e escolhas da tarefa do sistema (quem faz, quem recebe, o que aparece no resumo)
+export async function saveTaskOptions(key: string, raw: Record<string, unknown>): Promise<Result> {
+  const g = await adminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!isAgentTaskKey(key)) return { ok: false, error: 'Tarefa desconhecida.' }
+  const def = agentTaskDef(key)
+  const c = checkOptions(def, raw)
+  if ('error' in c) return { ok: false, error: c.error }
+  const db = scopeAdminClient(createAdminClient(), g.tenantId, g.userId)
+  const [tf, person] = await Promise.all([
+    getTenantFeatures(g.tenantId),
+    c.options.assignee ? db.from('profiles').select('id').eq('id', c.options.assignee).eq('tenant_id', g.tenantId).maybeSingle() : Promise.resolve({ data: { id: null } }),
+  ])
+  if (!tf.features.includes(def.feature)) return { ok: false, error: 'A licença não inclui esta tarefa.' }
+  if (c.options.assignee && !person.data) return { ok: false, error: 'Pessoa não encontrada nesta empresa.' }
+
+  // Relatório de implantação: o responsável já mora em copilot_settings (Configurações → Agentes IA)
+  if (key === 'impl_report') {
+    const { data: org } = await db.from('organization_settings').select('copilot_settings').maybeSingle()
+    const cs = ((org as { copilot_settings?: Record<string, unknown> } | null)?.copilot_settings ?? {}) as Record<string, unknown>
+    const { error } = await db.from('organization_settings').update({ copilot_settings: { ...cs, impl_report_owner_id: c.options.assignee ?? null } }).eq('tenant_id', g.tenantId)
+    return error ? { ok: false, error: error.message } : { ok: true }
+  }
+
+  const { data: row } = await db.from('agent_tasks').select('id').eq('task_key', key).maybeSingle()
+  const now = new Date().toISOString()
+  const { error } = row
+    ? await db.from('agent_tasks').update({ options: c.options, updated_at: now }).eq('id', row.id as string)
+    : await db.from('agent_tasks').insert({ task_key: key, enabled: true, days: def.defaultDays, options: c.options, created_by: g.userId })
+  return error ? { ok: false, error: error.message } : { ok: true }
 }
