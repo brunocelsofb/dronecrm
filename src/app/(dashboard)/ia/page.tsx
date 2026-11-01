@@ -9,27 +9,27 @@ import { THEO_TOOLS, type TheoTool } from '@/lib/ai/theo-catalog'
 export const dynamic = 'force-dynamic'
 
 // IA da empresa (só admin): o que o assistente e os agentes fazem — apenas o que a licença inclui
-type Agent = { feature: string; title: string; who: string; items: string[] }
+type Agent = { feature: string; title: string; who: string; href: string; items: string[] }
 const AGENTS: Agent[] = [
-  { feature: 'copiloto', title: 'Resumo do dia (briefing)', who: 'Agentes IA', items: [
+  { feature: 'copiloto', title: 'Resumo do dia (briefing)', who: 'Agentes IA', href: '/briefing', items: [
     'De segunda a sexta, a IA escreve um resumo da carteira e dos novos negócios e envia no WhatsApp do gestor.',
     'Os indicadores do resumo vêm direto dos dados do sistema; a IA não recalcula números.',
   ] },
-  { feature: 'copiloto', title: 'Farmer — carteira de clientes', who: 'Agentes IA', items: [
+  { feature: 'copiloto', title: 'Farmer — carteira de clientes', who: 'Agentes IA', href: '/briefing', items: [
     'Lê o contrato e os aditivos em PDF e aponta cláusulas, prazos e próximos passos da renovação, citando o trecho (o admin pede; cada leitura tem custo de IA).',
     'Avisos de renovação aos 90, 60, 30 e 15 dias e depois do vencimento: viram atividade com a mensagem pronta — nada vai ao cliente sem a pessoa revisar e enviar.',
     'Medições pendentes, régua de renovação, confirmação de renovação, e-mails internos de implantação e relatório mensal.',
   ] },
-  { feature: 'copiloto', title: 'Hunter — novos negócios', who: 'Agentes IA', items: [
+  { feature: 'copiloto', title: 'Hunter — novos negócios', who: 'Agentes IA', href: '/briefing', items: [
     'Oportunidades e propostas paradas, leads sem andamento e fechamentos do mês, na tela Agentes IA.',
     'Toda segunda, resumo dos clientes inativos no WhatsApp do gestor e tarefas para recuperar.',
   ] },
-  { feature: 'sdr', title: 'SDR de IA no WhatsApp', who: 'SDR de IA', items: [
+  { feature: 'sdr', title: 'SDR de IA no WhatsApp', who: 'SDR de IA', href: '/sdr', items: [
     'Atende os números ou setores escolhidos, apresenta-se como assistente virtual e faz as perguntas de qualificação.',
     'Passa o lead ao comercial com resumo, encaminha à equipe ou descarta; sai da conversa quando alguém do time escreve.',
     'Não fala com quem já é cliente nem inventa preço ou prazo.',
   ] },
-  { feature: 'varejo', title: 'Estúdio e textos da loja', who: 'Varejo', items: [
+  { feature: 'varejo', title: 'Estúdio e textos da loja', who: 'Varejo', href: '/varejo/estudio', items: [
     'Estúdio: fotos de look com modelos virtuais e cenários; a vitrine marca essas fotos como “criada por IA”.',
     'Texto do produto: descrição da peça a partir da foto.',
     'Usa a conta de IA da responsável pela loja (Gemini ou ChatGPT).',
@@ -92,7 +92,7 @@ export default async function IaPage() {
             {agents.map(a => (
               <div key={a.title} className="rounded-md border border-gray-100 p-4">
                 <p className="text-sm font-semibold text-gray-900">{a.title}</p>
-                <p className="text-[11px] text-gray-400">Menu: {a.who}</p>
+                <Link href={a.href} className="text-[11px] font-medium text-brand-700 hover:underline">Abrir em {a.who} →</Link>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-gray-700">
                   {a.items.map(i => <li key={i}>{i}</li>)}
                 </ul>

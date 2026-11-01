@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, type ComponentType, type FocusEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { NAV_HELP } from '@/lib/help/page-help'
-import { isSettingsChild } from '@/lib/config/settings-nav'
+import { isSettingsChild, IA_ADMIN_FEATURE } from '@/lib/config/settings-nav'
 import {
   LayoutDashboard, KanbanSquare, FileText, Building2, Settings, Target, LifeBuoy, MessageCircle, BarChart3,
   Briefcase, ShieldCheck, ClipboardList, BrainCircuit, Receipt, Megaphone, Gauge, Handshake, Users, Headset, Bot,
@@ -77,7 +77,10 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    key: 'agentes', label: 'Agentes IA', icon: BrainCircuit, items: [
+    // IA: a tela "IA da empresa" (só admin, via IA_ADMIN_FEATURE) e os agentes que trabalham sozinhos.
+    // SDR de IA e Estúdio IA ficam nas áreas em que a equipe usa (Marketing e Varejo).
+    key: 'agentes', label: 'IA', icon: BrainCircuit, items: [
+      { href: '/ia', label: 'IA da empresa', icon: Sparkles, feature: IA_ADMIN_FEATURE },
       { href: '/briefing', label: 'Agentes IA', icon: BrainCircuit, feature: 'copiloto' },
     ],
   },

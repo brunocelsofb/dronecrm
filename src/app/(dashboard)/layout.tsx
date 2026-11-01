@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PLATFORM_BRAND } from '@/lib/config/platform'
 import { MobileNav } from '@/components/layout/mobile-nav'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
+import { IA_ADMIN_FEATURE } from '@/lib/config/settings-nav'
 import { signOut } from '@/lib/actions/auth'
 import { RefreshButton } from '@/components/layout/refresh-button'
 import { NotificationBell } from '@/components/layout/notification-bell'
@@ -109,6 +110,8 @@ export default async function DashboardLayout({
   const requestPath = (await headers()).get('x-pathname') ?? ''
   const requestFeature = featureForPath(requestPath)
   // Loja (varejo) sem o Dashboard B2B: a tela inicial é o Painel da loja
+  // Menu: o admin vê também a tela "IA da empresa"
+  const navFeatures = isAdmin ? [...enabledFeatures, IA_ADMIN_FEATURE] : enabledFeatures
   if (requestPath === '/' && !enabledFeatures.includes('dashboard') && enabledFeatures.includes('varejo')) redirect('/varejo/painel')
   if (requestFeature && !enabledFeatures.includes(requestFeature)) {
     // Vai para a primeira aba liberada (Configurações só abre para Admin;
@@ -150,7 +153,7 @@ export default async function DashboardLayout({
       {/* Celular: barra do topo com menu, logo, notificações e conta (a barra lateral some) */}
       <header className={`sticky z-40 flex h-14 items-center justify-between gap-2 bg-brand-800 px-2 md:hidden ${impersonation.active ? 'top-9 mt-9' : 'top-0'}`}>
         <MobileNav
-          features={enabledFeatures}
+          features={navFeatures}
           isSuperAdmin={isSuperAdmin}
           logo={mobileLogo}
           footer={
@@ -189,7 +192,7 @@ export default async function DashboardLayout({
           )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
-          <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} features={enabledFeatures} />
+          <SidebarNav isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} features={navFeatures} />
         </div>
         <div className="mt-2 border-t border-white/10 pt-2">
           <div className="flex items-center justify-center gap-1 pb-1.5">
