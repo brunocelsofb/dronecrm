@@ -228,6 +228,8 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
     const step = run.steps[idx]
     if (!shouldNotifyOverdue(step, today, settings.overdue_repeat_days)) continue
     const r = await notifyStep(run, idx, 'overdue')
+    // Prévia ("Testar" na tela IA): o e-mail já foi anotado; não marca nem registra
+    if ((await import('./agent-preview')).inPreview()) { if (r.sent) notified++; continue }
     const count = (step.overdue_count ?? 0) + 1
     const steps = run.steps.map((s, i) => (i === idx ? { ...s, overdue_notified_at: nowIso(), overdue_count: count } : s))
     await save(run, { steps })

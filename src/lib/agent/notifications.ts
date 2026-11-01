@@ -184,6 +184,12 @@ export async function sendAgentEmail(opts: {
   fromEmail?: string
   tenantId?: string   // envia do e-mail de um administrador da empresa (conectado em Minha Conta)
 }): Promise<EmailSendResult> {
+  // Prévia ("Testar" na tela IA): só anota o e-mail
+  const { inPreview, record } = await import('./agent-preview')
+  if (inPreview()) {
+    record({ kind: 'email', to: opts.to, subject: opts.subject, html: opts.htmlBody })
+    return { sent: true }
+  }
   if (opts.tenantId) {
     try {
       const admin = getAdminClient()

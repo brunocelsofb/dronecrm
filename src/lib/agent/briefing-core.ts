@@ -715,6 +715,13 @@ export async function sendWhatsApp(text: string, tenantId?: string | null, numbe
   // Instância do briefing; se não definida, usa a de "novos negócios" (Matheus)
   let instance: string | null | undefined = process.env.EVOLUTION_INSTANCE_NAME ?? process.env.EVOLUTION_INSTANCE_NOVOS
   let number: string | null | undefined   = process.env.WHATSAPP_NUMBER
+  // Prévia ("Testar" na tela IA): só anota a mensagem e para quem iria
+  const { inPreview, record } = await import('./agent-preview')
+  if (inPreview()) {
+    const to = numberOverride?.trim() || (tenantId ? (await getManagerChannel(tenantId)).number : number) || null
+    record({ kind: 'whatsapp', to, text })
+    return { sent: true, statusCode: 200 }
+  }
   if (tenantId) {
     const ch = await getManagerChannel(tenantId)
     baseUrl = ch.baseUrl; apiKey = ch.apiKey; instance = ch.instance; number = numberOverride?.trim() || ch.number

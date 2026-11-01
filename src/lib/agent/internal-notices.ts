@@ -294,6 +294,12 @@ export async function createMonthlyImplementationReport(tenantId: string, force 
   const { text, count } = await buildImplementationReportText(tenantId)
   const mes = new Date(`${today}T12:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
+  // Prévia ("Testar" na tela IA): mostra o relatório e para quem iria, sem criar nada
+  const { inPreview, record } = await import('./agent-preview')
+  if (inPreview()) {
+    record({ kind: 'atividade', title: `Farmer · Enviar relatório mensal de implantação — ${mes}`, content: text, assignedTo: ownerId, due: today })
+    return { status: 'created', id: 'previa' }
+  }
   const { data, error } = await admin.from('activities').insert({
     contract_id:   null,
     tenant_id:     tenantId,

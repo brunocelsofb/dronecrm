@@ -9,9 +9,9 @@ import { resolveTenantId } from '@/lib/tenant/context'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
 import {
-  agentTaskDef, isAgentTaskKey, checkParams, checkOptions, isMonthDay, isIsoDate, normDays, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS,
+  agentTaskDef, isAgentTaskKey, todayBrIso, checkParams, checkOptions, isMonthDay, isIsoDate, normDays, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS,
 } from '@/lib/agent/agent-tasks'
-import { runCustomTask, toCustomTask, paramsUpdate, PARAM_COLUMNS, type ParamSource } from '@/lib/agent/agent-tasks-server'
+import { runCustomTask, toCustomTask, taskRunsToday, paramsUpdate, PARAM_COLUMNS, type ParamSource } from '@/lib/agent/agent-tasks-server'
 import { validateRenewalLevels } from '@/lib/agent/renewal-templates'
 
 type Result = { ok: true; id?: string } | { ok: false; error: string }
@@ -186,4 +186,91 @@ export async function saveTaskOptions(key: string, raw: Record<string, unknown>)
     ? await db.from('agent_tasks').update({ options: c.options, updated_at: now }).eq('id', row.id as string)
     : await db.from('agent_tasks').insert({ task_key: key, enabled: true, days: def.defaultDays, options: c.options, created_by: g.userId })
   return error ? { ok: false, error: error.message } : { ok: true }
+}
+
+// Testar: roda a tarefa do sistema em modo prévia — mostra o que seria criado e enviado
+// hoje, com os dados e a configuração atuais, sem criar nem enviar nada.
+export type PreviewView = {
+  ok: boolean; error?: string; notes: string[]
+  messages: { kind: 'whatsapp' | 'email'; to: string; subject?: string; text?: string; html?: string }[]
+  activities: { title: string; content: string; who: string; due: string | null }[]
+  totalActivities: number
+}
+const MAX_PREVIEW_ACTIVITIES = 20
+
+export async function previewBuiltinTask(key: string): Promise<PreviewView> {
+  const empty: PreviewView = { ok: false, notes: [], messages: [], activities: [], totalActivities: 0 }
+  const g = await adminGuard()
+  if ('error' in g) return { ...empty, error: g.error }
+  if (!isAgentTaskKey(key)) return { ...empty, error: 'Tarefa desconhecida.' }
+  const tf = await getTenantFeatures(g.tenantId)
+  if (!tf.features.includes(agentTaskDef(key).feature)) return { ...empty, error: 'A licença não inclui esta tarefa.' }
+
+  const { runPreview } = await import('@/lib/agent/agent-preview')
+  const notes: string[] = []
+  const tid = g.tenantId
+  if (!(await taskRunsToday(tid, key))) notes.push('Hoje esta tarefa não roda (desligada, pausada ou fora dos dias marcados). A prévia mostra como seria se rodasse.')
+
+  const run = await runPreview(async () => {
+    switch (key) {
+      case 'briefing': {
+        const { generateBriefing } = await import('@/lib/agent/briefing-core')
+        notes.push('O resumo foi escrito agora pela IA (tem custo de IA). No envio real, a IA também abre tarefas para as situações paradas.')
+        const r = await generateBriefing({ tenantId: tid, sendViaWhatsApp: true, createTasks: false })
+        if (!r.ok) throw new Error(r.error)
+        return null
+      }
+      case 'renewal_alerts': {
+        const { runExpirationAlerts } = await import('@/lib/agent/expiration-alerts')
+        const r = await runExpirationAlerts(tid)
+        if (!r.total) notes.push('Hoje não haveria aviso novo: os contratos na janela já têm atividade aberta ou nenhum chegou a um marco.')
+        return null
+      }
+      case 'measurement_alerts': {
+        const { runMeasurementAlerts } = await import('@/lib/agent/measurement-alerts')
+        const r = await runMeasurementAlerts(tid)
+        if (!r.overdue) notes.push(`A medição de ${r.reference} ainda está no prazo: o lembrete só sai depois do dia de vencimento.`)
+        else if (!r.created) notes.push(`Medição de ${r.reference}: nenhum contrato pendente sem lembrete aberto.`)
+        return null
+      }
+      case 'ruler_overdue': {
+        const { runRulerOverdue } = await import('@/lib/agent/renewal-ruler-engine')
+        const r = await runRulerOverdue(tid)
+        if (!r.notified) notes.push(`Nenhum passo atrasado para avisar hoje (${r.checked} régua(s) ativa(s)).`)
+        return null
+      }
+      case 'impl_report': {
+        const { createMonthlyImplementationReport } = await import('@/lib/agent/internal-notices')
+        const { resolveInternalSettings } = await import('@/lib/agent/internal-settings')
+        const db = scopeAdminClient(createAdminClient(), tid, g.userId)
+        const { data: org } = await db.from('organization_settings').select('copilot_settings').maybeSingle()
+        const day = resolveInternalSettings((org as { copilot_settings?: unknown } | null)?.copilot_settings ?? {}).implReportDay
+        if (Number(todayBrIso().slice(8, 10)) < day) notes.push(`O relatório só sai a partir do dia ${day} do mês; a prévia mostra como ficaria hoje.`)
+        const r = await createMonthlyImplementationReport(tid, true)
+        if (r.status === 'skipped') notes.push(r.detail ?? 'Relatório deste mês já criado.')
+        return null
+      }
+      case 'inactive_hunter': {
+        const { runInactiveHunter } = await import('@/lib/companies/inactive-hunter')
+        const r = await runInactiveHunter(tid, { force: true })
+        if ('inactive' in r && !r.inactive) notes.push('Nenhum cliente inativo pela regra atual.')
+        if ('summary' in r && r.summary === 'desligado') notes.push('O resumo semanal ao gestor está desligado em Configurações → Segmentos e inativos.')
+        return null
+      }
+    }
+  })
+
+  const items = run.items
+  const acts = items.filter(i => i.kind === 'atividade')
+  const ids = [...new Set(acts.map(a => a.assignedTo).filter(Boolean))] as string[]
+  const db = scopeAdminClient(createAdminClient(), tid, g.userId)
+  const { data: people } = ids.length ? await db.from('profiles').select('id, full_name').in('id', ids) : { data: [] }
+  const nameOf = new Map(((people ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? '']))
+  return {
+    ok: !run.error, error: run.error, notes,
+    messages: items.flatMap((i): PreviewView['messages'] => i.kind === 'whatsapp' ? [{ kind: 'whatsapp', to: i.to || 'gestor (número não configurado)', text: i.text }]
+      : i.kind === 'email' ? [{ kind: 'email', to: i.to, subject: i.subject, html: i.html }] : []),
+    activities: acts.slice(0, MAX_PREVIEW_ACTIVITIES).map(a => ({ title: a.title, content: a.content.slice(0, 600), who: a.assignedTo ? nameOf.get(a.assignedTo) || 'pessoa' : 'sem responsável', due: a.due })),
+    totalActivities: acts.length,
+  }
 }

@@ -6,6 +6,7 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { loadInactiveCompanies, todayBr } from './inactive-data'
 import { bySegment } from './inactive'
 import { taskRunsToday } from '@/lib/agent/agent-tasks-server'
+import { inPreview, record } from '@/lib/agent/agent-preview'
 
 const MAX_TASKS_PER_RUN = 40          // por empresa (tenant) e por semana
 const SKIP_AFTER_DONE_DAYS = 90       // tarefa concluída há menos que isso: não abre outra
@@ -26,8 +27,8 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
   const taskOpts = await loadTaskOptions(tenantId, 'inactive_hunter')
   const out = { inactive: list.length, summary: 'desligado' as string, tasks: 0 }
 
-  // Marca antes de enviar: se o envio falhar, não repete várias vezes no dia
-  await db.from('organization_settings').update({ inactive_hunter_last_run: today }).eq('tenant_id', tenantId)
+  // Marca antes de enviar: se o envio falhar, não repete várias vezes no dia (na prévia, não grava)
+  if (!inPreview()) await db.from('organization_settings').update({ inactive_hunter_last_run: today }).eq('tenant_id', tenantId)
 
   // 1. Resumo ao gestor (WhatsApp do gestor configurado em Agentes IA)
   if (settings.hunter_weekly && list.length) {
@@ -62,6 +63,11 @@ export async function runInactiveHunter(tenantId: string, opts: { force?: boolea
     }
     for (const c of candidates.filter(c => !recent.has(c.id)).slice(0, MAX_TASKS_PER_RUN)) {
       const why = c.lastWon ? `última compra há ${c.monthsSince} meses` : 'cliente sem compra registrada no CRM'
+      if (inPreview()) {
+        record({ kind: 'atividade', title: `Reativar cliente: ${c.tradeName || c.name}`, content: `Inativa (sem contrato ativo; ${why}). Segmento: ${c.segment ?? 'sem segmento'}.`, assignedTo: fixed ?? c.ownerId, due: today })
+        out.tasks++
+        continue
+      }
       const { error } = await db.from('activities').insert({
         company_id: c.id, user_id: fixed ?? c.ownerId, assigned_to: fixed ?? c.ownerId,
         type: 'task', activity_type: 'call', status: 'planned', completed: false,

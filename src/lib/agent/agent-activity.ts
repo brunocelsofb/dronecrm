@@ -7,6 +7,7 @@
 //   planejada com a mesma chave, não cria outra
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { inPreview, record } from './agent-preview'
 
 export type AgentActivityInput = {
   contractId: string
@@ -68,6 +69,12 @@ export async function createAgentActivity(
     .limit(1)
   if (oErr) return { status: 'error', error: oErr.message }
   if (open && open.length > 0) return { status: 'skipped', reason: 'já existe atividade aberta' }
+
+  // Prévia ("Testar" na tela IA): só anota o que seria criado
+  if (inPreview()) {
+    record({ kind: 'atividade', title: input.title, content: input.content, assignedTo: input.assignedTo ?? null, due: dateInDays(input.dueInDays ?? 2) })
+    return { status: 'created', id: 'previa' }
+  }
 
   // 3. agente responsável: informado ou pelo funil em que o contrato está agora
   let agent: AgentName | undefined = input.agent

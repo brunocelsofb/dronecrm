@@ -113,3 +113,17 @@ test('tarefa escrita mensal', () => {
   assert.equal(customRunsOn({ ...s, monthDay: null, days: [4] }, '2026-11-05'), true) // quinta
   assert.equal(customStatusLabel(s, '2026-11-01'), 'Ativa · todo dia 5 do mês')
 })
+
+import { runPreview, inPreview, record } from '../src/lib/agent/agent-preview.ts'
+
+test('prévia: anota dentro, nada fora; erro não escapa', async () => {
+  assert.equal(inPreview(), false)
+  const r = await runPreview(async () => { assert.equal(inPreview(), true); record({ kind: 'nota', text: 'a' }); await new Promise(res => setTimeout(res, 5)); record({ kind: 'nota', text: 'b' }); return 1 })
+  assert.equal(r.result, 1)
+  assert.deepEqual(r.items.map(i => i.text), ['a', 'b'])
+  record({ kind: 'nota', text: 'fora' }) // sem efeito
+  const e = await runPreview(async () => { record({ kind: 'nota', text: 'x' }); throw new Error('falhou') })
+  assert.equal(e.error, 'falhou')
+  assert.equal(e.items.length, 1)
+  assert.equal(inPreview(), false)
+})

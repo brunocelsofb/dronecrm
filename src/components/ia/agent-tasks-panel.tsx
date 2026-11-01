@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { WEEKDAYS, statusLabel, customStatusLabel, BRIEFING_SECTIONS, ALL_BRIEFING_SECTIONS, MAX_BRIEFING_EXTRA, MAX_CUSTOM_TASKS, MAX_PROMPT_CHARS, MAX_TITLE_CHARS, type TaskState, type TaskParam, type TaskOptions } from '@/lib/agent/agent-tasks'
-import { saveBuiltinTask, saveCustomTask, deleteCustomTask, testCustomTask, saveTaskParams, saveTaskOptions } from '@/lib/actions/agent-tasks'
+import { saveBuiltinTask, saveCustomTask, deleteCustomTask, testCustomTask, saveTaskParams, saveTaskOptions, previewBuiltinTask, type PreviewView } from '@/lib/actions/agent-tasks'
 
 export type BuiltinView = {
   key: string; agent: string; title: string; description: string; sends: string; state: TaskState; params: TaskParam[]; values: Record<string, number>
@@ -89,6 +89,60 @@ function ParamsEditor({ taskKey, params, initial }: { taskKey: string; params: T
         </span>
       )}
       {msg && <span className={`text-xs ${msg === 'Salvo' ? 'text-gray-400' : 'text-negative-600'}`}>{msg}</span>}
+    </div>
+  )
+}
+
+// Testar: mostra o que a tarefa criaria e enviaria hoje, sem criar nem enviar nada
+function PreviewBox({ taskKey, costly }: { taskKey: string; costly: boolean }) {
+  const [p, setP] = useState<PreviewView | null>(null)
+  const [open, setOpen] = useState(false)
+  const [pending, start] = useTransition()
+  const run = () => start(async () => {
+    setOpen(true); setP(null)
+    setP(await previewBuiltinTask(taskKey).catch(() => ({ ok: false, error: 'Sem conexão. Tente de novo.', notes: [], messages: [], activities: [], totalActivities: 0 })))
+  })
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={run} disabled={pending}
+        className="rounded-md border border-brand-700 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+        {pending ? 'Testando…' : 'Testar'}
+      </button>
+      <span className="ml-2 text-[10px] text-gray-400">Mostra o que sairia hoje; nada é criado nem enviado.{costly ? ' Usa a IA (tem custo).' : ''}</span>
+      {open && (
+        <div className="mt-2 space-y-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Prévia — nada foi enviado</p>
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 hover:underline">Fechar</button>
+          </div>
+          {pending && <p className="text-xs text-gray-500">Rodando a tarefa em modo prévia…</p>}
+          {p?.error && <p className="text-xs text-negative-600">{p.error}</p>}
+          {p?.notes.map(n => <p key={n} className="text-xs text-gray-600">• {n}</p>)}
+          {p?.messages.map((m, i) => (
+            <div key={i} className="rounded-md border border-gray-200 bg-white p-2.5">
+              <p className="text-[11px] text-gray-500">{m.kind === 'whatsapp' ? '💬 WhatsApp' : '✉️ E-mail'} para <span className="font-medium text-gray-700">{m.to}</span>{m.subject ? ` · ${m.subject}` : ''}</p>
+              {m.kind === 'whatsapp'
+                ? <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap font-sans text-sm text-gray-800">{m.text}</pre>
+                : <iframe title={m.subject ?? 'E-mail'} sandbox="" srcDoc={m.html} className="mt-1 h-80 w-full rounded border border-gray-100 bg-white" />}
+            </div>
+          ))}
+          {p && p.totalActivities > 0 && (
+            <div className="rounded-md border border-gray-200 bg-white p-2.5">
+              <p className="text-[11px] text-gray-500">📋 {p.totalActivities} atividade(s) que seriam abertas{p.totalActivities > p.activities.length ? ` (mostrando ${p.activities.length})` : ''}</p>
+              <ul className="mt-1 divide-y divide-gray-100">
+                {p.activities.map((a, i) => (
+                  <li key={i} className="py-1.5">
+                    <p className="text-sm text-gray-800">{a.title}</p>
+                    <p className="text-[11px] text-gray-500">Para {a.who}{a.due ? ` · ${a.due.split('-').reverse().join('/')}` : ''}</p>
+                    <details className="text-[11px] text-gray-500"><summary className="cursor-pointer">ver texto</summary><p className="mt-1 whitespace-pre-wrap">{a.content}</p></details>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {p && p.ok && !p.messages.length && !p.totalActivities && !p.notes.length && <p className="text-xs text-gray-500">Nada sairia hoje.</p>}
+        </div>
+      )}
     </div>
   )
 }
@@ -208,6 +262,7 @@ function BuiltinRow({ t, today, ctx }: { t: BuiltinView; today: string; ctx: Ctx
           <p className="text-xs text-gray-500">{t.description} <span className="text-gray-400">Envia: {t.sends}.</span></p>
           {t.params.length > 0 && <ParamsEditor taskKey={t.key} params={t.params} initial={t.values} />}
           <OptionsEditor t={t} ctx={ctx} />
+          <PreviewBox taskKey={t.key} costly={t.key === 'briefing'} />
           <p className={`mt-0.5 text-[11px] font-medium ${s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'text-brand-700' : 'text-gray-400'}`}>
             {statusLabel(s, today)}{msg && <span className={msg === 'Salvo' || msg === 'Salvando…' ? 'ml-2 text-gray-400' : 'ml-2 text-negative-600'}>{msg}</span>}
           </p>
