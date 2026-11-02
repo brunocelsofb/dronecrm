@@ -16,7 +16,7 @@ import { RulesManager, type RuleView } from '@/components/ia/rules-manager'
 import { AgentTasksPanel } from '@/components/ia/agent-tasks-panel'
 import { AutomationsManager } from '@/components/automations/automations-manager'
 import {
-  FunnelRenewalEditor, StageSlaEditor, TicketSlaEditor, LinkRule, SimpleBadge, AgentBadge, EventToggles, RenewalTimeline,
+  FunnelRenewalEditor, StageSlaEditor, TicketSlaEditor, LinkRule, SimpleBadge, AgentBadge, PersonBadge, EventToggles, RenewalTimeline,
   type FunnelRenewalView, type StageSlaView, type EventView, type TimelineItem,
 } from '@/components/rules/simple-rules'
 import { EVENT_ACTIONS, EVENT_WHEN_LABEL, eventTaskKey } from '@/lib/rules/events'
@@ -129,26 +129,29 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         const L = resolveRenewalLevels((cs as { renewal_levels?: unknown }).renewal_levels)
         const ruler = resolveRulerSettings(cs)
         const funnel: FunnelRenewalView[] = pipes.filter(p => p.type === 'gestao_contratos' || p.renewal_trigger_days != null)
-          .map(p => ({ id: p.id, name: p.name, days: p.renewal_trigger_days, stageId: p.renewal_target_stage_id, stages: stg.filter(s => s.pipeline_id === p.id).map(s => ({ id: s.id, name: s.name })) }))
+          .map(p => ({ id: p.id, name: p.name, days: p.renewal_trigger_days != null ? L.prep : null, stageId: p.renewal_target_stage_id, stages: stg.filter(s => s.pipeline_id === p.id).map(s => ({ id: s.id, name: s.name })) }))
         const alerts = tasks.builtins.find(b => b.key === 'renewal_alerts')
         const movesCard = funnel.filter(f => f.days != null && f.stageId).map(f => `"${f.stages.find(x => x.id === f.stageId)?.name ?? 'Renovação'}" (funil ${f.name})`)
         const off = alerts && !alerts.state.enabled ? ' (desligado)' : ''
+        const noticeSteps = ruler.enabled ? ruler.steps.filter(st => st.done_when === 'client_notice') : []
+        const areaName = new Map<string, string>([...ruler.areas.map(a => [a.key, a.label] as [string, string]), ...areas.map(a => [`area:${a.id}`, a.name] as [string, string])])
+        const stepWho = (keys: string[]) => keys.length ? keys.map(k => areaName.get(k) ?? 'área removida').join(', ') : 'o responsável'
         const items: TimelineItem[] = [
           ...(alerts ? [
             { id: 'l:prep', days: L.prep, agent: 'Farmer', label: `tarefa "preparar a renovação" para o responsável${off}${movesCard.length ? ` + cartão vai para ${movesCard.join(', ')}` : ''}`, edit: { type: 'level' as const, key: 'prep' as const } },
-            { id: 'l:a1', days: L.a1, agent: 'Farmer', label: `1º aviso ao cliente, para revisar e enviar${off}`, edit: { type: 'level' as const, key: 'a1' as const } },
+            { id: 'l:a1', days: L.a1, agent: 'Farmer', label: `1º aviso ao cliente, para revisar e enviar${off}${noticeSteps.length ? ` — ao enviar, conclui o passo da régua "${noticeSteps.map(x => x.label).join('", "')}"` : ''}`, edit: { type: 'level' as const, key: 'a1' as const } },
             { id: 'l:a2', days: L.a2, agent: 'Farmer', label: `2º aviso ao cliente${off}`, edit: { type: 'level' as const, key: 'a2' as const } },
             { id: 'l:a3', days: L.a3, agent: 'Farmer', label: `aviso urgente${off}`, edit: { type: 'level' as const, key: 'a3' as const } },
           ] : []),
-          ...(ruler.enabled ? ruler.steps.map(st => ({ id: `r:${st.id}`, days: st.days_before, agent: null, label: `régua: ${st.label}`, edit: { type: 'link' as const, href: '/settings/regua-renovacao' } })) : []),
+          ...(ruler.enabled ? ruler.steps.filter(st => !(alerts && st.done_when === 'client_notice')).map(st => ({ id: `r:${st.id}`, days: st.days_before, agent: null, who: stepWho(st.areas),
+            label: `régua: ${st.label}${st.areas.length ? '' : ' (sem área definida)'}`, edit: { type: 'link' as const, href: '/settings/regua-renovacao' } })) : []),
           ...views.filter(r => r.criterion === 'contract_expiring' && r.enabled).map(r => ({ id: `g:${r.id}`, days: r.threshold, agent: r.agent === 'hunter' ? 'Hunter' : 'Farmer',
             label: `regra "${r.name}"`, edit: { type: 'link' as const, href: '#regras-proprias' }, warn: 'parecida com os avisos: revise' })),
           ...((expAutos ?? []) as { id: string; name: string; days_threshold: number | null }[]).filter(a => a.days_threshold).map(a => ({ id: `a:${a.id}`, days: a.days_threshold!, agent: null,
             label: `automação "${a.name}"`, edit: { type: 'link' as const, href: '/regras?tema=funil' }, warn: 'duplicada? revise' })),
         ]
-        const counts = new Map<number, number>()
-        items.forEach(i => counts.set(i.days, (counts.get(i.days) ?? 0) + 1))
-        const withWarn = items.map(i => (!i.warn && (counts.get(i.days) ?? 0) > 1 && i.edit.type !== 'level' ? { ...i, warn: 'mesmo dia de outra regra' } : i))
+        // aviso só para o que é duplicado de verdade (automações antigas e regras "contrato vencendo"), já marcado acima
+        const withWarn = items
         return (
           <>
             <Block title="Linha do tempo do contrato" intro="Cada linha é uma regra: quantos dias antes do vencimento e o que acontece. Mude os dias ali mesmo.">
@@ -163,7 +166,7 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
             <Details title={<>Avisos ao cliente e régua <AgentBadge agent="Farmer" /></>}>
               {taskPanel(theme.tasks, false)}
               <ul className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
-                <LinkRule title="Régua de renovação (passos internos)" badge={<SimpleBadge />} href="/settings/regua-renovacao"
+                <LinkRule title="Régua de renovação (passos internos)" badge={<PersonBadge who="as áreas" />} href="/settings/regua-renovacao"
                   sentence={ruler.enabled ? `Ligada · ${ruler.steps.length} passo(s): ${ruler.steps.map(x => `${x.label} (${x.days_before} dias)`).join(' · ') || '—'}` : 'Desligada'} />
                 <LinkRule title="Textos dos avisos ao cliente" badge={<AgentBadge agent="Farmer" />} href="/settings/copiloto"
                   sentence={`Mensagens de ${L.a1}, ${L.a2} e ${L.a3} dias, vencido e renovação concluída; assunto do e-mail e cópias.`} />

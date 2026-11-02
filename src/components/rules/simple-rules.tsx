@@ -9,6 +9,9 @@ import { PRIORITY_LABELS, PRIORITY_ORDER } from '@/lib/utils/gut-matrix'
 export function SimpleBadge() {
   return <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">⚙️ AÇÃO SIMPLES · SEM IA</span>
 }
+export function PersonBadge({ who }: { who: string }) {
+  return <span className="rounded bg-positive-100 px-1.5 py-0.5 text-[10px] font-semibold text-positive-700">👤 TAREFA PARA {who.toUpperCase()}</span>
+}
 export function AgentBadge({ agent }: { agent: string }) {
   return <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">🤖 AGENTE {agent.toUpperCase()}</span>
 }
@@ -210,6 +213,7 @@ export function EventToggles({ events }: { events: EventView[] }) {
 // ─── Linha do tempo da renovação (editável) ───────────────────────────────────
 export type TimelineItem = {
   id: string; days: number; label: string; agent: string | null
+  who?: string // tarefa encaminhada a pessoas/áreas (régua)
   edit: { type: 'level'; key: 'prep' | 'a1' | 'a2' | 'a3' } | { type: 'funnel'; pipelineId: string; stageId: string } | { type: 'link'; href: string }
   warn?: string
 }
@@ -256,7 +260,7 @@ export function RenewalTimeline({ items, levels: initLevels }: { items: Timeline
           <li key={i.id} className="relative flex items-center gap-3 text-sm">
             <TimelineDays item={i} levels={levels} onLevels={setLevels} onError={setErr} />
             <span className="text-gray-400">dias →</span>
-            <span className="min-w-0 flex-1 text-gray-800">{i.label} {i.agent ? <AgentBadge agent={i.agent} /> : <SimpleBadge />}
+            <span className="min-w-0 flex-1 text-gray-800">{i.label} {i.agent ? <AgentBadge agent={i.agent} /> : i.who ? <PersonBadge who={i.who} /> : <SimpleBadge />}
               {i.edit.type === 'link' && <Link href={i.edit.href} className="ml-1 text-xs text-brand-700 hover:underline">editar →</Link>}
               {i.warn && <span className="ml-1 rounded bg-warn-100 px-1.5 py-0.5 text-[10px] text-warn-700">{i.warn}</span>}
             </span>
