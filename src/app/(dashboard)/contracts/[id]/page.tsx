@@ -280,7 +280,19 @@ export default async function ContractDetailPage({
         supabase.from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
       ])
     : [{ data: null }, { data: null }]
-  const rulerEnabled = resolveRulerSettings(rulerOrg?.copilot_settings).enabled
+  const rulerCfg = resolveRulerSettings(rulerOrg?.copilot_settings)
+  const rulerEnabled = rulerCfg.enabled
+  // Tarefas por área da régua (quem está com cada parte)
+  const { data: rulerTaskRows } = rulerRun?.id
+    ? await supabase.from('activities').select('status, assigned_to, metadata').eq('contract_id', id)
+        .eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', rulerRun.id as string)
+    : { data: [] }
+  const rulerTaskPeople = [...new Set(((rulerTaskRows ?? []) as { assigned_to: string | null }[]).map(t => t.assigned_to).filter((x): x is string => !!x))]
+  const { data: rulerPeople } = rulerTaskPeople.length ? await supabase.from('profiles').select('id, full_name').in('id', rulerTaskPeople) : { data: [] }
+  const rulerName = new Map(((rulerPeople ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? '—']))
+  const rulerAreaTasks = ((rulerTaskRows ?? []) as { status: string; assigned_to: string | null; metadata: Record<string, unknown> | null }[])
+    .filter(t => t.metadata?.area_name)
+    .map(t => ({ stepId: String(t.metadata?.step_id ?? ''), area: String(t.metadata?.area_name), person: t.assigned_to ? rulerName.get(t.assigned_to) ?? '—' : '—', done: t.status === 'done' }))
 
   // Dados de implantação
   const [implementationSchedule, implementationTemplates] = await Promise.all([
@@ -511,6 +523,8 @@ export default async function ContractDetailPage({
                     enabled={rulerEnabled}
                     canAct={!!currentProfile}
                     isAdmin={currentProfile?.role === 'admin'}
+                    canSkip={rulerCfg.skip_by === 'team' || currentProfile?.role === 'admin'}
+                    areaTasks={rulerAreaTasks}
                     today={todayBrIso()}
                   />
                 )}

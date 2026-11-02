@@ -99,6 +99,12 @@ export async function skipRulerStepAction(contractId: string, runId: string, ste
   const { overrideProblem } = await import('@/lib/rules/renewal-process')
   const p = overrideProblem({ word, reason })
   if (p) return { ok: false, error: p }
+  // Quem pode passar fora do processo: definido na régua (equipe ou só administrador)
+  const db = await createScopedAdmin(g.tenantId)
+  const { data: org } = await db.from('organization_settings').select('copilot_settings').maybeSingle()
+  if (resolveRulerSettings(org?.copilot_settings).skip_by === 'admin' && !(await isCurrentUserAdmin())) {
+    return { ok: false, error: 'Só o administrador pode passar um passo fora do processo nesta empresa.' }
+  }
   const { skipRulerStep } = await import('@/lib/agent/renewal-ruler-engine')
   const r = await skipRulerStep(g.tenantId, runId, stepId, g.userId, String(reason ?? '').trim() || 'não informado')
   if (!r.ok) return r

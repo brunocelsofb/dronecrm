@@ -28,6 +28,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
   const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
+  const [skipBy, setSkipBy] = useState<'team' | 'admin'>(initial.skip_by)
   const [steps, setSteps] = useState<RulerStep[]>(initial.steps)
   const [templates, setTemplates] = useState<RulerTemplates>(initial.templates)
   const [mail, setMail] = useState<'step' | 'overdue' | 'ready'>('step')
@@ -48,7 +49,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
   async function save() {
     setSaving(true); setMsg(null)
     const res = await saveRulerSettings({
-      enabled, lock_renewed: lock, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
+      enabled, lock_renewed: lock, skip_by: skipBy, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
       areas: [], // lista antiga de e-mails (substituída pelas áreas da empresa)
       steps: steps.map(s => ({ ...s, label: s.label.trim(), areas: s.areas.filter(k => k.startsWith('area:')) })),
     })
@@ -92,7 +93,16 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
           <input type="number" min={0} max={30} value={repeat} onChange={e => { touch(); setRepeat(e.target.value) }}
             className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none" />
           <span>dias, até o passo ser marcado ou o contrato ser renovado.</span>
-          <span className="w-full text-xs text-gray-500">Use 0 para avisar só uma vez.</span>
+          <span className="w-full text-xs text-gray-500">Use 0 para avisar só uma vez. No atraso, o agente Farmer cobra quem está com a tarefa aberta (sino, WhatsApp e e-mail) e avisa o gerente da área.</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span><b>Seguir sem um passo</b> (&quot;passar fora do processo&quot;, digitando a palavra de confirmação):</span>
+          <select value={skipBy} onChange={e => { touch(); setSkipBy(e.target.value as 'team' | 'admin') }} aria-label="Quem pode passar um passo fora do processo"
+            className="rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none">
+            <option value="team">qualquer pessoa da equipe</option>
+            <option value="admin">só o administrador</option>
+          </select>
+          <span className="w-full text-xs text-gray-500">Fica registrado quem passou, o motivo e quais áreas não concluíram.</span>
         </div>
       </section>
 
@@ -157,7 +167,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
-                <span className="text-xs text-gray-500">{s.who === 'owner' ? 'Áreas (só recebem o e-mail; a tarefa é do consultor):' : 'Encaminhar para (aviso + tarefa ao coordenador; gerente acompanha):'}</span>
+                <span className="text-xs text-gray-500">{s.who === 'owner' ? 'Áreas (só recebem o e-mail; a tarefa é do consultor):' : 'Encaminhar para (cada área marcada recebe a sua tarefa; o passo fecha quando todas concluírem):'}</span>
                 {orgAreas.map(a => {
                   const k = `area:${a.id}`
                   return (

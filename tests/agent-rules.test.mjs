@@ -169,6 +169,8 @@ test('régua: quem faz, anexo e passos em paralelo', () => {
   assert.deepEqual(openStepIndexes(run), [0, 2])
   run[0].done_at = run[2].done_at = 'y'
   assert.deepEqual(openStepIndexes(run), [3])
-  assert.equal(RULER_MODEL_STEPS.length, 8)
+  assert.equal(RULER_MODEL_STEPS.length, 9)
+  assert.equal(resolveRulerSettings({}).skip_by, 'team')
+  assert.equal(resolveRulerSettings({ renewal_ruler: { skip_by: 'admin' } }).skip_by, 'admin')
   assert.ok(RULER_MODEL_STEPS.every(x => resolveRulerSettings({ renewal_ruler: { steps: [x] } }).steps.length === 1))
 })

@@ -11,7 +11,8 @@ export type RulerArea = { key: string; label: string; emails: string[] }
 // areas: áreas da empresa ('area:<id>', Central de regras → Áreas e IA) ou áreas antigas da régua (só e-mail)
 // done_when: 'manual' (concluído por quem recebeu, com o que foi feito) ou 'client_notice' (quando o aviso ao cliente é enviado)
 // who: quem faz o passo — 'owner' (consultor dono do contrato), 'areas' (coordenador da 1ª área; gerente avisado)
-//      ou 'agent' (o agente de IA prepara o material e a pessoa revisa e conclui; sem IA, vira tarefa comum)
+//      ou 'agent' (o agente de IA prepara o material e a pessoa revisa e conclui; sem IA, vira tarefa comum).
+//      Várias áreas no passo: cada área recebe a sua tarefa (coordenador; gerente avisado) e o passo só fecha com todas.
 // instructions: o que fazer (vai na tarefa; é o pedido ao agente quando who = 'agent')
 // requires_file: só conclui com arquivo anexado ao contrato depois que o passo chegou
 // with_previous: começa junto com o passo anterior (correm em paralelo)
@@ -35,6 +36,7 @@ export type RulerSettings = {
   enabled: boolean
   lock_renewed: boolean
   overdue_repeat_days: number   // passo atrasado: repete o aviso a cada N dias (0 = só uma vez)
+  skip_by: 'team' | 'admin'     // quem pode passar um passo fora do processo (digitando "mudar")
   areas: RulerArea[]
   steps: RulerStep[]
   templates: RulerTemplates
@@ -88,8 +90,10 @@ export const RULER_MODEL_STEPS: RulerStep[] = [
   { id: 'aviso', label: 'Enviar o aviso de renovação ao cliente', days_before: 60, areas: [], done_when: 'client_notice', who: 'owner' },
   { id: 'aplicabilidade', label: 'Atualizar a tabela de aplicabilidade (mesmo sem mudança no parque)', days_before: 55, areas: [], done_when: 'manual', who: 'areas', requires_file: true,
     instructions: 'Atualize a tabela de aplicabilidade do contrato, mesmo que não haja mudança no parque tecnológico, e anexe a versão nova ao contrato.' },
-  { id: 'custos', label: 'Elaborar ou atualizar a planilha de custos do projeto', days_before: 55, areas: [], done_when: 'manual', who: 'owner', requires_file: true, with_previous: true,
+  { id: 'custos', label: 'Elaborar ou atualizar a planilha de custos do projeto', days_before: 55, areas: [], done_when: 'manual', who: 'areas', requires_file: true, with_previous: true,
     instructions: 'Elabore ou atualize a planilha de custos do projeto e anexe ao contrato.' },
+  { id: 'dre', label: 'DRE / análise financeira do contrato', days_before: 55, areas: [], done_when: 'manual', who: 'areas', requires_file: true, with_previous: true,
+    instructions: 'Elabore ou atualize a DRE / análise financeira do contrato e anexe ao contrato.' },
   { id: 'reuniao-interna', label: 'Reunião interna com o time técnico (melhorias e entrega dos serviços)', days_before: 45, areas: [], done_when: 'manual', who: 'agent',
     instructions: 'Monte a pauta da reunião interna com o time técnico: resumo do contrato, o que foi registrado nos passos anteriores, pontos de melhoria e de entrega dos serviços a discutir.' },
   { id: 'reuniao-cliente', label: 'Reunião com o cliente (de preferência até 30 dias do vencimento)', days_before: 30, areas: [], done_when: 'manual', who: 'owner' },
@@ -182,6 +186,7 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
       const n = Math.round(Number(r.overdue_repeat_days))
       return r.overdue_repeat_days === undefined || r.overdue_repeat_days === null || !Number.isFinite(n) ? DEFAULT_OVERDUE_REPEAT_DAYS : Math.max(0, Math.min(30, n))
     })(),
+    skip_by: r.skip_by === 'admin' ? 'admin' : 'team',
     areas,
     steps,
     templates: {

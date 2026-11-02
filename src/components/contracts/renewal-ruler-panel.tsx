@@ -22,8 +22,11 @@ const fmtDateTime = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 export function RenewalRulerPanel({
-  contractId, run, enabled, canAct, isAdmin, today,
-}: { contractId: string; run: RulerRunView | null; enabled: boolean; canAct: boolean; isAdmin: boolean; today: string }) {
+  contractId, run, enabled, canAct, isAdmin, today, canSkip = true, areaTasks = [],
+}: {
+  contractId: string; run: RulerRunView | null; enabled: boolean; canAct: boolean; isAdmin: boolean; today: string
+  canSkip?: boolean; areaTasks?: { stepId: string; area: string; person: string; done: boolean }[]
+}) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -140,6 +143,13 @@ export function RenewalRulerPanel({
                   </p>
                 )}
                 {isCurrent && !isDone && s.instructions && <p className="text-xs text-gray-500">{s.instructions}</p>}
+                {areaTasks.filter(t => t.stepId === s.id).length > 1 && (
+                  <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+                    {areaTasks.filter(t => t.stepId === s.id).map(t => (
+                      <span key={t.area} className={t.done ? 'text-positive-700' : 'text-warn-700'}>{t.done ? '✓' : '⏳'} {t.area} ({t.person})</span>
+                    ))}
+                  </p>
+                )}
                 {isCurrent && open.status === 'active' && canAct && (
                   noteFor === s.id ? (
                     <div className="mt-2 space-y-2">
@@ -161,7 +171,7 @@ export function RenewalRulerPanel({
                     </button>
                   )
                 )}
-                {!isDone && open.status === 'active' && canAct && (
+                {!isDone && open.status === 'active' && canAct && canSkip && (
                   <button type="button" onClick={() => setOv({ kind: 'skip', stepId: s.id, error: null, message: `Passar "${s.label}" fora do processo (não se aplica a este contrato ou já foi resolvido de outro jeito). Fica registrado quem passou e por quê.` })}
                     className="ml-2 mt-1 text-[11px] text-gray-400 hover:text-warn-700">
                     passar (fora do processo)

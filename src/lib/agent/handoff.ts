@@ -57,6 +57,7 @@ export type HandoffInput = {
   toUserId: string | null; watcherId: string | null; alsoNotify?: string[]
   title: string; content: string; dueIso: string; agent?: 'farmer' | 'hunter'
   rulerRunId?: string | null; stepId?: string | null
+  areaId?: string | null; areaName?: string | null   // régua com várias áreas: uma tarefa por área
 }
 
 // Abre a tarefa em nome de quem recebe e avisa o destino (e quem mais for da área)
@@ -70,7 +71,7 @@ export async function createHandoff(h: HandoffInput): Promise<{ id: string | nul
       contract_id: h.contractId, company_id: h.companyId ?? null, user_id: null, assigned_to: h.toUserId,
       type: 'task', activity_type: 'task', status: 'planned', completed: false,
       title: h.title, content: h.content, activity_date: h.dueIso,
-      metadata: { source: 'copiloto_ia', kind: 'handoff', agent: h.agent ?? 'farmer', watcher_id: h.watcherId, needs_note: true, ruler_run_id: h.rulerRunId ?? null, step_id: h.stepId ?? null },
+      metadata: { source: 'copiloto_ia', kind: 'handoff', agent: h.agent ?? 'farmer', watcher_id: h.watcherId, needs_note: true, ruler_run_id: h.rulerRunId ?? null, step_id: h.stepId ?? null, area_id: h.areaId ?? null, area_name: h.areaName ?? null, also_notify: h.alsoNotify ?? [] },
     }).select('id').single()
     id = (data?.id as string) ?? null
   }
@@ -94,7 +95,7 @@ export async function completeHandoff(tenantId: string, activityId: string, user
   // Passo da régua que pede anexo: confere antes de fechar a tarefa
   if (meta.ruler_run_id && meta.step_id) {
     const { rulerStepBlock } = await import('./renewal-ruler-engine')
-    const block = await rulerStepBlock(tenantId, String(meta.ruler_run_id), String(meta.step_id))
+    const block = await rulerStepBlock(tenantId, String(meta.ruler_run_id), String(meta.step_id), meta.area_id ? userId : null)
     if (block) return { ok: false, error: block }
   }
   const { data: me } = await db.from('profiles').select('full_name').eq('id', userId).maybeSingle()
@@ -108,12 +109,25 @@ export async function completeHandoff(tenantId: string, activityId: string, user
   if (a.contract_id) {
     await db.from('activities').insert({ contract_id: a.contract_id, user_id: userId, type: 'system', content: `✅ ${who} concluiu "${a.title}". O que foi feito: ${text.slice(0, 1500)}`, metadata: { kind: 'handoff_done', handoff_id: activityId } })
   }
-  // Régua: concluir a tarefa conclui o passo e abre o próximo
+  // Régua: concluir a tarefa conclui o passo e abre o próximo. Passo com várias áreas: só quando todas concluírem.
   let next = ''
   if (meta.ruler_run_id && meta.step_id && a.contract_id) {
     try {
+      const { data: same } = await db.from('activities').select('id, status, metadata')
+        .eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', String(meta.ruler_run_id)).eq('metadata->>step_id', String(meta.step_id))
+      const rows = ((same ?? []) as { id: string; status: string; metadata: Record<string, unknown> | null }[]).filter(x => x.id !== activityId)
+      const pending = rows.filter(x => x.status !== 'done').map(x => String(x.metadata?.area_name ?? 'outra área'))
       const { completeRulerStep, openRun } = await import('./renewal-ruler-engine')
-      const r = await completeRulerStep(tenantId, String(meta.ruler_run_id), String(meta.step_id), userId, text)
+      // Nota do passo: o que cada área fez
+      const parts = [
+        ...rows.filter(x => x.status === 'done' && x.metadata?.area_name).map(x => `${x.metadata!.area_name}: ${String(x.metadata!.done_note ?? 'concluído')}`),
+        ...(meta.area_name ? [`${meta.area_name}: ${text}`] : []),
+      ]
+      const stepNote = meta.area_id && parts.length > 1 ? parts.join(' · ') : text
+      const r = pending.length
+        ? { ok: false as const, error: '' }
+        : await completeRulerStep(tenantId, String(meta.ruler_run_id), String(meta.step_id), userId, stepNote)
+      if (pending.length) next = `\nO passo segue aberto até concluírem: ${pending.join(', ')}.`
       if (r.ok) {
         const run = await openRun(tenantId, a.contract_id as string)
         const { openStepIndexes } = await import('./renewal-ruler')

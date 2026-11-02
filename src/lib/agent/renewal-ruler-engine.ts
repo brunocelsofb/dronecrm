@@ -50,7 +50,7 @@ export async function openRun(tenantId: string, contractId: string): Promise<Rul
 }
 
 // E-mail às áreas do passo (sem valores). Devolve se enviou.
-async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' | 'ready'): Promise<{ sent: boolean; detail?: string }> {
+async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' | 'ready', peopleOverride?: boolean): Promise<{ sent: boolean; detail?: string }> {
   const { settings, companyName } = await loadSettings(run.tenant_id)
   const info = await contractInfo(run.contract_id)
   if (!info) return { sent: false, detail: 'contrato não encontrado' }
@@ -58,7 +58,7 @@ async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' |
   // Destinatários: áreas da empresa do passo (no "pronto para renovar", de todos os passos).
   // Chegada de passo encaminhado: coordenador e gerente já recebem pela tarefa → aqui só os e-mails de fora da área.
   const to = await areaEmails(run.tenant_id, kind === 'ready' ? run.steps.flatMap(s => s.areas) : step.areas,
-    !(kind === 'step' && (step.who ?? 'areas') !== 'owner'), settings)
+    peopleOverride ?? !(kind === 'step' && (step.who ?? 'areas') !== 'owner'), settings)
   if (!to.length) return { sent: false, detail: 'nenhum e-mail cadastrado nas áreas deste passo' }
   const prev = idx > 0 ? run.steps[idx - 1] : null
   const vars: Record<string, string> = {
@@ -174,13 +174,28 @@ async function handoffStep(run: RulerRun, idx: number): Promise<string> {
   }
   const { createHandoff } = await import('./handoff')
   const due = step.due_date ?? todayBr()
+  const body = (areaNote: string) => `Contrato ${info.c.process_number ?? ''} (${info.c.client_name ?? ''}) vence em ${brDate(run.period_end)}. Passo ${idx + 1} de ${run.steps.length} da régua de renovação: ${step.label}.` +
+    `${step.instructions ? ` O que fazer: ${step.instructions}` : ''}${areaNote} Consultor: ${info.consultor}.` +
+    `${step.requires_file ? ' Para concluir: anexe o arquivo na aba Arquivos do contrato.' : ''}${prepared}`
+  const base = { tenantId: run.tenant_id, contractId: run.contract_id, dueIso: due < todayBr() ? todayBr() : due, rulerRunId: run.id, stepId: step.id }
+  if (list.length > 1) {
+    // Várias áreas: cada uma recebe a sua tarefa (coordenador faz; gerente avisado). O passo fecha quando todas concluírem.
+    for (const a of list) {
+      const toA = a.lead_id ?? info.ownerId
+      await createHandoff({
+        ...base, toUserId: toA, watcherId: toA === info.ownerId ? null : info.ownerId,
+        alsoNotify: [a.manager_id].filter((x): x is string => !!x && x !== toA), areaId: a.id, areaName: a.name,
+        title: `Renovação · ${step.label} (${a.name}) — ${info.c.client_name ?? ''}`,
+        content: body(` Sua parte: área ${a.name}. Também neste passo: ${list.filter(x => x.id !== a.id).map(x => x.name).join(', ')}; o passo fecha quando todas concluírem.`),
+      })
+    }
+    return ` Uma tarefa para cada área: ${list.map(a => a.name).join(', ')}.` + agentNote
+  }
   await createHandoff({
-    tenantId: run.tenant_id, contractId: run.contract_id, toUserId: to, watcherId: to === info.ownerId ? null : info.ownerId, alsoNotify: also,
+    ...base, toUserId: to, watcherId: to === info.ownerId ? null : info.ownerId, alsoNotify: also,
+    areaId: list[0]?.id ?? null, areaName: list[0]?.name ?? null,
     title: `Renovação · ${step.label} — ${info.c.client_name ?? ''}`,
-    content: `Contrato ${info.c.process_number ?? ''} (${info.c.client_name ?? ''}) vence em ${brDate(run.period_end)}. Passo ${idx + 1} de ${run.steps.length} da régua de renovação: ${step.label}.` +
-      `${step.instructions ? ` O que fazer: ${step.instructions}` : ''}${list.length ? ` Áreas: ${list.map(a => a.name).join(', ')}.` : ''} Consultor: ${info.consultor}.` +
-      `${step.requires_file ? ' Para concluir: anexe o arquivo na aba Arquivos do contrato.' : ''}${prepared}`,
-    dueIso: due < todayBr() ? todayBr() : due, rulerRunId: run.id, stepId: step.id,
+    content: body(list.length ? ` Área: ${list[0].name}.` : ''),
   })
   return (list.length ? ` Tarefa encaminhada a ${list[0].name}.` : ' Tarefa ao consultor.') + agentNote
 }
@@ -293,28 +308,44 @@ export async function completeRulerStep(tenantId: string, runId: string, stepId:
   if (!open.includes(idx)) return { ok: false, error: `Conclua antes: "${run.steps[open[0]].label}".` }
   const block = await fileBlock(run, idx)
   if (block) return { ok: false, error: block }
+  // Passo dividido por áreas: cada área conclui a sua tarefa (para seguir sem alguma, "passar (fora do processo)")
+  const st = run.steps[idx]
+  const split = st.who !== 'owner' && st.areas.filter(a => a.startsWith('area:')).length > 1
+  const waiting = split ? (await pendingAreaTasks(run, stepId)).filter(t => t.metadata?.area_id) : []
+  if (waiting.length) {
+    return { ok: false, error: `Aguardando as áreas: ${waiting.map(t => String(t.metadata?.area_name ?? 'área')).join(', ')}. Cada área conclui a sua tarefa; para seguir sem elas, use "passar (fora do processo)".` }
+  }
   const ok = await completeStepInternal(run, idx, userId, note ?? null)
   return ok ? { ok: true } : { ok: false, error: 'A régua mudou enquanto você marcava (outra pessoa atualizou). Atualize a página.' }
 }
 
 // Passo que exige anexo: precisa de arquivo no contrato enviado depois que o passo chegou
-async function fileBlock(run: RulerRun, idx: number): Promise<string | null> {
+async function fileBlock(run: RulerRun, idx: number, byUser?: string | null): Promise<string | null> {
   const step = run.steps[idx]
   if (!step.requires_file) return null
   const since = step.notified_at ?? run.started_at
-  const { count } = await createAdminClient().from('contract_files').select('id', { count: 'exact', head: true })
+  let q = createAdminClient().from('contract_files').select('id', { count: 'exact', head: true })
     .eq('tenant_id', run.tenant_id).eq('contract_id', run.contract_id).gte('created_at', since)
-  return count ? null : `"${step.label}" pede um arquivo: anexe na aba Arquivos do contrato e depois conclua.`
+  if (byUser) q = q.eq('uploaded_by', byUser)   // passo com várias áreas: cada uma anexa o seu
+  const { count } = await q
+  return count ? null : `"${step.label}" pede um arquivo: anexe ${byUser ? 'o seu ' : ''}na aba Arquivos do contrato e depois conclua.`
+}
+
+// Tarefas por área ainda abertas neste passo
+async function pendingAreaTasks(run: RulerRun, stepId: string) {
+  const { data } = await createAdminClient().from('activities').select('id, assigned_to, metadata')
+    .eq('tenant_id', run.tenant_id).eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', run.id).eq('metadata->>step_id', stepId).neq('status', 'done')
+  return ((data ?? []) as { id: string; assigned_to: string | null; metadata: Record<string, unknown> | null }[])
 }
 
 // Pode concluir este passo agora? (usado antes de fechar a tarefa encaminhada)
-export async function rulerStepBlock(tenantId: string, runId: string, stepId: string): Promise<string | null> {
+export async function rulerStepBlock(tenantId: string, runId: string, stepId: string, byUser?: string | null): Promise<string | null> {
   const { data } = await createAdminClient().from('renewal_ruler_runs').select('*').eq('id', runId).eq('tenant_id', tenantId).maybeSingle()
   const run = data as RulerRun | null
   if (!run || run.status !== 'active') return null
   const idx = run.steps.findIndex(s => s.id === stepId)
   if (idx < 0 || run.steps[idx].done_at) return null
-  return fileBlock(run, idx)
+  return fileBlock(run, idx, byUser)
 }
 
 // Renovado marcado: encerra a régua. Lost/rescisão: cancela.
@@ -349,7 +380,20 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
     for (const idx of openStepIndexes(run.steps)) {
     const step = run.steps[idx]
     if (!shouldNotifyOverdue(step, today, settings.overdue_repeat_days)) continue
-    const r = await notifyStep(run, idx, 'overdue')
+    // Tarefas abertas do passo (por área): o agente cobra quem está devendo e avisa o gerente
+    const pend = await pendingAreaTasks(run, step.id)
+    const lateDays = step.due_date ? daysBetween(step.due_date, today) : 0
+    if (pend.length) {
+      const { notifyPerson } = await import('./handoff')
+      const link = `${appUrl()}/contracts/${run.contract_id}`
+      for (const t of pend) {
+        const area = t.metadata?.area_name ? ` (${t.metadata.area_name})` : ''
+        const text = `⏰ Farmer: a tarefa *${step.label}*${area} da renovação está atrasada há ${lateDays} dia(s) (prazo ${brDate(step.due_date)}). Escreva no CRM o que foi feito e conclua: ${link}`
+        const ids = [t.assigned_to, ...((t.metadata?.also_notify as string[] | undefined) ?? [])].filter((x): x is string => !!x)
+        for (const u of [...new Set(ids)]) await notifyPerson(run.tenant_id, u, { text, subject: `Atrasado: ${step.label}${area}`, contractId: run.contract_id })
+      }
+    }
+    const r = await notifyStep(run, idx, 'overdue', pend.length ? false : undefined)
     // Prévia ("Testar" na tela IA): o e-mail já foi anotado; não marca nem registra
     if ((await import('./agent-preview')).inPreview()) { if (r.sent) notified++; continue }
     const count = (step.overdue_count ?? 0) + 1
@@ -357,8 +401,9 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
     await save(run, { steps })
     const late = step.due_date ? daysBetween(step.due_date, today) : 0
     await logActivity(run, `⏰ Régua de renovação: "${step.label}" atrasado há ${late} dia(s) (prazo ${brDate(step.due_date)})` +
-      `${count > 1 ? ` · ${count}º aviso de atraso` : ''}.${r.sent ? ' Áreas avisadas.' : ` E-mail não enviado (${r.detail}).`}`)
-    if (r.sent) notified++
+      `${count > 1 ? ` · ${count}º aviso de atraso` : ''}.${pend.length ? ` Agente cobrou: ${pend.map(t => String(t.metadata?.area_name ?? 'responsável')).join(', ')}.` : ''}` +
+      `${r.sent ? ' Áreas avisadas por e-mail.' : pend.length ? '' : ` E-mail não enviado (${r.detail}).`}`)
+    if (r.sent || pend.length) notified++
     }
   }
   return { checked: data.length, notified }
@@ -388,6 +433,8 @@ export async function skipRulerStep(tenantId: string, runId: string, stepId: str
   if (!run || run.status !== 'active') return { ok: false, error: 'Régua não está em andamento.' }
   const idx = run.steps.findIndex(s => s.id === stepId)
   if (idx < 0 || run.steps[idx].done_at) return { ok: false, error: 'Passo não encontrado ou já concluído.' }
+  const pend = (await pendingAreaTasks(run, stepId)).map(t => String(t.metadata?.area_name ?? '')).filter(Boolean)
+  if (pend.length) reason = `${reason} (sem concluir: ${pend.join(', ')})`
   if (openStepIndexes(run.steps).includes(idx)) {
     const ok = await completeStepInternal(run, idx, userId, `⚠ Passado fora do processo: ${reason}`)
     return ok ? { ok: true } : { ok: false, error: 'A régua mudou. Atualize a página.' }
