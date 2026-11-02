@@ -14,9 +14,9 @@ import type { ContractLine } from '@/lib/revenue/dashboard-compute'
 const compact = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(v)
 
-// Escala sequencial só com cores da paleta (claro → escuro)
-const RAMP = ['#83D0F5', '#00AFD1', '#1B556B', '#0e2933'] as const
-const NO_DATA = '#e9eef0'
+// Escala sequencial: tons do azul petróleo da paleta (#1B556B), do mais claro ao cheio
+const RAMP = ['#C6D4DA', '#8DAAB5', '#548090', '#1B556B'] as const
+const NO_DATA = '#F1F4F5'
 // Serviços sem cor própria: cores da paleta, em ordem
 const SERIES = ['#1B556B', '#32AF9D', '#E98C5F', '#524E9C', '#00AFD1', '#AF5B65', '#83D0F5', '#FFE596'] as const
 
@@ -179,7 +179,8 @@ type TagMeta = { id: string; name: string; color: string | null }
 export function MrrByServiceChart({ tags, months, labels, highlight }: {
   tags: TagMeta[]; months: ({ month: number; total: number; parts: Record<string, number> } | null)[]; labels: string[]; highlight?: number[]
 }) {
-  const colorOf = new Map(tags.map((t, i) => [t.id, t.id === '—' ? '#9ca3af' : t.color || SERIES[i % SERIES.length]]))
+  // Só cores da paleta oficial, na ordem (a cor livre da tag não entra no gráfico)
+  const colorOf = new Map(tags.map((t, i) => [t.id, t.id === '—' ? '#C9D3D7' : SERIES[i % SERIES.length]]))
   const top = niceMax(Math.max(0, ...months.map(m => m?.total ?? 0)))
   const W = 720, H = 230, padL = 64, padR = 8, padT = 10, padB = 24
   const bw = (W - padL - padR) / 12
