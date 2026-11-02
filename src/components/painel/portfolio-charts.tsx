@@ -113,8 +113,8 @@ export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags
               </path>
             )
           })}
-          {/* Alfinete em cada estado com contrato; os 3 maiores mostram o valor */}
-          {rows.map((r, i) => {
+          {/* Alfinete em cada estado com contrato */}
+          {rows.map(r => {
             const at = PIN[r.uf]
             if (!at) return null
             const [x, y] = at
@@ -123,11 +123,6 @@ export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags
                 <title>{`${r.name}: ${fmtBRL(r.mrr)} · ${r.count} contrato(s)`}</title>
                 <path d={`M${x},${y} c-2.2,-4.6 -8,-8.4 -8,-13.4 a8,8 0 1 1 16,0 c0,5 -5.8,8.8 -8,13.4 z`} fill="#E98C5F" stroke="#ffffff" strokeWidth={1.5} />
                 <circle cx={x} cy={y - 13.6} r={3} fill="#ffffff" />
-                {i < 3 && (
-                  <text x={x + 11} y={y - 9} fontSize={15} fontWeight={700} fill="#1B556B" stroke="#ffffff" strokeWidth={4} paintOrder="stroke" style={{ pointerEvents: 'none' }}>
-                    {r.uf} {compact(r.mrr)}
-                  </text>
-                )}
               </g>
             )
           })}
