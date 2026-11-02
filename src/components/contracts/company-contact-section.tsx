@@ -33,6 +33,8 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
   const [foundCompany, setFoundCompany] = useState<FoundCompany | null>(null)
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newCompanyTradeName, setNewCompanyTradeName] = useState('')
+  // Endereço da consulta do CNPJ (editável): cidade e UF vão para a empresa e o contrato
+  const [addr, setAddr] = useState({ city: '', state: '', zip: '', street: '', number: '', neighborhood: '' })
 
   const [selectedContactId, setSelectedContactId] = useState('')
   const [wantsNewContact, setWantsNewContact] = useState(false)
@@ -98,9 +100,11 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
     if (lookup.success) {
       setNewCompanyName(lookup.razaoSocial)
       setNewCompanyTradeName(lookup.nomeFantasia ?? '')
+      setAddr({ city: lookup.municipio ?? '', state: lookup.uf ?? '', zip: lookup.cep ?? '', street: lookup.logradouro ?? '', number: lookup.numero ?? '', neighborhood: lookup.bairro ?? '' })
     } else {
       setNewCompanyName('')
       setNewCompanyTradeName('')
+      setAddr({ city: '', state: '', zip: '', street: '', number: '', neighborhood: '' })
     }
     setWantsNewContact(true)
     setChecked(true)
@@ -204,6 +208,22 @@ export function CompanyContactSection({ preselectedCompanyId }: { preselectedCom
             <input name="new_company_trade_name" value={newCompanyTradeName} onChange={e => setNewCompanyTradeName(e.target.value)}
               style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }} />
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 72px', gap: 8 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>Cidade</label>
+              <input name="new_company_city" value={addr.city} onChange={e => setAddr(a => ({ ...a, city: e.target.value }))}
+                style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>UF</label>
+              <input name="new_company_state" value={addr.state} maxLength={2} onChange={e => setAddr(a => ({ ...a, state: e.target.value.toUpperCase() }))}
+                style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid #d1d8e8', background: '#f8f9fb', color: '#1a1f36', outline: 'none' }} />
+            </div>
+          </div>
+          <input type="hidden" name="new_company_zip" value={addr.zip} />
+          <input type="hidden" name="new_company_street" value={addr.street} />
+          <input type="hidden" name="new_company_number" value={addr.number} />
+          <input type="hidden" name="new_company_neighborhood" value={addr.neighborhood} />
           <div>
             <label style={{ display: 'block', fontSize: 10, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.7px', marginBottom: 4 }}>Segmento *</label>
             <select name="new_company_segment" required defaultValue=""

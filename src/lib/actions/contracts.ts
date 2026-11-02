@@ -1,4 +1,5 @@
 'use server'
+import { normalizeUf } from '@/lib/geo/uf'
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
@@ -35,14 +36,19 @@ export async function createContract(
   let companyId: string
   let companyName: string
 
+  // Estado e cidade da empresa: vão também para o contrato (mapa por estado, carteira)
+  let companyUf: string | null = null
+  let companyCity: string | null = null
   if (existingCompanyId) {
     companyId = existingCompanyId
     const { data: company } = await supabase
       .from('companies')
-      .select('name')
+      .select('name, state, city')
       .eq('id', companyId)
       .single()
     companyName = company?.name ?? ''
+    companyUf = normalizeUf(company?.state ?? null)
+    companyCity = (company?.city as string | null) ?? null
   } else {
     const newCompanyCnpj = (formData.get('new_company_cnpj') as string) || null
     const newCompanyName = (formData.get('new_company_name') as string)?.trim()
@@ -58,6 +64,10 @@ export async function createContract(
       }
     }
 
+    // Endereço vindo da consulta do CNPJ (editável na tela antes de salvar)
+    const addr = (k: string, max = 120) => (((formData.get(k) as string) || '').trim().slice(0, max)) || null
+    companyUf = normalizeUf(addr('new_company_state', 40))
+    companyCity = addr('new_company_city')
     const { data: newCompany, error: companyError } = await supabase
       .from('companies')
       .insert({
@@ -66,6 +76,12 @@ export async function createContract(
         cnpj: newCompanyCnpj,
         segment: JSON.stringify([newCompanySegment]),
         owner_id: user.id,
+        state: companyUf,
+        city: companyCity,
+        zip_code: addr('new_company_zip', 12),
+        street: addr('new_company_street', 200),
+        street_number: addr('new_company_number', 20),
+        neighborhood: addr('new_company_neighborhood'),
       })
       .select()
       .single()
@@ -190,6 +206,8 @@ export async function createContract(
       valid_from: (formData.get('valid_from') as string) || null,
       valid_until: (formData.get('valid_until') as string) || null,
       auto_renewal: formData.get('auto_renewal') === 'on',
+      uf: companyUf,
+      municipality: companyCity,
     })
     .select()
     .single()

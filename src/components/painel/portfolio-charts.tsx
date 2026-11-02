@@ -28,50 +28,86 @@ function niceMax(v: number): number {
   return 10 * p
 }
 
+type GeoItem = ContractLine & { uf: string | null; tag: string }
 type UfRow = { uf: string; name: string; mrr: number; count: number; share: number | null; lines: ContractLine[] }
+const UF_NAMES: Record<string, string> = Object.fromEntries((brazil.locations as { id: string; name: string }[]).map(l => [l.id.toUpperCase(), l.name]))
 
 // ── Mapa ─────────────────────────────────────────────────────────────────────
-export function UfMap({ rows, noUf, noUfMrr, total }: { rows: UfRow[]; noUf: ContractLine[]; noUfMrr: number; total: number }) {
+export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags: { id: string; name: string; color: string | null }[]; isAdmin?: boolean }) {
+  const [tag, setTag] = useState<string>('')   // '' = todos os serviços
+  const scoped = useMemo(() => (tag ? items.filter(i => i.tag === tag) : items), [items, tag])
+  const total = scoped.reduce((a, x) => a + x.value, 0)
+  const rows: UfRow[] = useMemo(() => {
+    const m = new Map<string, ContractLine[]>()
+    for (const it of scoped) if (it.uf) m.set(it.uf, [...(m.get(it.uf) ?? []), it])
+    return [...m.entries()].map(([uf, lines]) => {
+      const mrr = Math.round(lines.reduce((a, x) => a + x.value, 0) * 100) / 100
+      return { uf, name: UF_NAMES[uf] ?? uf, mrr, count: lines.length, share: total > 0 ? Math.round((mrr / total) * 1000) / 10 : null, lines: [...lines].sort((p, q) => q.value - p.value) }
+    }).sort((p, q) => q.mrr - p.mrr)
+  }, [scoped, total])
+  const noUf = scoped.filter(i => !i.uf)
+  const noUfMrr = noUf.reduce((a, x) => a + x.value, 0)
   const byUf = useMemo(() => new Map(rows.map(r => [r.uf, r])), [rows])
-  const [sel, setSel] = useState<string | null>(rows[0]?.uf ?? null)
+  const [sel, setSel] = useState<string | null>(null)
   const [hover, setHover] = useState<string | null>(null)
-  // Faixas por posição no ranking (estados com receita), para o mapa não ficar "todo claro" com um estado muito maior
+  const [fill, setFill] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null })
+  // Faixas pela posição no ranking, para um estado muito maior não apagar os outros
   const bucketOf = useMemo(() => {
-    const sorted = [...rows].sort((a, b) => a.mrr - b.mrr)
+    const sorted = [...rows].sort((p, q) => p.mrr - q.mrr)
     const m = new Map<string, number>()
     sorted.forEach((r, i) => m.set(r.uf, sorted.length === 1 ? RAMP.length - 1 : Math.min(RAMP.length - 1, Math.floor((i / (sorted.length - 1)) * (RAMP.length - 1) + 0.5))))
     return m
   }, [rows])
-  const focus = hover ?? sel
+  const focus = hover ?? (sel && byUf.has(sel) ? sel : rows[0]?.uf ?? null)
   const cur = focus ? byUf.get(focus) ?? null : null
   const max = Math.max(1, ...rows.map(r => r.mrr))
 
-  if (!rows.length && !noUf.length) {
+  async function runFill() {
+    setFill({ busy: true, msg: null })
+    const { fillCompanyGeoFromCnpj } = await import('@/lib/actions/companies-geo')
+    const r = await fillCompanyGeoFromCnpj()
+    setFill({ busy: false, msg: r.ok
+      ? `${r.filled} empresa(s) completada(s) pelo CNPJ, ${r.contracts} contrato(s) atualizado(s)${r.notFound ? `, ${r.notFound} sem resposta da consulta` : ''}${r.remaining ? `; faltam ${r.remaining}, clique de novo` : ''}. Atualize a página.`
+      : r.error })
+  }
+
+  if (!items.length) {
     return <p className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">Nenhum contrato ativo na carteira.</p>
   }
 
   return (
     <div className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
       <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-900">Receita recorrente por estado</p>
-        <p className="text-xs text-gray-500">{rows.length} {rows.length === 1 ? 'estado' : 'estados'} com contrato ativo · passe o mouse ou clique no estado</p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Receita recorrente por estado</p>
+            <p className="text-xs text-gray-500">{rows.length} {rows.length === 1 ? 'estado' : 'estados'} com contrato ativo · passe o mouse ou clique no estado</p>
+          </div>
+          {tags.length > 1 && (
+            <select value={tag} onChange={e => { setTag(e.target.value); setSel(null) }} aria-label="Serviço"
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 focus:border-brand-700 focus:outline-none">
+              <option value="">Todos os serviços</option>
+              {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+        </div>
         <svg viewBox={brazil.viewBox} className="mx-auto mt-2 h-auto w-full max-w-md" role="img" aria-label="Mapa do Brasil com a receita recorrente por estado">
           {(brazil.locations as { id: string; name: string; path: string }[]).map(loc => {
             const uf = loc.id.toUpperCase()
             const r = byUf.get(uf)
-            const fill = r ? RAMP[bucketOf.get(uf) ?? 0] : NO_DATA
+            const color = r ? RAMP[bucketOf.get(uf) ?? 0] : NO_DATA
             const active = focus === uf
             return (
-              <path key={loc.id} d={loc.path} fill={fill} stroke={active ? '#E98C5F' : '#ffffff'} strokeWidth={active ? 2.5 : 1}
+              <path key={loc.id} d={loc.path} fill={color} stroke={active ? '#E98C5F' : '#ffffff'} strokeWidth={active ? 2.5 : 1}
                 className={r ? 'cursor-pointer' : ''} tabIndex={r ? 0 : -1} aria-label={r ? `${r.name}: ${fmtBRL(r.mrr)}` : loc.name}
                 onMouseEnter={() => setHover(uf)} onMouseLeave={() => setHover(null)}
                 onClick={() => r && setSel(uf)} onKeyDown={e => { if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSel(uf) } }}>
-                <title>{r ? `${r.name}: ${fmtBRL(r.mrr)} · ${r.count} contrato(s) · ${fmtPct(r.share)} da carteira` : `${loc.name}: sem contrato ativo`}</title>
+                <title>{r ? `${r.name}: ${fmtBRL(r.mrr)} · ${r.count} contrato(s) · ${fmtPct(r.share)}` : `${loc.name}: sem contrato ativo`}</title>
               </path>
             )
           })}
         </svg>
-        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-gray-500">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-gray-500">
           <span>menos</span>
           {RAMP.map(c => <span key={c} className="h-2.5 w-6 rounded-sm" style={{ background: c }} />)}
           <span>mais receita</span>
@@ -82,9 +118,9 @@ export function UfMap({ rows, noUf, noUfMrr, total }: { rows: UfRow[]; noUf: Con
       <div className="flex min-w-0 flex-col gap-3">
         {cur ? (
           <div className="rounded-xl bg-brand-100 p-3">
-            <p className="text-xs font-medium text-brand-700">{cur.name}</p>
+            <p className="text-xs font-medium text-brand-700">{cur.name}{tag ? ` · ${tags.find(t => t.id === tag)?.name ?? ''}` : ''}</p>
             <p className="text-xl font-semibold tabular-nums text-brand-900">{fmtBRL(cur.mrr)}<span className="text-xs font-normal text-gray-500"> /mês</span></p>
-            <p className="text-xs text-gray-600">{cur.count} contrato(s) · {fmtPct(cur.share)} da receita recorrente</p>
+            <p className="text-xs text-gray-600">{cur.count} contrato(s) · {fmtPct(cur.share)} {tag ? 'deste serviço' : 'da receita recorrente'}</p>
             <ul className="mt-2 max-h-32 space-y-0.5 overflow-y-auto text-xs">
               {cur.lines.map(l => (
                 <li key={l.contractId} className="flex justify-between gap-2">
@@ -96,7 +132,7 @@ export function UfMap({ rows, noUf, noUfMrr, total }: { rows: UfRow[]; noUf: Con
             <Link href={`/carteira?uf=${cur.uf}`} className="mt-2 inline-block text-xs font-medium text-brand-700 hover:underline">Ver na Gestão de Carteira ›</Link>
           </div>
         ) : (
-          <p className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500">Escolha um estado no mapa.</p>
+          <p className="rounded-xl bg-gray-50 p-3 text-xs text-gray-500">{tag ? 'Nenhum contrato deste serviço com estado preenchido.' : 'Nenhum contrato com estado preenchido ainda.'}</p>
         )}
 
         <ol className="space-y-1.5">
@@ -114,10 +150,20 @@ export function UfMap({ rows, noUf, noUfMrr, total }: { rows: UfRow[]; noUf: Con
         </ol>
 
         {noUf.length > 0 && (
-          <details className="rounded-xl border border-warn-100 bg-warn-100/50 p-3 text-xs text-warn-700">
+          <details className="rounded-xl border border-warn-100 bg-warn-100/50 p-3 text-xs text-warn-700" open={!rows.length}>
             <summary className="cursor-pointer font-medium">Sem estado: {noUf.length} contrato(s) · {fmtBRL(noUfMrr)} ({fmtPct(total > 0 ? Math.round((noUfMrr / total) * 1000) / 10 : null)})</summary>
-            <p className="mt-1 text-gray-600">Preencha o estado (UF) no contrato ou na empresa para aparecer no mapa.</p>
-            <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto">
+            <p className="mt-1 text-gray-600">O estado vem do contrato ou da empresa. Cadastros novos pelo CNPJ já trazem cidade e UF.</p>
+            {isAdmin && (
+              <div className="mt-2 space-y-1">
+                <button type="button" disabled={fill.busy} onClick={runFill}
+                  className="rounded-lg bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
+                  {fill.busy ? 'Consultando os CNPJs…' : 'Completar cidade e UF pelo CNPJ'}
+                </button>
+                <p className="text-[11px] text-gray-500">Só preenche o que está vazio; nada que já foi digitado é trocado.</p>
+                {fill.msg && <p className="text-[11px] text-gray-700">{fill.msg}</p>}
+              </div>
+            )}
+            <ul className="mt-2 max-h-32 space-y-0.5 overflow-y-auto">
               {noUf.map(l => <li key={l.contractId}><Link href={`/contracts/${l.contractId}`} className="text-gray-700 hover:underline">{l.client}{l.number ? ` · ${l.number}` : ''}</Link></li>)}
             </ul>
           </details>

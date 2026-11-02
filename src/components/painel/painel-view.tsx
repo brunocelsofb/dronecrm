@@ -213,7 +213,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
           <Kpi label="NPS (12 meses)" value={f.nps === null ? '—' : String(f.nps)} hint={`${f.npsAnswers} resposta(s)`} tone={f.nps === null ? 'neutral' : f.nps >= 50 ? 'good' : f.nps >= 0 ? 'warn' : 'bad'} />
           <Kpi label="Chamados abertos (hoje)" value={String(f.openTickets)} hint={`${f.overdueTickets} fora do prazo`} tone={f.overdueTickets ? 'warn' : 'neutral'} />
         </div>
-        <UfMap rows={d.portfolio.byUf} noUf={d.portfolio.noUf} noUfMrr={d.portfolio.noUfMrr} total={d.portfolio.mrr} />
+        <UfMap items={d.portfolio.geoItems} tags={d.portfolio.geoTags} isAdmin={isAdmin} />
         <MrrByServiceChart tags={d.portfolio.mrrByTag.tags} months={d.portfolio.mrrByTag.months} labels={MONTHS_SHORT} highlight={isYear && !allYear ? sel : undefined} />
       </Section>
 

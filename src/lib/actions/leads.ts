@@ -135,15 +135,22 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionSt
     if (byName) companyId = byName.id
   }
 
-  // 3. Cria a empresa se não encontrou
+  // 3. Cria a empresa se não encontrou (com cidade e UF da consulta do CNPJ, quando houver)
   if (!companyId && lead.company_name) {
+    const digits = lead.cnpj ? String(lead.cnpj).replace(/\D/g, '') : ''
+    const { lookupCnpj } = await import('@/lib/actions/cnpj-lookup')
+    const found = digits.length === 14 ? await lookupCnpj(digits) : null
+    const ok = found && found.success ? found : null
     const { data: newCompany } = await supabase
       .from('companies')
       .insert({
         name: lead.company_name,
-        cnpj: lead.cnpj ? lead.cnpj.replace(/\D/g, '') : null,
+        cnpj: digits || null,
         status: 'prospect',
         owner_id: user.id,
+        trade_name: ok?.nomeFantasia ?? null,
+        state: ok?.uf ?? null, city: ok?.municipio ?? null, zip_code: ok?.cep ?? null,
+        street: ok?.logradouro ?? null, street_number: ok?.numero ?? null, neighborhood: ok?.bairro ?? null,
       })
       .select('id')
       .single()
@@ -183,6 +190,14 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionSt
     }
   }
 
+  // Cidade e UF da empresa vão para a oportunidade (mapa por estado)
+  const companyGeo: { uf: string | null; city: string | null } = { uf: null, city: null }
+  if (companyId) {
+    const { data: cg } = await supabase.from('companies').select('state, city').eq('id', companyId).maybeSingle()
+    const { normalizeUf } = await import('@/lib/geo/uf')
+    companyGeo.uf = normalizeUf(cg?.state ?? null); companyGeo.city = (cg?.city as string | null) ?? null
+  }
+
   const { data: salesPipeline } = await supabase.from('pipelines').select('id').eq('type', 'vendas').eq('is_default', true).maybeSingle()
   const { data: fallbackPipeline } = salesPipeline
     ? { data: salesPipeline }
@@ -212,6 +227,7 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ActionSt
       owner_id: user.id,
       current_assignee_id: user.id,
       lead_id: lead.id,
+      uf: companyGeo.uf, municipality: companyGeo.city,
       campaign_id: lead.campaign_id ?? null,
       lead_source: lead.source ?? null,
     })

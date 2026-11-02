@@ -626,6 +626,8 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     overdueTickets: overdueTickets.length,
   }
 
+  const tagKey = (cid: string) => input.contractTag[cid] ?? '—'
+  const tagMeta = (k: string) => (k === '—' ? { id: '—', name: 'Sem serviço (tag)', color: null } : { id: k, name: tagById.get(k)?.name ?? 'Serviço', color: tagById.get(k)?.color ?? null })
   // ── Carteira por estado (contratos ativos no fim do período) ─────────────
   const ufOf = (cid: string): string | null => {
     const c = contractById.get(cid)
@@ -644,8 +646,6 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
   }).sort((a, b) => b.mrr - a.mrr)
 
   // ── Mês a mês do ano: receita recorrente da carteira por serviço e novo recorrente vendido ──
-  const tagKey = (cid: string) => input.contractTag[cid] ?? '—'
-  const tagMeta = (k: string) => (k === '—' ? { id: '—', name: 'Sem serviço (tag)', color: null } : { id: k, name: tagById.get(k)?.name ?? 'Serviço', color: tagById.get(k)?.color ?? null })
   const usedTags = new Set<string>()
   const mrrMonthly: ({ month: number; total: number; parts: Record<string, number> } | null)[] = []
   const newMonthly: { month: number; value: number; count: number; lines: ContractLine[] }[] = []
@@ -667,8 +667,11 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     const wins = input.runs.filter(r => typeOf.get(r.pipeline_id) === 'vendas' && r.status === 'won' && (() => { const t = ts(r.ended_at); return t !== null && t >= ms && t < me })())
     newMonthly.push({ month: mm, value: r2(wins.reduce((a, r) => a + (Number(r.value) || 0), 0)), count: wins.length, lines: wins.map(r => line(r.contract_id, Number(r.value) || 0)) })
   }
+  // Para o filtro por serviço no mapa: cada contrato ativo com o estado e o serviço (tag)
+  const geoItems = activeEnd.map(l => ({ ...l, uf: ufOf(l.contractId), tag: tagKey(l.contractId) }))
   const portfolio = {
-    byUf, noUf, noUfMrr: r2(noUf.reduce((a, x) => a + x.value, 0)), mrr: mrrEnd,
+    byUf, noUf, noUfMrr: r2(noUf.reduce((a, x) => a + x.value, 0)), mrr: mrrEnd, geoItems,
+    geoTags: [...new Set(geoItems.map(g => g.tag))].map(tagMeta),
     mrrByTag: { tags: [...usedTags].map(tagMeta).sort((a, b) => (a.id === '—' ? 1 : b.id === '—' ? -1 : a.name.localeCompare(b.name))), months: mrrMonthly },
     newMonthly,
   }
