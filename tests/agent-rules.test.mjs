@@ -116,7 +116,7 @@ test('cadastro completo: nome e sobrenome, telefone, área e e-mail', () => {
 
 import { renewalMoveCheck, overrideProblem } from '../src/lib/rules/renewal-process.ts'
 
-test('processo de renovação: entrar antes do prazo ou sair dentro dele pede MUDAR + motivo', () => {
+test('processo de renovação: entrar antes do prazo ou sair dentro dele pede digitar mudar', () => {
   const base = { renewalStageId: 'R', prepDays: 90 }
   assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: 120 }).ok, false)
   assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: 90 }).ok, true)
@@ -126,9 +126,9 @@ test('processo de renovação: entrar antes do prazo ou sair dentro dele pede MU
   assert.equal(renewalMoveCheck({ renewalStageId: null, prepDays: 90, fromStageId: 'G', toStageId: 'R', daysLeft: 200 }).ok, true)
   assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: null }).ok, true)
   assert.ok(overrideProblem(null))
-  assert.ok(overrideProblem({ word: 'mudar', reason: 'curto' }))
+  assert.equal(overrideProblem({ word: 'MUDAR', reason: '' }), null) // motivo é opcional
   assert.ok(overrideProblem({ word: 'trocar', reason: 'cliente pediu para antecipar' }))
-  assert.equal(overrideProblem({ word: ' mudar ', reason: 'cliente pediu para antecipar' }), null)
+  assert.equal(overrideProblem({ word: ' mudar ' }), null)
 })
 
 import { resolveRulerSettings, DEFAULT_RULER_STEPS } from '../src/lib/agent/renewal-ruler.ts'

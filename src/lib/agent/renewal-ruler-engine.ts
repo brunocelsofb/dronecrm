@@ -291,7 +291,7 @@ export async function markClientNoticeStep(contractId: string, opts: { userId?: 
   return { ok: true as const }
 }
 
-// Passar um passo fora da ordem ou que não se aplica (MUDAR + motivo): fica registrado
+// Passar um passo fora da ordem ou que não se aplica (digitar "mudar"): fica registrado
 export async function skipRulerStep(tenantId: string, runId: string, stepId: string, userId: string, reason: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const { data } = await createAdminClient().from('renewal_ruler_runs').select('*').eq('id', runId).eq('tenant_id', tenantId).maybeSingle()
   const run = data as RulerRun | null

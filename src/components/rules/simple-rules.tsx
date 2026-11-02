@@ -54,7 +54,7 @@ function FunnelRenewalRow({ p }: { p: FunnelRenewalView }) {
               {p.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <p className="mt-0.5 text-[11px] text-gray-400">Os dias seguem o &quot;preparar a renovação&quot; (mude na linha do tempo acima). Confere todo dia de madrugada; vencidos também entram. Mover o cartão fora desse processo pede MUDAR + motivo, que fica registrado.</p>
+          <p className="mt-0.5 text-[11px] text-gray-400">Os dias seguem o &quot;preparar a renovação&quot; (mude na linha do tempo acima). Confere todo dia de madrugada; vencidos também entram. Mover o cartão fora desse processo pede confirmação (digitar &quot;mudar&quot;) e fica registrado quem mudou.</p>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
             {dirty && <button type="button" onClick={() => save()} disabled={pending} className="rounded-md bg-brand-700 px-2.5 py-1 font-semibold text-white hover:bg-brand-800 disabled:opacity-50">{pending ? 'Salvando…' : 'Salvar'}</button>}
             {v.enabled && <button type="button" onClick={test} disabled={pending || !v.stageId} className="font-medium text-brand-700 hover:underline disabled:opacity-50">Testar</button>}

@@ -29,7 +29,7 @@ export function RenewalRulerPanel({
   const [error, setError] = useState<string | null>(null)
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [note, setNote] = useState('')
-  // MUDAR + motivo: passar um passo fora do processo ou registrar "sem acordo" (churn)
+  // digitar "mudar": passar um passo fora do processo ou registrar "sem acordo" (churn)
   const [ov, setOv] = useState<{ kind: 'skip' | 'nodeal'; stepId?: string; message: string; error: string | null } | null>(null)
   const [ovBusy, setOvBusy] = useState(false)
 

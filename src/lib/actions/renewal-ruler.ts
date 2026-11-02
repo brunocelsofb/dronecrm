@@ -92,7 +92,7 @@ export async function cancelRuler(contractId: string): Promise<Result> {
   return { ok: true }
 }
 
-// Passar um passo fora da ordem / que não se aplica: digitar MUDAR + motivo (fica registrado)
+// Passar um passo fora da ordem / que não se aplica: digitar "mudar" (fica registrado)
 export async function skipRulerStepAction(contractId: string, runId: string, stepId: string, word: string, reason: string): Promise<Result> {
   const g = await guard(contractId)
   if ('error' in g) return { ok: false, error: g.error }
@@ -100,13 +100,13 @@ export async function skipRulerStepAction(contractId: string, runId: string, ste
   const p = overrideProblem({ word, reason })
   if (p) return { ok: false, error: p }
   const { skipRulerStep } = await import('@/lib/agent/renewal-ruler-engine')
-  const r = await skipRulerStep(g.tenantId, runId, stepId, g.userId, reason.trim())
+  const r = await skipRulerStep(g.tenantId, runId, stepId, g.userId, String(reason ?? '').trim() || 'não informado')
   if (!r.ok) return r
   revalidatePath(`/contracts/${contractId}`)
   return { ok: true }
 }
 
-// Sem acordo comercial → churn: digitar MUDAR + motivo; cancela a régua e pede o registro da perda
+// Sem acordo comercial → churn: digitar "mudar"; cancela a régua e pede o registro da perda
 export async function rulerNoDealAction(contractId: string, word: string, reason: string): Promise<Result> {
   const g = await guard(contractId)
   if ('error' in g) return { ok: false, error: g.error }
@@ -114,7 +114,7 @@ export async function rulerNoDealAction(contractId: string, word: string, reason
   const p = overrideProblem({ word, reason })
   if (p) return { ok: false, error: p }
   const { rulerNoDeal } = await import('@/lib/agent/renewal-ruler-engine')
-  const r = await rulerNoDeal(g.tenantId, contractId, g.userId, reason.trim())
+  const r = await rulerNoDeal(g.tenantId, contractId, g.userId, String(reason ?? '').trim() || 'não informado')
   if (!r.ok) return r
   revalidatePath(`/contracts/${contractId}`)
   return { ok: true }

@@ -1,10 +1,9 @@
 // ─── Processo de renovação no funil (regras puras) ───────────────────────────
 // O cartão vai para a etapa de renovação junto com o "preparar a renovação" do agente
 // (Central de regras → Renovação; padrão 90 dias antes do vencimento). Mover o cartão
-// fora desse processo pede confirmação (digitar MUDAR + motivo) e fica registrado.
+// fora desse processo pede confirmação (digitar "mudar"; motivo opcional) e fica registrado quem mudou.
 
-export const OVERRIDE_WORD = 'MUDAR'
-export const MIN_REASON = 10
+export const OVERRIDE_WORD = 'mudar'
 
 export type ProcessCheck = { ok: true } | { ok: false; message: string }
 
@@ -24,9 +23,10 @@ export function renewalMoveCheck(o: {
   return { ok: true }
 }
 
+// Confirmação simples: digitar "mudar" (maiúsculas ou minúsculas). O motivo é opcional.
 export function overrideProblem(o: { word?: string; reason?: string } | null | undefined): string | null {
-  if (!o) return 'Confirme digitando MUDAR e escreva o motivo.'
-  if (String(o.word ?? '').trim().toUpperCase() !== OVERRIDE_WORD) return 'Para confirmar, digite MUDAR.'
-  if (String(o.reason ?? '').trim().length < MIN_REASON) return `Escreva o motivo (pelo menos ${MIN_REASON} letras).`
+  if (!o) return `Para confirmar, digite ${OVERRIDE_WORD}.`
+  if (String(o.word ?? '').trim().toLowerCase() !== OVERRIDE_WORD) return `Para confirmar, digite ${OVERRIDE_WORD}.`
   return null
 }
+export const reasonText = (r: string | null | undefined) => String(r ?? '').trim() || 'sem motivo informado'

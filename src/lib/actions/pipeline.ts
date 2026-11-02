@@ -26,7 +26,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendAutomatedTemplateEmail } from '@/lib/actions/email'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
-// outOfProcess: a mudança sai do processo (ex.: renovação) — a tela pede MUDAR + motivo e tenta de novo
+// outOfProcess: a mudança sai do processo (ex.: renovação) — a tela pede digitar "mudar" e tenta de novo
 export type MoveResult = { success?: true; error?: string; outOfProcess?: string }
 
 // Verifica todos os funis com automação de renovação configurada e move
@@ -78,7 +78,7 @@ export async function checkAndTriggerRenewals() {
 
     if (!openRuns || openRuns.length === 0) continue
 
-    // Quem tirou da renovação de propósito (MUDAR + motivo) não volta sozinho
+    // Quem tirou da renovação de propósito (digitar "mudar") não volta sozinho
     const { data: holds } = await supabase.from('activities').select('pipeline_run_id')
       .in('pipeline_run_id', openRuns.map(r => r.id)).eq('metadata->>kind', 'process_override').eq('metadata->>hold', 'true')
     const held = new Set((holds ?? []).map(h => h.pipeline_run_id as string))
@@ -187,7 +187,7 @@ export async function moveContractStage(
 
   if (stageError || !newStage) return { error: 'Etapa não encontrada.' }
 
-  // Processo de renovação: mudança feita por pessoa fora do processo pede MUDAR + motivo
+  // Processo de renovação: mudança feita por pessoa fora do processo pede digitar "mudar"
   let processNote: string | null = null
   let processHold = false // tirou da renovação dentro do prazo: o sistema não traz de volta
   if (_depth === 0 && newStage.id !== run.stage_id && newStage.pipeline_id === run.pipeline_id) {
@@ -358,14 +358,14 @@ export async function moveContractStage(
     }
   }
 
-  // Fora do processo autorizado (MUDAR + motivo): fica registrado quem mudou e por quê
+  // Fora do processo autorizado (digitar "mudar"): fica registrado quem mudou e por quê
   if (processNote && override) {
     const { data: me } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
     const { data: fromStage } = await supabase.from('stages').select('name').eq('id', run.stage_id).maybeSingle()
     await supabase.from('activities').insert({
       contract_id: contractId, pipeline_run_id: run.id, user_id: user.id, type: 'system',
-      content: `⚠ Mudança fora do processo — ${me?.full_name ?? 'alguém'} moveu de "${fromStage?.name ?? '—'}" para "${newStage.name}". Motivo: ${override.reason.trim()}\n(${processNote})`,
-      metadata: { kind: 'process_override', from_stage_id: run.stage_id, to_stage_id: newStage.id, reason: override.reason.trim(), by: user.id, hold: processHold ? 'true' : 'false' },
+      content: `⚠ Mudança fora do processo — ${me?.full_name ?? 'alguém'} moveu de "${fromStage?.name ?? '—'}" para "${newStage.name}". Motivo: ${String(override.reason ?? '').trim() || 'não informado'}\n(${processNote})`,
+      metadata: { kind: 'process_override', from_stage_id: run.stage_id, to_stage_id: newStage.id, reason: String(override.reason ?? '').trim() || null, by: user.id, hold: processHold ? 'true' : 'false' },
     })
   }
 
