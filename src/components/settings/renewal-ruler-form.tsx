@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { saveRulerSettings } from '@/lib/actions/renewal-ruler'
 import {
   RULER_VARIABLES, DEFAULT_RULER_TEMPLATES, RULER_MODEL_STEPS, RULER_WHO_LABEL, MAX_STEP_INSTRUCTIONS, renderRuler, brDate, dueDate,
-  type RulerArea, type RulerWho, type RulerSettings, type RulerStep, type RulerTemplates,
+  type RulerWho, type RulerSettings, type RulerStep, type RulerTemplates,
 } from '@/lib/agent/renewal-ruler'
 
 const box = 'rounded-xl border border-gray-200 bg-white p-5 space-y-4'
@@ -13,9 +13,9 @@ const input = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:
 const SAMPLE_END = '2027-03-31'
 
 const MAILS: { key: 'step' | 'overdue' | 'ready'; label: string; hint: string }[] = [
-  { key: 'step', label: 'Chegou um passo', hint: 'Vai para as áreas do passo quando ele passa a ser o atual.' },
-  { key: 'overdue', label: 'Passo atrasado', hint: 'Vai no dia seguinte ao prazo se o passo não foi marcado, e se repete a cada N dias (definido acima) até ser marcado.' },
-  { key: 'ready', label: 'Pronto para renovar', hint: 'Vai para todas as áreas da régua quando o último passo é concluído.' },
+  { key: 'step', label: 'Chegou um passo', hint: 'Vai para os e-mails de fora cadastrados nas áreas do passo (coordenador e gerente já recebem pela tarefa; no passo do consultor, eles também recebem este e-mail).' },
+  { key: 'overdue', label: 'Passo atrasado', hint: 'Vai para coordenador, gerente e e-mails de fora das áreas do passo no dia seguinte ao prazo, se o passo não foi marcado, e se repete a cada N dias (definido acima) até ser marcado.' },
+  { key: 'ready', label: 'Pronto para renovar', hint: 'Vai para coordenador, gerente e e-mails de fora de todas as áreas da régua quando o último passo é concluído.' },
 ]
 
 const newId = () => `passo-${Math.random().toString(36).slice(2, 8)}`
@@ -24,9 +24,6 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
   const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
-  const [areas, setAreas] = useState<(RulerArea & { emailsText: string })[]>(
-    initial.areas.map(a => ({ ...a, emailsText: a.emails.join(', ') })),
-  )
   const [steps, setSteps] = useState<RulerStep[]>(initial.steps)
   const [templates, setTemplates] = useState<RulerTemplates>(initial.templates)
   const [mail, setMail] = useState<'step' | 'overdue' | 'ready'>('step')
@@ -43,20 +40,13 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
     touch()
     setSteps(s => { const n = [...s]; const j = i + d; if (j < 0 || j >= n.length) return s; [n[i], n[j]] = [n[j], n[i]]; return n })
   }
-  function setArea(i: number, patch: Partial<RulerArea & { emailsText: string }>) { touch(); setAreas(a => a.map((x, j) => (j === i ? { ...x, ...patch } : x))) }
-  function removeArea(i: number) {
-    touch()
-    const key = areas[i].key
-    setAreas(a => a.filter((_, j) => j !== i))
-    setSteps(s => s.map(x => ({ ...x, areas: x.areas.filter(k => k !== key) })))
-  }
 
   async function save() {
     setSaving(true); setMsg(null)
     const res = await saveRulerSettings({
       enabled, lock_renewed: lock, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
-      areas: areas.map(a => ({ key: a.key, label: a.label.trim(), emails: a.emailsText.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean) })),
-      steps: steps.map(s => ({ ...s, label: s.label.trim() })),
+      areas: [], // lista antiga de e-mails (substituída pelas áreas da empresa)
+      steps: steps.map(s => ({ ...s, label: s.label.trim(), areas: s.areas.filter(k => k.startsWith('area:')) })),
     })
     setSaving(false)
     setMsg(res.ok ? { ok: true, text: 'Régua salva. Vale para as próximas renovações; as que já estão em andamento seguem os passos de quando começaram.' } : { ok: false, text: res.error })
@@ -99,28 +89,6 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
           <span>dias, até o passo ser marcado ou o contrato ser renovado.</span>
           <span className="w-full text-xs text-gray-500">Use 0 para avisar só uma vez.</span>
         </div>
-      </section>
-
-      <section className={box}>
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">Áreas e e-mails</h2>
-          <p className="text-xs text-gray-500">Quem recebe os avisos. Separe vários e-mails por vírgula.</p>
-        </div>
-        <div className="space-y-2">
-          {areas.map((a, i) => (
-            <div key={a.key} className="grid gap-2 sm:grid-cols-[200px_1fr_auto] items-start">
-              <input className={input} value={a.label} maxLength={60} placeholder="Nome da área" onChange={e => setArea(i, { label: e.target.value })} />
-              <input className={input} value={a.emailsText} placeholder="pessoa@empresa.com, outra@empresa.com" onChange={e => setArea(i, { emailsText: e.target.value })} />
-              <button type="button" onClick={() => removeArea(i)} className="rounded-lg p-2 text-gray-400 hover:bg-negative-100 hover:text-negative-700" title="Remover área">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <button type="button" onClick={() => { touch(); setAreas(a => [...a, { key: `area-${Math.random().toString(36).slice(2, 8)}`, label: 'Nova área', emails: [], emailsText: '' }]) }}
-          className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline">
-          <Plus className="h-4 w-4" /> Adicionar área
-        </button>
       </section>
 
       <section className={box}>
@@ -188,6 +156,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
                   )
                 })}
                 {!orgAreas.length && <a href="/regras?tema=areas" className="text-xs text-brand-700 hover:underline">cadastre as áreas da empresa →</a>}
+                {orgAreas.length > 0 && !s.areas.some(k => k.startsWith('area:')) && s.who !== 'owner' && s.done_when !== 'client_notice' && <span className="text-xs text-warn-700">nenhuma área: a tarefa vai para o consultor</span>}
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
                 <span className="text-xs text-gray-500">Concluído quando:</span>
@@ -196,17 +165,6 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
                   <option value="manual">quem recebeu escreve o que fez e conclui</option>
                   <option value="client_notice">o aviso ao cliente é enviado (sozinho)</option>
                 </select>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
-                <span className="text-xs text-gray-500">E-mail também para (lista antiga):</span>
-                {areas.map(a => (
-                  <label key={a.key} className="flex items-center gap-1 text-xs text-gray-700">
-                    <input type="checkbox" checked={s.areas.includes(a.key)}
-                      onChange={e => setStep(i, { areas: e.target.checked ? [...s.areas, a.key] : s.areas.filter(k => k !== a.key) })} />
-                    {a.label || '(sem nome)'}
-                  </label>
-                ))}
-                {!s.areas.length && s.who !== 'owner' && s.done_when !== 'client_notice' && <span className="text-xs text-warn-700">nenhuma área: a tarefa vai para o consultor</span>}
               </div>
             </div>
           ))}

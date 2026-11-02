@@ -66,20 +66,16 @@ export const RULER_VARIABLES: { key: string; description: string }[] = [
   { key: 'link',       description: 'Endereço da oportunidade no CRM' },
 ]
 
-export const DEFAULT_RULER_AREAS: RulerArea[] = [
-  { key: 'comercial', label: 'Comercial', emails: [] },
-  { key: 'operacao', label: 'Operação / Técnico', emails: [] },
-  { key: 'financeiro', label: 'Financeiro', emails: [] },
-  { key: 'juridico', label: 'Jurídico / Contratos', emails: [] },
-]
+// Lista antiga de áreas da régua (só e-mail): substituída pelas áreas da empresa (Central de regras → Áreas e IA)
+export const DEFAULT_RULER_AREAS: RulerArea[] = []
 
 export const DEFAULT_RULER_STEPS: RulerStep[] = [
   { id: 'preparar', label: 'Preparar a renovação (aviso interno às áreas)', days_before: 90, areas: [], done_when: 'manual' },
-  { id: 'aviso', done_when: 'client_notice', label: 'Aviso de renovação enviado ao cliente', days_before: 60, areas: ['comercial'] },
-  { id: 'analise', label: 'Análise interna do contrato (indicadores, reajuste e escopo)', days_before: 45, areas: ['comercial', 'operacao', 'financeiro'] },
-  { id: 'reuniao', label: 'Reunião de renovação com o cliente', days_before: 35, areas: ['comercial', 'operacao'] },
-  { id: 'proposta', label: 'Proposta de renovação enviada', days_before: 25, areas: ['comercial', 'financeiro'] },
-  { id: 'aditivo', label: 'Aditivo / contrato assinado', days_before: 10, areas: ['comercial', 'juridico', 'financeiro'] },
+  { id: 'aviso', done_when: 'client_notice', label: 'Aviso de renovação enviado ao cliente', days_before: 60, areas: [] },
+  { id: 'analise', label: 'Análise interna do contrato (indicadores, reajuste e escopo)', days_before: 45, areas: [] },
+  { id: 'reuniao', label: 'Reunião de renovação com o cliente', days_before: 35, areas: [] },
+  { id: 'proposta', label: 'Proposta de renovação enviada', days_before: 25, areas: [] },
+  { id: 'aditivo', label: 'Aditivo / contrato assinado', days_before: 10, areas: [] },
 ]
 
 // Modelo sugerido (ponto de partida; a empresa edita tudo depois de carregar). Sem áreas: a empresa escolhe as suas.

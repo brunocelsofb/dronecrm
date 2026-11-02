@@ -55,10 +55,10 @@ async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' |
   const info = await contractInfo(run.contract_id)
   if (!info) return { sent: false, detail: 'contrato não encontrado' }
   const step = run.steps[Math.min(idx, run.steps.length - 1)]
-  // Destinatários: áreas do passo; no "pronto para renovar", todas as áreas da régua
-  const to = kind === 'ready'
-    ? [...new Set(run.steps.flatMap(s => stepRecipients(s, settings.areas)))]
-    : stepRecipients(step, settings.areas)
+  // Destinatários: áreas da empresa do passo (no "pronto para renovar", de todos os passos).
+  // Chegada de passo encaminhado: coordenador e gerente já recebem pela tarefa → aqui só os e-mails de fora da área.
+  const to = await areaEmails(run.tenant_id, kind === 'ready' ? run.steps.flatMap(s => s.areas) : step.areas,
+    !(kind === 'step' && (step.who ?? 'areas') !== 'owner'), settings)
   if (!to.length) return { sent: false, detail: 'nenhum e-mail cadastrado nas áreas deste passo' }
   const prev = idx > 0 ? run.steps[idx - 1] : null
   const vars: Record<string, string> = {
@@ -81,6 +81,24 @@ async function notifyStep(run: RulerRun, idx: number, kind: 'step' | 'overdue' |
   const html = buildInternalEmailHtml({ badge, header: subject, messageText: renderRuler(bodyT, vars), companyName: vars.empresa })
   const r = await sendAgentEmail({ tenantId: run.tenant_id, to: to.join(', '), subject, htmlBody: html })
   return r.sent ? { sent: true } : { sent: false, detail: r.error }
+}
+
+// E-mails das áreas: e-mails de fora cadastrados na área + (people) coordenador e gerente; lista antiga, se ainda houver
+async function areaEmails(tenantId: string, keys: string[], people: boolean, settings: RulerSettings): Promise<string[]> {
+  const out = new Map<string, string>()
+  for (const e of stepRecipients({ areas: keys }, settings.areas)) out.set(e.toLowerCase(), e)
+  const ids = [...new Set(keys.filter(k => k.startsWith('area:')).map(k => k.slice(5)))]
+  if (!ids.length) return [...out.values()]
+  const admin = createAdminClient()
+  const { data } = await admin.from('org_areas').select('lead_id, manager_id, emails').eq('tenant_id', tenantId).in('id', ids)
+  const rows = (data ?? []) as { lead_id: string | null; manager_id: string | null; emails: string[] | null }[]
+  for (const r of rows) for (const e of r.emails ?? []) out.set(e.toLowerCase(), e)
+  const pids = people ? [...new Set(rows.flatMap(r => [r.lead_id, r.manager_id]).filter((x): x is string => !!x))] : []
+  if (pids.length) {
+    const { data: ps } = await admin.from('profiles').select('email').eq('tenant_id', tenantId).in('id', pids)
+    for (const p of (ps ?? []) as { email: string | null }[]) if (p.email) out.set(p.email.toLowerCase(), p.email)
+  }
+  return [...out.values()]
 }
 
 async function logActivity(run: RulerRun, content: string) {
