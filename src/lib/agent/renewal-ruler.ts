@@ -10,7 +10,22 @@
 export type RulerArea = { key: string; label: string; emails: string[] }
 // areas: áreas da empresa ('area:<id>', Central de regras → Áreas e IA) ou áreas antigas da régua (só e-mail)
 // done_when: 'manual' (concluído por quem recebeu, com o que foi feito) ou 'client_notice' (quando o aviso ao cliente é enviado)
-export type RulerStep = { id: string; label: string; days_before: number; areas: string[]; done_when?: 'manual' | 'client_notice' }
+// who: quem faz o passo — 'owner' (consultor dono do contrato), 'areas' (coordenador da 1ª área; gerente avisado)
+//      ou 'agent' (o agente de IA prepara o material e a pessoa revisa e conclui; sem IA, vira tarefa comum)
+// instructions: o que fazer (vai na tarefa; é o pedido ao agente quando who = 'agent')
+// requires_file: só conclui com arquivo anexado ao contrato depois que o passo chegou
+// with_previous: começa junto com o passo anterior (correm em paralelo)
+export type RulerWho = 'owner' | 'areas' | 'agent'
+export type RulerStep = {
+  id: string; label: string; days_before: number; areas: string[]; done_when?: 'manual' | 'client_notice'
+  who?: RulerWho; instructions?: string; requires_file?: boolean; with_previous?: boolean
+}
+export const RULER_WHO_LABEL: Record<RulerWho, string> = {
+  owner: 'Consultor (dono do contrato)',
+  areas: 'Área (coordenador faz; gerente acompanha)',
+  agent: 'Agente de IA prepara; pessoa revisa e conclui',
+}
+export const MAX_STEP_INSTRUCTIONS = 1000
 export type RulerTemplates = {
   step_subject: string; step_body: string
   overdue_subject: string; overdue_body: string
@@ -65,6 +80,22 @@ export const DEFAULT_RULER_STEPS: RulerStep[] = [
   { id: 'reuniao', label: 'Reunião de renovação com o cliente', days_before: 35, areas: ['comercial', 'operacao'] },
   { id: 'proposta', label: 'Proposta de renovação enviada', days_before: 25, areas: ['comercial', 'financeiro'] },
   { id: 'aditivo', label: 'Aditivo / contrato assinado', days_before: 10, areas: ['comercial', 'juridico', 'financeiro'] },
+]
+
+// Modelo sugerido (ponto de partida; a empresa edita tudo depois de carregar). Sem áreas: a empresa escolhe as suas.
+export const RULER_MODEL_STEPS: RulerStep[] = [
+  { id: 'aviso', label: 'Enviar o aviso de renovação ao cliente', days_before: 60, areas: [], done_when: 'client_notice', who: 'owner' },
+  { id: 'aplicabilidade', label: 'Atualizar a tabela de aplicabilidade (mesmo sem mudança no parque)', days_before: 55, areas: [], done_when: 'manual', who: 'areas', requires_file: true,
+    instructions: 'Atualize a tabela de aplicabilidade do contrato, mesmo que não haja mudança no parque tecnológico, e anexe a versão nova ao contrato.' },
+  { id: 'custos', label: 'Elaborar ou atualizar a planilha de custos do projeto', days_before: 55, areas: [], done_when: 'manual', who: 'owner', requires_file: true, with_previous: true,
+    instructions: 'Elabore ou atualize a planilha de custos do projeto e anexe ao contrato.' },
+  { id: 'reuniao-interna', label: 'Reunião interna com o time técnico (melhorias e entrega dos serviços)', days_before: 45, areas: [], done_when: 'manual', who: 'agent',
+    instructions: 'Monte a pauta da reunião interna com o time técnico: resumo do contrato, o que foi registrado nos passos anteriores, pontos de melhoria e de entrega dos serviços a discutir.' },
+  { id: 'reuniao-cliente', label: 'Reunião com o cliente (de preferência até 30 dias do vencimento)', days_before: 30, areas: [], done_when: 'manual', who: 'owner' },
+  { id: 'aditivo', label: 'Negociação e assinatura do termo aditivo', days_before: 15, areas: [], done_when: 'manual', who: 'owner', requires_file: true,
+    instructions: 'Negocie as condições e anexe o termo aditivo assinado ao contrato.' },
+  { id: 'comunicacao', label: 'Formalização e comunicação interna da renovação', days_before: 5, areas: [], done_when: 'manual', who: 'agent',
+    instructions: 'Escreva a comunicação interna da renovação para o time: contrato, cliente, nova vigência, o que foi combinado e quem faz o quê a partir de agora.' },
 ]
 
 export const DEFAULT_RULER_TEMPLATES: RulerTemplates = {
@@ -129,6 +160,11 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
           areas: (Array.isArray(o.areas) ? o.areas : []).map(String).filter(k => areaKeys.has(k) || /^area:[0-9a-f-]{36}$/i.test(k)),
           // Passo "aviso ao cliente" (id antigo 'aviso') conclui sozinho quando o aviso é enviado
           done_when: o.done_when === 'client_notice' || (o.done_when === undefined && str(o.id, 40) === 'aviso') ? 'client_notice' as const : 'manual' as const,
+          who: o.who === 'owner' || o.who === 'areas' || o.who === 'agent' ? o.who as RulerWho
+            : (Array.isArray(o.areas) && (o.areas as unknown[]).some(a => /^area:/.test(String(a))) ? 'areas' as const : 'owner' as const),
+          instructions: str(o.instructions, MAX_STEP_INSTRUCTIONS).trim(),
+          requires_file: o.requires_file === true,
+          with_previous: i > 0 && o.with_previous === true,
         }
       }).filter(s => s.label).slice(0, 20)
     : DEFAULT_RULER_STEPS
@@ -167,7 +203,22 @@ export function dueDate(periodEnd: string | null, daysBefore: number): string | 
 export function buildRunSteps(steps: RulerStep[], periodEnd: string | null): RunStep[] {
   return [...steps]
     .sort((a, b) => b.days_before - a.days_before)
-    .map(s => ({ ...s, due_date: dueDate(periodEnd, s.days_before), done_at: null, done_by: null, notified_at: null, overdue_notified_at: null }))
+    .map((s, i) => ({ ...s, with_previous: i > 0 && !!s.with_previous, due_date: dueDate(periodEnd, s.days_before), done_at: null, done_by: null, notified_at: null, overdue_notified_at: null }))
+}
+
+// Passos que estão "em andamento" agora (chegaram e não foram concluídos); se nenhum chegou, o 1º aberto
+export function openStepIndexes(steps: Pick<RunStep, 'done_at' | 'notified_at'>[]): number[] {
+  const arrived = steps.map((s, i) => (!s.done_at && s.notified_at ? i : -1)).filter(i => i >= 0)
+  if (arrived.length) return arrived
+  const first = steps.findIndex(s => !s.done_at)
+  return first >= 0 ? [first] : []
+}
+
+// Grupo que começa em idx: o passo e os seguintes marcados "começa junto com o anterior"
+export function stepGroup(steps: Pick<RunStep, 'done_at' | 'with_previous'>[], idx: number): number[] {
+  const out = [idx]
+  for (let j = idx + 1; j < steps.length && steps[j].with_previous; j++) if (!steps[j].done_at) out.push(j)
+  return out
 }
 
 export const brDate = (iso: string | null | undefined) =>

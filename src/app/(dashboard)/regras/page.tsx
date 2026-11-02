@@ -135,7 +135,7 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         const off = alerts && !alerts.state.enabled ? ' (desligado)' : ''
         const noticeSteps = ruler.enabled ? ruler.steps.filter(st => st.done_when === 'client_notice') : []
         const areaName = new Map<string, string>([...ruler.areas.map(a => [a.key, a.label] as [string, string]), ...areas.map(a => [`area:${a.id}`, a.name] as [string, string])])
-        const stepWho = (keys: string[]) => keys.length ? keys.map(k => areaName.get(k) ?? 'área removida').join(', ') : 'o responsável'
+        const stepWho = (keys: string[]) => { const k2 = keys.filter(k => k.startsWith('area:')); return k2.length ? k2.map(k => areaName.get(k) ?? 'área removida').join(', ') : 'o consultor' }
         const items: TimelineItem[] = [
           ...(alerts ? [
             { id: 'l:prep', days: L.prep, agent: 'Farmer', label: `tarefa "preparar a renovação" para o responsável${off}${movesCard.length ? ` + cartão vai para ${movesCard.join(', ')}` : ''}`, edit: { type: 'level' as const, key: 'prep' as const } },
@@ -143,8 +143,10 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
             { id: 'l:a2', days: L.a2, agent: 'Farmer', label: `2º aviso ao cliente${off}`, edit: { type: 'level' as const, key: 'a2' as const } },
             { id: 'l:a3', days: L.a3, agent: 'Farmer', label: `aviso urgente${off}`, edit: { type: 'level' as const, key: 'a3' as const } },
           ] : []),
-          ...(ruler.enabled ? ruler.steps.filter(st => !(alerts && st.done_when === 'client_notice')).map(st => ({ id: `r:${st.id}`, days: st.days_before, agent: null, who: stepWho(st.areas),
-            label: `régua: ${st.label}${st.areas.length ? '' : ' (sem área definida)'}`, edit: { type: 'link' as const, href: '/settings/regua-renovacao' } })) : []),
+          ...(ruler.enabled ? ruler.steps.filter(st => !(alerts && st.done_when === 'client_notice')).map(st => ({ id: `r:${st.id}`, days: st.days_before,
+            agent: st.who === 'agent' ? 'Farmer' : null, who: st.who === 'owner' ? 'o consultor' : stepWho(st.areas),
+            label: `régua: ${st.label}${st.who === 'agent' ? ` (prepara; revisão: ${st.areas.some(a => a.startsWith('area:')) ? stepWho(st.areas) : 'consultor'})` : ''}` +
+              `${st.who === 'areas' && !st.areas.some(a => a.startsWith('area:')) ? ' (sem área definida: vai ao consultor)' : ''}${st.requires_file ? ' · pede anexo' : ''}${st.with_previous ? ' · junto com o anterior' : ''}`, edit: { type: 'link' as const, href: '/settings/regua-renovacao' } })) : []),
           ...views.filter(r => r.criterion === 'contract_expiring' && r.enabled).map(r => ({ id: `g:${r.id}`, days: r.threshold, agent: r.agent === 'hunter' ? 'Hunter' : 'Farmer',
             label: `regra "${r.name}"`, edit: { type: 'link' as const, href: '#regras-proprias' }, warn: 'parecida com os avisos: revise' })),
           ...((expAutos ?? []) as { id: string; name: string; days_threshold: number | null }[]).filter(a => a.days_threshold).map(a => ({ id: `a:${a.id}`, days: a.days_threshold!, agent: null,
@@ -166,7 +168,7 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
             <Details title={<>Avisos ao cliente e régua <AgentBadge agent="Farmer" /></>}>
               {taskPanel(theme.tasks, false)}
               <ul className="mt-2 divide-y divide-gray-100 border-t border-gray-100">
-                <LinkRule title="Régua de renovação (passos internos)" badge={<PersonBadge who="as áreas" />} href="/settings/regua-renovacao"
+                <LinkRule title="Régua de renovação (passos internos)" badge={<PersonBadge who="consultor ou áreas" />} href="/settings/regua-renovacao"
                   sentence={ruler.enabled ? `Ligada · ${ruler.steps.length} passo(s): ${ruler.steps.map(x => `${x.label} (${x.days_before} dias)`).join(' · ') || '—'}` : 'Desligada'} />
                 <LinkRule title="Textos dos avisos ao cliente" badge={<AgentBadge agent="Farmer" />} href="/settings/copiloto"
                   sentence={`Mensagens de ${L.a1}, ${L.a2} e ${L.a3} dias, vencido e renovação concluída; assunto do e-mail e cópias.`} />

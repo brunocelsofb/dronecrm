@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, Circle, Clock, Flag } from 'lucide-react'
 import { markRulerStepDone, startRulerManually, cancelRuler, skipRulerStepAction, rulerNoDealAction } from '@/lib/actions/renewal-ruler'
 import { ProcessOverrideModal } from '@/components/pipeline/process-override-modal'
-import { brDate, type RunStep } from '@/lib/agent/renewal-ruler'
+import { brDate, openStepIndexes, type RunStep } from '@/lib/agent/renewal-ruler'
 
 export type RulerRunView = {
   id: string
@@ -70,7 +70,8 @@ export function RenewalRulerPanel({
 
   const total = open.steps.length
   const done = open.steps.filter(s => s.done_at).length
-  const currentIdx = open.steps.findIndex(s => !s.done_at)
+  const current = openStepIndexes(open.steps)
+  const WHO: Record<string, string> = { owner: '👤 consultor', areas: '👤 área', agent: '🤖 agente prepara · pessoa revisa' }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
@@ -113,7 +114,7 @@ export function RenewalRulerPanel({
       <ol className="space-y-0">
         {open.steps.map((s, i) => {
           const isDone = !!s.done_at
-          const isCurrent = i === currentIdx
+          const isCurrent = current.includes(i)
           const late = !isDone && !!s.due_date && s.due_date < today
           return (
             <li key={s.id} className="relative flex gap-3 pb-4 last:pb-0">
@@ -129,12 +130,16 @@ export function RenewalRulerPanel({
                   <span className={`text-xs ${late ? 'font-medium text-negative-700' : 'text-gray-400'}`}>
                     prazo {brDate(s.due_date)}{late ? ' · atrasado' : ''}
                   </span>
+                  {s.done_when !== 'client_notice' && s.who && <span className="text-[11px] text-gray-400">{WHO[s.who]}</span>}
+                  {s.requires_file && !isDone && <span className="rounded bg-warn-100 px-1.5 py-0.5 text-[10px] text-warn-700">pede anexo</span>}
+                  {s.with_previous && !isDone && <span className="text-[11px] text-gray-400">· junto com o anterior</span>}
                 </div>
                 {isDone && (
                   <p className="text-xs text-gray-500">
                     Feito em {fmtDateTime(s.done_at)}{s.done_by_name ? ` por ${s.done_by_name}` : ''}{s.note ? ` · ${s.note}` : ''}
                   </p>
                 )}
+                {isCurrent && !isDone && s.instructions && <p className="text-xs text-gray-500">{s.instructions}</p>}
                 {isCurrent && open.status === 'active' && canAct && (
                   noteFor === s.id ? (
                     <div className="mt-2 space-y-2">

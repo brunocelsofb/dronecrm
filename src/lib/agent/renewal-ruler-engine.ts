@@ -8,7 +8,7 @@ import { sendAgentEmail } from './notifications'
 import { buildInternalEmailHtml } from './internal-settings'
 import { getContractTenantName } from './tenant-name'
 import {
-  resolveRulerSettings, buildRunSteps, stepRecipients, renderRuler, brDate, shouldNotifyOverdue, daysBetween,
+  resolveRulerSettings, buildRunSteps, stepRecipients, renderRuler, brDate, shouldNotifyOverdue, daysBetween, openStepIndexes, stepGroup,
   type RunStep, type RulerSettings,
 } from './renewal-ruler'
 
@@ -96,31 +96,80 @@ async function save(run: RulerRun, patch: Partial<RulerRun>) {
   Object.assign(run, patch, { updated_at })
 }
 
-// Passo das áreas da empresa: aviso (sino + WhatsApp + e-mail) ao coordenador e ao gerente e
-// tarefa encaminhada ao coordenador da 1ª área; o dono da oportunidade acompanha e recebe o retorno.
+// O agente de IA prepara o material do passo (a pessoa revisa e conclui). Sem IA: devolve o motivo.
+async function agentPrepare(run: RulerRun, idx: number, info: NonNullable<Awaited<ReturnType<typeof contractInfo>>>): Promise<{ text: string | null; why?: string }> {
+  const step = run.steps[idx]
+  const admin = createAdminClient()
+  const { data: org } = await admin.from('organization_settings').select('ai_paused').eq('tenant_id', run.tenant_id).maybeSingle()
+  if (org?.ai_paused) return { text: null, why: 'modo sem IA ligado' }
+  const { loadTheoTenantAi, monthUsage } = await import('@/lib/ai/theo-server')
+  const ai = await loadTheoTenantAi(run.tenant_id)
+  if (!ai.provider || !ai.key || !ai.model) return { text: null, why: 'IA não configurada' }
+  if ((await monthUsage(run.tenant_id)).total >= ai.budgetUsd) return { text: null, why: 'orçamento de IA do mês esgotado' }
+  const done = run.steps.filter(s => s.done_at).map(s => `- ${s.label}${s.done_by_name ? ` (por ${s.done_by_name})` : ''}${s.note ? `: ${s.note}` : ''}`).join('\n')
+  const { runTheo } = await import('@/lib/ai/theo-engine')
+  const { estimateCostUsd } = await import('@/lib/ai/theo-catalog')
+  const r = await runTheo({
+    provider: ai.provider as never, model: ai.model, key: ai.key, tools: [],
+    system: [
+      'Você é o agente Farmer (carteira e contratos) de um CRM. Escreva em português do Brasil.',
+      'Prepare o material pedido para uma pessoa da empresa revisar antes de usar. Seja direto, em tópicos curtos quando ajudar.',
+      'Use apenas os dados informados; nunca invente valor, data ou nome. Datas dd/mm/aaaa.',
+    ].join('\n'),
+    history: [{ role: 'user', text: `Passo da renovação: ${step.label}\nInstruções: ${step.instructions || step.label}\n\nDados:\ncliente: ${info.c.client_name ?? ''}\ncontrato: ${info.c.process_number ?? ''}\nvencimento: ${brDate(run.period_end)}\nconsultor: ${info.consultor}\nprazo do passo: ${brDate(step.due_date)}\n\nO que já foi feito na renovação:\n${done || '(nada registrado ainda)'}` }],
+    read: async () => '',
+  })
+  if (r.tokensIn || r.tokensOut) {
+    const { scopeAdminClient } = await import('@/lib/tenant/scoped-admin')
+    await scopeAdminClient(admin, run.tenant_id, null).from('assistant_usage_log').insert({
+      user_id: null, input_tokens: r.tokensIn, output_tokens: r.tokensOut, provider: ai.provider, model: ai.model,
+      cost_usd: estimateCostUsd(ai.provider as never, ai.model, r.tokensIn, r.tokensOut),
+    })
+  }
+  if (r.error || !r.text.trim()) return { text: null, why: r.error ?? 'IA sem resposta' }
+  return { text: r.text.trim().slice(0, 6000) }
+}
+
+// Passo chegou: tarefa para quem faz (consultor, coordenador da área ou revisão do que o agente preparou).
+// Área: aviso (sino + WhatsApp + e-mail) ao coordenador e ao gerente; o dono da oportunidade acompanha e recebe o retorno.
 async function handoffStep(run: RulerRun, idx: number): Promise<string> {
   const step = run.steps[idx]
   if (step.done_when === 'client_notice') return ''
+  const who = step.who ?? (step.areas.some(a => a.startsWith('area:')) ? 'areas' : 'owner')
   const areaIds = step.areas.filter(a => a.startsWith('area:')).map(a => a.slice(5))
   const info = await contractInfo(run.contract_id)
   if (!info) return ''
   const admin = createAdminClient()
-  const { data: areas } = areaIds.length
+  const { data: areas } = areaIds.length && who !== 'owner'
     ? await admin.from('org_areas').select('id, name, lead_id, manager_id').eq('tenant_id', run.tenant_id).in('id', areaIds)
     : { data: [] as { id: string; name: string; lead_id: string | null; manager_id: string | null }[] }
   const list = ((areas ?? []) as { id: string; name: string; lead_id: string | null; manager_id: string | null }[])
     .sort((a, b) => areaIds.indexOf(a.id) - areaIds.indexOf(b.id))
   const to = list[0]?.lead_id ?? info.ownerId
   const also = [...new Set(list.flatMap(a => [a.lead_id, a.manager_id]).filter((x): x is string => !!x && x !== to))]
+  let prepared = ''
+  let agentNote = ''
+  if (who === 'agent') {
+    const w = await agentPrepare(run, idx, info).catch(e => ({ text: null, why: String((e as Error)?.message ?? e) }))
+    if (w.text) { prepared = `\n\n🤖 Preparado pelo agente (revise antes de usar):\n${w.text}`; agentNote = ' Agente preparou o material.' }
+    else { prepared = `\n\n(O agente de IA não preparou: ${w.why}. Faça manualmente.)`; agentNote = ` Agente não preparou (${w.why}).` }
+  }
   const { createHandoff } = await import('./handoff')
   const due = step.due_date ?? todayBr()
   await createHandoff({
     tenantId: run.tenant_id, contractId: run.contract_id, toUserId: to, watcherId: to === info.ownerId ? null : info.ownerId, alsoNotify: also,
     title: `Renovação · ${step.label} — ${info.c.client_name ?? ''}`,
-    content: `Contrato ${info.c.process_number ?? ''} (${info.c.client_name ?? ''}) vence em ${brDate(run.period_end)}. Passo ${idx + 1} de ${run.steps.length} da régua de renovação: ${step.label}.${list.length ? ` Áreas: ${list.map(a => a.name).join(', ')}.` : ''} Consultor: ${info.consultor}.`,
+    content: `Contrato ${info.c.process_number ?? ''} (${info.c.client_name ?? ''}) vence em ${brDate(run.period_end)}. Passo ${idx + 1} de ${run.steps.length} da régua de renovação: ${step.label}.` +
+      `${step.instructions ? ` O que fazer: ${step.instructions}` : ''}${list.length ? ` Áreas: ${list.map(a => a.name).join(', ')}.` : ''} Consultor: ${info.consultor}.` +
+      `${step.requires_file ? ' Para concluir: anexe o arquivo na aba Arquivos do contrato.' : ''}${prepared}`,
     dueIso: due < todayBr() ? todayBr() : due, rulerRunId: run.id, stepId: step.id,
   })
-  return list.length ? ` Tarefa encaminhada a ${list[0].name}.` : ' Tarefa ao consultor.'
+  return (list.length ? ` Tarefa encaminhada a ${list[0].name}.` : ' Tarefa ao consultor.') + agentNote
+}
+
+// Passo chegou junto com os que "começam junto com o anterior"
+async function arriveGroup(run: RulerRun, idx: number) {
+  for (const i of stepGroup(run.steps, idx)) await arrive(run, i)
 }
 
 // Passo atual chegou: avisa as áreas e marca a data do aviso
@@ -166,7 +215,7 @@ export async function startRenewalRuler(contractId: string, opts: { userId?: str
   if (opts.firstDone) {
     await completeStepInternal(run, 0, opts.userId ?? null, 'Aviso ao cliente enviado', true)
   } else {
-    await arrive(run, 0)
+    await arriveGroup(run, 0)
   }
   return { ok: true, run, created: true }
 }
@@ -188,8 +237,10 @@ async function completeStepInternal(run: RulerRun, idx: number, userId: string |
     .eq('tenant_id', run.tenant_id).eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', run.id).eq('metadata->>step_id', run.steps[idx].id).neq('status', 'done')
   if (!silent) await logActivity(run, `✅ Régua de renovação: "${run.steps[idx].label}" concluído${name ? ` por ${name}` : ''}.${note ? ` Obs.: ${note.slice(0, 300)}` : ''}`)
 
+  // Ainda há passo em andamento (paralelo): espera concluir. Senão, chega o próximo (com os que correm junto).
+  if (steps.some(s => !s.done_at && s.notified_at)) return true
   const next = steps.findIndex(s => !s.done_at)
-  if (next >= 0) { await arrive(run, next); return true }
+  if (next >= 0) { await arriveGroup(run, next); return true }
 
   // Todos concluídos: pronto para renovar → tarefa ao consultor e aviso às áreas
   await save(run, { status: 'ready', ready_at: nowIso(), current_index: steps.length })
@@ -220,10 +271,32 @@ export async function completeRulerStep(tenantId: string, runId: string, stepId:
   const idx = run.steps.findIndex(s => s.id === stepId)
   if (idx < 0) return { ok: false, error: 'Passo não encontrado.' }
   if (run.steps[idx].done_at) return { ok: false, error: 'Este passo já foi concluído.' }
-  const firstOpen = run.steps.findIndex(s => !s.done_at)
-  if (idx !== firstOpen) return { ok: false, error: `Conclua antes: "${run.steps[firstOpen].label}".` }
+  const open = openStepIndexes(run.steps)
+  if (!open.includes(idx)) return { ok: false, error: `Conclua antes: "${run.steps[open[0]].label}".` }
+  const block = await fileBlock(run, idx)
+  if (block) return { ok: false, error: block }
   const ok = await completeStepInternal(run, idx, userId, note ?? null)
   return ok ? { ok: true } : { ok: false, error: 'A régua mudou enquanto você marcava (outra pessoa atualizou). Atualize a página.' }
+}
+
+// Passo que exige anexo: precisa de arquivo no contrato enviado depois que o passo chegou
+async function fileBlock(run: RulerRun, idx: number): Promise<string | null> {
+  const step = run.steps[idx]
+  if (!step.requires_file) return null
+  const since = step.notified_at ?? run.started_at
+  const { count } = await createAdminClient().from('contract_files').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', run.tenant_id).eq('contract_id', run.contract_id).gte('created_at', since)
+  return count ? null : `"${step.label}" pede um arquivo: anexe na aba Arquivos do contrato e depois conclua.`
+}
+
+// Pode concluir este passo agora? (usado antes de fechar a tarefa encaminhada)
+export async function rulerStepBlock(tenantId: string, runId: string, stepId: string): Promise<string | null> {
+  const { data } = await createAdminClient().from('renewal_ruler_runs').select('*').eq('id', runId).eq('tenant_id', tenantId).maybeSingle()
+  const run = data as RulerRun | null
+  if (!run || run.status !== 'active') return null
+  const idx = run.steps.findIndex(s => s.id === stepId)
+  if (idx < 0 || run.steps[idx].done_at) return null
+  return fileBlock(run, idx)
 }
 
 // Renovado marcado: encerra a régua. Lost/rescisão: cancela.
@@ -255,8 +328,7 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
   const today = todayBr()
   let notified = 0
   for (const run of data as RulerRun[]) {
-    const idx = run.steps.findIndex(s => !s.done_at)
-    if (idx < 0) continue
+    for (const idx of openStepIndexes(run.steps)) {
     const step = run.steps[idx]
     if (!shouldNotifyOverdue(step, today, settings.overdue_repeat_days)) continue
     const r = await notifyStep(run, idx, 'overdue')
@@ -269,6 +341,7 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
     await logActivity(run, `⏰ Régua de renovação: "${step.label}" atrasado há ${late} dia(s) (prazo ${brDate(step.due_date)})` +
       `${count > 1 ? ` · ${count}º aviso de atraso` : ''}.${r.sent ? ' Áreas avisadas.' : ` E-mail não enviado (${r.detail}).`}`)
     if (r.sent) notified++
+    }
   }
   return { checked: data.length, notified }
 }
@@ -280,8 +353,7 @@ export async function markClientNoticeStep(contractId: string, opts: { userId?: 
   const run = r.run
   const idx = run.steps.findIndex(s => !s.done_at && s.done_when === 'client_notice')
   if (idx < 0) return { ok: true as const }
-  const firstOpen = run.steps.findIndex(s => !s.done_at)
-  if (idx === firstOpen) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado')
+  if (openStepIndexes(run.steps).includes(idx)) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado')
   else {
     // Passo interno anterior ainda aberto: marca o aviso como feito sem pular a ordem dos outros
     const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: opts.userId ?? null, note: 'Aviso ao cliente enviado' } : s))
@@ -298,8 +370,7 @@ export async function skipRulerStep(tenantId: string, runId: string, stepId: str
   if (!run || run.status !== 'active') return { ok: false, error: 'Régua não está em andamento.' }
   const idx = run.steps.findIndex(s => s.id === stepId)
   if (idx < 0 || run.steps[idx].done_at) return { ok: false, error: 'Passo não encontrado ou já concluído.' }
-  const firstOpen = run.steps.findIndex(s => !s.done_at)
-  if (idx === firstOpen) {
+  if (openStepIndexes(run.steps).includes(idx)) {
     const ok = await completeStepInternal(run, idx, userId, `⚠ Passado fora do processo: ${reason}`)
     return ok ? { ok: true } : { ok: false, error: 'A régua mudou. Atualize a página.' }
   }

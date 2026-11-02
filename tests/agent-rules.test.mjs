@@ -145,3 +145,30 @@ test('régua: passos com áreas da empresa e "concluído quando"', () => {
   assert.equal(s.steps[1].done_when, 'manual')
   assert.equal(s.steps[2].done_when, 'client_notice')
 })
+
+import { buildRunSteps, openStepIndexes, stepGroup, RULER_MODEL_STEPS } from '../src/lib/agent/renewal-ruler.ts'
+
+test('régua: quem faz, anexo e passos em paralelo', () => {
+  const s = resolveRulerSettings({ renewal_ruler: { steps: [
+    { id: 'a', label: 'A', days_before: 60, areas: ['area:11111111-2222-3333-4444-555555555555'] },
+    { id: 'b', label: 'B', days_before: 55, areas: [], who: 'agent', instructions: ' pauta ', requires_file: true, with_previous: true },
+    { id: 'c', label: 'C', days_before: 50, areas: [], who: 'xx', with_previous: true },
+    { id: 'd', label: 'D', days_before: 40, areas: [] },
+  ] } })
+  assert.equal(s.steps[0].who, 'areas')       // legado com área da empresa
+  assert.equal(s.steps[1].who, 'agent')
+  assert.equal(s.steps[1].instructions, 'pauta')
+  assert.equal(s.steps[1].requires_file, true)
+  assert.equal(s.steps[2].who, 'owner')        // valor inválido → consultor
+  assert.equal(s.steps[0].with_previous, false)
+  const run = buildRunSteps(s.steps, '2027-03-31')
+  assert.deepEqual(stepGroup(run, 0), [0, 1, 2])
+  assert.deepEqual(openStepIndexes(run), [0])
+  run[0].notified_at = run[1].notified_at = run[2].notified_at = 'x'
+  run[1].done_at = 'y'
+  assert.deepEqual(openStepIndexes(run), [0, 2])
+  run[0].done_at = run[2].done_at = 'y'
+  assert.deepEqual(openStepIndexes(run), [3])
+  assert.equal(RULER_MODEL_STEPS.length, 7)
+  assert.ok(RULER_MODEL_STEPS.every(x => resolveRulerSettings({ renewal_ruler: { steps: [x] } }).steps.length === 1))
+})

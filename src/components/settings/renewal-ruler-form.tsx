@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { saveRulerSettings } from '@/lib/actions/renewal-ruler'
 import {
-  RULER_VARIABLES, DEFAULT_RULER_TEMPLATES, renderRuler, brDate, dueDate,
-  type RulerArea, type RulerSettings, type RulerStep, type RulerTemplates,
+  RULER_VARIABLES, DEFAULT_RULER_TEMPLATES, RULER_MODEL_STEPS, RULER_WHO_LABEL, MAX_STEP_INSTRUCTIONS, renderRuler, brDate, dueDate,
+  type RulerArea, type RulerWho, type RulerSettings, type RulerStep, type RulerTemplates,
 } from '@/lib/agent/renewal-ruler'
 
 const box = 'rounded-xl border border-gray-200 bg-white p-5 space-y-4'
@@ -32,6 +32,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
   const [mail, setMail] = useState<'step' | 'overdue' | 'ready'>('step')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [modelAsk, setModelAsk] = useState(false)
   const touch = () => setMsg(null)
 
   const ordered = [...steps].sort((a, b) => b.days_before - a.days_before)
@@ -149,8 +150,33 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
                 <button type="button" onClick={() => move(i, 1)} disabled={i === steps.length - 1} className="rounded p-1 text-gray-400 hover:text-brand-700 disabled:opacity-30" title="Descer"><ArrowDown className="h-4 w-4" /></button>
                 <button type="button" onClick={() => { touch(); setSteps(x => x.filter((_, j) => j !== i)) }} className="rounded p-1 text-gray-400 hover:text-negative-700" title="Remover passo"><Trash2 className="h-4 w-4" /></button>
               </div>
+              {s.done_when !== 'client_notice' && (
+                <div className="space-y-2 pl-8">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-xs text-gray-500">Quem faz:</span>
+                    <select value={s.who ?? 'owner'} onChange={e => setStep(i, { who: e.target.value as RulerWho })}
+                      className="rounded border border-gray-300 px-1.5 py-0.5 text-xs" aria-label="Quem faz o passo">
+                      {(Object.keys(RULER_WHO_LABEL) as RulerWho[]).map(k => <option key={k} value={k}>{k === 'agent' ? '🤖 ' : '👤 '}{RULER_WHO_LABEL[k]}</option>)}
+                    </select>
+                    <label className="flex items-center gap-1 text-xs text-gray-700">
+                      <input type="checkbox" checked={!!s.requires_file} onChange={e => setStep(i, { requires_file: e.target.checked })} />
+                      só conclui com arquivo anexado ao contrato
+                    </label>
+                    {i > 0 && (
+                      <label className="flex items-center gap-1 text-xs text-gray-700" title="Os dois passos chegam no mesmo momento e correm em paralelo">
+                        <input type="checkbox" checked={!!s.with_previous} onChange={e => setStep(i, { with_previous: e.target.checked })} />
+                        começa junto com o passo anterior
+                      </label>
+                    )}
+                  </div>
+                  <textarea value={s.instructions ?? ''} maxLength={MAX_STEP_INSTRUCTIONS} rows={2} onChange={e => setStep(i, { instructions: e.target.value })}
+                    placeholder={s.who === 'agent' ? 'O que o agente de IA deve preparar (ex.: pauta da reunião, texto da comunicação interna)…' : 'O que fazer neste passo (opcional; vai na tarefa)…'}
+                    className={`${input} text-xs`} />
+                  {s.who === 'agent' && <p className="text-[11px] text-gray-500">O agente prepara com os dados do contrato e o que já foi feito nos passos anteriores; a pessoa revisa e conclui. Sem IA (modo sem IA, sem chave ou sem orçamento), vira tarefa comum.</p>}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
-                <span className="text-xs text-gray-500">Encaminhar para (aviso + tarefa ao coordenador; gerente acompanha):</span>
+                <span className="text-xs text-gray-500">{s.who === 'owner' ? 'Áreas (só recebem o e-mail; a tarefa é do consultor):' : 'Encaminhar para (aviso + tarefa ao coordenador; gerente acompanha):'}</span>
                 {orgAreas.map(a => {
                   const k = `area:${a.id}`
                   return (
@@ -180,15 +206,22 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
                     {a.label || '(sem nome)'}
                   </label>
                 ))}
-                {!s.areas.length && <span className="text-xs text-warn-700">nenhuma área: a tarefa vai para o consultor</span>}
+                {!s.areas.length && s.who !== 'owner' && s.done_when !== 'client_notice' && <span className="text-xs text-warn-700">nenhuma área: a tarefa vai para o consultor</span>}
               </div>
             </div>
           ))}
         </div>
-        <button type="button" onClick={() => { touch(); setSteps(s => [...s, { id: newId(), label: '', days_before: 5, areas: [] }]) }}
-          className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline">
-          <Plus className="h-4 w-4" /> Adicionar passo
-        </button>
+        <div className="flex flex-wrap items-center gap-4">
+          <button type="button" onClick={() => { touch(); setSteps(s => [...s, { id: newId(), label: '', days_before: 5, areas: [], who: 'owner' }]) }}
+            className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline">
+            <Plus className="h-4 w-4" /> Adicionar passo
+          </button>
+          {modelAsk
+            ? <span className="flex items-center gap-2 text-xs text-gray-700">Trocar os passos atuais pelo modelo?
+                <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => { setSteps(RULER_MODEL_STEPS.map(x => ({ ...x }))); setModelAsk(false); setMsg({ ok: true, text: 'Modelo carregado: escolha as áreas, ajuste o que quiser e clique em Salvar régua.' }) }}>Sim, carregar</button>
+                <button type="button" className="text-gray-500 hover:underline" onClick={() => setModelAsk(false)}>Não</button></span>
+            : <button type="button" onClick={() => setModelAsk(true)} className="text-sm text-gray-500 hover:text-brand-700 hover:underline">Usar modelo sugerido (7 passos)</button>}
+        </div>
       </section>
 
       <section className={box}>

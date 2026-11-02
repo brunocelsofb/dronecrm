@@ -91,6 +91,12 @@ export async function completeHandoff(tenantId: string, activityId: string, user
   if (!a) return { ok: false, error: 'Tarefa não encontrada.' }
   if (a.status === 'done') return { ok: true }
   const meta = (a.metadata ?? {}) as Record<string, unknown>
+  // Passo da régua que pede anexo: confere antes de fechar a tarefa
+  if (meta.ruler_run_id && meta.step_id) {
+    const { rulerStepBlock } = await import('./renewal-ruler-engine')
+    const block = await rulerStepBlock(tenantId, String(meta.ruler_run_id), String(meta.step_id))
+    if (block) return { ok: false, error: block }
+  }
   const { data: me } = await db.from('profiles').select('full_name').eq('id', userId).maybeSingle()
   const who = (me?.full_name as string) ?? 'Alguém'
   const now = new Date().toISOString()
@@ -110,8 +116,9 @@ export async function completeHandoff(tenantId: string, activityId: string, user
       const r = await completeRulerStep(tenantId, String(meta.ruler_run_id), String(meta.step_id), userId, text)
       if (r.ok) {
         const run = await openRun(tenantId, a.contract_id as string)
-        const step = run?.steps.find(s => !s.done_at)
-        if (step) next = `\nPróximo passo: *${step.label}*${step.due_date ? `, prazo ${step.due_date.split('-').reverse().join('/')}` : ''}.`
+        const { openStepIndexes } = await import('./renewal-ruler')
+        const open = run ? openStepIndexes(run.steps).map(i => run.steps[i]) : []
+        if (open.length) next = `\n${open.length > 1 ? 'Em andamento' : 'Próximo passo'}: ${open.map(st => `*${st.label}*${st.due_date ? ` (prazo ${st.due_date.split('-').reverse().join('/')})` : ''}`).join(', ')}.`
         else next = '\nTodos os passos da régua concluídos.'
       }
     } catch (e) { console.error('[handoff] régua:', e) }
