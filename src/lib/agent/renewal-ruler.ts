@@ -79,7 +79,12 @@ export const DEFAULT_RULER_STEPS: RulerStep[] = [
 ]
 
 // Modelo sugerido (ponto de partida; a empresa edita tudo depois de carregar). Sem áreas: a empresa escolhe as suas.
+export const RULER_PREP_STEP: RulerStep = {
+  id: 'preparar', label: 'Preparar a renovação (aviso interno às áreas)', days_before: 90, areas: [], done_when: 'manual', who: 'areas',
+  instructions: 'A renovação deste contrato começou. Avise o seu time do que precisa ser feito com antecedência (tabela de aplicabilidade, planilha de custos, pontos de melhoria) e registre aqui o que foi combinado.',
+}
 export const RULER_MODEL_STEPS: RulerStep[] = [
+  RULER_PREP_STEP,
   { id: 'aviso', label: 'Enviar o aviso de renovação ao cliente', days_before: 60, areas: [], done_when: 'client_notice', who: 'owner' },
   { id: 'aplicabilidade', label: 'Atualizar a tabela de aplicabilidade (mesmo sem mudança no parque)', days_before: 55, areas: [], done_when: 'manual', who: 'areas', requires_file: true,
     instructions: 'Atualize a tabela de aplicabilidade do contrato, mesmo que não haja mudança no parque tecnológico, e anexe a versão nova ao contrato.' },

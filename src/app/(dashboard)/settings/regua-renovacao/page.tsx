@@ -3,6 +3,7 @@ import { getUserAccess } from '@/lib/auth/access'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { resolveRulerSettings } from '@/lib/agent/renewal-ruler'
+import { resolveRenewalLevels } from '@/lib/agent/renewal-templates'
 import { SettingsSubpage } from '@/components/settings/settings-subpage'
 import { RenewalRulerForm } from '@/components/settings/renewal-ruler-form'
 
@@ -24,9 +25,10 @@ export default async function RenewalRulerSettingsPage() {
   return (
     <SettingsSubpage
       title="Régua de renovação"
-      description="Passos da renovação, começando junto com o &quot;preparar a renovação&quot;. Em cada passo: aviso (sino, WhatsApp e e-mail) ao coordenador e ao gerente da área, tarefa encaminhada ao coordenador; quem recebeu escreve o que fez e conclui; o consultor recebe o retorno e o próximo passo abre."
+      description="Passos internos da renovação. Em cada passo você escolhe quem faz (consultor, área ou agente de IA); quem recebeu escreve o que fez e conclui, o consultor recebe o retorno e o próximo passo abre."
     >
-      <RenewalRulerForm initial={resolveRulerSettings(org?.copilot_settings)} companyName={(org?.company_name as string | null) ?? ''} orgAreas={orgAreas} />
+      <RenewalRulerForm initial={resolveRulerSettings(org?.copilot_settings)} companyName={(org?.company_name as string | null) ?? ''} orgAreas={orgAreas}
+        levels={resolveRenewalLevels((org?.copilot_settings as { renewal_levels?: unknown } | null)?.renewal_levels)} />
     </SettingsSubpage>
   )
 }

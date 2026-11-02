@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { saveRulerSettings } from '@/lib/actions/renewal-ruler'
 import {
-  RULER_VARIABLES, DEFAULT_RULER_TEMPLATES, RULER_MODEL_STEPS, RULER_WHO_LABEL, MAX_STEP_INSTRUCTIONS, renderRuler, brDate, dueDate,
+  RULER_VARIABLES, DEFAULT_RULER_TEMPLATES, RULER_MODEL_STEPS, RULER_PREP_STEP, RULER_WHO_LABEL, MAX_STEP_INSTRUCTIONS, renderRuler, brDate, dueDate,
   type RulerWho, type RulerSettings, type RulerStep, type RulerTemplates,
 } from '@/lib/agent/renewal-ruler'
 
@@ -20,7 +20,11 @@ const MAILS: { key: 'step' | 'overdue' | 'ready'; label: string; hint: string }[
 
 const newId = () => `passo-${Math.random().toString(36).slice(2, 8)}`
 // orgAreas: áreas da empresa (Central de regras → Áreas e IA): coordenador recebe a tarefa, gerente o aviso
-export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { initial: RulerSettings; companyName: string; orgAreas?: { id: string; name: string; coordinator: string; manager: string }[] }) {
+// levels: marcos da Central de regras → Renovação (preparar e avisos ao cliente)
+export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }: {
+  initial: RulerSettings; companyName: string; orgAreas?: { id: string; name: string; coordinator: string; manager: string }[]
+  levels: { prep: number; a1: number; a2: number; a3: number }
+}) {
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
   const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
@@ -70,8 +74,9 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
       <section className={box}>
         <h2 className="text-sm font-semibold text-gray-900">Funcionamento</h2>
         <p className="text-xs text-gray-500">
-          A régua começa sozinha quando o consultor envia ao cliente o aviso de renovação (o 1º passo já fica feito).
-          Também dá para iniciar manualmente na oportunidade. Dali em diante a régua é interna: o cliente não recebe nada dela. Os avisos de renovação ao cliente (60, 30, 15 dias e vencido) continuam aparecendo para o consultor revisar até o contrato ser renovado.
+          A régua começa sozinha aos <b>{levels.prep} dias</b> do vencimento, junto com a tarefa &quot;preparar a renovação&quot; (o dia é editado na Central de regras → Renovação).
+          Também dá para iniciar manualmente na oportunidade. A régua é interna: o cliente não recebe nada dela. Os avisos ao cliente ({levels.a1}, {levels.a2}, {levels.a3} dias e vencido)
+          são escritos pelo agente Farmer e o consultor revisa e envia.
         </p>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" className="mt-0.5" checked={enabled} onChange={e => { touch(); setEnabled(e.target.checked) }} />
@@ -98,6 +103,14 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
             O prazo de cada passo é contado a partir do vencimento do contrato. Os passos seguem do prazo mais distante para o mais próximo.
           </p>
         </div>
+        {!steps.some(x => x.days_before >= levels.prep) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">
+            <span>A régua começa aos {levels.prep} dias, mas nenhum passo tem esse prazo: as áreas não recebem o aviso interno do início.</span>
+            <button type="button" className="font-semibold underline" onClick={() => { touch(); setSteps(x => [{ ...RULER_PREP_STEP, days_before: levels.prep, id: x.some(y => y.id === 'preparar') ? newId() : 'preparar' }, ...x]) }}>
+              Adicionar o passo &quot;Preparar a renovação&quot; ({levels.prep} dias)
+            </button>
+          </div>
+        )}
         {outOfOrder && (
           <p className="rounded-lg bg-warn-100 px-3 py-2 text-xs text-warn-700">
             A ordem da lista não bate com os dias: na oportunidade, os passos aparecem pelo prazo (mais dias antes primeiro).
@@ -163,8 +176,14 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
                 <select value={s.done_when ?? 'manual'} onChange={e => setStep(i, { done_when: e.target.value as 'manual' | 'client_notice' })}
                   className="rounded border border-gray-300 px-1.5 py-0.5 text-xs">
                   <option value="manual">quem recebeu escreve o que fez e conclui</option>
-                  <option value="client_notice">o aviso ao cliente é enviado (sozinho)</option>
+                  <option value="client_notice">o consultor envia o aviso ao cliente (marca sozinho)</option>
                 </select>
+                {s.done_when === 'client_notice' && (
+                  <span className="w-full text-xs text-gray-500">
+                    <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">🤖 AGENTE FARMER</span> escreve o aviso aos {levels.a1} dias;
+                    o consultor revisa e envia; este passo se marca sozinho quando o aviso sai. Texto do aviso: Configurações → Copiloto.
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -176,9 +195,9 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { init
           </button>
           {modelAsk
             ? <span className="flex items-center gap-2 text-xs text-gray-700">Trocar os passos atuais pelo modelo?
-                <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => { setSteps(RULER_MODEL_STEPS.map(x => ({ ...x }))); setModelAsk(false); setMsg({ ok: true, text: 'Modelo carregado: escolha as áreas, ajuste o que quiser e clique em Salvar régua.' }) }}>Sim, carregar</button>
+                <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => { setSteps(RULER_MODEL_STEPS.map(x => ({ ...x, days_before: x.id === 'preparar' ? levels.prep : x.days_before }))); setModelAsk(false); setMsg({ ok: true, text: 'Modelo carregado: escolha as áreas, ajuste o que quiser e clique em Salvar régua.' }) }}>Sim, carregar</button>
                 <button type="button" className="text-gray-500 hover:underline" onClick={() => setModelAsk(false)}>Não</button></span>
-            : <button type="button" onClick={() => setModelAsk(true)} className="text-sm text-gray-500 hover:text-brand-700 hover:underline">Usar modelo sugerido (7 passos)</button>}
+            : <button type="button" onClick={() => setModelAsk(true)} className="text-sm text-gray-500 hover:text-brand-700 hover:underline">Usar modelo sugerido ({RULER_MODEL_STEPS.length} passos)</button>}
         </div>
       </section>
 
