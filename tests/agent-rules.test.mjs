@@ -186,3 +186,14 @@ test('régua: aguardando o cliente não cobra até a data', () => {
   assert.equal(shouldNotifyOverdue(st, '2027-03-20', 3), false)
   assert.equal(shouldNotifyOverdue(st, '2027-03-26', 3), true)
 })
+
+import { normalizeUf } from '../src/lib/geo/uf.ts'
+test('estado: sigla, nome e variações viram UF', () => {
+  assert.equal(normalizeUf('sp'), 'SP')
+  assert.equal(normalizeUf('São Paulo'), 'SP')
+  assert.equal(normalizeUf('sao paulo'), 'SP')
+  assert.equal(normalizeUf('Belo Horizonte - MG'), 'MG')
+  assert.equal(normalizeUf('Distrito Federal'), 'DF')
+  assert.equal(normalizeUf('XX'), null)
+  assert.equal(normalizeUf(''), null)
+})

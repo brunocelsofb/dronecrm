@@ -1,3 +1,4 @@
+import { normalizeUf, ufName } from '@/lib/geo/uf'
 import Link from 'next/link'
 import { daysUntilIso, formatDateOnlyBR } from '@/lib/utils/date'
 import { createClientForTenant } from '@/lib/supabase/server'
@@ -41,9 +42,10 @@ function todayBrIso(): string {
 export default async function CarteiraPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tipo?: string; alerta?: string; q?: string; coord?: string; eng?: string }>
+  searchParams: Promise<{ tipo?: string; alerta?: string; q?: string; coord?: string; eng?: string; uf?: string }>
 }) {
-  const { tipo, alerta, q, coord: coordFilter, eng: engFilter } = await searchParams
+  const { tipo, alerta, q, coord: coordFilter, eng: engFilter, uf: ufParam } = await searchParams
+  const ufFilter = normalizeUf(ufParam)
   const { client: supabase, tenantId } = await createClientForTenant()
 
   let portPipelinesQ = supabase.from('pipelines').select('id').eq('type', 'gestao_contratos')
@@ -116,8 +118,17 @@ export default async function CarteiraPage({
     })(),
   }))
 
+  // Estado (vindo do mapa do Painel gerencial): UF do contrato; se vazio, estado da empresa
+  let byState = enriched
+  if (ufFilter) {
+    const companyIds = [...new Set(enriched.map((c: any) => c.company_id).filter(Boolean))] as string[]
+    const { data: comps } = companyIds.length ? await supabase.from('companies').select('id, state').in('id', companyIds) : { data: [] as { id: string; state: string | null }[] }
+    const compState = new Map((comps ?? []).map((x: any) => [x.id as string, x.state as string | null]))
+    byState = enriched.filter((c: any) => (normalizeUf(c.uf) ?? normalizeUf(c.state) ?? normalizeUf(compState.get(c.company_id) ?? null)) === ufFilter)
+  }
+
   const filtered = alerta
-    ? enriched.filter(c => {
+    ? byState.filter(c => {
         const d = c.dias
         if (alerta === 'vencido') return d !== null && d < 0
         if (alerta === '30')      return d !== null && d >= 0 && d <= 30
@@ -125,7 +136,7 @@ export default async function CarteiraPage({
         if (alerta === '90')      return d !== null && d > 60 && d <= 90
         return true
       })
-    : enriched
+    : byState
 
   // KPIs
   const totalValorMensal = filtered.reduce((s, c) => s + (c.monthly_value ?? 0), 0)
@@ -181,6 +192,7 @@ export default async function CarteiraPage({
       ...(q ? { q } : {}),
       ...(coordFilter ? { coord: coordFilter } : {}),
       ...(engFilter ? { eng: engFilter } : {}),
+      ...(ufFilter ? { uf: ufFilter } : {}),
       ...overrides,
     })
     return `/carteira${params.toString() ? '?' + params.toString() : ''}`
@@ -193,6 +205,12 @@ export default async function CarteiraPage({
         <div>
           <h1 className="text-xl font-semibold text-[#1B556B] tracking-tight">Gestão de Carteira</h1>
           <p className="text-xs text-gray-400 mt-0.5">Contratos ativos no funil de Gestão de Contratos.</p>
+          {ufFilter && (
+            <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-xs text-brand-700">
+              Estado: <b>{ufName(ufFilter)}</b>
+              <Link href={buildHref({ uf: '' })} className="text-gray-500 hover:text-gray-800" aria-label="Tirar filtro de estado">✕</Link>
+            </p>
+          )}
         </div>
       </div>
 
@@ -328,6 +346,7 @@ export default async function CarteiraPage({
             <form method="GET" className="flex gap-1.5">
               {tipo && <input type="hidden" name="tipo" value={tipo} />}
               {alerta && <input type="hidden" name="alerta" value={alerta} />}
+              {ufFilter && <input type="hidden" name="uf" value={ufFilter} />}
               <input type="text" name="q" defaultValue={q ?? ''} placeholder="Buscar cliente, nº contrato, coordenador..."
                 className="px-3 py-1.5 text-xs rounded-xl border border-gray-200 bg-gray-50 text-[#1B556B] outline-none w-64 focus:ring-2 focus:ring-[#1B556B]/20" />
               <button type="submit" className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200 bg-white text-gray-600 no-underline cursor-pointer">Buscar</button>

@@ -43,7 +43,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
       .select('id, contract_id, pipeline_id, stage_id, status, value, started_at, ended_at, stage_entered_at, tag_id, report_file_name, lost_reason_id')
       .order('id').range(a, b)),
     fetchAll<DashboardInput['contracts'][number]>((a, b) => db.from('contracts')
-      .select('id, client_name, process_number, billing_type, monthly_value, valid_from').order('id').range(a, b)),
+      .select('id, client_name, process_number, billing_type, monthly_value, valid_from, uf, state, company_id').order('id').range(a, b)),
     fetchAll<DashboardInput['billing'][number]>((a, b) => db.from('billing_records')
       .select('id, contract_id, year, month, amount, measured_amount, glosa_amount, glosa_reason, discount_amount, discount_reason, contract_value, status').order('id').range(a, b)),
     fetchAll<DashboardInput['renewals'][number]>((a, b) => db.from('contract_renewals')
@@ -70,6 +70,15 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     for (const row of data ?? []) if (!contractTag[row.contract_id]) contractTag[row.contract_id] = row.tag_id
   }
 
+  // Estado da empresa, para contratos sem estado preenchido
+  const companyState: Record<string, string> = {}
+  const companyIds = [...new Set(contracts.map(c => c.company_id).filter((x): x is string => !!x))]
+  for (const ids of chunk(companyIds, 200)) {
+    const { data, error } = await db.from('companies').select('id, state').in('id', ids)
+    if (error) throw new Error(error.message)
+    for (const row of data ?? []) if (row.state) companyState[row.id as string] = String(row.state)
+  }
+
   // Numéricos chegam como texto do Postgres
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
   return {
@@ -81,6 +90,7 @@ export async function loadDashboardInput(year: number, tenantIdArg?: string): Pr
     goals: goals.map(g => ({ ...g, target_value: Number(g.target_value) || 0 })),
     tags,
     contractTag,
+    companyState,
     stages,
     nps: nps.map(n => ({ ...n, score: num(n.score) })),
     tickets,

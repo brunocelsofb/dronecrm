@@ -1,4 +1,5 @@
 import { fmtPct, fmtNum1 } from '@/lib/format'
+import { normalizeUf, ufName } from '@/lib/geo/uf'
 // ─── Painel gerencial: cálculos (funções puras, sem banco) ───────────────────
 // Regras combinadas com o gestor:
 //   Meta x FATURADO do mês (recorrente + medição + avulso faturados; antes do
@@ -23,6 +24,7 @@ export type RunRow = {
 export type ContractRow = {
   id: string; client_name: string | null; process_number: string | null
   billing_type: string | null; monthly_value: number | null; valid_from: string | null
+  uf?: string | null; state?: string | null; company_id?: string | null   // estado do contrato (ou da empresa)
 }
 export type BillingRow = {
   id?: string
@@ -57,6 +59,7 @@ export type DashboardInput = {
   goals: GoalRow[]
   tags: TagRow[]
   contractTag: Record<string, string>   // contract_id → tag_id
+  companyState?: Record<string, string> // company_id → estado (quando o contrato não tem)
   stages: StageRow[]
   nps: NpsRow[]
   tickets: TicketRow[]
@@ -623,7 +626,54 @@ export function computeDashboard(input: DashboardInput, year: number, month: num
     overdueTickets: overdueTickets.length,
   }
 
-  return { year, month, scope, selectedMonths: sel, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer }
+  // ── Carteira por estado (contratos ativos no fim do período) ─────────────
+  const ufOf = (cid: string): string | null => {
+    const c = contractById.get(cid)
+    return normalizeUf(c?.uf) ?? normalizeUf(c?.state) ?? (c?.company_id ? normalizeUf(input.companyState?.[c.company_id]) : null)
+  }
+  const geo = new Map<string, ContractLine[]>()
+  const noUf: ContractLine[] = []
+  for (const l of activeEnd) {
+    const uf = ufOf(l.contractId)
+    if (!uf) { noUf.push(l); continue }
+    geo.set(uf, [...(geo.get(uf) ?? []), l])
+  }
+  const byUf = [...geo.entries()].map(([uf, lines]) => {
+    const mrr = r2(lines.reduce((a, x) => a + x.value, 0))
+    return { uf, name: ufName(uf), mrr, count: lines.length, share: pct(mrr, mrrEnd), lines: [...lines].sort((a, b) => b.value - a.value) }
+  }).sort((a, b) => b.mrr - a.mrr)
+
+  // ── Mês a mês do ano: receita recorrente da carteira por serviço e novo recorrente vendido ──
+  const tagKey = (cid: string) => input.contractTag[cid] ?? '—'
+  const tagMeta = (k: string) => (k === '—' ? { id: '—', name: 'Sem serviço (tag)', color: null } : { id: k, name: tagById.get(k)?.name ?? 'Serviço', color: tagById.get(k)?.color ?? null })
+  const usedTags = new Set<string>()
+  const mrrMonthly: ({ month: number; total: number; parts: Record<string, number> } | null)[] = []
+  const newMonthly: { month: number; value: number; count: number; lines: ContractLine[] }[] = []
+  for (let mm = 1; mm <= 12; mm++) {
+    const ms = monthStartMs(year, mm)
+    const me = mm === 12 ? monthStartMs(year + 1, 1) : monthStartMs(year, mm + 1)
+    if (ms > nowMs) { mrrMonthly.push(null) } else {
+      const at = Math.min(me - 1, nowMs)
+      const parts: Record<string, number> = {}
+      let total = 0
+      for (const cid of gestaoRunsByContract.keys()) {
+        if (!activeAt(cid, at)) continue
+        const v = valueAt(cid, at)
+        const k = tagKey(cid)
+        parts[k] = r2((parts[k] ?? 0) + v); total += v; usedTags.add(k)
+      }
+      mrrMonthly.push({ month: mm, total: r2(total), parts })
+    }
+    const wins = input.runs.filter(r => typeOf.get(r.pipeline_id) === 'vendas' && r.status === 'won' && (() => { const t = ts(r.ended_at); return t !== null && t >= ms && t < me })())
+    newMonthly.push({ month: mm, value: r2(wins.reduce((a, r) => a + (Number(r.value) || 0), 0)), count: wins.length, lines: wins.map(r => line(r.contract_id, Number(r.value) || 0)) })
+  }
+  const portfolio = {
+    byUf, noUf, noUfMrr: r2(noUf.reduce((a, x) => a + x.value, 0)), mrr: mrrEnd,
+    mrrByTag: { tags: [...usedTags].map(tagMeta).sort((a, b) => (a.id === '—' ? 1 : b.id === '—' ? -1 : a.name.localeCompare(b.name))), months: mrrMonthly },
+    newMonthly,
+  }
+
+  return { year, month, scope, selectedMonths: sel, revenue: current, yearSeries, ytdRevenue, ytdGoal, annualGoal, ytdPct: pct(ytdRevenue, ytdGoal), hunter, farmer, portfolio }
 }
 
 export type DashboardResult = ReturnType<typeof computeDashboard>

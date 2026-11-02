@@ -6,6 +6,7 @@ import type { DashboardResult, DashboardInput } from '@/lib/revenue/dashboard-co
 import { MONTHS_LONG, MONTHS_SHORT } from '@/lib/revenue/measurement'
 import { Section, Kpi, RevenueHero, RevenueGoalChart, ContractVsBilled, REV_COLORS, brl, brl2, pctTxt } from '@/components/painel/painel-parts'
 import { MonthPicker } from '@/components/painel/month-picker'
+import { UfMap, MrrByServiceChart, NewMrrChart } from '@/components/painel/portfolio-charts'
 
 export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, nowMonth }: {
   d: DashboardResult
@@ -151,6 +152,7 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
           <Kpi label="Ticket médio (vendas)" value={brl(h.ticket)} hint="Valor ganho ÷ vendas ganhas" />
           <Kpi label="Ticket médio (avulso)" value={brl(h.avulso.ticket)} hint={`${h.avulso.won.length} faturado(s) · conversão ${pctTxt(h.avulso.conversion)}`} lines={h.avulso.won} />
         </div>
+        <NewMrrChart months={d.portfolio.newMonthly} labels={MONTHS_SHORT} highlight={isYear && !allYear ? sel : undefined} />
         <div className="grid gap-3 lg:grid-cols-2">
           <TagTable title="Por serviço (tag) — vendas" rows={h.byTag} />
           <TagTable title="Por serviço (tag) — avulso" rows={h.avulso.byTag} />
@@ -211,6 +213,8 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
           <Kpi label="NPS (12 meses)" value={f.nps === null ? '—' : String(f.nps)} hint={`${f.npsAnswers} resposta(s)`} tone={f.nps === null ? 'neutral' : f.nps >= 50 ? 'good' : f.nps >= 0 ? 'warn' : 'bad'} />
           <Kpi label="Chamados abertos (hoje)" value={String(f.openTickets)} hint={`${f.overdueTickets} fora do prazo`} tone={f.overdueTickets ? 'warn' : 'neutral'} />
         </div>
+        <UfMap rows={d.portfolio.byUf} noUf={d.portfolio.noUf} noUfMrr={d.portfolio.noUfMrr} total={d.portfolio.mrr} />
+        <MrrByServiceChart tags={d.portfolio.mrrByTag.tags} months={d.portfolio.mrrByTag.months} labels={MONTHS_SHORT} highlight={isYear && !allYear ? sel : undefined} />
       </Section>
 
       <details className="rounded-2xl border border-gray-200 bg-white p-4 text-xs text-gray-600">
@@ -224,6 +228,8 @@ export function PainelView({ d, input, isAdmin, year, month, isYear, nowYear, no
           <li><strong>Conversão:</strong> ganhas ÷ (ganhas + perdidas) fechadas no período. <strong>Ticket médio:</strong> valor ganho ÷ quantidade ganha, por tag.</li>
           <li><strong>Churn:</strong> contratos marcados como perdidos (rescisão) no período, sobre a carteira do início do período.</li>
           <li><strong>Renovação:</strong> valor mensal antes x depois, informado ao marcar Renovado.</li>
+          <li><strong>Mapa por estado:</strong> receita recorrente dos contratos ativos no fim do período, pelo estado (UF) do contrato; se estiver vazio, pelo estado da empresa. Quanto mais escuro, mais receita.</li>
+          <li><strong>Por serviço:</strong> a mesma receita recorrente no fim de cada mês, separada pelo serviço (tag) do contrato. <strong>Novo recorrente por mês:</strong> valor mensal das vendas ganhas em cada mês do ano.</li>
           <li>Indicadores marcados “hoje” (funil aberto, paradas, chamados) mostram a situação atual, não o período.</li>
         </ul>
       </details>
