@@ -27,7 +27,7 @@ import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
 import { resolveTenantId as resolveTenantForReading } from '@/lib/tenant/context'
 import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
-import { RenewalRulerPanel, RenewalRulerSummary, type RulerRunView } from '@/components/contracts/renewal-ruler-panel'
+import { RenewalRulerPanel, type RulerRunView } from '@/components/contracts/renewal-ruler-panel'
 import { resolveRulerSettings } from '@/lib/agent/renewal-ruler'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
 import { ProposalsSection } from '@/components/proposals/proposals-section'
@@ -515,9 +515,6 @@ export default async function ContractDetailPage({
                   />
                 )}
 
-                {isCurrentlyInContractsPipeline && (
-                  <RenewalRulerSummary run={(rulerRun as RulerRunView | null) ?? null} today={todayBrIso()} />
-                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   {/* Vigência / Previsão */}

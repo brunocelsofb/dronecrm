@@ -3,7 +3,6 @@
 // Topo: quanto falta para o vencimento e o andamento; "Agora": os passos em andamento, com quem
 // está com cada um e as ações; depois os próximos e os concluídos.
 
-import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronRight, Clock, Hourglass, Paperclip, Sparkles, Flag } from 'lucide-react'
@@ -326,25 +325,5 @@ export function RenewalRulerPanel({
         )}
       </div>
     </div>
-  )
-}
-
-// Resumo na Visão Geral: uma linha com o andamento e o atalho para a aba
-export function RenewalRulerSummary({ run, today }: { run: RulerRunView | null; today: string }) {
-  const open = run && (run.status === 'active' || run.status === 'ready') ? run : null
-  if (!open) return null
-  const done = open.steps.filter(s => s.done_at).length
-  const cur = open.status === 'active' ? openStepIndexes(open.steps).map(i => open.steps[i]) : []
-  const late = cur.some(s => s.due_date && s.due_date < today && !isWaiting(s, today))
-  return (
-    <Link href="?tab=renovacao" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-gray-200 bg-white px-5 py-3 hover:border-brand-700">
-      <span className="text-sm font-semibold text-gray-900">Régua de renovação</span>
-      <span className="text-xs text-gray-500">{done} de {open.steps.length} passos</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-gray-600">
-        {open.status === 'ready' ? 'Pronta: falta marcar Renovado' : cur.length ? `Agora: ${cur.map(s => s.label).join(' · ')}` : ''}
-      </span>
-      {late && <span className="rounded-full bg-negative-100 px-2 py-0.5 text-[11px] font-semibold text-negative-700">atrasado</span>}
-      <span className="inline-flex items-center text-xs font-medium text-brand-700">abrir<ChevronRight className="h-3.5 w-3.5" /></span>
-    </Link>
   )
 }
