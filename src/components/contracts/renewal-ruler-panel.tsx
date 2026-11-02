@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Circle, Clock, Flag } from 'lucide-react'
-import { markRulerStepDone, startRulerManually, cancelRuler } from '@/lib/actions/renewal-ruler'
+import { markRulerStepDone, startRulerManually, cancelRuler, skipRulerStepAction, rulerNoDealAction } from '@/lib/actions/renewal-ruler'
+import { ProcessOverrideModal } from '@/components/pipeline/process-override-modal'
 import { brDate, type RunStep } from '@/lib/agent/renewal-ruler'
 
 export type RulerRunView = {
@@ -28,6 +29,9 @@ export function RenewalRulerPanel({
   const [error, setError] = useState<string | null>(null)
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  // MUDAR + motivo: passar um passo fora do processo ou registrar "sem acordo" (churn)
+  const [ov, setOv] = useState<{ kind: 'skip' | 'nodeal'; stepId?: string; message: string; error: string | null } | null>(null)
+  const [ovBusy, setOvBusy] = useState(false)
 
   const open = run && (run.status === 'active' || run.status === 'ready') ? run : null
   const act = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => start(async () => {
@@ -49,7 +53,7 @@ export function RenewalRulerPanel({
                 ? run.status === 'done'
                   ? `Última régua concluída em ${fmtDateTime(run.finished_at)} (vencimento ${brDate(run.period_end)}).`
                   : `Última régua cancelada em ${fmtDateTime(run.finished_at)}.`
-                : 'Começa sozinha quando o aviso de renovação é enviado ao cliente.'}
+                : 'Começa sozinha junto com o "preparar a renovação" (Central de regras → Renovação).'}
             </p>
           </div>
           {enabled && canAct && (
@@ -70,6 +74,16 @@ export function RenewalRulerPanel({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+      {ov && (
+        <ProcessOverrideModal message={ov.message} busy={ovBusy} error={ov.error} onCancel={() => setOv(null)}
+          onConfirm={async o => {
+            setOvBusy(true)
+            const r = ov.kind === 'skip' ? await skipRulerStepAction(contractId, open.id, ov.stepId!, o.word, o.reason) : await rulerNoDealAction(contractId, o.word, o.reason)
+            setOvBusy(false)
+            if (!r.ok) { setOv({ ...ov, error: r.error }); return }
+            setOv(null); router.refresh()
+          }} />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-gray-900">Régua de renovação <span className="font-normal text-gray-500">· interna</span></p>
@@ -78,6 +92,12 @@ export function RenewalRulerPanel({
             {open.lock_renewed && open.status === 'active' ? ' · "Renovado" liberado ao concluir todos' : ''}
           </p>
         </div>
+        {canAct && open.status === 'active' && (
+          <button type="button" disabled={pending} onClick={() => setOv({ kind: 'nodeal', error: null, message: 'Sem acordo comercial: a régua é encerrada e o consultor recebe a tarefa de registrar a perda (churn). As regras de churn da Central rodam quando a perda for marcada.' })}
+            className="text-xs font-medium text-negative-700 hover:underline disabled:opacity-50">
+            Sem acordo (churn)
+          </button>
+        )}
         {isAdmin && (
           <button type="button" disabled={pending} onClick={() => act(() => cancelRuler(contractId))}
             className="text-xs text-gray-400 hover:text-negative-700 disabled:opacity-50">
@@ -135,6 +155,12 @@ export function RenewalRulerPanel({
                       Marcar feito
                     </button>
                   )
+                )}
+                {!isDone && open.status === 'active' && canAct && (
+                  <button type="button" onClick={() => setOv({ kind: 'skip', stepId: s.id, error: null, message: `Passar "${s.label}" fora do processo (não se aplica a este contrato ou já foi resolvido de outro jeito). Fica registrado quem passou e por quê.` })}
+                    className="ml-2 mt-1 text-[11px] text-gray-400 hover:text-warn-700">
+                    passar (fora do processo)
+                  </button>
                 )}
               </div>
             </li>

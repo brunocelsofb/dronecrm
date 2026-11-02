@@ -8,7 +8,9 @@
 // Sem 'use server': usado no servidor e na tela.
 
 export type RulerArea = { key: string; label: string; emails: string[] }
-export type RulerStep = { id: string; label: string; days_before: number; areas: string[] }
+// areas: áreas da empresa ('area:<id>', Central de regras → Áreas e IA) ou áreas antigas da régua (só e-mail)
+// done_when: 'manual' (concluído por quem recebeu, com o que foi feito) ou 'client_notice' (quando o aviso ao cliente é enviado)
+export type RulerStep = { id: string; label: string; days_before: number; areas: string[]; done_when?: 'manual' | 'client_notice' }
 export type RulerTemplates = {
   step_subject: string; step_body: string
   overdue_subject: string; overdue_body: string
@@ -57,7 +59,8 @@ export const DEFAULT_RULER_AREAS: RulerArea[] = [
 ]
 
 export const DEFAULT_RULER_STEPS: RulerStep[] = [
-  { id: 'aviso', label: 'Aviso de renovação enviado ao cliente', days_before: 60, areas: ['comercial'] },
+  { id: 'preparar', label: 'Preparar a renovação (aviso interno às áreas)', days_before: 90, areas: [], done_when: 'manual' },
+  { id: 'aviso', done_when: 'client_notice', label: 'Aviso de renovação enviado ao cliente', days_before: 60, areas: ['comercial'] },
   { id: 'analise', label: 'Análise interna do contrato (indicadores, reajuste e escopo)', days_before: 45, areas: ['comercial', 'operacao', 'financeiro'] },
   { id: 'reuniao', label: 'Reunião de renovação com o cliente', days_before: 35, areas: ['comercial', 'operacao'] },
   { id: 'proposta', label: 'Proposta de renovação enviada', days_before: 25, areas: ['comercial', 'financeiro'] },
@@ -123,7 +126,9 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
           id: str(o.id, 40) || `${slug(label) || 'passo'}-${i + 1}`,
           label,
           days_before: Number.isFinite(days) ? Math.max(-60, Math.min(365, days)) : 0,
-          areas: (Array.isArray(o.areas) ? o.areas : []).map(String).filter(k => areaKeys.has(k)),
+          areas: (Array.isArray(o.areas) ? o.areas : []).map(String).filter(k => areaKeys.has(k) || /^area:[0-9a-f-]{36}$/i.test(k)),
+          // Passo "aviso ao cliente" (id antigo 'aviso') conclui sozinho quando o aviso é enviado
+          done_when: o.done_when === 'client_notice' || (o.done_when === undefined && str(o.id, 40) === 'aviso') ? 'client_notice' as const : 'manual' as const,
         }
       }).filter(s => s.label).slice(0, 20)
     : DEFAULT_RULER_STEPS

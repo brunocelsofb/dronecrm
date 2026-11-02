@@ -341,10 +341,9 @@ export async function sendRenewalAlert(
   //    O 1º passo (aviso enviado) já fica concluído. Falha aqui não desfaz o envio.
   if (!isConfirmation) {
     try {
-      const { startRenewalRuler } = await import('@/lib/agent/renewal-ruler-engine')
-      const r = await startRenewalRuler(activity.contract_id, {
-        userId: user.id, firstDone: true,
-        periodEnd: typeof meta.valid_until === 'string' ? meta.valid_until : null,
+      const { markClientNoticeStep } = await import('@/lib/agent/renewal-ruler-engine')
+      const r = await markClientNoticeStep(activity.contract_id, {
+        userId: user.id, periodEnd: typeof meta.valid_until === 'string' ? meta.valid_until : null,
       })
       if (!r.ok) console.warn('[renewal] régua de renovação não iniciada:', r.error)
     } catch (e) {

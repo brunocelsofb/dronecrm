@@ -96,13 +96,42 @@ async function save(run: RulerRun, patch: Partial<RulerRun>) {
   Object.assign(run, patch, { updated_at })
 }
 
+// Passo das áreas da empresa: aviso (sino + WhatsApp + e-mail) ao coordenador e ao gerente e
+// tarefa encaminhada ao coordenador da 1ª área; o dono da oportunidade acompanha e recebe o retorno.
+async function handoffStep(run: RulerRun, idx: number): Promise<string> {
+  const step = run.steps[idx]
+  if (step.done_when === 'client_notice') return ''
+  const areaIds = step.areas.filter(a => a.startsWith('area:')).map(a => a.slice(5))
+  const info = await contractInfo(run.contract_id)
+  if (!info) return ''
+  const admin = createAdminClient()
+  const { data: areas } = areaIds.length
+    ? await admin.from('org_areas').select('id, name, lead_id, manager_id').eq('tenant_id', run.tenant_id).in('id', areaIds)
+    : { data: [] as { id: string; name: string; lead_id: string | null; manager_id: string | null }[] }
+  const list = ((areas ?? []) as { id: string; name: string; lead_id: string | null; manager_id: string | null }[])
+    .sort((a, b) => areaIds.indexOf(a.id) - areaIds.indexOf(b.id))
+  const to = list[0]?.lead_id ?? info.ownerId
+  const also = [...new Set(list.flatMap(a => [a.lead_id, a.manager_id]).filter((x): x is string => !!x && x !== to))]
+  const { createHandoff } = await import('./handoff')
+  const due = step.due_date ?? todayBr()
+  await createHandoff({
+    tenantId: run.tenant_id, contractId: run.contract_id, toUserId: to, watcherId: to === info.ownerId ? null : info.ownerId, alsoNotify: also,
+    title: `Renovação · ${step.label} — ${info.c.client_name ?? ''}`,
+    content: `Contrato ${info.c.process_number ?? ''} (${info.c.client_name ?? ''}) vence em ${brDate(run.period_end)}. Passo ${idx + 1} de ${run.steps.length} da régua de renovação: ${step.label}.${list.length ? ` Áreas: ${list.map(a => a.name).join(', ')}.` : ''} Consultor: ${info.consultor}.`,
+    dueIso: due < todayBr() ? todayBr() : due, rulerRunId: run.id, stepId: step.id,
+  })
+  return list.length ? ` Tarefa encaminhada a ${list[0].name}.` : ' Tarefa ao consultor.'
+}
+
 // Passo atual chegou: avisa as áreas e marca a data do aviso
 async function arrive(run: RulerRun, idx: number) {
+  let handoff = ''
+  try { handoff = await handoffStep(run, idx) } catch (e) { console.error('[régua] encaminhamento:', e) }
   const r = await notifyStep(run, idx, 'step')
   const steps = run.steps.map((s, i) => (i === idx ? { ...s, notified_at: nowIso() } : s))
   await save(run, { steps, current_index: idx })
   await logActivity(run, `🧭 Régua de renovação: passo ${idx + 1} de ${run.steps.length} — ${run.steps[idx].label} (prazo ${brDate(run.steps[idx].due_date)}).` +
-    (r.sent ? ' Áreas avisadas por e-mail.' : ` E-mail às áreas não enviado (${r.detail}).`))
+    (r.sent ? ' Áreas avisadas por e-mail.' : r.detail?.startsWith('nenhum e-mail') && handoff ? '' : ` E-mail às áreas não enviado (${r.detail}).`) + handoff)
 }
 
 /**
@@ -154,6 +183,9 @@ async function completeStepInternal(run: RulerRun, idx: number, userId: string |
   const { data: claimed } = await q.select('id')
   if (!claimed?.length) return false
   Object.assign(run, { steps, updated_at: stamp })
+  // Tarefa encaminhada deste passo (se houver) fica concluída junto
+  await admin.from('activities').update({ status: 'done', completed: true })
+    .eq('tenant_id', run.tenant_id).eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', run.id).eq('metadata->>step_id', run.steps[idx].id).neq('status', 'done')
   if (!silent) await logActivity(run, `✅ Régua de renovação: "${run.steps[idx].label}" concluído${name ? ` por ${name}` : ''}.${note ? ` Obs.: ${note.slice(0, 300)}` : ''}`)
 
   const next = steps.findIndex(s => !s.done_at)
@@ -239,4 +271,62 @@ export async function runRulerOverdue(tenantId: string): Promise<{ checked: numb
     if (r.sent) notified++
   }
   return { checked: data.length, notified }
+}
+
+// Aviso ao cliente enviado: conclui o passo "aviso ao cliente" (abre a régua se ainda não abriu)
+export async function markClientNoticeStep(contractId: string, opts: { userId?: string | null; periodEnd?: string | null } = {}) {
+  const r = await startRenewalRuler(contractId, { userId: opts.userId ?? null, firstDone: false, periodEnd: opts.periodEnd ?? null })
+  if (!r.ok) return r
+  const run = r.run
+  const idx = run.steps.findIndex(s => !s.done_at && s.done_when === 'client_notice')
+  if (idx < 0) return { ok: true as const }
+  const firstOpen = run.steps.findIndex(s => !s.done_at)
+  if (idx === firstOpen) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado')
+  else {
+    // Passo interno anterior ainda aberto: marca o aviso como feito sem pular a ordem dos outros
+    const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: opts.userId ?? null, note: 'Aviso ao cliente enviado' } : s))
+    await save(run, { steps })
+    await logActivity(run, `✅ Régua de renovação: "${run.steps[idx].label}" concluído (aviso enviado).`)
+  }
+  return { ok: true as const }
+}
+
+// Passar um passo fora da ordem ou que não se aplica (MUDAR + motivo): fica registrado
+export async function skipRulerStep(tenantId: string, runId: string, stepId: string, userId: string, reason: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data } = await createAdminClient().from('renewal_ruler_runs').select('*').eq('id', runId).eq('tenant_id', tenantId).maybeSingle()
+  const run = data as RulerRun | null
+  if (!run || run.status !== 'active') return { ok: false, error: 'Régua não está em andamento.' }
+  const idx = run.steps.findIndex(s => s.id === stepId)
+  if (idx < 0 || run.steps[idx].done_at) return { ok: false, error: 'Passo não encontrado ou já concluído.' }
+  const firstOpen = run.steps.findIndex(s => !s.done_at)
+  if (idx === firstOpen) {
+    const ok = await completeStepInternal(run, idx, userId, `⚠ Passado fora do processo: ${reason}`)
+    return ok ? { ok: true } : { ok: false, error: 'A régua mudou. Atualize a página.' }
+  }
+  const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: userId, note: `⚠ Passado fora do processo: ${reason}` } : s))
+  await save(run, { steps })
+  await logActivity(run, `⚠ Régua de renovação: "${run.steps[idx].label}" passado fora da ordem. Motivo: ${reason}`)
+  return { ok: true }
+}
+
+// Sem acordo comercial: cancela a régua e pede ao consultor para registrar a perda (churn)
+export async function rulerNoDeal(tenantId: string, contractId: string, userId: string, reason: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const run = await openRun(tenantId, contractId)
+  if (!run) return { ok: false, error: 'Não há régua aberta.' }
+  const admin = createAdminClient()
+  await save(run, { status: 'cancelled', finished_at: nowIso() })
+  await admin.from('activities').update({ status: 'done', completed: true })
+    .eq('tenant_id', tenantId).eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', run.id).neq('status', 'done')
+  const { data: me } = await admin.from('profiles').select('full_name').eq('id', userId).eq('tenant_id', tenantId).maybeSingle()
+  await logActivity(run, `❌ Renovação sem acordo comercial — registrado por ${me?.full_name ?? 'alguém'}. Motivo: ${reason}`)
+  const info = await contractInfo(contractId)
+  if (info) {
+    await createAgentActivity(admin, {
+      contractId, dedupeKey: `ruler-nodeal:${run.id}`, dueInDays: 0, assignedTo: info.ownerId, activityType: 'task', agent: 'farmer',
+      title: `Registrar a perda (churn) — ${info.c.client_name ?? ''}`,
+      content: `[Farmer] A renovação ficou sem acordo comercial (${reason}). Marque a perda no funil de Gestão de Contratos com o motivo: as regras de churn da Central rodam na hora.`,
+      metadata: { kind: 'renewal_no_deal', run_id: run.id },
+    })
+  }
+  return { ok: true }
 }

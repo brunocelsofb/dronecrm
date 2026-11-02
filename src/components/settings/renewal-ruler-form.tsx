@@ -19,7 +19,8 @@ const MAILS: { key: 'step' | 'overdue' | 'ready'; label: string; hint: string }[
 ]
 
 const newId = () => `passo-${Math.random().toString(36).slice(2, 8)}`
-export function RenewalRulerForm({ initial, companyName }: { initial: RulerSettings; companyName: string }) {
+// orgAreas: áreas da empresa (Central de regras → Áreas e IA): coordenador recebe a tarefa, gerente o aviso
+export function RenewalRulerForm({ initial, companyName, orgAreas = [] }: { initial: RulerSettings; companyName: string; orgAreas?: { id: string; name: string; coordinator: string; manager: string }[] }) {
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
   const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
@@ -149,7 +150,29 @@ export function RenewalRulerForm({ initial, companyName }: { initial: RulerSetti
                 <button type="button" onClick={() => { touch(); setSteps(x => x.filter((_, j) => j !== i)) }} className="rounded p-1 text-gray-400 hover:text-negative-700" title="Remover passo"><Trash2 className="h-4 w-4" /></button>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
-                <span className="text-xs text-gray-500">Avisar:</span>
+                <span className="text-xs text-gray-500">Encaminhar para (aviso + tarefa ao coordenador; gerente acompanha):</span>
+                {orgAreas.map(a => {
+                  const k = `area:${a.id}`
+                  return (
+                    <label key={k} className="flex items-center gap-1 text-xs text-gray-700" title={`Coordenador: ${a.coordinator} · Gerente: ${a.manager}`}>
+                      <input type="checkbox" checked={s.areas.includes(k)}
+                        onChange={e => setStep(i, { areas: e.target.checked ? [...s.areas, k] : s.areas.filter(x => x !== k) })} />
+                      {a.name}
+                    </label>
+                  )
+                })}
+                {!orgAreas.length && <a href="/regras?tema=areas" className="text-xs text-brand-700 hover:underline">cadastre as áreas da empresa →</a>}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
+                <span className="text-xs text-gray-500">Concluído quando:</span>
+                <select value={s.done_when ?? 'manual'} onChange={e => setStep(i, { done_when: e.target.value as 'manual' | 'client_notice' })}
+                  className="rounded border border-gray-300 px-1.5 py-0.5 text-xs">
+                  <option value="manual">quem recebeu escreve o que fez e conclui</option>
+                  <option value="client_notice">o aviso ao cliente é enviado (sozinho)</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8">
+                <span className="text-xs text-gray-500">E-mail também para (lista antiga):</span>
                 {areas.map(a => (
                   <label key={a.key} className="flex items-center gap-1 text-xs text-gray-700">
                     <input type="checkbox" checked={s.areas.includes(a.key)}
@@ -157,7 +180,7 @@ export function RenewalRulerForm({ initial, companyName }: { initial: RulerSetti
                     {a.label || '(sem nome)'}
                   </label>
                 ))}
-                {!s.areas.length && <span className="text-xs text-warn-700">nenhuma área: ninguém recebe e-mail neste passo</span>}
+                {!s.areas.length && <span className="text-xs text-warn-700">nenhuma área: a tarefa vai para o consultor</span>}
               </div>
             </div>
           ))}

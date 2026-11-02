@@ -27,7 +27,7 @@ const appUrl = () => (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.comerciald
 export const linkFor = (m: Pick<ActMatch, 'contractId' | 'leadId'>) =>
   m.contractId ? `${appUrl()}/contracts/${m.contractId}` : m.leadId ? `${appUrl()}/leads/${m.leadId}` : appUrl()
 
-type Area = { id: string; name: string; lead_id: string | null; member_ids: string[]; emails: string[] }
+type Area = { id: string; name: string; lead_id: string | null; manager_id?: string | null; member_ids: string[]; emails: string[] }
 type Person = { id: string; full_name: string | null; email: string | null; phone: string | null; department: string | null }
 
 // Contexto da empresa para uma rodada (carregado uma vez)
@@ -40,7 +40,7 @@ export type ActCtx = {
 
 export async function loadActCtx(tenantId: string, db: Db): Promise<ActCtx> {
   const [{ data: areas }, { data: people }, { data: org }] = await Promise.all([
-    db.from('org_areas').select('id, name, lead_id, member_ids, emails'),
+    db.from('org_areas').select('id, name, lead_id, manager_id, member_ids, emails'),
     db.from('profiles').select('id, full_name, email, phone, department'),
     db.from('organization_settings').select('ai_paused, auto_sender_id').maybeSingle(),
   ])
@@ -59,8 +59,9 @@ function taskTarget(ctx: ActCtx, dest: string, m: ActMatch): { assignee: string 
   if (dest.startsWith('area:')) {
     const a = ctx.areas.get(dest.slice(5))
     if (!a) return { assignee: null, also: [] }
+    // Coordenador recebe a tarefa; o gerente é avisado (eles distribuem no time)
     const lead = a.lead_id ?? a.member_ids[0] ?? null
-    return { assignee: lead, also: a.member_ids.filter(x => x !== lead) }
+    return { assignee: lead, also: [a.manager_id].filter((x): x is string => !!x && x !== lead) }
   }
   return { assignee: dest, also: [] }
 }
@@ -73,7 +74,7 @@ function emailsFor(ctx: ActCtx, dests: string[], m: ActMatch): string[] {
     else if (d === 'owner') { const e = m.ownerId ? ctx.people.get(m.ownerId)?.email : null; if (e) out.add(e.toLowerCase()) }
     else if (d.startsWith('area:')) {
       const a = ctx.areas.get(d.slice(5))
-      for (const id of a?.member_ids ?? []) { const e = ctx.people.get(id)?.email; if (e) out.add(e.toLowerCase()) }
+      for (const id of [a?.lead_id, a?.manager_id]) { const e = id ? ctx.people.get(id)?.email : null; if (e) out.add(e.toLowerCase()) }
       for (const e of a?.emails ?? []) out.add(e.toLowerCase())
     } else { const e = ctx.people.get(d)?.email; if (e) out.add(e.toLowerCase()) }
   }
@@ -151,7 +152,13 @@ export async function executeMatch(ctx: ActCtx, rule: ActRule, m: ActMatch, toda
       else notes.push(`tarefa sem IA (${w.why})`)
     }
     const t = taskTarget(ctx, a.task.assignee, m)
-    await createTask(ctx, rule, m, title, content, addDays(today, a.task.due_days), t.assignee, t.also, agentName)
+    if (a.task.assignee !== 'owner' && t.assignee && t.assignee !== m.ownerId) {
+      // Para outra pessoa ou área: tarefa encaminhada (quem recebe faz; o dono acompanha e recebe o retorno)
+      const { createHandoff } = await import('./handoff')
+      await createHandoff({ tenantId: ctx.tenantId, contractId: m.contractId, companyId: m.companyId, toUserId: t.assignee, watcherId: m.ownerId, alsoNotify: t.also, title, content, dueIso: addDays(today, a.task.due_days), agent: agentName as 'farmer' | 'hunter' })
+    } else {
+      await createTask(ctx, rule, m, title, content, addDays(today, a.task.due_days), t.assignee, t.also, agentName)
+    }
   }
 
   if (a.notify?.enabled) {

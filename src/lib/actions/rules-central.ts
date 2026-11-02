@@ -95,7 +95,7 @@ export async function saveEventToggle(key: string, enabled: boolean): Promise<Re
 }
 
 // ─── Áreas da empresa (Time técnico, Faturamento, Financeiro…) ────────────────
-export type AreaInput = { id?: string | null; name: string; leadId: string | null; memberIds: string[]; emails: string[] }
+export type AreaInput = { id?: string | null; name: string; leadId: string | null; managerId?: string | null; memberIds: string[]; emails: string[] }
 export async function saveArea(input: AreaInput): Promise<Result & { id?: string }> {
   const g = await rulesAdminGuard()
   if ('error' in g) return { ok: false, error: g.error }
@@ -103,6 +103,9 @@ export async function saveArea(input: AreaInput): Promise<Result & { id?: string
   if (!name || name.length > 60) return { ok: false, error: 'Nome da área: de 1 a 60 caracteres.' }
   const members = [...new Set((input.memberIds ?? []).filter(x => UUID.test(x)))]
   const lead = input.leadId && UUID.test(input.leadId) ? input.leadId : null
+  const manager = input.managerId && UUID.test(input.managerId) ? input.managerId : null
+  if (!lead) return { ok: false, error: 'Escolha o coordenador da área (é quem recebe as tarefas).' }
+  if (manager && !members.includes(manager)) members.unshift(manager)
   if (lead && !members.includes(lead)) members.unshift(lead)
   if (members.length) {
     const { data } = await g.db.from('profiles').select('id').eq('tenant_id', g.tenantId).in('id', members)
@@ -112,7 +115,7 @@ export async function saveArea(input: AreaInput): Promise<Result & { id?: string
   if (emails.some(e => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))) return { ok: false, error: 'Há e-mail inválido na área.' }
   if (emails.length > 20) return { ok: false, error: 'Até 20 e-mails de fora por área.' }
   if (!members.length && !emails.length) return { ok: false, error: 'Coloque pelo menos uma pessoa ou um e-mail.' }
-  const fields = { name, lead_id: lead, member_ids: members, emails, updated_at: new Date().toISOString() }
+  const fields = { name, lead_id: lead, manager_id: manager, member_ids: members, emails, updated_at: new Date().toISOString() }
   if (input.id) {
     const { error } = await g.db.from('org_areas').update(fields).eq('id', input.id)
     if (error) return { ok: false, error: error.message }

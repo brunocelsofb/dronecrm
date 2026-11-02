@@ -130,3 +130,18 @@ test('processo de renovação: entrar antes do prazo ou sair dentro dele pede MU
   assert.ok(overrideProblem({ word: 'trocar', reason: 'cliente pediu para antecipar' }))
   assert.equal(overrideProblem({ word: ' mudar ', reason: 'cliente pediu para antecipar' }), null)
 })
+
+import { resolveRulerSettings, DEFAULT_RULER_STEPS } from '../src/lib/agent/renewal-ruler.ts'
+
+test('régua: passos com áreas da empresa e "concluído quando"', () => {
+  assert.equal(DEFAULT_RULER_STEPS[0].days_before, 90)
+  const s = resolveRulerSettings({ renewal_ruler: { steps: [
+    { id: 'aviso', label: 'Aviso', days_before: 60, areas: [] },
+    { id: 'x', label: 'Análise', days_before: 45, areas: ['area:11111111-2222-3333-4444-555555555555', 'inexistente'] },
+    { id: 'y', label: 'Prep', days_before: 90, areas: [], done_when: 'client_notice' },
+  ] } })
+  assert.equal(s.steps[0].done_when, 'client_notice') // id antigo "aviso"
+  assert.deepEqual(s.steps[1].areas, ['area:11111111-2222-3333-4444-555555555555'])
+  assert.equal(s.steps[1].done_when, 'manual')
+  assert.equal(s.steps[2].done_when, 'client_notice')
+})

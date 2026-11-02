@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
+import { useHandoffDone } from '@/components/activities/handoff-note-modal'
+import { deleteActivity } from '@/lib/actions/activities'
 import { CreateActivityModal } from './create-activity-modal'
 import { RenewalSendButton } from './renewal-send-button'
 import { SentMessageDialog } from './sent-message-dialog'
@@ -70,6 +71,7 @@ export function ActivitiesTable({
   const profileById = new Map(profiles.map(p => [p.id, p.full_name]))
 
   const [localActivities, setLocalActivities] = useState(activities)
+  const handoff = useHandoffDone(id => setLocalActivities(prev => prev.map(x => (x.id === id ? { ...x, status: 'done', completed: true } : x))))
 
   function handleCreated(newActivity: any) {
     setLocalActivities(prev => [newActivity, ...prev])
@@ -82,8 +84,8 @@ export function ActivitiesTable({
   async function handleToggle(a: Activity) {
     setTogglingId(a.id)
     const next = (a.status === 'done' || a.completed) ? 'planned' : 'done'
-    await updateActivityStatus(a.id, next)
-    setLocalActivities(prev => prev.map(x =>
+    const ok = await handoff.toggle(a.id, next)
+    if (ok) setLocalActivities(prev => prev.map(x =>
       x.id === a.id ? { ...x, status: next, completed: next === 'done' } : x
     ))
     setTogglingId(null)
@@ -110,6 +112,7 @@ export function ActivitiesTable({
 
   return (
     <div>
+      {handoff.modal}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         {/* Tabs */}

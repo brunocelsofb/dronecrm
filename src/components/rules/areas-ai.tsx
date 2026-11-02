@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { saveArea, deleteArea, setAiPaused, setAutoSender } from '@/lib/actions/rules-central'
 import { Switch } from '@/components/ia/agent-tasks-panel'
 
-export type AreaView = { id: string; name: string; leadId: string | null; memberIds: string[]; emails: string[] }
+export type AreaView = { id: string; name: string; leadId: string | null; managerId: string | null; memberIds: string[]; emails: string[] }
 export type PersonView = { id: string; name: string; missing: string[]; hasEmail: boolean }
 
 const input = 'mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900'
@@ -19,7 +19,7 @@ function AreaEditor({ a, people, onDone }: { a: Omit<AreaView, 'id'> & { id?: st
   const toggle = (id: string) => setV({ ...v, memberIds: v.memberIds.includes(id) ? v.memberIds.filter(x => x !== id) : [...v.memberIds, id] })
   const save = () => start(async () => {
     setErr(null)
-    const r = await saveArea({ id: v.id ?? null, name: v.name, leadId: v.leadId, memberIds: v.memberIds, emails: v.emailsText.split(/[,;\s]+/).filter(Boolean) })
+    const r = await saveArea({ id: v.id ?? null, name: v.name, leadId: v.leadId, managerId: v.managerId, memberIds: v.memberIds, emails: v.emailsText.split(/[,;\s]+/).filter(Boolean) })
     if (!r.ok) { setErr(r.error); return }
     router.refresh(); onDone()
   })
@@ -31,15 +31,23 @@ function AreaEditor({ a, people, onDone }: { a: Omit<AreaView, 'id'> & { id?: st
     <div className="space-y-2 rounded-md border border-brand-100 bg-brand-100/40 p-3">
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-[11px] text-gray-600">Nome da área<input value={v.name} maxLength={60} onChange={e => setV({ ...v, name: e.target.value })} placeholder="Ex.: Time técnico" className={input} /></label>
-        <label className="text-[11px] text-gray-600">Quem recebe a tarefa da área
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="text-[11px] text-gray-600">Coordenador (recebe as tarefas e os avisos)
           <select value={v.leadId ?? ''} onChange={e => setV({ ...v, leadId: e.target.value || null })} className={input}>
-            <option value="">Primeira pessoa marcada</option>
-            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <option value="">Escolha…</option>
+            {people.map(p => <option key={p.id} value={p.id}>{p.name}{p.missing.length ? ` — cadastro incompleto` : ''}</option>)}
+          </select>
+        </label>
+        <label className="text-[11px] text-gray-600">Gerente (recebe os avisos e acompanha)
+          <select value={v.managerId ?? ''} onChange={e => setV({ ...v, managerId: e.target.value || null })} className={input}>
+            <option value="">Sem gerente</option>
+            {people.map(p => <option key={p.id} value={p.id}>{p.name}{p.missing.length ? ` — cadastro incompleto` : ''}</option>)}
           </select>
         </label>
       </div>
       <div>
-        <p className="text-[11px] text-gray-600">Pessoas da área (recebem aviso no sino e os e-mails)</p>
+        <p className="text-[11px] text-gray-600">Time da área (para o coordenador repassar tarefas)</p>
         <div className="mt-0.5 flex flex-wrap gap-1">
           {people.map(p => (
             <label key={p.id} className={`flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${v.memberIds.includes(p.id) ? 'border-brand-700 bg-brand-100 text-brand-800' : 'border-gray-200 text-gray-600'}`}>
@@ -67,7 +75,7 @@ export function AreasManager({ areas, people }: { areas: AreaView[]; people: Per
   return (
     <div>
       {editing !== 'new' && <button type="button" onClick={() => setEditing('new')} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800">+ Nova área</button>}
-      {editing === 'new' && <div className="mt-2"><AreaEditor a={{ name: '', leadId: null, memberIds: [], emails: [] }} people={people} onDone={() => setEditing(null)} /></div>}
+      {editing === 'new' && <div className="mt-2"><AreaEditor a={{ name: '', leadId: null, managerId: null, memberIds: [], emails: [] }} people={people} onDone={() => setEditing(null)} /></div>}
       <ul className="mt-2 divide-y divide-gray-100">
         {areas.map(a => (
           <li key={a.id} className="py-2.5">
@@ -75,7 +83,7 @@ export function AreasManager({ areas, people }: { areas: AreaView[]; people: Per
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{a.name}</p>
-                  <p className="text-xs text-gray-500">Tarefa vai para {nameOf(a.leadId ?? a.memberIds[0] ?? null)} · {a.memberIds.length} pessoa(s){a.emails.length ? ` · ${a.emails.length} e-mail(s) de fora` : ''}</p>
+                  <p className="text-xs text-gray-500">Coordenador: {nameOf(a.leadId ?? a.memberIds[0] ?? null)} · Gerente: {nameOf(a.managerId)} · time de {a.memberIds.length}{a.emails.length ? ` · ${a.emails.length} e-mail(s) de fora` : ''}</p>
                 </div>
                 <button type="button" onClick={() => setEditing(a.id)} className="text-xs font-medium text-brand-700 hover:underline">Editar</button>
               </div>

@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useHandoffDone } from '@/components/activities/handoff-note-modal'
 import Link from 'next/link'
 import { CreateActivityModal } from './create-activity-modal'
-import { updateActivityStatus, deleteActivity } from '@/lib/actions/activities'
+import { deleteActivity } from '@/lib/actions/activities'
 import { ACTIVITY_TYPE_ICON } from '@/lib/utils/activity-types'
 import { RenewalSendButton } from './renewal-send-button'
 import { InternalEmailButton } from './internal-email-button'
@@ -49,10 +50,10 @@ export function ActivityFeed({
 
   const profileById = new Map(profiles.map(p => [p.id, p.full_name]))
 
+  const handoff = useHandoffDone(() => router.refresh())
   async function handleToggleDone(id: string, current: string | null) {
     const next = current === 'done' ? 'planned' : 'done'
-    await updateActivityStatus(id, next)
-    router.refresh()
+    if (await handoff.toggle(id, next)) router.refresh()
   }
 
   async function handleDelete(id: string) {
@@ -72,6 +73,7 @@ export function ActivityFeed({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {handoff.modal}
       {/* Botão de nova atividade */}
       <div style={{ marginBottom: 16 }}>
         <button onClick={() => setShowModal(true)}

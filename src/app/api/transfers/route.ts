@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(req: Request) {
@@ -8,7 +8,14 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
   const { contract_id, to_user_id, to_name, to_department, reason, desired_deadline, from_name } = await req.json()
-  const admin = createAdminClient()
+  // Só dentro da empresa de quem está logado (antes gravava sem conferir a empresa)
+  const admin = await createScopedAdmin()
+  const { data: own } = await admin.from('contracts').select('id').eq('id', contract_id).maybeSingle()
+  if (!own) return NextResponse.json({ error: 'Oportunidade não encontrada.' }, { status: 404 })
+  if (to_user_id) {
+    const { data: dest } = await admin.from('profiles').select('id').eq('id', to_user_id).maybeSingle()
+    if (!dest) return NextResponse.json({ error: 'Pessoa não encontrada nesta empresa.' }, { status: 400 })
+  }
 
   // Fecha qualquer transferência ativa anterior
   await admin.from('transfer_requests')

@@ -250,6 +250,14 @@ async function processContract(
         `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.` + readingText,
       metadata: { kind: 'renewal_alert', alert_level: level, alert_days: markDays, valid_until: c.valid_until },
     })
+    // A régua de renovação começa junto com o "preparar" (aviso interno às áreas no 1º passo)
+    try {
+      const { inPreview } = await import('./agent-preview')
+      if (!inPreview()) {
+        const { startRenewalRuler } = await import('./renewal-ruler-engine')
+        await startRenewalRuler(c.id, { firstDone: false, periodEnd: c.valid_until })
+      }
+    } catch (e) { console.error('[expiration] régua não iniciada:', e) }
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
   }
 

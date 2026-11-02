@@ -70,13 +70,13 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
   const [{ data: expAutos }, { data: evtRows }, { data: areaRows }, { data: peopleRows }, { data: orgAi }, { data: mailAccounts }] = await Promise.all([
     db.from('automation_rules').select('id, name, days_threshold, is_active').eq('trigger_type', 'days_before_expiration').eq('is_active', true),
     db.from('agent_tasks').select('task_key, enabled').like('task_key', 'evt:%'),
-    db.from('org_areas').select('id, name, lead_id, member_ids, emails').order('name'),
+    db.from('org_areas').select('id, name, lead_id, manager_id, member_ids, emails').order('name'),
     db.from('profiles').select('id, full_name, phone, department, email').order('full_name'),
     db.from('organization_settings').select('ai_paused, auto_sender_id').maybeSingle(),
     db.from('email_accounts').select('user_id'),
   ])
-  const areas: AreaView[] = ((areaRows ?? []) as { id: string; name: string; lead_id: string | null; member_ids: string[]; emails: string[] }[])
-    .map(a => ({ id: a.id, name: a.name, leadId: a.lead_id, memberIds: a.member_ids ?? [], emails: a.emails ?? [] }))
+  const areas: AreaView[] = ((areaRows ?? []) as { id: string; name: string; lead_id: string | null; manager_id: string | null; member_ids: string[]; emails: string[] }[])
+    .map(a => ({ id: a.id, name: a.name, leadId: a.lead_id, managerId: a.manager_id, memberIds: a.member_ids ?? [], emails: a.emails ?? [] }))
   const withMail = new Set(((mailAccounts ?? []) as { user_id: string }[]).map(m => m.user_id))
   const people: PersonView[] = ((peopleRows ?? []) as { id: string; full_name: string | null; phone: string | null; department: string | null; email: string | null }[])
     .map(p => ({ id: p.id, name: p.full_name || p.email || 'sem nome', missing: profileProblems(p), hasEmail: withMail.has(p.id) }))
