@@ -11,7 +11,7 @@ test('catálogo: chaves únicas, limites coerentes, frase com {n}', () => {
   assert.equal(new Set(keys).size, keys.length)
   for (const c of RULE_CRITERIA) {
     assert.ok(c.min <= c.def && c.def <= c.max, c.key)
-    assert.ok(c.sentence.includes('{n}'), c.key)
+    if (c.kind !== 'evento') assert.ok(c.sentence.includes('{n}'), c.key)
     assert.ok(c.explain && c.ownerLabel, c.key)
   }
 })
@@ -59,7 +59,7 @@ test('central: cada tarefa e cada critério estão em exatamente um tema', () =>
   for (const t of AGENT_TASKS) assert.equal(THEMES.filter(th => th.tasks.includes(t.key)).length, 1, t.key)
   for (const c of RULE_CRITERIA) assert.equal(THEMES.filter(th => th.criteria.includes(c.key)).length, 1, c.key)
   assert.ok(isThemeKey('renovacao') && !isThemeKey('x'))
-  assert.deepEqual(themesFor(['leads']).map(t => t.key), ['leads'])
+  assert.deepEqual(themesFor(['leads']).map(t => t.key), ['leads', 'areas'])
   assert.ok(themesFor(['varejo']).length === 0)
 })
 
@@ -79,4 +79,37 @@ test('ações de evento: chaves únicas, frase e momento', () => {
   for (const e of EVENT_ACTIONS) { assert.ok(e.sentence.includes('→'), e.key); assert.ok(['ganho', 'renovado', 'perdido', 'implantacao'].includes(e.when)) }
   assert.equal(eventTaskKey('won_impl_kickoff'), 'evt:won_impl_kickoff')
   assert.ok(isEventKey('avulso_billing') && !isEventKey('briefing'))
+})
+
+import { isEventCriterion, PIPELINE_TYPES } from '../src/lib/agent/rules-catalog.ts'
+import { profileProblems } from '../src/lib/people/profile-complete.ts'
+
+const ev = { name: 'Avulso ganho', criterion: 'evt_won', threshold: 9, conditions: { pipeline_type: 'servico_avulso' }, executor: 'agent',
+  actions: { task: { enabled: true, title: 'Executar — {{nome}}', text: 'Combine e execute', due_days: 2, assignee: 'area:11111111-2222-3333-4444-555555555555' } } }
+
+test('regra por evento: sem número e sem dias, tipo de funil, quem faz, área', () => {
+  assert.ok(isEventCriterion('evt_won') && !isEventCriterion('opp_idle'))
+  const r = validateRule(ev, ALL).rule
+  assert.equal(r.threshold, 0)
+  assert.deepEqual(r.days, [0, 1, 2, 3, 4, 5, 6])
+  assert.equal(r.executor, 'agent')
+  assert.equal(r.conditions.pipeline_type, 'servico_avulso')
+  assert.ok('error' in validateRule({ ...ev, conditions: { pipeline_type: 'x' } }, ALL))
+  assert.ok('error' in validateRule({ ...ev, criterion: 'evt_stage', conditions: {} }, ALL))
+  assert.equal(validateRule({ ...ev, executor: 'qualquer' }, ALL).rule.executor, 'manual')
+  assert.ok(PIPELINE_TYPES.servico_avulso)
+})
+
+test('e-mail interno: destinos (responsável, área, pessoa, e-mail), assunto e texto', () => {
+  const base = { ...ev, actions: { email: { enabled: true, to: ['owner', 'area:11111111-2222-3333-4444-555555555555', 'Fin@Empresa.com'], subject: 'Churn {{nome}}', body: 'Encerrar cobrança' } } }
+  assert.deepEqual(validateRule(base, ALL).rule.actions.email.to, ['owner', 'area:11111111-2222-3333-4444-555555555555', 'fin@empresa.com'])
+  assert.ok('error' in validateRule({ ...base, actions: { email: { enabled: true, to: [], subject: 'x', body: 'y' } } }, ALL))
+  assert.ok('error' in validateRule({ ...base, actions: { email: { enabled: true, to: ['nada'], subject: 'x', body: 'y' } } }, ALL))
+  assert.ok('error' in validateRule({ ...base, actions: { email: { enabled: true, to: ['owner'], subject: '', body: 'y' } } }, ALL))
+  assert.match(ruleSentence(validateRule(base, ALL).rule, { area: () => 'Faturamento' }), /o agente escreve e envia o e-mail "Churn \{\{nome\}\}" para responsável da oportunidade, a área Faturamento, fin@empresa.com/)
+})
+
+test('cadastro completo: nome e sobrenome, telefone, área e e-mail', () => {
+  assert.deepEqual(profileProblems({ full_name: 'Ana Souza', phone: '(62) 99999-0000', department: 'tecnico', email: 'ana@x.com' }), [])
+  assert.deepEqual(profileProblems({ full_name: 'Ana', phone: '123', department: '', email: 'x' }), ['nome e sobrenome', 'telefone com DDD', 'área de trabalho', 'e-mail'])
 })

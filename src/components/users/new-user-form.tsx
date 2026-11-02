@@ -20,10 +20,12 @@ export function NewUserForm() {
   return (
     <form ref={formRef} action={formAction} className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white p-4">
       <div>
-        <label className="block text-xs font-medium text-gray-700">Nome *</label>
+        <label className="block text-xs font-medium text-gray-700">Nome e sobrenome *</label>
         <input
           name="full_name"
           required
+          pattern="\S+(\s+\S+)+"
+          title="Nome e sobrenome"
           className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
         />
       </div>
@@ -33,6 +35,17 @@ export function NewUserForm() {
           name="email"
           type="email"
           required
+          className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-700">Telefone (WhatsApp) com DDD *</label>
+        <input
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          required
+          placeholder="(11) 91234-5678"
           className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
         />
       </div>
@@ -70,13 +83,14 @@ export function NewUserForm() {
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700">Departamento</label>
+        <label className="block text-xs font-medium text-gray-700">Área de trabalho *</label>
         <select
           name="department"
+          required
           defaultValue=""
           className="mt-1 w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-brand-700 focus:outline-none"
         >
-          <option value="">Sem departamento</option>
+          <option value="" disabled>Escolha a área</option>
           {DEPARTMENTS.map((d) => (
             <option key={d.value} value={d.value}>{d.label}</option>
           ))}

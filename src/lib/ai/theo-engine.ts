@@ -79,7 +79,7 @@ async function runAnthropic(o: RunOpts, history: TheoTurn[], isAction: Set<strin
   let tIn = 0, tOut = 0, lastText = ''
   for (let i = 0; i < steps; i++) {
     const r = await post('https://api.anthropic.com/v1/messages', { 'x-api-key': o.key, 'anthropic-version': '2023-06-01' },
-      { model: o.model, max_tokens: MAX_OUT, system: o.system, tools, messages })
+      { model: o.model, max_tokens: MAX_OUT, system: o.system, ...(tools.length ? { tools } : {}), messages })
     if (!r.ok) return { text: '', pending: null, tokensIn: tIn, tokensOut: tOut, error: friendlyAiError('anthropic', r.status, r.text) }
     const j = JSON.parse(r.text)
     tIn += Number(j?.usage?.input_tokens ?? 0); tOut += Number(j?.usage?.output_tokens ?? 0)
@@ -102,7 +102,7 @@ async function runOpenAI(o: RunOpts, history: TheoTurn[], isAction: Set<string>,
   let tIn = 0, tOut = 0, lastText = ''
   for (let i = 0; i < steps; i++) {
     const r = await post('https://api.openai.com/v1/responses', { Authorization: `Bearer ${o.key}` },
-      { model: o.model, instructions: o.system, input, tools, max_output_tokens: MAX_OUT })
+      { model: o.model, instructions: o.system, input, ...(tools.length ? { tools } : {}), max_output_tokens: MAX_OUT })
     if (!r.ok) return { text: '', pending: null, tokensIn: tIn, tokensOut: tOut, error: friendlyAiError('openai', r.status, r.text) }
     const j = JSON.parse(r.text)
     tIn += Number(j?.usage?.input_tokens ?? 0); tOut += Number(j?.usage?.output_tokens ?? 0)
@@ -130,7 +130,7 @@ async function runGemini(o: RunOpts, history: TheoTurn[], isAction: Set<string>,
   for (let i = 0; i < steps; i++) {
     const r = await post(url, { 'x-goog-api-key': o.key }, {
       systemInstruction: { parts: [{ text: o.system }] }, contents,
-      tools: [{ functionDeclarations }], generationConfig: { maxOutputTokens: MAX_OUT },
+      ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}), generationConfig: { maxOutputTokens: MAX_OUT },
     })
     if (!r.ok) return { text: '', pending: null, tokensIn: tIn, tokensOut: tOut, error: friendlyAiError('gemini', r.status, r.text) }
     const j = JSON.parse(r.text)

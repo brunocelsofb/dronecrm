@@ -7,6 +7,7 @@ import { getCurrentProfile } from '@/lib/auth/role'
 import { requireTenantId } from '@/lib/tenant/context'
 import { isAccessProfile } from '@/lib/auth/access-profiles'
 import { passwordProblem } from '@/lib/auth/password'
+import { profileProblems, cleanPhoneBR } from '@/lib/people/profile-complete'
 
 // Só mexe em usuário da MESMA empresa e nunca no Super Admin (login da plataforma)
 async function canManage(targetUserId: string): Promise<boolean> {
@@ -45,12 +46,16 @@ export async function createUserByAdmin(
   const password = formData.get('password') as string
   const role = (formData.get('role') as string) === 'admin' ? 'admin' : 'member'
   const department = (formData.get('department') as string) || null
+  const phone = cleanPhoneBR(formData.get('phone'))
   const rawProfile = formData.get('access_profile') as string
   const access_profile = role === 'admin' ? null : isAccessProfile(rawProfile) ? rawProfile : 'gestor'
 
   if (!email || !fullName || !password) {
     return { error: 'Preencha nome, e-mail e senha.' }
   }
+  // Cadastro completo é obrigatório (os agentes usam nome, telefone, área e e-mail)
+  const missing = profileProblems({ full_name: fullName, phone, department, email })
+  if (missing.length) return { error: `Preencha: ${missing.join(', ')}.` }
   const problem = passwordProblem(password, { email })
   if (problem) return { error: problem }
 
@@ -114,6 +119,7 @@ export async function createUserByAdmin(
     email,
     role,
     department,
+    phone,
     access_profile,
     tenant_id: tenantId,
   })
@@ -197,4 +203,19 @@ export async function toggleUserActive(targetUserId: string, active: boolean) {
   await supabase.auth.admin.updateUserById(targetUserId, { ban_duration: active ? 'none' : '87600h' })
 
   revalidatePath('/users')
+}
+
+// Nome e telefone (cadastro completo): o admin completa os logins antigos na lista de usuários
+export async function updateUserContact(targetUserId: string, input: { full_name: string; phone: string }): Promise<ActionState> {
+  const currentProfile = await getCurrentProfile()
+  if (currentProfile?.role !== 'admin') return { error: 'Só administradores podem alterar usuários.' }
+  if (targetUserId !== currentProfile.id && !(await canManage(targetUserId))) return { error: 'Usuário de outra empresa.' }
+  const full_name = String(input.full_name ?? '').trim().replace(/\s+/g, ' ')
+  const phone = cleanPhoneBR(input.phone)
+  if (full_name.split(' ').length < 2) return { error: 'Informe nome e sobrenome.' }
+  if (phone && (phone.length < 10 || phone.length > 13)) return { error: 'Telefone com DDD (10 a 13 números).' }
+  const { error } = await createAdminClient().from('profiles').update({ full_name, phone: phone || null }).eq('id', targetUserId)
+  if (error) return { error: error.message }
+  revalidatePath('/users')
+  return {}
 }

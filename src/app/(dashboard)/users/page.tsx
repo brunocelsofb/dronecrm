@@ -7,6 +7,7 @@ import { UserAccessSelect } from '@/components/users/user-access-select'
 import Link from 'next/link'
 import { UserRoleSelect } from '@/components/users/user-role-select'
 import { UserDepartmentSelect } from '@/components/users/user-department-select'
+import { UserContactEdit } from '@/components/users/user-contact-edit'
 import { NewUserForm } from '@/components/users/new-user-form'
 import { DeleteUserButton, ToggleUserButton } from '@/components/users/delete-user-button'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
@@ -22,7 +23,7 @@ export default async function UsersPage() {
   const tenantId = await requireTenantId()
   const { data: profiles } = await admin
     .from('profiles')
-    .select('id, full_name, email, role, access_profile, department, created_at')
+    .select('id, full_name, email, role, access_profile, department, phone, created_at')
     .eq('tenant_id', tenantId)
     .not('is_super_admin', 'is', true)
     .order('created_at')
@@ -63,8 +64,7 @@ export default async function UsersPage() {
               return (
                 <tr key={p.id} className={`hover:bg-gray-50 ${isBanned ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{p.full_name}</p>
-                    <p className="text-xs text-gray-400">{p.email}</p>
+                    <UserContactEdit id={p.id} fullName={p.full_name ?? ''} phone={(p as { phone?: string | null }).phone ?? ''} email={p.email ?? ''} department={p.department} />
                   </td>
                   <td className="px-4 py-3">
                     {p.id === currentProfile.id ? (

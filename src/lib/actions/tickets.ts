@@ -154,6 +154,14 @@ export async function createTicket(formData: FormData): Promise<ActionState & { 
     await checkAndTriggerTicketLinkedAutomations(data.id)
   }
 
+  // Regras da Central: "chamado aberto" (depois da resposta, não atrasa o portal)
+  try {
+    const { fireRuleEvent } = await import('@/lib/agent/rules-engine')
+    const { after } = await import('next/server')
+    const tid = data.id
+    after(() => fireRuleEvent(tenantId, 'evt_ticket_new', { ticketId: tid, contractId: null, episode: 'aberto' }).then(() => undefined))
+  } catch (e) { console.error('[chamado] regras:', e) }
+
   revalidatePath('/tickets')
   if (contract_id) revalidatePath(`/contracts/${contract_id}`)
   return { ticketId: data.id, publicToken: data.public_token }

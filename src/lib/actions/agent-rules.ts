@@ -43,8 +43,14 @@ export async function saveAgentRule(id: string | null, raw: unknown): Promise<Re
   if ('error' in v) return { ok: false, error: v.error }
   const r = v.rule
   const db = dbFor(g)
-  if (!(await personOk(db, g.tenantId, [r.actions.task?.assignee ?? '', r.actions.notify?.assignee ?? '']))) return { ok: false, error: 'Pessoa não encontrada nesta empresa.' }
-  const fields = { agent: r.agent, name: r.name, criterion: r.criterion, threshold: r.threshold, conditions: r.conditions, actions: r.actions, days: r.days, enabled: r.enabled, updated_at: new Date().toISOString() }
+  const dests = [r.actions.task?.assignee ?? '', r.actions.notify?.assignee ?? '', ...(r.actions.email?.to ?? [])]
+  if (!(await personOk(db, g.tenantId, dests.filter(x => x && !x.startsWith('area:') && !x.includes('@'))))) return { ok: false, error: 'Pessoa não encontrada nesta empresa.' }
+  const areaIds = [...new Set(dests.filter(x => x.startsWith('area:')).map(x => x.slice(5)))]
+  if (areaIds.length) {
+    const { data } = await db.from('org_areas').select('id').in('id', areaIds)
+    if ((data ?? []).length !== areaIds.length) return { ok: false, error: 'Área não encontrada.' }
+  }
+  const fields = { agent: r.agent, name: r.name, criterion: r.criterion, threshold: r.threshold, executor: r.executor, conditions: r.conditions, actions: r.actions, days: r.days, enabled: r.enabled, updated_at: new Date().toISOString() }
   if (id) {
     const { error } = await db.from('agent_rules').update(fields).eq('id', id)
     if (error) return { ok: false, error: error.message }
@@ -94,7 +100,7 @@ export async function createSuggestedRules(): Promise<Result> {
 export type RulePreview = {
   ok: boolean; error?: string; found: number; fresh: number
   cases: { name: string; detail: string }[]
-  items: { kind: 'tarefa' | 'aviso' | 'whatsapp'; to: string; title: string; text: string }[]
+  items: { kind: 'tarefa' | 'aviso' | 'whatsapp' | 'email'; to: string; title: string; text: string }[]
 }
 export async function previewAgentRule(id: string | null, raw: unknown): Promise<RulePreview> {
   const empty: RulePreview = { ok: false, found: 0, fresh: 0, cases: [], items: [] }
@@ -106,8 +112,32 @@ export async function previewAgentRule(id: string | null, raw: unknown): Promise
   const { runRule, findMatches } = await import('@/lib/agent/rules-engine')
   const db = dbFor(g)
   const rule = { ...v.rule, id: id ?? '00000000-0000-0000-0000-000000000000', tenant_id: g.tenantId, last_run_at: null }
+  const { criterionDef } = await import('@/lib/agent/rules-catalog')
+  if (criterionDef(rule.criterion)?.kind === 'evento') {
+    // Evento: usa o caso mais recente desse tipo para mostrar o que sairia
+    const { sampleEventRef } = await import('@/lib/agent/rules-engine')
+    const ref = await sampleEventRef(db, rule.criterion as never, rule.conditions)
+    if (!ref) return { ...empty, ok: true, error: 'Ainda não há nenhum caso desse tipo para testar. A regra roda na hora em que acontecer.' }
+    const { loadActCtx, executeMatch } = await import('@/lib/agent/rules-actions')
+    const run = await runPreview(async () => {
+      const { eventMatchForPreview } = await import('@/lib/agent/rules-engine')
+      const m = await eventMatchForPreview(db, rule.criterion as never, ref)
+      if (!m) return { found: 0, fresh: 0, cases: [] as { name: string; detail: string }[] }
+      const ctx = await loadActCtx(g.tenantId, db)
+      await executeMatch(ctx, { ...rule }, m, new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10))
+      return { found: 1, fresh: 1, cases: [{ name: `${m.name} (exemplo: o caso mais recente)`, detail: m.detail }] }
+    })
+    return { ...(await shapePreview(db, run.items, run.error)), found: run.result?.found ?? 0, fresh: run.result?.fresh ?? 0, cases: run.result?.cases ?? [] }
+  }
   const matches = await findMatches(db, rule)
   const run = await runPreview(() => runRule(g.tenantId, rule))
+  const shaped = await shapePreview(db, run.items, run.error)
+  return { ...shaped, found: matches.length, fresh: run.result?.fresh ?? 0, cases: matches.slice(0, 30).map(m => ({ name: m.name, detail: m.detail })) }
+}
+
+// Itens da prévia → texto da tela (nomes das pessoas no lugar dos ids)
+async function shapePreview(db: ReturnType<typeof dbFor>, previewItems: import('@/lib/agent/agent-preview').PreviewItem[], error?: string): Promise<RulePreview> {
+  const run = { items: previewItems }
   const ids = [...new Set(run.items.flatMap(i => ('assignedTo' in i && i.assignedTo) ? [i.assignedTo] : (i.kind === 'aviso' && i.to) ? [i.to] : []))]
   const { data: people } = ids.length ? await db.from('profiles').select('id, full_name').in('id', ids) : { data: [] }
   const nameOf = new Map(((people ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? 'pessoa']))
@@ -115,10 +145,8 @@ export async function previewAgentRule(id: string | null, raw: unknown): Promise
     if (i.kind === 'atividade') return [{ kind: 'tarefa', to: i.assignedTo ? nameOf.get(i.assignedTo) ?? 'pessoa' : 'sem responsável', title: i.title, text: i.content }]
     if (i.kind === 'aviso') return [{ kind: 'aviso', to: i.to ? nameOf.get(i.to) ?? 'pessoa' : 'ninguém (sem responsável)', title: 'Aviso no sino do CRM', text: i.text }]
     if (i.kind === 'whatsapp') return [{ kind: 'whatsapp', to: i.to ?? 'gestor (número não configurado)', title: 'WhatsApp', text: i.text }]
+    if (i.kind === 'email') return [{ kind: 'email', to: i.to, title: i.subject, text: i.html.replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/\s+\n/g, '\n').trim() }]
     return []
   })
-  return {
-    ok: !run.error, error: run.error, found: matches.length, fresh: run.result?.fresh ?? 0,
-    cases: matches.slice(0, 30).map(m => ({ name: m.name, detail: m.detail })), items: items.slice(0, 40),
-  }
+  return { ok: !error, error, found: 0, fresh: 0, cases: [], items: items.slice(0, 40) }
 }

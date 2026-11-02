@@ -3,7 +3,7 @@
 //   agente de IA (Farmer/Hunter, com tarefa, aviso ou mensagem) ou ação simples do sistema (sem IA).
 // Tema novo ou item novo: acrescente aqui e na página /regras.
 
-export type ThemeKey = 'renovacao' | 'eventos' | 'funil' | 'leads' | 'carteira' | 'atendimento' | 'envios'
+export type ThemeKey = 'renovacao' | 'eventos' | 'funil' | 'leads' | 'carteira' | 'atendimento' | 'envios' | 'areas'
 
 export type Theme = {
   key: ThemeKey
@@ -20,22 +20,25 @@ export const THEMES: Theme[] = [
     tasks: ['renewal_alerts', 'ruler_overdue'], criteria: ['contract_expiring'] },
   { key: 'eventos', label: 'Ganho, perda e renovado', features: ['pipeline'],
     intro: 'O que acontece sozinho no momento em que alguém dá ganho, perda, marca Renovado ou inicia a implantação: tarefas e e-mails ao time interno, confirmação ao cliente, faturamento.',
-    tasks: [], criteria: [] },
+    tasks: [], criteria: ['evt_won', 'evt_lost', 'evt_renewed', 'evt_signed'] },
   { key: 'funil', label: 'Funil', features: ['pipeline'],
     intro: 'Prazos das etapas, automações por evento (entrou na etapa, ganhou, perdeu, tag) e oportunidades ou propostas paradas.',
-    tasks: [], criteria: ['opp_idle', 'opp_stage_stuck', 'proposal_waiting'] },
+    tasks: [], criteria: ['evt_stage', 'opp_idle', 'opp_stage_stuck', 'proposal_waiting'] },
   { key: 'leads', label: 'Leads', features: ['leads'],
     intro: 'Pontuação, distribuição dos leads novos e leads sem andamento.',
-    tasks: [], criteria: ['lead_stale'] },
+    tasks: [], criteria: ['evt_lead_new', 'lead_stale'] },
   { key: 'carteira', label: 'Carteira', features: ['carteira', 'companies', 'copiloto', 'surveys', 'contracts'],
     intro: 'Medições, implantações, clientes inativos, curva ABC e satisfação.',
     tasks: ['measurement_alerts', 'impl_report', 'inactive_hunter'], criteria: ['nps_low'] },
   { key: 'atendimento', label: 'Atendimento', features: ['tickets'],
     intro: 'Prazo dos chamados por prioridade e chamados atrasados.',
-    tasks: [], criteria: ['ticket_overdue'] },
+    tasks: [], criteria: ['evt_ticket_new', 'ticket_overdue'] },
   { key: 'envios', label: 'Envios da IA', features: ['copiloto'],
     intro: 'Resumo do dia e tarefas que você escreve para a IA rodar nos dias marcados.',
     tasks: ['briefing'], criteria: [] },
+  { key: 'areas', label: 'Áreas e IA', features: ['pipeline', 'leads', 'tickets', 'copiloto', 'contracts'],
+    intro: 'Áreas da empresa (destino das tarefas e e-mails), modo sem IA e quem envia as mensagens automáticas.',
+    tasks: [], criteria: [] },
 ]
 
 export const isThemeKey = (v: unknown): v is ThemeKey => THEMES.some(t => t.key === v)

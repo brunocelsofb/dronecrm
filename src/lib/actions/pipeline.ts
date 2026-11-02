@@ -40,6 +40,17 @@ export type MoveResult = { success?: true; error?: string }
 // na próxima vez que alguém entrar. Um cron de verdade (rodando
 // mesmo sem ninguém usando o sistema) é possível de configurar depois
 // na Vercel, se for necessário.
+// Regras da Central disparadas por evento: rodam depois da resposta (não atrasam a tela) e nunca travam
+async function fireRulesAfter(tenantId: string | null | undefined, ev: import('@/lib/agent/rules-engine').RuleEvent, ref: import('@/lib/agent/rules-engine').EventRef) {
+  try {
+    const { fireRuleEvent } = await import('@/lib/agent/rules-engine')
+    const { after } = await import('next/server')
+    after(() => fireRuleEvent(tenantId, ev, ref).then(() => undefined))
+  } catch (e) {
+    console.error('[regras] evento não disparado:', e)
+  }
+}
+
 export async function checkAndTriggerRenewals() {
   const supabase = (await createScopedAdmin())
 
@@ -306,6 +317,16 @@ export async function moveContractStage(
     } else if (rule.action_type === 'send_email' && rule.email_template_id) {
       await sendAutomatedTemplateEmail(contractId, rule.email_template_id)
     }
+  }
+
+  // Regras da Central: "entrou na etapa"
+  if (newStage.id !== run.stage_id) {
+    const { resolveTenantId } = await import('@/lib/tenant/context')
+    const { data: pt } = await supabase.from('pipelines').select('type').eq('id', newStage.pipeline_id).maybeSingle()
+    await fireRulesAfter(await resolveTenantId({ contractId }), 'evt_stage', {
+      contractId, pipelineId: newStage.pipeline_id, stageId: newStage.id, pipelineType: (pt?.type as string | null) ?? null,
+      value: run.value ?? null, episode: `evt_stage:${run.id}:${newStage.id}:${now.slice(0, 16)}`,
+    })
   }
 
   // Automação de e-mail configurada DIRETO no template (atalho rápido,
@@ -797,6 +818,15 @@ export async function closeRun(
     } catch (internalError) {
       console.error('[closeRun] erro nas rodadas internas:', internalError)
     }
+  }
+
+  // Regras da Central: ganho, perda (churn) ou renovado
+  {
+    const ev = outcome === 'lost' ? 'evt_lost' : pipelineForGateType === 'gestao_contratos' ? 'evt_renewed' : 'evt_won'
+    await fireRulesAfter(evTenant, ev, {
+      contractId, pipelineId: run.pipeline_id, pipelineType: pipelineForGateType, value: run.value ?? null,
+      lostReason: lostReason ?? null, episode: `${ev}:${run.id}`,
+    })
   }
 
   // Automação por desfecho — falhas aqui não devem bloquear o fechamento

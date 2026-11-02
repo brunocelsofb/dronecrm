@@ -4,20 +4,20 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  RULE_CRITERIA, CONDITION_LABEL, RULE_VARIABLES, LEAD_SOURCES, TICKET_PRIORITIES, criterionDef, ruleSentence,
-  type RuleActions, type RuleConditions, type RuleAgent,
+  RULE_CRITERIA, CONDITION_LABEL, RULE_VARIABLES, LEAD_SOURCES, TICKET_PRIORITIES, PIPELINE_TYPES, criterionDef, ruleSentence,
+  type RuleActions, type RuleConditions, type RuleAgent, type RuleExecutor,
 } from '@/lib/agent/rules-catalog'
 import { saveAgentRule, toggleAgentRule, deleteAgentRule, createSuggestedRules, previewAgentRule, type RulePreview } from '@/lib/actions/agent-rules'
 import { Switch, DayPicker } from '@/components/ia/agent-tasks-panel'
 import { fmtBRL } from '@/lib/format'
 
 export type RuleView = {
-  id: string; agent: RuleAgent; name: string; criterion: string; threshold: number
+  id: string; agent: RuleAgent; name: string; criterion: string; threshold: number; executor: RuleExecutor
   conditions: RuleConditions; actions: RuleActions; days: number[]; enabled: boolean
   lastRunAt: string | null; lastStatus: string | null
 }
 type Opt = { id: string; name: string }
-type Ctx = { features: string[]; only?: string[]; pipelines: Opt[]; stages: (Opt & { pipeline_id: string })[]; team: Opt[]; managerPhone: string }
+type Ctx = { features: string[]; only?: string[]; pipelines: Opt[]; stages: (Opt & { pipeline_id: string })[]; team: Opt[]; areas: Opt[]; managerPhone: string; aiPaused?: boolean }
 
 const AGENT_LABEL: Record<RuleAgent, string> = { hunter: 'Hunter — novos negócios', farmer: 'Farmer — carteira de clientes' }
 const input = 'mt-0.5 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900'
@@ -27,6 +27,7 @@ function names(ctx: Ctx, r: Pick<RuleView, 'conditions'>) {
     pipeline: ctx.pipelines.find(p => p.id === r.conditions.pipeline_id)?.name,
     stage: ctx.stages.find(s => s.id === r.conditions.stage_id)?.name,
     person: (id: string) => ctx.team.find(p => p.id === id)?.name ?? 'pessoa escolhida',
+    area: (id: string) => ctx.areas.find(a => a.id === id)?.name ?? 'escolhida',
     fmtBRL: (v: number) => fmtBRL(v),
   }
 }
@@ -37,7 +38,7 @@ function PreviewResult({ p }: { p: RulePreview }) {
       <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Prévia de hoje — nada foi criado nem enviado</p>
       {p.error && <p className="text-xs text-negative-600">{p.error}</p>}
       {!p.error && (
-        <p className="text-xs text-gray-700">A regra pega <b>{p.found}</b> caso(s) hoje; <b>{p.fresh}</b> ainda não tratado(s){p.found > p.fresh ? ' (os outros já foram tratados antes e não repetem)' : ''}.</p>
+        <p className="text-xs text-gray-700">A regra pega <b>{p.found}</b> caso(s){p.cases.some(c => c.name.includes('(exemplo')) ? ' (exemplo)' : ' hoje'}; <b>{p.fresh}</b> ainda não tratado(s){p.found > p.fresh ? ' (os outros já foram tratados antes e não repetem)' : ''}.</p>
       )}
       {p.cases.length > 0 && (
         <ul className="max-h-40 overflow-auto rounded border border-gray-100 bg-white px-2 py-1 text-xs text-gray-700">
@@ -57,7 +58,7 @@ function PreviewResult({ p }: { p: RulePreview }) {
 
 const EMPTY = (features: string[], only?: string[]): Omit<RuleView, 'id' | 'lastRunAt' | 'lastStatus'> => {
   const c = RULE_CRITERIA.find(x => features.includes(x.feature) && (!only || only.includes(x.key))) ?? RULE_CRITERIA[0]
-  return { agent: c.agent, name: '', criterion: c.key, threshold: c.def, conditions: {}, days: [1, 2, 3, 4, 5], enabled: true,
+  return { agent: c.agent, name: '', criterion: c.key, threshold: c.def, executor: 'manual', conditions: {}, days: [1, 2, 3, 4, 5], enabled: true,
     actions: { task: { enabled: true, title: 'Verificar — {{nome}}', text: '', due_days: 1, assignee: 'owner' } } }
 }
 
@@ -94,7 +95,8 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
   const assigneeSelect = (value: string, onChange: (v: string) => void) => (
     <select value={value} onChange={e => onChange(e.target.value)} className={input}>
       <option value="owner">{def?.ownerLabel ?? 'Responsável'}</option>
-      {ctx.team.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      {ctx.areas.length > 0 && <optgroup label="Áreas">{ctx.areas.map(a => <option key={a.id} value={`area:${a.id}`}>Área: {a.name}</option>)}</optgroup>}
+      <optgroup label="Pessoas">{ctx.team.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</optgroup>
     </select>
   )
 
@@ -108,13 +110,12 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
         <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Quando</p>
         <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
           <select value={r.criterion} onChange={e => pickCriterion(e.target.value)} className={input}>
-            {(['hunter', 'farmer'] as const).map(ag => (
-              <optgroup key={ag} label={AGENT_LABEL[ag]}>
-                {RULE_CRITERIA.filter(c => c.agent === ag && ctx.features.includes(c.feature) && (!ctx.only || ctx.only.includes(c.key))).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-              </optgroup>
-            ))}
+            {([['evento', 'Na hora em que acontece'], ['diario', 'Conferido todo dia']] as const).map(([k, label]) => {
+              const list = RULE_CRITERIA.filter(c => (c.kind ?? 'diario') === k && ctx.features.includes(c.feature) && (!ctx.only || ctx.only.includes(c.key)))
+              return list.length ? <optgroup key={k} label={label}>{list.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup> : null
+            })}
           </select>
-          {def && (
+          {def && def.kind !== 'evento' && (
             <label className="flex items-center gap-1.5 text-xs text-gray-600">
               <input type="number" min={def.min} max={def.max} value={r.threshold} onChange={e => setR({ ...r, threshold: Number(e.target.value) })}
                 className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm" /> {def.unit}
@@ -127,6 +128,14 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
           <>
             <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-brand-700">E (opcional)</p>
             <div className="mt-1 grid gap-2 sm:grid-cols-3">
+              {def.conditions.includes('pipeline_type') && (
+                <label className="text-[11px] text-gray-600">{CONDITION_LABEL.pipeline_type}
+                  <select value={r.conditions.pipeline_type ?? ''} onChange={e => setC({ pipeline_type: e.target.value || null })} className={input}>
+                    <option value="">Todos</option>
+                    {Object.entries(PIPELINE_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </label>
+              )}
               {def.conditions.includes('pipeline') && (
                 <label className="text-[11px] text-gray-600">{CONDITION_LABEL.pipeline}
                   <select value={r.conditions.pipeline_id ?? ''} onChange={e => setC({ pipeline_id: e.target.value || null, stage_id: null })} className={input}>
@@ -171,7 +180,18 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
       </div>
 
       <div className="rounded-md bg-white p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Faça</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">Quem faz</p>
+        <div className="mt-1 grid gap-2 sm:grid-cols-2">
+          {([['manual', '👤 Pessoa / sistema', 'O texto que você escrever vira a tarefa ou o e-mail, do jeito que está. Não usa IA.'],
+            ['agent', '🤖 Agente de IA', 'Você escreve as instruções; o agente escreve a tarefa ou o e-mail com os dados do caso. Sem IA disponível, vira tarefa com as suas instruções.']] as const).map(([k, label, hint]) => (
+            <label key={k} className={`cursor-pointer rounded-md border p-2 text-xs ${r.executor === k ? 'border-brand-700 bg-brand-100/50' : 'border-gray-200'}`}>
+              <span className="flex items-center gap-1.5 font-semibold text-gray-800"><input type="radio" checked={r.executor === k} onChange={() => setR({ ...r, executor: k })} className="accent-brand-700" />{label}</span>
+              <span className="mt-0.5 block text-gray-500">{hint}</span>
+            </label>
+          ))}
+        </div>
+        {r.executor === 'agent' && ctx.aiPaused && <p className="mt-1 rounded bg-warn-100 px-2 py-1 text-[11px] text-warn-700">Modo sem IA está ligado: esta regra vai gerar tarefas manuais até você desligar o modo (aba Áreas e IA).</p>}
+        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-brand-700">Faça</p>
         <div className="mt-1 space-y-3">
           <div>
             <label className="flex items-center gap-2 text-sm text-gray-800">
@@ -182,7 +202,7 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
               <div className="mt-1 grid gap-2 pl-6 sm:grid-cols-2">
                 <label className="text-[11px] text-gray-600">Título<input value={a.task.title} maxLength={120} onChange={e => setA('task', { title: e.target.value })} className={input} /></label>
                 <label className="text-[11px] text-gray-600">Para{assigneeSelect(a.task.assignee, v => setA('task', { assignee: v }))}</label>
-                <label className="text-[11px] text-gray-600 sm:col-span-2">Texto (opcional)<textarea rows={2} maxLength={1000} value={a.task.text} onChange={e => setA('task', { text: e.target.value })} className={input} /></label>
+                <label className="text-[11px] text-gray-600 sm:col-span-2">{r.executor === 'agent' ? 'Instruções para o agente' : 'Texto da tarefa (opcional)'}<textarea rows={3} maxLength={2000} value={a.task.text} onChange={e => setA('task', { text: e.target.value })} className={input} /></label>
                 <label className="text-[11px] text-gray-600">Prazo
                   <span className="flex items-center gap-1.5"><input type="number" min={0} max={60} value={a.task.due_days} onChange={e => setA('task', { due_days: Number(e.target.value) })} className="mt-0.5 w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm" /> dia(s) (0 = hoje)</span>
                 </label>
@@ -203,6 +223,23 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
           </div>
           <div>
             <label className="flex items-center gap-2 text-sm text-gray-800">
+              <input type="checkbox" checked={!!a.email?.enabled} onChange={e => setA('email', { enabled: e.target.checked, to: a.email?.to ?? [], subject: a.email?.subject ?? '{{nome}}', body: a.email?.body ?? '' })} className="accent-brand-700" />
+              Enviar e-mail ao time interno
+            </label>
+            {a.email?.enabled && (
+              <div className="mt-1 space-y-2 pl-6">
+                <EmailRecipients value={a.email.to} onChange={to => setA('email', { to })} ctx={ctx} ownerLabel={def?.ownerLabel ?? 'Responsável'} />
+                <label className="block text-[11px] text-gray-600">Assunto<input value={a.email.subject} maxLength={160} onChange={e => setA('email', { subject: e.target.value })} className={input} /></label>
+                <label className="block text-[11px] text-gray-600">{r.executor === 'agent' ? 'Instruções para o agente escrever o e-mail' : 'Texto do e-mail'}
+                  <textarea rows={4} maxLength={3000} value={a.email.body} onChange={e => setA('email', { body: e.target.value })} className={input}
+                    placeholder={r.executor === 'agent' ? 'Ex.: avise o faturamento que o contrato {{contrato}} de {{nome}} saiu, com o motivo e o que precisa ser encerrado.' : 'Ex.: Contrato {{contrato}} — {{nome}} encerrado. Motivo: {{motivo}}. Encerrar a cobrança a partir do próximo mês.'} />
+                </label>
+                <p className="text-[10px] text-gray-400">Sai sozinho pelo e-mail do responsável pelos envios (aba Áreas e IA). Sem ele, vira tarefa para alguém enviar. Nunca vai para o cliente.</p>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm text-gray-800">
               <input type="checkbox" checked={!!a.whatsapp?.enabled} onChange={e => setA('whatsapp', { enabled: e.target.checked, to: a.whatsapp?.to ?? null })} className="accent-brand-700" />
               Mandar a lista no WhatsApp (uma mensagem por rodada)
             </label>
@@ -218,7 +255,9 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <div><p className="text-[11px] text-gray-600">Dias em que roda (por volta das 7h30)</p><DayPicker days={r.days} onChange={d => setR({ ...r, days: d })} /></div>
+        {def?.kind === 'evento'
+          ? <p className="text-[11px] text-gray-600">Roda na hora em que acontece.</p>
+          : <div><p className="text-[11px] text-gray-600">Dias em que roda (por volta das 7h30)</p><DayPicker days={r.days} onChange={d => setR({ ...r, days: d })} /></div>}
         <label className="flex items-center gap-2 text-xs text-gray-700"><Switch on={r.enabled} label="Regra ligada" onChange={v => setR({ ...r, enabled: v })} /> Ligada</label>
       </div>
 
@@ -229,6 +268,31 @@ function RuleEditor({ initial, id, ctx, onDone }: { initial: Omit<RuleView, 'id'
         <button type="button" onClick={save} disabled={saving} className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-800 disabled:opacity-50">{saving ? 'Salvando…' : 'Salvar'}</button>
         <button type="button" onClick={test} disabled={testing} className="rounded-md border border-brand-700 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50">{testing ? 'Testando…' : 'Testar'}</button>
         <button type="button" onClick={onDone} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">Fechar</button>
+      </div>
+    </div>
+  )
+}
+
+function EmailRecipients({ value, onChange, ctx, ownerLabel }: { value: string[]; onChange: (v: string[]) => void; ctx: Ctx; ownerLabel: string }) {
+  const [extra, setExtra] = useState('')
+  const toggle = (k: string) => onChange(value.includes(k) ? value.filter(x => x !== k) : [...value, k])
+  const chip = (k: string, label: string) => (
+    <label key={k} className={`flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${value.includes(k) ? 'border-brand-700 bg-brand-100 text-brand-800' : 'border-gray-200 text-gray-600'}`}>
+      <input type="checkbox" className="hidden" checked={value.includes(k)} onChange={() => toggle(k)} />{label}
+    </label>
+  )
+  return (
+    <div>
+      <p className="text-[11px] text-gray-600">Para</p>
+      <div className="mt-0.5 flex flex-wrap gap-1">
+        {chip('owner', ownerLabel)}
+        {ctx.areas.map(a => chip(`area:${a.id}`, `Área: ${a.name}`))}
+        {ctx.team.map(p => chip(p.id, p.name))}
+        {value.filter(v => v.includes('@')).map(v => chip(v, v))}
+      </div>
+      <div className="mt-1 flex gap-1">
+        <input value={extra} onChange={e => setExtra(e.target.value)} placeholder="outro e-mail (ex.: faturamento@empresa.com)" className="w-64 rounded-md border border-gray-300 px-2 py-1 text-xs" />
+        <button type="button" onClick={() => { const v = extra.trim().toLowerCase(); if (v && !value.includes(v)) onChange([...value, v]); setExtra('') }} className="text-xs font-medium text-brand-700 hover:underline">adicionar</button>
       </div>
     </div>
   )
@@ -251,7 +315,7 @@ function RuleCard({ r, ctx, onEdit }: { r: RuleView; ctx: Ctx; onEdit: () => voi
       <div className="flex gap-3">
         <Switch on={on} label={`Ligar ${r.name}`} onChange={toggle} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-gray-900">{r.name}</p>
+          <p className="text-sm font-medium text-gray-900">{r.name} <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${r.executor === 'agent' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'}`}>{r.executor === 'agent' ? '🤖 AGENTE' : '👤 PESSOA'}</span></p>
           <p className="text-xs text-gray-600">{ruleSentence(r, names(ctx, r))}</p>
           <p className="mt-0.5 text-[11px] text-gray-400">
             {on ? 'Ligada' : 'Desligada'} · {r.days.length === 7 ? 'todos os dias' : r.days.length === 5 && !r.days.includes(0) && !r.days.includes(6) ? 'segunda a sexta' : `${r.days.length} dia(s) por semana`}

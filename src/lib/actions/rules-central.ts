@@ -91,3 +91,72 @@ export async function saveEventToggle(key: string, enabled: boolean): Promise<Re
     : await g.db.from('agent_tasks').insert({ task_key: tk, enabled, created_by: g.userId })
   return error ? { ok: false, error: error.message } : { ok: true }
 }
+
+// ─── Áreas da empresa (Time técnico, Faturamento, Financeiro…) ────────────────
+export type AreaInput = { id?: string | null; name: string; leadId: string | null; memberIds: string[]; emails: string[] }
+export async function saveArea(input: AreaInput): Promise<Result & { id?: string }> {
+  const g = await rulesAdminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const name = String(input.name ?? '').trim()
+  if (!name || name.length > 60) return { ok: false, error: 'Nome da área: de 1 a 60 caracteres.' }
+  const members = [...new Set((input.memberIds ?? []).filter(x => UUID.test(x)))]
+  const lead = input.leadId && UUID.test(input.leadId) ? input.leadId : null
+  if (lead && !members.includes(lead)) members.unshift(lead)
+  if (members.length) {
+    const { data } = await g.db.from('profiles').select('id').eq('tenant_id', g.tenantId).in('id', members)
+    if ((data ?? []).length !== members.length) return { ok: false, error: 'Alguma pessoa não é desta empresa.' }
+  }
+  const emails = [...new Set((input.emails ?? []).map(e => String(e).trim().toLowerCase()).filter(Boolean))]
+  if (emails.some(e => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))) return { ok: false, error: 'Há e-mail inválido na área.' }
+  if (emails.length > 20) return { ok: false, error: 'Até 20 e-mails de fora por área.' }
+  if (!members.length && !emails.length) return { ok: false, error: 'Coloque pelo menos uma pessoa ou um e-mail.' }
+  const fields = { name, lead_id: lead, member_ids: members, emails, updated_at: new Date().toISOString() }
+  if (input.id) {
+    const { error } = await g.db.from('org_areas').update(fields).eq('id', input.id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath('/regras')
+    return { ok: true, id: input.id }
+  }
+  const { data, error } = await g.db.from('org_areas').insert(fields).select('id').single()
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/regras')
+  return { ok: true, id: data.id as string }
+}
+
+export async function deleteArea(id: string): Promise<Result> {
+  const g = await rulesAdminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { data: used } = await g.db.from('agent_rules').select('name, actions')
+  const inUse = ((used ?? []) as { name: string; actions: unknown }[]).filter(r => JSON.stringify(r.actions ?? {}).includes(`area:${id}`)).map(r => r.name)
+  if (inUse.length) return { ok: false, error: `A área está em uso nas regras: ${inUse.slice(0, 3).join(', ')}. Troque o destino delas antes.` }
+  const { error } = await g.db.from('org_areas').delete().eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/regras')
+  return { ok: true }
+}
+
+// Modo sem IA: ações do agente viram tarefas manuais com as mesmas instruções
+export async function setAiPaused(paused: boolean): Promise<Result> {
+  const g = await rulesAdminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { error } = await g.db.from('organization_settings').update({ ai_paused: !!paused }).eq('tenant_id', g.tenantId)
+  return error ? { ok: false, error: error.message } : { ok: true }
+}
+
+// Quem envia as mensagens automáticas internas: cadastro completo e e-mail conectado
+export async function setAutoSender(userId: string | null): Promise<Result> {
+  const g = await rulesAdminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (userId) {
+    if (!UUID.test(userId)) return { ok: false, error: 'Pessoa inválida.' }
+    const { data: p } = await g.db.from('profiles').select('id, full_name, phone, department, email').eq('id', userId).eq('tenant_id', g.tenantId).maybeSingle()
+    if (!p) return { ok: false, error: 'Pessoa não encontrada nesta empresa.' }
+    const { profileProblems } = await import('@/lib/people/profile-complete')
+    const missing = profileProblems(p)
+    if (missing.length) return { ok: false, error: `Cadastro incompleto dessa pessoa: falta ${missing.join(', ')} (Configurações → Usuários).` }
+    const { getEmailAccountInfo } = await import('@/lib/email/send')
+    if (!(await getEmailAccountInfo(userId))) return { ok: false, error: 'Essa pessoa ainda não conectou o e-mail em Minha Conta.' }
+  }
+  const { error } = await g.db.from('organization_settings').update({ auto_sender_id: userId }).eq('tenant_id', g.tenantId)
+  return error ? { ok: false, error: error.message } : { ok: true }
+}

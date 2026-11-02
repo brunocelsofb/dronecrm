@@ -22,6 +22,11 @@ export async function onContractSigned(opts: {
     .select('id, client_name, process_number, owner_id, current_assignee_id')
     .eq('id', opts.contractId).eq('tenant_id', opts.tenantId).maybeSingle()
   if (!c) return { task: 'contrato não encontrado', whatsapp: 'não enviado' }
+  // Regras da Central: "contrato assinado" (não trava o retorno da assinatura)
+  try {
+    const { fireRuleEvent } = await import('@/lib/agent/rules-engine')
+    await fireRuleEvent(opts.tenantId, 'evt_signed', { contractId: c.id, episode: `evt_signed:${opts.dedupeKey}` })
+  } catch (e) { console.error('[assinado] regras:', e) }
   const ownerId = c.owner_id ?? c.current_assignee_id ?? null
   const { data: owner } = ownerId ? await admin.from('profiles').select('full_name').eq('id', ownerId).maybeSingle() : { data: null }
   const cliente = c.client_name ?? 'cliente'

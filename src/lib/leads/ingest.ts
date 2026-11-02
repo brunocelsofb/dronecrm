@@ -23,6 +23,7 @@ export type IngestInput = {
   campaignId?: string | null       // escolhida (formulário interno) ou padrão da integração
   integrationId?: string | null
   conversion?: string | null       // nome da conversão/formulário na origem
+  skipRules?: boolean              // importação em lote: não dispara as regras "lead novo"
   dedupe?: boolean
   // Inbound (veio até a empresa: formulário, anúncio, integração) fica com o
   // marketing até ser passado ao comercial; outbound (prospecção) já nasce no comercial.
@@ -125,6 +126,18 @@ export async function ingestLead(input: IngestInput): Promise<IngestResult> {
   if (team?.length) {
     await db.from('notifications').insert(team.map(p => ({ user_id: p.id, message: `Novo lead: ${name}${company_name ? ` (${company_name})` : ''}.` })))
   }
+
+  // Regras da Central: "lead novo"
+  if (!input.skipRules) try {
+    const { fireRuleEvent } = await import('@/lib/agent/rules-engine')
+    const id = data.id as string
+    try {
+      const { after } = await import('next/server')
+      after(() => fireRuleEvent(tenantId, 'evt_lead_new', { leadId: id, episode: 'novo' }).then(() => undefined))
+    } catch {
+      await fireRuleEvent(tenantId, 'evt_lead_new', { leadId: id, episode: 'novo' }) // fora de uma requisição
+    }
+  } catch (e) { console.error('[lead] regras:', e) }
 
   return { leadId: data.id }
 }

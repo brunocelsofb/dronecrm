@@ -20,6 +20,8 @@ import {
   type FunnelRenewalView, type StageSlaView, type EventView, type TimelineItem,
 } from '@/components/rules/simple-rules'
 import { EVENT_ACTIONS, EVENT_WHEN_LABEL, eventTaskKey } from '@/lib/rules/events'
+import { AreasManager, AiSettings, type AreaView, type PersonView } from '@/components/rules/areas-ai'
+import { profileProblems } from '@/lib/people/profile-complete'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,20 +67,32 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
     db.from('stages').select('id, name, pipeline_id, sla_days, order_index').order('order_index'),
     db.from('organization_settings').select('copilot_settings, ticket_sla_days, company_settings').maybeSingle(),
   ])
-  const [{ data: expAutos }, { data: evtRows }] = await Promise.all([
+  const [{ data: expAutos }, { data: evtRows }, { data: areaRows }, { data: peopleRows }, { data: orgAi }, { data: mailAccounts }] = await Promise.all([
     db.from('automation_rules').select('id, name, days_threshold, is_active').eq('trigger_type', 'days_before_expiration').eq('is_active', true),
     db.from('agent_tasks').select('task_key, enabled').like('task_key', 'evt:%'),
+    db.from('org_areas').select('id, name, lead_id, member_ids, emails').order('name'),
+    db.from('profiles').select('id, full_name, phone, department, email').order('full_name'),
+    db.from('organization_settings').select('ai_paused, auto_sender_id').maybeSingle(),
+    db.from('email_accounts').select('user_id'),
   ])
+  const areas: AreaView[] = ((areaRows ?? []) as { id: string; name: string; lead_id: string | null; member_ids: string[]; emails: string[] }[])
+    .map(a => ({ id: a.id, name: a.name, leadId: a.lead_id, memberIds: a.member_ids ?? [], emails: a.emails ?? [] }))
+  const withMail = new Set(((mailAccounts ?? []) as { user_id: string }[]).map(m => m.user_id))
+  const people: PersonView[] = ((peopleRows ?? []) as { id: string; full_name: string | null; phone: string | null; department: string | null; email: string | null }[])
+    .map(p => ({ id: p.id, name: p.full_name || p.email || 'sem nome', missing: profileProblems(p), hasEmail: withMail.has(p.id) }))
+  const ai = (orgAi ?? {}) as { ai_paused?: boolean; auto_sender_id?: string | null }
   const pipes = (pipelines ?? []) as { id: string; name: string; type: string | null; renewal_trigger_days: number | null; renewal_target_stage_id: string | null; won_target_pipeline_id: string | null }[]
   const stg = (stages ?? []) as { id: string; name: string; pipeline_id: string; sla_days: number | null }[]
   const cs = (org as { copilot_settings?: unknown } | null)?.copilot_settings ?? {}
   const views: RuleView[] = ((rules ?? []) as Record<string, unknown>[]).map(r => ({
     id: String(r.id), agent: r.agent as RuleView['agent'], name: String(r.name), criterion: String(r.criterion), threshold: Number(r.threshold),
+    executor: r.executor === 'agent' ? 'agent' : 'manual',
     conditions: (r.conditions ?? {}) as RuleView['conditions'], actions: (r.actions ?? {}) as RuleView['actions'],
     days: normDays(r.days), enabled: r.enabled !== false, lastRunAt: (r.last_run_at as string | null) ?? null, lastStatus: (r.last_status as string | null) ?? null,
   }))
   const rulesCtx = {
-    features: tf.features, team: tasks.team, managerPhone: tasks.managerPhone,
+    features: tf.features, team: tasks.team, managerPhone: tasks.managerPhone, aiPaused: !!ai.ai_paused,
+    areas: areas.map(a => ({ id: a.id, name: a.name })),
     pipelines: pipes.map(p => ({ id: p.id, name: p.name })),
     stages: stg.map(s => ({ id: s.id, name: s.name, pipeline_id: s.pipeline_id })),
   }
@@ -170,7 +184,10 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         }))
         return (
           <>
-            <Block title="O que acontece sozinho em cada momento" intro="Desligou, o sistema deixa de fazer aquela ação nos próximos fechamentos (o que já foi criado continua).">
+            <Block title="Suas regras nesses momentos" intro="Crie o que quiser: ex. ganho de avulso → tarefa para o Time técnico executar; perda no funil de contratos (churn) → e-mail ao Faturamento. Escolha se faz uma pessoa ou o agente de IA.">
+              {agentRules}
+            </Block>
+            <Block title="O que o sistema já faz sozinho" intro="Ações prontas do CRM. Desligou, o sistema deixa de fazer nos próximos fechamentos (o que já foi criado continua).">
               <EventToggles events={events} />
             </Block>
             <Block title="Outras regras nesses momentos">
@@ -246,6 +263,17 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         <Block title="Envios da IA" intro="Resumo do dia e tarefas escritas por você. Custo de IA da própria empresa.">
           {taskPanel(theme.tasks, true)}
         </Block>
+      )}
+
+      {theme.key === 'areas' && (
+        <>
+          <Block title="Áreas da empresa" intro="Grupos de pessoas (e e-mails de fora) que recebem tarefas e e-mails das regras: Time técnico, Faturamento, Financeiro, RH…">
+            <AreasManager areas={areas} people={people} />
+          </Block>
+          <Block title="IA e envios automáticos">
+            <AiSettings aiPaused={!!ai.ai_paused} senderId={ai.auto_sender_id ?? null} people={people} />
+          </Block>
+        </>
       )}
 
       <p className="text-xs text-gray-400">Temas: {THEMES.filter(t => themes.includes(t)).map(t => t.label).join(' · ')}. Nada aqui manda mensagem ao cliente sem revisão de uma pessoa.</p>

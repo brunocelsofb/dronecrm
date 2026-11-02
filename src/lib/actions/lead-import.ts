@@ -60,7 +60,7 @@ export async function importLeadsChunk(rows: ImportRow[]): Promise<{ ok: true; c
     const res = await ingestLead({
       tenantId, name, email, phone, company_name: s(r.company_name), cnpj: s(r.cnpj, 30), message: s(r.message, 2000),
       source: 'prospeccao', tracking: {}, conversion: 'Importação de planilha', dedupe: true,
-      entryType: 'outbound', handedOffBy: me.userId, assignedTo: me.userId,
+      entryType: 'outbound', handedOffBy: me.userId, assignedTo: me.userId, skipRules: true,
     })
     if (res.error) { if (errors.length < 5) errors.push(`${name}: ${res.error}`) }
     else if (res.duplicate) duplicates++
