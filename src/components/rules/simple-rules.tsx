@@ -46,16 +46,15 @@ function FunnelRenewalRow({ p }: { p: FunnelRenewalView }) {
           <p className="text-sm font-medium text-gray-900">Funil {p.name} <SimpleBadge /></p>
           <div className={`mt-1 flex flex-wrap items-center gap-1.5 text-sm text-gray-700 ${v.enabled ? '' : 'opacity-50'}`}>
             <span>QUANDO faltar</span>
-            <input type="number" min={1} max={365} value={v.days} disabled={!v.enabled} onChange={e => { setV({ ...v, days: e.target.value }); setMsg(null) }}
-              className="w-16 rounded-md border border-gray-300 px-1.5 py-1 text-sm" />
-            <span>dias ou menos para o vencimento → a oportunidade volta para a etapa</span>
+            <b className="text-brand-700">{v.days}</b>
+            <span>dias (junto com o &quot;preparar a renovação&quot;) → o cartão vai para a etapa</span>
             <select value={v.stageId} disabled={!v.enabled} onChange={e => { setV({ ...v, stageId: e.target.value }); setMsg(null) }}
               className="rounded-md border border-gray-300 px-1.5 py-1 text-sm">
               <option value="">escolha…</option>
               {p.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
-          <p className="mt-0.5 text-[11px] text-gray-400">Confere todo dia de madrugada. Vencidos também voltam. Fica registrado no histórico da oportunidade.</p>
+          <p className="mt-0.5 text-[11px] text-gray-400">Os dias seguem o &quot;preparar a renovação&quot; (mude na linha do tempo acima). Confere todo dia de madrugada; vencidos também entram. Mover o cartão fora desse processo pede MUDAR + motivo, que fica registrado.</p>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
             {dirty && <button type="button" onClick={() => save()} disabled={pending} className="rounded-md bg-brand-700 px-2.5 py-1 font-semibold text-white hover:bg-brand-800 disabled:opacity-50">{pending ? 'Salvando…' : 'Salvar'}</button>}
             {v.enabled && <button type="button" onClick={test} disabled={pending || !v.stageId} className="font-medium text-brand-700 hover:underline disabled:opacity-50">Testar</button>}
@@ -96,7 +95,7 @@ function StageSlaInput({ stage }: { stage: { id: string; name: string; sla: numb
     <label className="flex items-center justify-between gap-2 py-1 text-sm text-gray-700">
       <span className="min-w-0 truncate">{stage.name}</span>
       <span className="flex shrink-0 items-center gap-1.5">
-        <input type="number" min={1} max={365} value={v} placeholder="sem" disabled={pending} onChange={e => { setV(e.target.value); setMsg(null) }}
+        <input type="number" min={0} max={365} value={v} placeholder="7" title="Vazio = 7 dias (só a cor do cartão); 0 = etapa sem prazo" disabled={pending} onChange={e => { setV(e.target.value); setMsg(null) }}
           onBlur={save} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
           className="w-16 rounded-md border border-gray-300 px-1.5 py-1 text-sm" />
         <span className="text-xs text-gray-400">dias</span>

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { registerContractFile } from '@/lib/actions/files'
 import { attachAvulsoReport } from '@/lib/actions/avulso'
 import { useRouter } from 'next/navigation'
+import { ProcessOverrideModal } from '@/components/pipeline/process-override-modal'
 import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type Stage = {
@@ -110,12 +111,23 @@ export function StageBar({
 
   function timingFor(stageId: string) { return timings.find((t) => t.stageId === stageId) }
 
+  const [override, setOverride] = useState<{ stageId: string; message: string; error: string | null } | null>(null)
+  const [overrideBusy, setOverrideBusy] = useState(false)
   function handleMove(stageId: string) {
     setError(null)
     startTransition(async () => {
       const result = await moveContractStage(contractId, stageId)
-      if (result.error) setError(result.error)
+      if (result.outOfProcess) setOverride({ stageId, message: result.outOfProcess, error: null })
+      else if (result.error) setError(result.error)
     })
+  }
+  async function confirmOverride(o: { word: string; reason: string }) {
+    if (!override) return
+    setOverrideBusy(true)
+    const r = await moveContractStage(contractId, override.stageId, 0, o)
+    setOverrideBusy(false)
+    if (r.error || r.outOfProcess) { setOverride({ ...override, error: r.error ?? 'Não foi possível mudar.' }); return }
+    setOverride(null)
   }
 
   function handleReopen() {
@@ -204,6 +216,10 @@ export function StageBar({
 
   return (
     <div className="space-y-3">
+      {override && (
+        <ProcessOverrideModal message={override.message} busy={overrideBusy} error={override.error}
+          onConfirm={confirmOverride} onCancel={() => setOverride(null)} />
+      )}
       {!canChangeStage && (
         <p className="rounded-md bg-yellow-50 px-3 py-1.5 text-xs text-yellow-800">
           Só o dono da conta (ou um admin) pode mudar a etapa.

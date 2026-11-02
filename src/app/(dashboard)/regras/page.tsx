@@ -131,13 +131,11 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         const funnel: FunnelRenewalView[] = pipes.filter(p => p.type === 'gestao_contratos' || p.renewal_trigger_days != null)
           .map(p => ({ id: p.id, name: p.name, days: p.renewal_trigger_days, stageId: p.renewal_target_stage_id, stages: stg.filter(s => s.pipeline_id === p.id).map(s => ({ id: s.id, name: s.name })) }))
         const alerts = tasks.builtins.find(b => b.key === 'renewal_alerts')
+        const movesCard = funnel.filter(f => f.days != null && f.stageId).map(f => `"${f.stages.find(x => x.id === f.stageId)?.name ?? 'Renovação'}" (funil ${f.name})`)
         const off = alerts && !alerts.state.enabled ? ' (desligado)' : ''
         const items: TimelineItem[] = [
-          ...funnel.filter(f => f.days != null && f.stageId).map(f => ({ id: `f:${f.id}`, days: f.days!, agent: null,
-            label: `volta para a etapa "${f.stages.find(x => x.id === f.stageId)?.name ?? 'Renovação'}" (funil ${f.name})`,
-            edit: { type: 'funnel' as const, pipelineId: f.id, stageId: f.stageId! } })),
           ...(alerts ? [
-            { id: 'l:prep', days: L.prep, agent: 'Farmer', label: `tarefa "preparar a renovação" para o responsável${off}`, edit: { type: 'level' as const, key: 'prep' as const } },
+            { id: 'l:prep', days: L.prep, agent: 'Farmer', label: `tarefa "preparar a renovação" para o responsável${off}${movesCard.length ? ` + cartão vai para ${movesCard.join(', ')}` : ''}`, edit: { type: 'level' as const, key: 'prep' as const } },
             { id: 'l:a1', days: L.a1, agent: 'Farmer', label: `1º aviso ao cliente, para revisar e enviar${off}`, edit: { type: 'level' as const, key: 'a1' as const } },
             { id: 'l:a2', days: L.a2, agent: 'Farmer', label: `2º aviso ao cliente${off}`, edit: { type: 'level' as const, key: 'a2' as const } },
             { id: 'l:a3', days: L.a3, agent: 'Farmer', label: `aviso urgente${off}`, edit: { type: 'level' as const, key: 'a3' as const } },
@@ -208,7 +206,7 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
         const sla: StageSlaView[] = pipes.map(p => ({ id: p.id, name: p.name, stages: stg.filter(s => s.pipeline_id === p.id).map(s => ({ id: s.id, name: s.name, sla: s.sla_days })) })).filter(p => p.stages.length)
         return (
           <>
-            <Block title={<>Prazo de cada etapa <SimpleBadge /></>} intro="Passou do prazo na etapa, o cartão fica marcado como atrasado no funil. Vazio = sem prazo. Salva ao sair do campo.">
+            <Block title={<>Prazo de cada etapa <SimpleBadge /></>} intro={<>Quantos dias, no máximo, a oportunidade deve ficar nesta etapa. Serve para: <b>1)</b> marcar o cartão como <b>atrasado</b> no funil quando passa do prazo; <b>2)</b> dar a cor do cartão (verde → amarelo na metade → vermelho no fim), contando desde a última interação; <b>3)</b> referência para a regra do agente &quot;parada na mesma etapa&quot;. Preencha nas etapas com prazo que vocês controlam (proposta, aprovação, mobilização, implantação). Coloque <b>0</b> nas etapas que duram a vigência do contrato (ex.: Gestão de Contratos), para não ficarem vermelhas à toa. Vazio = 7 dias só para a cor. Salva ao sair do campo.</>}>
               <StageSlaEditor pipelines={sla} />
             </Block>
             <Block title="Regras dos agentes no funil">{agentRules}</Block>

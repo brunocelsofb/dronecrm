@@ -113,3 +113,20 @@ test('cadastro completo: nome e sobrenome, telefone, área e e-mail', () => {
   assert.deepEqual(profileProblems({ full_name: 'Ana Souza', phone: '(62) 99999-0000', department: 'tecnico', email: 'ana@x.com' }), [])
   assert.deepEqual(profileProblems({ full_name: 'Ana', phone: '123', department: '', email: 'x' }), ['nome e sobrenome', 'telefone com DDD', 'área de trabalho', 'e-mail'])
 })
+
+import { renewalMoveCheck, overrideProblem } from '../src/lib/rules/renewal-process.ts'
+
+test('processo de renovação: entrar antes do prazo ou sair dentro dele pede MUDAR + motivo', () => {
+  const base = { renewalStageId: 'R', prepDays: 90 }
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: 120 }).ok, false)
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: 90 }).ok, true)
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'R', toStageId: 'G', daysLeft: 45 }).ok, false)
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'R', toStageId: 'G', daysLeft: 120 }).ok, true)
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'A', toStageId: 'B', daysLeft: 10 }).ok, true)
+  assert.equal(renewalMoveCheck({ renewalStageId: null, prepDays: 90, fromStageId: 'G', toStageId: 'R', daysLeft: 200 }).ok, true)
+  assert.equal(renewalMoveCheck({ ...base, fromStageId: 'G', toStageId: 'R', daysLeft: null }).ok, true)
+  assert.ok(overrideProblem(null))
+  assert.ok(overrideProblem({ word: 'mudar', reason: 'curto' }))
+  assert.ok(overrideProblem({ word: 'trocar', reason: 'cliente pediu para antecipar' }))
+  assert.equal(overrideProblem({ word: ' mudar ', reason: 'cliente pediu para antecipar' }), null)
+})

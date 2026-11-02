@@ -11,6 +11,10 @@ import { isCurrentUserAdmin } from '@/lib/auth/role'
 export default async function PipelinesPage() {
   const supabase = await createClient()
   const isAdmin = await isCurrentUserAdmin()
+  // O cartão vai para a renovação junto com o "preparar a renovação" do agente (Central de regras)
+  const { data: orgRow } = await supabase.from('organization_settings').select('copilot_settings').maybeSingle()
+  const { resolveRenewalLevels } = await import('@/lib/agent/renewal-templates')
+  const prepDays = resolveRenewalLevels((orgRow as { copilot_settings?: { renewal_levels?: unknown } } | null)?.copilot_settings?.renewal_levels).prep
 
   const { data: pipelines } = await supabase
     .from('pipelines')
@@ -67,6 +71,7 @@ export default async function PipelinesPage() {
                     renewalTriggerDays={pipeline.renewal_trigger_days}
                     renewalTargetStageId={pipeline.renewal_target_stage_id}
                     stagesInThisPipeline={stages.map((s) => ({ id: s.id, name: s.name }))}
+                    prepDays={prepDays}
                     action={updatePipelineInfo.bind(null, pipeline.id)}
                   />
                 </div>
@@ -106,6 +111,8 @@ export default async function PipelinesPage() {
                           type="number"
                           name="sla_days"
                           defaultValue={stage.sla_days ?? ''}
+                          min={0}
+                          title="Prazo máximo na etapa (dias): marca o cartão como atrasado e dá a cor. 0 = sem prazo (etapas que duram a vigência). Vazio = 7 dias só para a cor."
                           placeholder="dias"
                           className="w-16 rounded-md border border-gray-300 px-1.5 py-1 text-xs focus:border-brand-700 focus:outline-none"
                         />

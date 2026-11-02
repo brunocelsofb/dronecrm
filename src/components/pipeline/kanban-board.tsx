@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { ProcessOverrideModal } from '@/components/pipeline/process-override-modal'
 import {
   DndContext,
   type DragEndEvent,
@@ -332,6 +333,17 @@ export function KanbanBoard({
 
   const [, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [override, setOverride] = useState<{ card: RunCard; stageId: string; message: string; error: string | null } | null>(null)
+  const [overrideBusy, setOverrideBusy] = useState(false)
+  async function confirmOverride(o: { word: string; reason: string }) {
+    if (!override) return
+    setOverrideBusy(true)
+    const r = await moveContractStage(override.card.contractId, override.stageId, 0, o)
+    setOverrideBusy(false)
+    if (r.error || r.outOfProcess) { setOverride({ ...override, error: r.error ?? 'Não foi possível mudar.' }); return }
+    setCards(prev => prev.map(c => (c.runId === override.card.runId ? { ...c, stageId: override.stageId, stageEnteredAt: new Date().toISOString() } : c)))
+    setOverride(null)
+  }
   const [showClosed, setShowClosed] = useState(false)
 
   const closedCount = cards.filter((c) => c.status !== 'open').length
@@ -385,12 +397,13 @@ export function KanbanBoard({
 
     startTransition(async () => {
       const result = await moveContractStage(card.contractId, newStageId)
-      if (result.error) {
-        setError(result.error)
-        // Reverte a posição do card se a Server Action falhar
+      if (result.error || result.outOfProcess) {
+        if (result.error) setError(result.error)
+        // Reverte a posição do card se a Server Action falhar (ou pedir confirmação)
         setCards((prev) =>
           prev.map((c) => (c.runId === card.runId ? { ...c, stageId: previousStageId } : c))
         )
+        if (result.outOfProcess) setOverride({ card, stageId: newStageId, message: result.outOfProcess, error: null })
       }
     })
   }
@@ -416,6 +429,10 @@ export function KanbanBoard({
 
   return (
     <>
+    {override && (
+      <ProcessOverrideModal message={override.message} busy={overrideBusy} error={override.error}
+        onConfirm={confirmOverride} onCancel={() => setOverride(null)} />
+    )}
     {/* Modal de transferência entre funis */}
     {transferCard && otherPipelines && otherPipelines.length > 0 && (
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>

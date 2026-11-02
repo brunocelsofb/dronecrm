@@ -20,8 +20,10 @@ export async function saveFunnelRenewal(pipelineId: string, input: { enabled: bo
   let fields: { renewal_trigger_days: number | null; renewal_target_stage_id: string | null }
   if (!input.enabled) fields = { renewal_trigger_days: null, renewal_target_stage_id: null }
   else {
-    const days = Number(input.days)
-    if (!Number.isInteger(days) || days < 1 || days > 365) return { ok: false, error: 'Dias: de 1 a 365.' }
+    // Os dias seguem o "preparar a renovação" do agente (marcos da Central → Renovação)
+    const { data: org } = await g.db.from('organization_settings').select('copilot_settings').maybeSingle()
+    const { resolveRenewalLevels } = await import('@/lib/agent/renewal-templates')
+    const days = resolveRenewalLevels((org as { copilot_settings?: { renewal_levels?: unknown } } | null)?.copilot_settings?.renewal_levels).prep
     if (!input.stageId || !UUID.test(input.stageId)) return { ok: false, error: 'Escolha a etapa de renovação.' }
     const { data: st } = await g.db.from('stages').select('id').eq('id', input.stageId).eq('pipeline_id', pipelineId).maybeSingle()
     if (!st) return { ok: false, error: 'A etapa precisa ser deste funil.' }
@@ -37,7 +39,7 @@ export async function saveStageSla(stageId: string, days: number | null): Promis
   const g = await rulesAdminGuard()
   if ('error' in g) return { ok: false, error: g.error }
   if (!UUID.test(stageId)) return { ok: false, error: 'Etapa inválida.' }
-  if (days !== null && (!Number.isInteger(days) || days < 1 || days > 365)) return { ok: false, error: 'Prazo: de 1 a 365 dias (vazio = sem prazo).' }
+  if (days !== null && (!Number.isInteger(days) || days < 0 || days > 365)) return { ok: false, error: 'Prazo: de 0 a 365 dias (0 = sem prazo; vazio = padrão de 7 dias só para a cor do cartão).' }
   const { error } = await g.db.from('stages').update({ sla_days: days }).eq('id', stageId)
   if (error) return { ok: false, error: error.message }
   revalidatePath('/pipeline')

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useActionState } from 'react'
+import Link from 'next/link'
 import { SaveButton } from '@/components/ui/save-button'
 
 const initialState: { error?: string } = {}
@@ -19,6 +20,7 @@ export function EditPipelineInfoForm({
   renewalTriggerDays,
   renewalTargetStageId,
   stagesInThisPipeline,
+  prepDays,
   action,
 }: {
   pipelineId: string
@@ -34,6 +36,7 @@ export function EditPipelineInfoForm({
   renewalTriggerDays: number | null
   renewalTargetStageId: string | null
   stagesInThisPipeline: { id: string; name: string }[]
+  prepDays?: number   // "preparar a renovação" do agente (Central de regras): o cartão vai junto
   action: (prevState: { error?: string }, formData: FormData) => Promise<{ error?: string }>
 }) {
   const [state, formAction] = useActionState(action, initialState)
@@ -118,7 +121,10 @@ export function EditPipelineInfoForm({
         <>
           <div>
             <label className="block text-[10px] text-gray-500">Iniciar renovação (dias antes do vencimento)</label>
-            <input name="renewal_trigger_days" type="number" defaultValue={renewalTriggerDays ?? ''} placeholder="Ex: 60" className={`w-24 ${inputCls}`} />
+            {/* Segue o "preparar a renovação" do agente: edita na Central de regras → Renovação */}
+            <input type="hidden" name="renewal_trigger_days" value={prepDays ?? renewalTriggerDays ?? ''} />
+            <Link href="/regras?tema=renovacao" title="Junto com o “preparar a renovação”. Para mudar, use a Central de regras → Renovação."
+              className={`inline-block w-36 ${inputCls} bg-gray-50 text-gray-600 hover:text-brand-700`}>{prepDays ?? renewalTriggerDays ?? '—'} dias · editar →</Link>
           </div>
           <div>
             <label className="block text-[10px] text-gray-500">Mover automaticamente pra etapa</label>

@@ -26,7 +26,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendAutomatedTemplateEmail } from '@/lib/actions/email'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
-export type MoveResult = { success?: true; error?: string }
+// outOfProcess: a mudança sai do processo (ex.: renovação) — a tela pede MUDAR + motivo e tenta de novo
+export type MoveResult = { success?: true; error?: string; outOfProcess?: string }
 
 // Verifica todos os funis com automação de renovação configurada e move
 // automaticamente os contratos que entraram no prazo (ex: 60 dias antes
@@ -62,6 +63,11 @@ export async function checkAndTriggerRenewals() {
 
   if (!pipelinesWithRenewal || pipelinesWithRenewal.length === 0) return
 
+  // O cartão vai para a renovação junto com o "preparar a renovação" do agente (Central de regras)
+  const { data: orgRow } = await supabase.from('organization_settings').select('copilot_settings').maybeSingle()
+  const { resolveRenewalLevels } = await import('@/lib/agent/renewal-templates')
+  const prepDays = resolveRenewalLevels((orgRow as { copilot_settings?: { renewal_levels?: unknown } } | null)?.copilot_settings?.renewal_levels).prep
+
   for (const pipeline of pipelinesWithRenewal) {
     const { data: openRuns } = await supabase
       .from('pipeline_runs')
@@ -72,7 +78,12 @@ export async function checkAndTriggerRenewals() {
 
     if (!openRuns || openRuns.length === 0) continue
 
-    const contractIds = openRuns.map((r) => r.contract_id)
+    // Quem tirou da renovação de propósito (MUDAR + motivo) não volta sozinho
+    const { data: holds } = await supabase.from('activities').select('pipeline_run_id')
+      .in('pipeline_run_id', openRuns.map(r => r.id)).eq('metadata->>kind', 'process_override').eq('metadata->>hold', 'true')
+    const held = new Set((holds ?? []).map(h => h.pipeline_run_id as string))
+
+    const contractIds = openRuns.filter(r => !held.has(r.id)).map((r) => r.contract_id)
     const { data: contracts } = await supabase
       .from('contracts')
       .select('id, valid_until')
@@ -82,7 +93,7 @@ export async function checkAndTriggerRenewals() {
     for (const contract of contracts ?? []) {
       const daysUntilExpiry = daysUntilIso(String(contract.valid_until).slice(0, 10))
 
-      if (daysUntilExpiry <= (pipeline.renewal_trigger_days as number)) {
+      if (daysUntilExpiry <= prepDays) {
         const run = openRuns.find((r) => r.contract_id === contract.id)
         if (!run) continue
 
@@ -115,7 +126,7 @@ export async function checkAndTriggerRenewals() {
           contract_id: contract.id,
           pipeline_run_id: run.id,
           type: 'automation_triggered',
-          content: `Movido automaticamente para renovação — contrato vence em ${daysUntilExpiry} dia(s) (limite configurado: ${pipeline.renewal_trigger_days} dias).`,
+          content: `Movido automaticamente para renovação — contrato vence em ${daysUntilExpiry} dia(s) (junto com o "preparar a renovação", a ${prepDays} dias).`,
         })
       }
     }
@@ -125,7 +136,8 @@ export async function checkAndTriggerRenewals() {
 export async function moveContractStage(
   contractId: string,
   newStageId: string,
-  _depth = 0
+  _depth = 0,
+  override?: { word: string; reason: string } | null,
 ): Promise<MoveResult> {
   if (_depth > 5) {
     return { error: 'Cadeia de automações excedeu o limite de segurança (possível loop).' }
@@ -174,6 +186,33 @@ export async function moveContractStage(
     .single()
 
   if (stageError || !newStage) return { error: 'Etapa não encontrada.' }
+
+  // Processo de renovação: mudança feita por pessoa fora do processo pede MUDAR + motivo
+  let processNote: string | null = null
+  let processHold = false // tirou da renovação dentro do prazo: o sistema não traz de volta
+  if (_depth === 0 && newStage.id !== run.stage_id && newStage.pipeline_id === run.pipeline_id) {
+    const { data: pipe } = await supabase.from('pipelines').select('renewal_trigger_days, renewal_target_stage_id').eq('id', run.pipeline_id).maybeSingle()
+    if (pipe?.renewal_target_stage_id && pipe.renewal_trigger_days != null) {
+      const [{ data: k }, { data: orgRow }, { data: rs }] = await Promise.all([
+        supabase.from('contracts').select('valid_until').eq('id', contractId).maybeSingle(),
+        supabase.from('organization_settings').select('copilot_settings').maybeSingle(),
+        supabase.from('stages').select('name').eq('id', pipe.renewal_target_stage_id).maybeSingle(),
+      ])
+      const { resolveRenewalLevels } = await import('@/lib/agent/renewal-templates')
+      const { renewalMoveCheck, overrideProblem } = await import('@/lib/rules/renewal-process')
+      const prep = resolveRenewalLevels((orgRow as { copilot_settings?: { renewal_levels?: unknown } } | null)?.copilot_settings?.renewal_levels).prep
+      const check = renewalMoveCheck({
+        renewalStageId: pipe.renewal_target_stage_id as string, fromStageId: run.stage_id, toStageId: newStage.id,
+        daysLeft: k?.valid_until ? daysUntilIso(String(k.valid_until).slice(0, 10)) : null, prepDays: prep, renewalStageName: (rs?.name as string) ?? undefined,
+      })
+      if (!check.ok) {
+        const problem = overrideProblem(override)
+        if (problem) return { outOfProcess: check.message, error: override ? problem : undefined }
+        processNote = check.message
+        processHold = run.stage_id === pipe.renewal_target_stage_id
+      }
+    }
+  }
 
   const now = new Date().toISOString()
 
@@ -317,6 +356,17 @@ export async function moveContractStage(
     } else if (rule.action_type === 'send_email' && rule.email_template_id) {
       await sendAutomatedTemplateEmail(contractId, rule.email_template_id)
     }
+  }
+
+  // Fora do processo autorizado (MUDAR + motivo): fica registrado quem mudou e por quê
+  if (processNote && override) {
+    const { data: me } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+    const { data: fromStage } = await supabase.from('stages').select('name').eq('id', run.stage_id).maybeSingle()
+    await supabase.from('activities').insert({
+      contract_id: contractId, pipeline_run_id: run.id, user_id: user.id, type: 'system',
+      content: `⚠ Mudança fora do processo — ${me?.full_name ?? 'alguém'} moveu de "${fromStage?.name ?? '—'}" para "${newStage.name}". Motivo: ${override.reason.trim()}\n(${processNote})`,
+      metadata: { kind: 'process_override', from_stage_id: run.stage_id, to_stage_id: newStage.id, reason: override.reason.trim(), by: user.id, hold: processHold ? 'true' : 'false' },
+    })
   }
 
   // Regras da Central: "entrou na etapa"
