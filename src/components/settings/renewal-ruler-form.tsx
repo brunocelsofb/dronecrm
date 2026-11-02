@@ -163,6 +163,23 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
                   <textarea value={s.instructions ?? ''} maxLength={MAX_STEP_INSTRUCTIONS} rows={2} onChange={e => setStep(i, { instructions: e.target.value })}
                     placeholder={s.who === 'agent' ? 'O que o agente de IA deve preparar (ex.: pauta da reunião, texto da comunicação interna)…' : 'O que fazer neste passo (opcional; vai na tarefa)…'}
                     className={`${input} text-xs`} />
+                  {s.who === 'agent' && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span className="text-xs text-gray-500">Ao concluir, enviar o texto revisado para (coordenador, gerente, time e e-mails de fora):</span>
+                      {orgAreas.map(a => {
+                        const k = `area:${a.id}`
+                        const on = (s.send_areas ?? []).includes(k)
+                        return (
+                          <label key={k} className="flex items-center gap-1 text-xs text-gray-700">
+                            <input type="checkbox" checked={on} onChange={e => setStep(i, { send_areas: e.target.checked ? [...(s.send_areas ?? []), k] : (s.send_areas ?? []).filter(x => x !== k) })} />
+                            {a.name}
+                          </label>
+                        )
+                      })}
+                      {!orgAreas.length && <a href="/regras?tema=areas" className="text-xs text-brand-700 hover:underline">cadastre as áreas da empresa →</a>}
+                      <span className="w-full text-[11px] text-gray-500">{(s.send_areas ?? []).length ? 'Quem revisa vê o texto do agente ao concluir, ajusta e envia.' : 'Nenhuma marcada: o texto fica só na tarefa (não é enviado).'}</span>
+                    </div>
+                  )}
                   {s.who === 'agent' && <p className="text-[11px] text-gray-500">O agente prepara com os dados do contrato e o que já foi feito nos passos anteriores; a pessoa revisa e conclui. Sem IA (modo sem IA, sem chave ou sem orçamento), vira tarefa comum.</p>}
                 </div>
               )}

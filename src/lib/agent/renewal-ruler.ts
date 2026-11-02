@@ -20,6 +20,7 @@ export type RulerWho = 'owner' | 'areas' | 'agent'
 export type RulerStep = {
   id: string; label: string; days_before: number; areas: string[]; done_when?: 'manual' | 'client_notice'
   who?: RulerWho; instructions?: string; requires_file?: boolean; with_previous?: boolean
+  send_areas?: string[]   // passo do agente: ao concluir, o texto revisado vai para estas áreas ('area:<id>')
 }
 export const RULER_WHO_LABEL: Record<RulerWho, string> = {
   owner: 'Consultor (dono do contrato)',
@@ -170,6 +171,7 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
           instructions: str(o.instructions, MAX_STEP_INSTRUCTIONS).trim(),
           requires_file: o.requires_file === true,
           with_previous: i > 0 && o.with_previous === true,
+          send_areas: (Array.isArray(o.send_areas) ? o.send_areas : []).map(String).filter(k => /^area:[0-9a-f-]{36}$/i.test(k)).slice(0, 15),
         }
       }).filter(s => s.label).slice(0, 20)
     : DEFAULT_RULER_STEPS

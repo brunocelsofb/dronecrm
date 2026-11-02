@@ -84,18 +84,21 @@ export async function updateActivityStatus(
   id: string,
   status: 'planned' | 'done',
   note?: string | null,
-): Promise<{ error?: string; needsNote?: boolean }> {
+  sendText?: string | null,
+): Promise<{ error?: string; needsNote?: boolean; send?: { draft: string; to: string } }> {
   const supabase = await createClient()
   if (status === 'done') {
     const { data: act } = await supabase.from('activities').select('metadata').eq('id', id).maybeSingle()
     if ((act?.metadata as { kind?: string } | null)?.kind === 'handoff') {
-      if (!note || note.trim().length < 5) return { needsNote: true }
+      const sendMeta = (act?.metadata as { send?: { draft?: string; areaNames?: string[] } | null } | null)?.send
+      const send = sendMeta ? { draft: String(sendMeta.draft ?? ''), to: (sendMeta.areaNames ?? []).join(', ') } : undefined
+      if (!note || note.trim().length < 5) return { needsNote: true, send }
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return { error: 'Não autenticado.' }
       const { resolveTenantId } = await import('@/lib/tenant/context')
       const { completeHandoff } = await import('@/lib/agent/handoff')
-      const r = await completeHandoff(await resolveTenantId(), id, user.id, note)
-      return r.ok ? {} : { error: r.error }
+      const r = await completeHandoff(await resolveTenantId(), id, user.id, note, sendText)
+      return r.ok ? {} : { error: r.error, send }
     }
   }
   const updateData: Record<string, any> = { completed: status === 'done' }

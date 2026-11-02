@@ -167,8 +167,10 @@ async function handoffStep(run: RulerRun, idx: number): Promise<string> {
   const also = [...new Set(list.flatMap(a => [a.lead_id, a.manager_id]).filter((x): x is string => !!x && x !== to))]
   let prepared = ''
   let agentNote = ''
+  let draft: string | null = null
   if (who === 'agent') {
     const w = await agentPrepare(run, idx, info).catch(e => ({ text: null, why: String((e as Error)?.message ?? e) }))
+    draft = w.text
     if (w.text) { prepared = `\n\n🤖 Preparado pelo agente (revise antes de usar):\n${w.text}`; agentNote = ' Agente preparou o material.' }
     else { prepared = `\n\n(O agente de IA não preparou: ${w.why}. Faça manualmente.)`; agentNote = ` Agente não preparou (${w.why}).` }
   }
@@ -191,9 +193,22 @@ async function handoffStep(run: RulerRun, idx: number): Promise<string> {
     }
     return ` Uma tarefa para cada área: ${list.map(a => a.name).join(', ')}.` + agentNote
   }
+  // Passo do agente com envio: quem revisa ajusta o texto ao concluir e ele vai para as áreas escolhidas
+  let send: { userIds: string[]; emails: string[]; areaNames: string[]; draft: string } | null = null
+  const sendIds = who === 'agent' ? (step.send_areas ?? []).map(k => k.slice(5)) : []
+  if (sendIds.length) {
+    const { data: sa } = await admin.from('org_areas').select('name, lead_id, manager_id, member_ids, emails').eq('tenant_id', run.tenant_id).in('id', sendIds)
+    const rows = (sa ?? []) as { name: string; lead_id: string | null; manager_id: string | null; member_ids: string[] | null; emails: string[] | null }[]
+    send = {
+      userIds: [...new Set(rows.flatMap(r => [r.lead_id, r.manager_id, ...(r.member_ids ?? [])]).filter((x): x is string => !!x))],
+      emails: [...new Set(rows.flatMap(r => r.emails ?? []))],
+      areaNames: rows.map(r => r.name), draft: draft ?? '',
+    }
+    prepared += `\n\nAo concluir, o texto revisado vai para: ${send.areaNames.join(', ')}.`
+  }
   await createHandoff({
     ...base, toUserId: to, watcherId: to === info.ownerId ? null : info.ownerId, alsoNotify: also,
-    areaId: list[0]?.id ?? null, areaName: list[0]?.name ?? null,
+    areaId: list[0]?.id ?? null, areaName: list[0]?.name ?? null, send,
     title: `Renovação · ${step.label} — ${info.c.client_name ?? ''}`,
     content: body(list.length ? ` Área: ${list[0].name}.` : ''),
   })
@@ -310,6 +325,9 @@ export async function completeRulerStep(tenantId: string, runId: string, stepId:
   if (block) return { ok: false, error: block }
   // Passo dividido por áreas: cada área conclui a sua tarefa (para seguir sem alguma, "passar (fora do processo)")
   const st = run.steps[idx]
+  if ((st.send_areas ?? []).length && st.who === 'agent' && (await pendingAreaTasks(run, stepId)).some(t => t.metadata?.send)) {
+    return { ok: false, error: `"${st.label}" envia um texto para as áreas: conclua pela tarefa (Atividades) para revisar o texto antes de enviar.` }
+  }
   const split = st.who !== 'owner' && st.areas.filter(a => a.startsWith('area:')).length > 1
   const waiting = split ? (await pendingAreaTasks(run, stepId)).filter(t => t.metadata?.area_id) : []
   if (waiting.length) {

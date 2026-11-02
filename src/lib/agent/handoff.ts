@@ -58,7 +58,11 @@ export type HandoffInput = {
   title: string; content: string; dueIso: string; agent?: 'farmer' | 'hunter'
   rulerRunId?: string | null; stepId?: string | null
   areaId?: string | null; areaName?: string | null   // régua com várias áreas: uma tarefa por área
+  // Ao concluir, quem recebeu revisa este texto e ele vai para estas pessoas (sino, WhatsApp, e-mail) e e-mails de fora
+  send?: { userIds: string[]; emails: string[]; areaNames: string[]; draft: string } | null
 }
+
+export const SEND_MIN_TEXT = 10
 
 // Abre a tarefa em nome de quem recebe e avisa o destino (e quem mais for da área)
 export async function createHandoff(h: HandoffInput): Promise<{ id: string | null }> {
@@ -71,7 +75,7 @@ export async function createHandoff(h: HandoffInput): Promise<{ id: string | nul
       contract_id: h.contractId, company_id: h.companyId ?? null, user_id: null, assigned_to: h.toUserId,
       type: 'task', activity_type: 'task', status: 'planned', completed: false,
       title: h.title, content: h.content, activity_date: h.dueIso,
-      metadata: { source: 'copiloto_ia', kind: 'handoff', agent: h.agent ?? 'farmer', watcher_id: h.watcherId, needs_note: true, ruler_run_id: h.rulerRunId ?? null, step_id: h.stepId ?? null, area_id: h.areaId ?? null, area_name: h.areaName ?? null, also_notify: h.alsoNotify ?? [] },
+      metadata: { source: 'copiloto_ia', kind: 'handoff', agent: h.agent ?? 'farmer', watcher_id: h.watcherId, needs_note: true, ruler_run_id: h.rulerRunId ?? null, step_id: h.stepId ?? null, area_id: h.areaId ?? null, area_name: h.areaName ?? null, also_notify: h.alsoNotify ?? [], send: h.send ?? null },
     }).select('id').single()
     id = (data?.id as string) ?? null
   }
@@ -84,7 +88,7 @@ export async function createHandoff(h: HandoffInput): Promise<{ id: string | nul
 }
 
 // Conclusão com "o que foi feito": registra, avisa quem acompanha e avança a régua
-export async function completeHandoff(tenantId: string, activityId: string, userId: string, note: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function completeHandoff(tenantId: string, activityId: string, userId: string, note: string, sendText?: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
   const text = String(note ?? '').trim()
   if (text.length < HANDOFF_MIN_NOTE) return { ok: false, error: 'Escreva o que foi feito para concluir.' }
   const db: Db = scopeAdminClient(createAdminClient(), tenantId, userId)
@@ -92,6 +96,9 @@ export async function completeHandoff(tenantId: string, activityId: string, user
   if (!a) return { ok: false, error: 'Tarefa não encontrada.' }
   if (a.status === 'done') return { ok: true }
   const meta = (a.metadata ?? {}) as Record<string, unknown>
+  const send = meta.send as { userIds: string[]; emails: string[]; areaNames: string[] } | null | undefined
+  const outText = String(sendText ?? '').trim()
+  if (send && outText.length < SEND_MIN_TEXT) return { ok: false, error: 'Revise o texto que vai para o time antes de concluir.' }
   // Passo da régua que pede anexo: confere antes de fechar a tarefa
   if (meta.ruler_run_id && meta.step_id) {
     const { rulerStepBlock } = await import('./renewal-ruler-engine')
@@ -108,6 +115,30 @@ export async function completeHandoff(tenantId: string, activityId: string, user
   if (error) return { ok: false, error: error.message }
   if (a.contract_id) {
     await db.from('activities').insert({ contract_id: a.contract_id, user_id: userId, type: 'system', content: `✅ ${who} concluiu "${a.title}". O que foi feito: ${text.slice(0, 1500)}`, metadata: { kind: 'handoff_done', handoff_id: activityId } })
+  }
+  // Texto revisado para o time (comunicação interna etc.)
+  if (send && outText) {
+    const subject = String(a.title).replace(/^Renovação · /, '')
+    const sentTo: string[] = []
+    for (const u of [...new Set(send.userIds)].filter(u => u !== userId)) {
+      const ch = await notifyPerson(tenantId, u, { text: `📣 ${outText.slice(0, 3500)}\n\n— ${who}`, subject, contractId: (a.contract_id as string | null) ?? null })
+      if (ch.length) sentTo.push(u)
+    }
+    let ext = 0
+    const { data: org } = await db.from('organization_settings').select('auto_sender_id').maybeSingle()
+    const sender = (org as { auto_sender_id?: string | null } | null)?.auto_sender_id
+    if (sender && send.emails.length) {
+      try {
+        const { sendEmailForUser } = await import('@/lib/email/send')
+        await sendEmailForUser(sender, send.emails.join(', '), subject, `<div style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-wrap">${esc(outText)}\n\n— ${esc(who)}</div>`)
+        ext = send.emails.length
+      } catch { /* segue */ }
+    }
+    if (a.contract_id) {
+      await db.from('activities').insert({ contract_id: a.contract_id, user_id: userId, type: 'system',
+        content: `📣 ${who} enviou "${subject}" para ${send.areaNames.join(', ')} (${sentTo.length} pessoa(s)${ext ? ` + ${ext} e-mail(s) de fora` : ''}). Texto: ${outText.slice(0, 1500)}`,
+        metadata: { kind: 'handoff_sent', handoff_id: activityId } })
+    }
   }
   // Régua: concluir a tarefa conclui o passo e abre o próximo. Passo com várias áreas: só quando todas concluírem.
   let next = ''
