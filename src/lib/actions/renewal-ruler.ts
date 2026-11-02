@@ -22,6 +22,9 @@ export async function saveRulerSettings(input: RulerSettings): Promise<Result> {
     const bad = (a.emails ?? []).map(e => e.trim()).filter(e => e && !EMAIL_RE.test(e))
     if (bad.length) return { ok: false, error: `E-mail inválido em "${a.label}": ${bad.join(', ')}` }
   }
+  if (!Number.isInteger(input.escalate_after_days) || input.escalate_after_days < 0 || input.escalate_after_days > 30) {
+    return { ok: false, error: 'O aviso ao gerente deve ser de 0 a 30 dias de atraso.' }
+  }
   if (!Number.isInteger(input.overdue_repeat_days) || input.overdue_repeat_days < 0 || input.overdue_repeat_days > 30) {
     return { ok: false, error: 'A repetição do aviso de atraso deve ser de 0 a 30 dias (0 = avisa só uma vez).' }
   }
@@ -65,7 +68,7 @@ async function guard(contractId: string): Promise<{ tenantId: string; userId: st
 export async function startRulerManually(contractId: string): Promise<Result> {
   const g = await guard(contractId)
   if ('error' in g) return { ok: false, error: g.error }
-  const r = await startRenewalRuler(contractId, { userId: g.userId, firstDone: false })
+  const r = await startRenewalRuler(contractId, { userId: g.userId, firstDone: false, defer: true })
   if (!r.ok) return r
   if (!r.created) return { ok: false, error: 'A régua deste contrato já está em andamento.' }
   revalidatePath(`/contracts/${contractId}`)
@@ -76,6 +79,17 @@ export async function markRulerStepDone(contractId: string, runId: string, stepI
   const g = await guard(contractId)
   if ('error' in g) return { ok: false, error: g.error }
   const r = await completeRulerStep(g.tenantId, runId, stepId, g.userId, note?.trim() || null)
+  if (!r.ok) return r
+  revalidatePath(`/contracts/${contractId}`)
+  return { ok: true }
+}
+
+// "Aguardando o cliente" num passo: sem cobrança até a data (until = null encerra)
+export async function setRulerStepWaitingAction(contractId: string, runId: string, stepId: string, until: string | null, reason: string): Promise<Result> {
+  const g = await guard(contractId)
+  if ('error' in g) return { ok: false, error: g.error }
+  const { setRulerStepWaiting } = await import('@/lib/agent/renewal-ruler-engine')
+  const r = await setRulerStepWaiting(g.tenantId, runId, stepId, g.userId, until, String(reason ?? ''))
   if (!r.ok) return r
   revalidatePath(`/contracts/${contractId}`)
   return { ok: true }

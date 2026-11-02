@@ -171,8 +171,18 @@ test('régua: quem faz, anexo e passos em paralelo', () => {
   assert.deepEqual(openStepIndexes(run), [3])
   assert.equal(RULER_MODEL_STEPS.length, 9)
   assert.equal(resolveRulerSettings({}).skip_by, 'team')
+  assert.equal(resolveRulerSettings({}).escalate_after_days, 3)
+  assert.equal(resolveRulerSettings({ renewal_ruler: { escalate_after_days: 0 } }).escalate_after_days, 0)
   const sa = resolveRulerSettings({ renewal_ruler: { steps: [{ label: 'X', days_before: 5, who: 'agent', send_areas: ['area:11111111-2222-3333-4444-555555555555', 'comercial'] }] } })
   assert.deepEqual(sa.steps[0].send_areas, ['area:11111111-2222-3333-4444-555555555555'])
   assert.equal(resolveRulerSettings({ renewal_ruler: { skip_by: 'admin' } }).skip_by, 'admin')
   assert.ok(RULER_MODEL_STEPS.every(x => resolveRulerSettings({ renewal_ruler: { steps: [x] } }).steps.length === 1))
+})
+
+import { isWaiting, shouldNotifyOverdue } from '../src/lib/agent/renewal-ruler.ts'
+test('régua: aguardando o cliente não cobra até a data', () => {
+  const st = { due_date: '2027-03-16', done_at: null, overdue_notified_at: null, waiting_until: '2027-03-25' }
+  assert.equal(isWaiting(st, '2027-03-20'), true)
+  assert.equal(shouldNotifyOverdue(st, '2027-03-20', 3), false)
+  assert.equal(shouldNotifyOverdue(st, '2027-03-26', 3), true)
 })

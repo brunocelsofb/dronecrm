@@ -27,7 +27,7 @@ import { getAnthropicKeyForTenant } from '@/lib/ai/tenant-key'
 import { resolveTenantId as resolveTenantForReading } from '@/lib/tenant/context'
 import { RevenueTypeToggle } from '@/components/contracts/revenue-type-toggle'
 import { RenewalValueSection } from '@/components/contracts/renewal-value-section'
-import { RenewalRulerPanel, type RulerRunView } from '@/components/contracts/renewal-ruler-panel'
+import { RenewalRulerPanel, RenewalRulerSummary, type RulerRunView } from '@/components/contracts/renewal-ruler-panel'
 import { resolveRulerSettings } from '@/lib/agent/renewal-ruler'
 import { InlineValueEditor } from '@/components/contracts/inline-value-editor'
 import { ProposalsSection } from '@/components/proposals/proposals-section'
@@ -291,8 +291,7 @@ export default async function ContractDetailPage({
   const { data: rulerPeople } = rulerTaskPeople.length ? await supabase.from('profiles').select('id, full_name').in('id', rulerTaskPeople) : { data: [] }
   const rulerName = new Map(((rulerPeople ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? '—']))
   const rulerAreaTasks = ((rulerTaskRows ?? []) as { status: string; assigned_to: string | null; metadata: Record<string, unknown> | null }[])
-    .filter(t => t.metadata?.area_name)
-    .map(t => ({ stepId: String(t.metadata?.step_id ?? ''), area: String(t.metadata?.area_name), person: t.assigned_to ? rulerName.get(t.assigned_to) ?? '—' : '—', done: t.status === 'done' }))
+    .map(t => ({ stepId: String(t.metadata?.step_id ?? ''), area: t.metadata?.area_name ? String(t.metadata.area_name) : null, person: t.assigned_to ? rulerName.get(t.assigned_to) ?? '—' : '—', done: t.status === 'done' }))
 
   // Dados de implantação
   const [implementationSchedule, implementationTemplates] = await Promise.all([
@@ -517,16 +516,7 @@ export default async function ContractDetailPage({
                 )}
 
                 {isCurrentlyInContractsPipeline && (
-                  <RenewalRulerPanel
-                    contractId={contract.id}
-                    run={(rulerRun as RulerRunView | null) ?? null}
-                    enabled={rulerEnabled}
-                    canAct={!!currentProfile}
-                    isAdmin={currentProfile?.role === 'admin'}
-                    canSkip={rulerCfg.skip_by === 'team' || currentProfile?.role === 'admin'}
-                    areaTasks={rulerAreaTasks}
-                    today={todayBrIso()}
-                  />
+                  <RenewalRulerSummary run={(rulerRun as RulerRunView | null) ?? null} today={todayBrIso()} />
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
@@ -837,6 +827,22 @@ export default async function ContractDetailPage({
                 contractNature={(contract as any).nature ?? null}
                 tags={allTags ?? []}
                 currentTagId={(currentContractTags ?? [])[0]?.tag_id ?? null}
+              />
+            ),
+          }] : []),
+          ...(isCurrentlyInContractsPipeline ? [{
+            id: 'renovacao',
+            label: '🔁 Renovação',
+            content: (
+              <RenewalRulerPanel
+                contractId={contract.id}
+                run={(rulerRun as RulerRunView | null) ?? null}
+                enabled={rulerEnabled}
+                canAct={!!currentProfile}
+                isAdmin={currentProfile?.role === 'admin'}
+                canSkip={rulerCfg.skip_by === 'team' || currentProfile?.role === 'admin'}
+                tasks={rulerAreaTasks}
+                today={todayBrIso()}
               />
             ),
           }] : []),

@@ -17,14 +17,15 @@ export const ALL_CONTRACT_TABS = [
   { id: 'email', label: 'E-mail' },
   { id: 'proposta', label: '📄 Proposta' },
   { id: 'carteira', label: '📋 Dados da Carteira' },
+  { id: 'renovacao', label: '🔁 Renovação' },
   { id: 'implantacao', label: '🚀 Implantação' },
 ]
 
 function getDefaultHidden(name: string): string[] {
   const n = name.toLowerCase()
   if (n.includes('contrato') || n.includes('gestão')) return []
-  if (n.includes('avulso')) return ['implantacao', 'pesquisas', 'carteira']
-  return ['implantacao', 'carteira', 'pesquisas']
+  if (n.includes('avulso')) return ['implantacao', 'pesquisas', 'carteira', 'renovacao']
+  return ['implantacao', 'carteira', 'pesquisas', 'renovacao']
 }
 
 export default async function LayoutAbasPage() {

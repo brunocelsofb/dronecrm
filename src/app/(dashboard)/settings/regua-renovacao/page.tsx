@@ -28,6 +28,7 @@ export default async function RenewalRulerSettingsPage() {
       description="Passos internos da renovação. Em cada passo você escolhe quem faz (consultor, área ou agente de IA); quem recebeu escreve o que fez e conclui, o consultor recebe o retorno e o próximo passo abre."
     >
       <RenewalRulerForm initial={resolveRulerSettings(org?.copilot_settings)} companyName={(org?.company_name as string | null) ?? ''} orgAreas={orgAreas}
+        people={((people ?? []) as { id: string; full_name: string | null }[]).filter(p => p.full_name).map(p => ({ id: p.id, name: p.full_name as string })).sort((a, b) => a.name.localeCompare(b.name))}
         levels={resolveRenewalLevels((org?.copilot_settings as { renewal_levels?: unknown } | null)?.renewal_levels)} />
     </SettingsSubpage>
   )

@@ -38,6 +38,8 @@ export type RulerSettings = {
   lock_renewed: boolean
   overdue_repeat_days: number   // passo atrasado: repete o aviso a cada N dias (0 = só uma vez)
   skip_by: 'team' | 'admin'     // quem pode passar um passo fora do processo (digitando "mudar")
+  escalate_after_days: number   // atraso a partir de N dias: a cobrança vai também para o gerente (0 = desde o 1º dia)
+  escalate_to: string | null    // passo do consultor: gerente que recebe (sem isso, o gerente da área do consultor)
   areas: RulerArea[]
   steps: RulerStep[]
   templates: RulerTemplates
@@ -53,6 +55,13 @@ export type RunStep = RulerStep & {
   notified_at: string | null
   overdue_notified_at: string | null   // último aviso de atraso
   overdue_count?: number
+  waiting_until?: string | null   // "aguardando o cliente": sem cobrança até esta data (aaaa-mm-dd)
+  waiting_reason?: string | null
+}
+
+// Aguardando o cliente até hoje ou depois: não cobra
+export function isWaiting(step: Pick<RunStep, 'waiting_until' | 'done_at'>, todayIso: string): boolean {
+  return !step.done_at && !!step.waiting_until && step.waiting_until >= todayIso
 }
 
 export const RULER_VARIABLES: { key: string; description: string }[] = [
@@ -134,6 +143,8 @@ export const DEFAULT_RULER_TEMPLATES: RulerTemplates = {
 }
 
 export const DEFAULT_OVERDUE_REPEAT_DAYS = 3
+export const DEFAULT_ESCALATE_AFTER_DAYS = 3
+export const MAX_WAIT_DAYS = 90
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
@@ -189,6 +200,11 @@ export function resolveRulerSettings(copilot: unknown): RulerSettings {
       return r.overdue_repeat_days === undefined || r.overdue_repeat_days === null || !Number.isFinite(n) ? DEFAULT_OVERDUE_REPEAT_DAYS : Math.max(0, Math.min(30, n))
     })(),
     skip_by: r.skip_by === 'admin' ? 'admin' : 'team',
+    escalate_after_days: (() => {
+      const n = Math.round(Number(r.escalate_after_days))
+      return r.escalate_after_days === undefined || r.escalate_after_days === null || !Number.isFinite(n) ? DEFAULT_ESCALATE_AFTER_DAYS : Math.max(0, Math.min(30, n))
+    })(),
+    escalate_to: typeof r.escalate_to === 'string' && /^[0-9a-f-]{36}$/i.test(r.escalate_to) ? r.escalate_to : null,
     areas,
     steps,
     templates: {
@@ -243,7 +259,7 @@ export function daysBetween(a: string, b: string): number {
 
 // Passo atrasado: avisa a 1ª vez e depois a cada N dias (N = 0: só uma vez)
 export function shouldNotifyOverdue(step: RunStep, todayIso: string, repeatDays: number): boolean {
-  if (!isOverdue(step, todayIso)) return false
+  if (!isOverdue(step, todayIso) || isWaiting(step, todayIso)) return false
   if (!step.overdue_notified_at) return true
   if (repeatDays <= 0) return false
   const last = new Date(new Date(step.overdue_notified_at).getTime() - 3 * 3600_000).toISOString().slice(0, 10)

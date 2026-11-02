@@ -21,14 +21,17 @@ const MAILS: { key: 'step' | 'overdue' | 'ready'; label: string; hint: string }[
 const newId = () => `passo-${Math.random().toString(36).slice(2, 8)}`
 // orgAreas: áreas da empresa (Central de regras → Áreas e IA): coordenador recebe a tarefa, gerente o aviso
 // levels: marcos da Central de regras → Renovação (preparar e avisos ao cliente)
-export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }: {
+export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels, people = [] }: {
   initial: RulerSettings; companyName: string; orgAreas?: { id: string; name: string; coordinator: string; manager: string }[]
   levels: { prep: number; a1: number; a2: number; a3: number }
+  people?: { id: string; name: string }[]
 }) {
   const [enabled, setEnabled] = useState(initial.enabled)
   const [lock, setLock] = useState(initial.lock_renewed)
   const [repeat, setRepeat] = useState(String(initial.overdue_repeat_days))
   const [skipBy, setSkipBy] = useState<'team' | 'admin'>(initial.skip_by)
+  const [escDays, setEscDays] = useState(String(initial.escalate_after_days))
+  const [escTo, setEscTo] = useState(initial.escalate_to ?? '')
   const [steps, setSteps] = useState<RulerStep[]>(initial.steps)
   const [templates, setTemplates] = useState<RulerTemplates>(initial.templates)
   const [mail, setMail] = useState<'step' | 'overdue' | 'ready'>('step')
@@ -49,7 +52,7 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
   async function save() {
     setSaving(true); setMsg(null)
     const res = await saveRulerSettings({
-      enabled, lock_renewed: lock, skip_by: skipBy, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
+      enabled, lock_renewed: lock, skip_by: skipBy, escalate_after_days: escDays.trim() === '' ? NaN : Number(escDays), escalate_to: escTo || null, overdue_repeat_days: repeat.trim() === '' ? NaN : Number(repeat), templates,
       areas: [], // lista antiga de e-mails (substituída pelas áreas da empresa)
       steps: steps.map(s => ({ ...s, label: s.label.trim(), areas: s.areas.filter(k => k.startsWith('area:')) })),
     })
@@ -94,6 +97,19 @@ export function RenewalRulerForm({ initial, companyName, orgAreas = [], levels }
             className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none" />
           <span>dias, até o passo ser marcado ou o contrato ser renovado.</span>
           <span className="w-full text-xs text-gray-500">Use 0 para avisar só uma vez. No atraso, o agente Farmer cobra quem está com a tarefa aberta (sino, WhatsApp e e-mail) e avisa o gerente da área.</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span><b>Avisar o gerente</b> quando o atraso chegar a</span>
+          <input type="number" min={0} max={30} value={escDays} onChange={e => { touch(); setEscDays(e.target.value) }} aria-label="Dias de atraso para avisar o gerente"
+            className="w-16 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none" />
+          <span>dias.</span>
+          <span className="w-full text-xs text-gray-500">Passo de área: o gerente da área. Passo do consultor: o gerente da área do consultor (Central de regras → Áreas e IA) ou, se ele não estiver em nenhuma, esta pessoa:</span>
+          <select value={escTo} onChange={e => { touch(); setEscTo(e.target.value) }} aria-label="Gerente dos consultores"
+            className="rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-700 focus:outline-none">
+            <option value="">ninguém</option>
+            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <span className="w-full text-xs text-gray-500">Use 0 para avisar o gerente desde o 1º dia de atraso. Passo marcado &quot;aguardando o cliente&quot; não é cobrado até a data informada.</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span><b>Seguir sem um passo</b> (&quot;passar fora do processo&quot;, digitando a palavra de confirmação):</span>
