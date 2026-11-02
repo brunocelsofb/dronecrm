@@ -1,6 +1,6 @@
 'use client'
 // Painel gerencial · Carteira e Novos negócios:
-//   • Mapa da receita recorrente por estado (mais escuro = mais receita), com ranking e lista de contratos
+//   • Mapa "onde estamos": alfinete nos estados com contrato e cor pela receita recorrente (R$), com ranking e contratos
 //   • Receita recorrente da carteira por serviço, mês a mês (barras empilhadas)
 //   • Novo recorrente vendido por mês (valor e quantidade)
 // Tudo calculado com os dados da empresa no CRM (dashboard-compute).
@@ -30,6 +30,13 @@ function niceMax(v: number): number {
 
 type GeoItem = ContractLine & { uf: string | null; tag: string }
 type UfRow = { uf: string; name: string; mrr: number; count: number; share: number | null; lines: ContractLine[] }
+// Onde fica o alfinete de cada estado (centro do desenho, com ajuste onde estados se encostam)
+const PIN: Record<string, [number, number]> = {
+  AC: [58, 224], AL: [583, 233], AP: [339, 57], AM: [139, 141], BA: [500, 293], CE: [541, 165], DF: [411, 328], ES: [519, 392],
+  GO: [366, 322], MA: [448, 171], MT: [282, 281], MS: [304, 410], MG: [446, 376], PA: [335, 139], PB: [578, 193], PR: [354, 477],
+  PE: [548, 214], PI: [481, 189], RJ: [486, 433], RN: [581, 174], RS: [318, 579], RO: [167, 251], RR: [190, 52], SC: [358, 529],
+  SP: [396, 442], SE: [573, 249], TO: [402, 226],
+}
 const UF_NAMES: Record<string, string> = Object.fromEntries((brazil.locations as { id: string; name: string }[]).map(l => [l.id.toUpperCase(), l.name]))
 
 // ── Mapa ─────────────────────────────────────────────────────────────────────
@@ -80,8 +87,8 @@ export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags
       <div className="min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-gray-900">Receita recorrente por estado</p>
-            <p className="text-xs text-gray-500">{rows.length} {rows.length === 1 ? 'estado' : 'estados'} com contrato ativo · passe o mouse ou clique no estado</p>
+            <p className="text-sm font-semibold text-gray-900">Onde estamos</p>
+            <p className="text-xs text-gray-500">{rows.length} {rows.length === 1 ? 'estado' : 'estados'} com contrato ativo · a cor mostra a receita recorrente (R$) · clique no estado</p>
           </div>
           {tags.length > 1 && (
             <select value={tag} onChange={e => { setTag(e.target.value); setSel(null) }} aria-label="Serviço"
@@ -98,7 +105,7 @@ export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags
             const color = r ? RAMP[bucketOf.get(uf) ?? 0] : NO_DATA
             const active = focus === uf
             return (
-              <path key={loc.id} d={loc.path} fill={color} stroke={active ? '#E98C5F' : '#ffffff'} strokeWidth={active ? 2.5 : 1}
+              <path key={loc.id} d={loc.path} fill={color} stroke={active ? '#32AF9D' : '#ffffff'} strokeWidth={active ? 2.5 : 1}
                 className={r ? 'cursor-pointer' : ''} tabIndex={r ? 0 : -1} aria-label={r ? `${r.name}: ${fmtBRL(r.mrr)}` : loc.name}
                 onMouseEnter={() => setHover(uf)} onMouseLeave={() => setHover(null)}
                 onClick={() => r && setSel(uf)} onKeyDown={e => { if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSel(uf) } }}>
@@ -106,11 +113,32 @@ export function UfMap({ items, tags, isAdmin = false }: { items: GeoItem[]; tags
               </path>
             )
           })}
+          {/* Alfinete em cada estado com contrato; os 3 maiores mostram o valor */}
+          {rows.map((r, i) => {
+            const at = PIN[r.uf]
+            if (!at) return null
+            const [x, y] = at
+            return (
+              <g key={`pin-${r.uf}`} className="cursor-pointer" onMouseEnter={() => setHover(r.uf)} onMouseLeave={() => setHover(null)} onClick={() => setSel(r.uf)}>
+                <title>{`${r.name}: ${fmtBRL(r.mrr)} · ${r.count} contrato(s)`}</title>
+                <path d={`M${x},${y} c-2.2,-4.6 -8,-8.4 -8,-13.4 a8,8 0 1 1 16,0 c0,5 -5.8,8.8 -8,13.4 z`} fill="#E98C5F" stroke="#ffffff" strokeWidth={1.5} />
+                <circle cx={x} cy={y - 13.6} r={3} fill="#ffffff" />
+                {i < 3 && (
+                  <text x={x + 11} y={y - 9} fontSize={15} fontWeight={700} fill="#1B556B" stroke="#ffffff" strokeWidth={4} paintOrder="stroke" style={{ pointerEvents: 'none' }}>
+                    {r.uf} {compact(r.mrr)}
+                  </text>
+                )}
+              </g>
+            )
+          })}
         </svg>
         <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-gray-500">
+          <span className="mr-2 inline-flex items-center gap-1">
+            <svg viewBox="0 0 16 22" className="h-3.5 w-2.5" aria-hidden="true"><path d="M8,21 c-2.2,-4.6 -8,-8.4 -8,-13.4 a8,8 0 1 1 16,0 c0,5 -5.8,8.8 -8,13.4 z" fill="#E98C5F" /></svg>onde estamos
+          </span>
           <span>menos</span>
           {RAMP.map(c => <span key={c} className="h-2.5 w-6 rounded-sm" style={{ background: c }} />)}
-          <span>mais receita</span>
+          <span>mais R$</span>
           <span className="ml-2 inline-flex items-center gap-1"><span className="h-2.5 w-4 rounded-sm border border-gray-200" style={{ background: NO_DATA }} />sem contrato</span>
         </div>
       </div>
