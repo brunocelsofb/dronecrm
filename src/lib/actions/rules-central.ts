@@ -75,3 +75,19 @@ export async function previewFunnelRenewal(pipelineId: string, input: { days: nu
   out.sort((a, b) => a.d - b.d)
   return { ok: true, total: out.length, items: out.slice(0, 40).map(({ name, detail }) => ({ name, detail })) }
 }
+
+// Ações de evento (ganho, renovação, perda, implantação): liga/desliga por empresa
+export async function saveEventToggle(key: string, enabled: boolean): Promise<Result> {
+  const g = await rulesAdminGuard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { EVENT_ACTIONS, eventTaskKey, isEventKey } = await import('@/lib/rules/events')
+  if (!isEventKey(key)) return { ok: false, error: 'Ação desconhecida.' }
+  const def = EVENT_ACTIONS.find(e => e.key === key)!
+  if (!g.features.includes(def.feature)) return { ok: false, error: 'A licença não inclui esta ação.' }
+  const tk = eventTaskKey(key)
+  const { data: row } = await g.db.from('agent_tasks').select('id').eq('task_key', tk).maybeSingle()
+  const { error } = row
+    ? await g.db.from('agent_tasks').update({ enabled, updated_at: new Date().toISOString() }).eq('id', row.id as string)
+    : await g.db.from('agent_tasks').insert({ task_key: tk, enabled, created_by: g.userId })
+  return error ? { ok: false, error: error.message } : { ok: true }
+}

@@ -166,3 +166,107 @@ export function LinkRule({ title, sentence, href, badge }: { title: string; sent
     </li>
   )
 }
+
+// ─── Ações de evento (ganho, renovação, perda, implantação) ──────────────────
+export type EventView = { key: string; when: string; whenLabel: string; agent: string | null; sentence: string; detail: string; editHref?: string; enabled: boolean }
+
+function EventRow({ e }: { e: EventView }) {
+  const [on, setOn] = useState(e.enabled)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [, start] = useTransition()
+  const toggle = (v: boolean) => {
+    setOn(v); setMsg(null)
+    start(async () => {
+      const { saveEventToggle } = await import('@/lib/actions/rules-central')
+      const r = await saveEventToggle(e.key, v)
+      if (!r.ok) { setOn(!v); setMsg(r.error) }
+    })
+  }
+  return (
+    <li className="flex gap-3 py-2.5">
+      <Switch on={on} label={e.sentence} onChange={toggle} />
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm ${on ? 'text-gray-900' : 'text-gray-400'}`}>{e.sentence} {e.agent ? <AgentBadge agent={e.agent} /> : <SimpleBadge />}</p>
+        <p className="text-[11px] text-gray-400">{e.detail}{e.editHref && <> · <Link href={e.editHref} className="text-brand-700 hover:underline">editar textos e destinatários →</Link></>}</p>
+        <Msg m={msg} />
+      </div>
+    </li>
+  )
+}
+
+export function EventToggles({ events }: { events: EventView[] }) {
+  const groups = [...new Set(events.map(e => e.when))]
+  return (
+    <div className="space-y-4">
+      {groups.map(w => (
+        <div key={w}>
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{events.find(e => e.when === w)!.whenLabel}</p>
+          <ul className="divide-y divide-gray-100">{events.filter(e => e.when === w).map(e => <EventRow key={e.key} e={e} />)}</ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Linha do tempo da renovação (editável) ───────────────────────────────────
+export type TimelineItem = {
+  id: string; days: number; label: string; agent: string | null
+  edit: { type: 'level'; key: 'prep' | 'a1' | 'a2' | 'a3' } | { type: 'funnel'; pipelineId: string; stageId: string } | { type: 'link'; href: string }
+  warn?: string
+}
+
+function TimelineDays({ item, levels, onLevels, onError }: { item: TimelineItem; levels: Record<string, number>; onLevels: (l: Record<string, number>) => void; onError: (m: string | null) => void }) {
+  const [v, setV] = useState(String(item.days))
+  const [msg, setMsg] = useState<string | null>(null)
+  const [pending, start] = useTransition()
+  if (item.edit.type === 'link') return <span className="w-20 shrink-0 text-right text-sm font-semibold text-brand-700">{item.days} dias</span>
+  const save = () => {
+    const n = Number(v)
+    if (String(item.days) === v) return
+    start(async () => {
+      setMsg(null)
+      if (item.edit.type === 'level') {
+        const next = { ...levels, [item.edit.key]: n }
+        const { saveTaskParams } = await import('@/lib/actions/agent-tasks')
+        const r = await saveTaskParams('renewal_alerts', next)
+        if (r.ok) { onLevels(next); setMsg('Salvo'); onError(null) } else { setMsg(r.error); onError(r.error); setV(String(item.days)) }
+      } else if (item.edit.type === 'funnel') {
+        const r = await saveFunnelRenewal(item.edit.pipelineId, { enabled: true, days: n, stageId: item.edit.stageId })
+        if (r.ok) { setMsg('Salvo'); onError(null) } else { setMsg(r.error); onError(r.error); setV(String(item.days)) }
+      }
+    })
+  }
+  return (
+    <span className="flex w-20 shrink-0 items-center justify-end gap-1">
+      <input type="number" min={1} max={365} value={v} disabled={pending} title="Dias antes do vencimento"
+        onChange={e => setV(e.target.value)} onBlur={save} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        className={`w-14 rounded-md border px-1 py-0.5 text-right text-sm font-semibold text-brand-700 ${msg && msg !== 'Salvo' ? 'border-negative-600' : 'border-gray-300'}`} />
+      {msg && <span role="status" title={msg} className={`text-[11px] ${msg === 'Salvo' ? 'text-gray-400' : 'text-negative-600'}`}>{msg === 'Salvo' ? '✓' : '!'}</span>}
+    </span>
+  )
+}
+
+export function RenewalTimeline({ items, levels: initLevels }: { items: TimelineItem[]; levels: Record<string, number> }) {
+  const [levels, setLevels] = useState(initLevels)
+  const [err, setErr] = useState<string | null>(null)
+  const list = items.map(i => i.edit.type === 'level' ? { ...i, days: levels[i.edit.key] ?? i.days } : i).sort((a, b) => b.days - a.days)
+  return (
+    <div>
+      <ol className="space-y-1.5">
+        {list.map(i => (
+          <li key={i.id} className="relative flex items-center gap-3 text-sm">
+            <TimelineDays item={i} levels={levels} onLevels={setLevels} onError={setErr} />
+            <span className="text-gray-400">dias →</span>
+            <span className="min-w-0 flex-1 text-gray-800">{i.label} {i.agent ? <AgentBadge agent={i.agent} /> : <SimpleBadge />}
+              {i.edit.type === 'link' && <Link href={i.edit.href} className="ml-1 text-xs text-brand-700 hover:underline">editar →</Link>}
+              {i.warn && <span className="ml-1 rounded bg-warn-100 px-1.5 py-0.5 text-[10px] text-warn-700">{i.warn}</span>}
+            </span>
+          </li>
+        ))}
+        <li className="flex items-center gap-3 text-sm"><span className="w-20 shrink-0 text-right font-semibold text-negative-600">vencido</span><span className="text-gray-400">→</span><span className="text-gray-800">aviso de contrato vencido (revisar e enviar) <AgentBadge agent="Farmer" /></span></li>
+      </ol>
+      {err && <p className="mt-2 text-xs text-negative-600">{err}</p>}
+      <p className="mt-2 text-[11px] text-gray-400">Mude os dias direto na linha (salva ao sair do campo). Cada linha é uma regra; liga/desliga e detalhes ficam nos quadros abaixo.</p>
+    </div>
+  )
+}

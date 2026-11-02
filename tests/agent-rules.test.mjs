@@ -70,3 +70,13 @@ test('prazo do chamado por prioridade: padrão, empresa e validação', () => {
   assert.ok('error' in validateSlaDays({ muito_critica: 1, critica: 2, pouco_critica: 3 }))
   assert.deepEqual(validateSlaDays({ muito_critica: '1', critica: 2, pouco_critica: 5, nao_critica: 10 }), { days: { muito_critica: 1, critica: 2, pouco_critica: 5, nao_critica: 10 } })
 })
+
+import { EVENT_ACTIONS, eventTaskKey, isEventKey } from '../src/lib/rules/events.ts'
+
+test('ações de evento: chaves únicas, frase e momento', () => {
+  const keys = EVENT_ACTIONS.map(e => e.key)
+  assert.equal(new Set(keys).size, keys.length)
+  for (const e of EVENT_ACTIONS) { assert.ok(e.sentence.includes('→'), e.key); assert.ok(['ganho', 'renovado', 'perdido', 'implantacao'].includes(e.when)) }
+  assert.equal(eventTaskKey('won_impl_kickoff'), 'evt:won_impl_kickoff')
+  assert.ok(isEventKey('avulso_billing') && !isEventKey('briefing'))
+})

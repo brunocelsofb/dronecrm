@@ -496,6 +496,9 @@ export async function closeRun(
 
   // Avulso ganho: envio automático para faturamento (sem validação mensal) e
   // conclui a tarefa do Hunter "dar ganho".
+  // Liga/desliga de cada ação de evento (Central de regras → Ao ganhar/renovar/perder)
+  const { eventOn } = await import('@/lib/rules/events-server')
+  const evTenant = await (await import('@/lib/tenant/context')).resolveTenantId({ contractId })
   if (outcome === 'won' && pipelineForGateType === 'servico_avulso') {
     const db = await createScopedAdmin()
     const br = new Date(Date.now() - 3 * 3600 * 1000)
@@ -503,7 +506,10 @@ export async function closeRun(
     const { headers } = await import('next/headers')
     const hh = await headers()
     const host = hh.get('x-forwarded-host') ?? hh.get('host')
-    const sent = await submitToBilling(db, user.id, { contractId, sourceType: 'avulso', year: br.getUTCFullYear(), month: br.getUTCMonth() + 1 }, host ? `https://${host}/api/faturamento/retorno` : null)
+    // Desligado na Central de regras: não envia sozinho (a pessoa envia pela tela Financeiro)
+    const sent = await eventOn(evTenant, 'avulso_billing')
+      ? await submitToBilling(db, user.id, { contractId, sourceType: 'avulso', year: br.getUTCFullYear(), month: br.getUTCMonth() + 1 }, host ? `https://${host}/api/faturamento/retorno` : null)
+      : { ok: true as const }
     if (!sent.ok) {
       await db.from('activities').insert({
         contract_id: contractId, user_id: user.id, type: 'system',
@@ -515,7 +521,7 @@ export async function closeRun(
       .eq('contract_id', contractId).eq('metadata->>dedupe_key', `avulso-report:${run.id}`).neq('status', 'done')
   }
 
-  if (outcome === 'lost') {
+  if (outcome === 'lost' && await eventOn(evTenant, 'lost_decline_proposals')) {
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const admin = (await createScopedAdmin())
     const { data: activeProposals } = await admin
@@ -754,7 +760,7 @@ export async function closeRun(
   }
 
   // Régua de renovação: Renovado encerra; perda (rescisão) cancela
-  if (pipelineForGateType === 'gestao_contratos') {
+  if (pipelineForGateType === 'gestao_contratos' && await eventOn(evTenant, 'renewal_ruler_close')) {
     try {
       const { finishRenewalRuler } = await import('@/lib/agent/renewal-ruler-engine')
       await finishRenewalRuler(contractId, outcome === 'won' ? 'done' : 'cancelled')
@@ -763,7 +769,7 @@ export async function closeRun(
     }
   }
 
-  if (outcome === 'won' && pipelineForGateType === 'gestao_contratos') {
+  if (outcome === 'won' && pipelineForGateType === 'gestao_contratos' && await eventOn(evTenant, 'renewal_confirmation')) {
     try {
       const { createRenewalConfirmation } = await import('@/lib/agent/renewal-confirmation')
       const res = await createRenewalConfirmation(contractId)
@@ -780,9 +786,11 @@ export async function closeRun(
     try {
       const { createInternalNotice, createImplementationKickoff } = await import('@/lib/agent/internal-notices')
       const key = pipelineForGateType === 'vendas' ? 'ganho' : 'renovado'
-      const r = await createInternalNotice(contractId, key)
-      if (!r.ok) console.error('[closeRun] e-mail interno não criado:', r.detail)
-      if (pipelineForGateType === 'vendas') {
+      if (await eventOn(evTenant, key === 'ganho' ? 'won_internal_email' : 'renewal_internal_email')) {
+        const r = await createInternalNotice(contractId, key)
+        if (!r.ok) console.error('[closeRun] e-mail interno não criado:', r.detail)
+      }
+      if (pipelineForGateType === 'vendas' && await eventOn(evTenant, 'won_impl_kickoff')) {
         const k = await createImplementationKickoff(contractId)
         if (!k.ok) console.error('[closeRun] tarefa de implantação não criada:', k.detail)
       }

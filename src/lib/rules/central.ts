@@ -3,7 +3,7 @@
 //   agente de IA (Farmer/Hunter, com tarefa, aviso ou mensagem) ou ação simples do sistema (sem IA).
 // Tema novo ou item novo: acrescente aqui e na página /regras.
 
-export type ThemeKey = 'renovacao' | 'funil' | 'leads' | 'carteira' | 'atendimento' | 'envios'
+export type ThemeKey = 'renovacao' | 'eventos' | 'funil' | 'leads' | 'carteira' | 'atendimento' | 'envios'
 
 export type Theme = {
   key: ThemeKey
@@ -18,6 +18,9 @@ export const THEMES: Theme[] = [
   { key: 'renovacao', label: 'Renovação', features: ['pipeline', 'contracts', 'copiloto'],
     intro: 'Tudo o que acontece com o contrato até o vencimento: volta para a etapa de renovação, avisos ao cliente, régua interna e tarefas.',
     tasks: ['renewal_alerts', 'ruler_overdue'], criteria: ['contract_expiring'] },
+  { key: 'eventos', label: 'Ganho, perda e renovado', features: ['pipeline'],
+    intro: 'O que acontece sozinho no momento em que alguém dá ganho, perda, marca Renovado ou inicia a implantação: tarefas e e-mails ao time interno, confirmação ao cliente, faturamento.',
+    tasks: [], criteria: [] },
   { key: 'funil', label: 'Funil', features: ['pipeline'],
     intro: 'Prazos das etapas, automações por evento (entrou na etapa, ganhou, perdeu, tag) e oportunidades ou propostas paradas.',
     tasks: [], criteria: ['opp_idle', 'opp_stage_stuck', 'proposal_waiting'] },

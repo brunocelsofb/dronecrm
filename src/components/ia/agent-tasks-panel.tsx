@@ -237,6 +237,7 @@ function BuiltinRow({ t, today, ctx }: { t: BuiltinView; today: string; ctx: Ctx
   // A tela muda na hora; salva um instante depois do último clique (vários dias de uma vez = um envio só)
   const [s, setS] = useState<TaskState>(t.state)
   const [msg, setMsg] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
   const saved = useRef<TaskState>(t.state)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seq = useRef(0)
@@ -253,26 +254,41 @@ function BuiltinRow({ t, today, ctx }: { t: BuiltinView; today: string; ctx: Ctx
       else { setS(saved.current); setMsg(r.error) }
     }, 600)
   }
+  // Uma linha por tarefa: liga/desliga + o que faz + situação. "Editar" abre prazos, destinatários, dias e Testar.
+  const summary = [
+    t.params.length ? t.params.map(p => `${p.label.toLowerCase()} ${t.values[p.key] ?? p.def} ${p.unit}`).join(' · ') : '',
+  ].filter(Boolean).join('')
   return (
-    <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex min-w-0 gap-3">
+    <li className="py-3">
+      <div className="flex gap-3">
         <Switch on={s.enabled} label={`Ligar ${t.title}`} onChange={v => save({ ...s, enabled: v })} />
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900">{t.title} <span className="text-[11px] font-normal text-gray-400">· {t.agent}</span></p>
-          <p className="text-xs text-gray-500">{t.description} <span className="text-gray-400">Envia: {t.sends}.</span></p>
-          {t.params.length > 0 && <ParamsEditor taskKey={t.key} params={t.params} initial={t.values} />}
-          <OptionsEditor t={t} ctx={ctx} />
-          <PreviewBox taskKey={t.key} costly={t.key === 'briefing'} />
-          <p className={`mt-0.5 text-[11px] font-medium ${s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'text-brand-700' : 'text-gray-400'}`}>
-            {statusLabel(s, today)}{msg && <span className={msg === 'Salvo' || msg === 'Salvando…' ? 'ml-2 text-gray-400' : 'ml-2 text-negative-600'}>{msg}</span>}
+        <div className="min-w-0 flex-1">
+          <p className={`text-sm font-medium ${s.enabled ? 'text-gray-900' : 'text-gray-400'}`}>
+            {t.title} <span className="rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">🤖 {t.agent.toUpperCase()}</span>
           </p>
+          <p className="text-xs text-gray-600">{t.description} <span className="text-gray-400">→ {t.sends}.</span></p>
+          {summary && <p className="text-[11px] text-gray-500">{summary}</p>}
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11px]">
+            <span className={s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'font-medium text-brand-700' : 'text-gray-400'}>
+              {t.monthly && s.enabled && !(s.pausedUntil && s.pausedUntil >= today) ? 'Ativa · uma vez por mês' : statusLabel(s, today)}
+            </span>
+            {msg && <span className={msg === 'Salvo' || msg === 'Salvando…' ? 'text-gray-400' : 'text-negative-600'}>{msg}</span>}
+            <button type="button" onClick={() => setOpen(!open)} className="font-medium text-brand-700 hover:underline">{open ? 'Fechar' : 'Editar'}</button>
+          </p>
+          {open && (
+            <div className="mt-2 space-y-2 rounded-md border border-gray-100 bg-gray-50/60 p-3">
+              {t.params.length > 0 && <ParamsEditor taskKey={t.key} params={t.params} initial={t.values} />}
+              <OptionsEditor t={t} ctx={ctx} />
+              <div className={`flex flex-wrap items-center gap-4 ${s.enabled ? '' : 'opacity-50'}`}>
+                {t.monthly
+                  ? <p className="text-xs text-gray-600">Uma vez por mês{t.values.due_day ? `, a partir do dia ${t.values.due_day}` : t.values.report_day ? `, a partir do dia ${t.values.report_day}` : ''}</p>
+                  : <div><p className="text-[11px] text-gray-600">Dias</p><DayPicker days={s.days} disabled={!s.enabled} onChange={d => save({ ...s, days: d })} /></div>}
+                <PauseControl value={s.pausedUntil} today={today} disabled={!s.enabled} onChange={v => save({ ...s, pausedUntil: v })} />
+              </div>
+              <PreviewBox taskKey={t.key} costly={t.key === 'briefing'} />
+            </div>
+          )}
         </div>
-      </div>
-      <div className={`flex flex-col gap-1.5 sm:items-end ${s.enabled ? '' : 'opacity-50'}`}>
-        {t.monthly
-          ? <p className="text-xs text-gray-600">Uma vez por mês{t.values.due_day ? `, a partir do dia ${t.values.due_day}` : t.values.report_day ? `, a partir do dia ${t.values.report_day}` : ''}</p>
-          : <DayPicker days={s.days} disabled={!s.enabled} onChange={d => save({ ...s, days: d })} />}
-        <PauseControl value={s.pausedUntil} today={today} disabled={!s.enabled} onChange={v => save({ ...s, pausedUntil: v })} />
       </div>
     </li>
   )

@@ -150,6 +150,11 @@ export async function onImplementationStarted(contractId: string, startDate: str
     .eq('metadata->>kind', 'impl_kickoff')
     .neq('status', 'done')
 
+  // Desligado na Central de regras (Ao iniciar a implantação): não abre as tarefas de acompanhamento
+  const { eventOn } = await import('@/lib/rules/events-server')
+  const { resolveTenantId } = await import('@/lib/tenant/context')
+  if (!(await eventOn(await resolveTenantId({ contractId }), 'impl_followup'))) return
+
   const r1 = await createAgentActivity(admin, {
     contractId,
     dedupeKey: `impl:follow:${start}`,
