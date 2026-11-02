@@ -491,7 +491,7 @@ export async function markClientNoticeStep(contractId: string, opts: { userId?: 
   const run = r.run
   const idx = run.steps.findIndex(s => !s.done_at && s.done_when === 'client_notice')
   if (idx < 0) return { ok: true as const }
-  if (openStepIndexes(run.steps).includes(idx)) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado')
+  if (openStepIndexes(run.steps).includes(idx)) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado', false, true)
   else {
     // Passo interno anterior ainda aberto: marca o aviso como feito sem pular a ordem dos outros
     const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: opts.userId ?? null, note: 'Aviso ao cliente enviado' } : s))
@@ -511,7 +511,7 @@ export async function skipRulerStep(tenantId: string, runId: string, stepId: str
   const pend = (await pendingAreaTasks(run, stepId)).map(t => String(t.metadata?.area_name ?? '')).filter(Boolean)
   if (pend.length) reason = `${reason} (sem concluir: ${pend.join(', ')})`
   if (openStepIndexes(run.steps).includes(idx)) {
-    const ok = await completeStepInternal(run, idx, userId, `⚠ Passado fora do processo: ${reason}`)
+    const ok = await completeStepInternal(run, idx, userId, `⚠ Passado fora do processo: ${reason}`, false, true)
     return ok ? { ok: true } : { ok: false, error: 'A régua mudou. Atualize a página.' }
   }
   const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: userId, note: `⚠ Passado fora do processo: ${reason}` } : s))

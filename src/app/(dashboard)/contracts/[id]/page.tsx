@@ -244,13 +244,48 @@ export default async function ContractDetailPage({
   // "Dono da conta" (owner_id) é fixo/de longo prazo — diferente de
   // "responsável agora" (current_assignee_id), que é só a tratativa
   // pontual do momento e NÃO dá poder de mudar etapa.
-  const currentProfile = await getCurrentProfile()
+  // Carregamentos independentes começam juntos (a página recarrega a cada ação: menos espera)
+  const tenantReadP = resolveTenantForReading({ contractId: id })
+  const tenantIdP = resolveTenantId()
+  const profileP = getCurrentProfile()
+  const readingP = Promise.all([
+    Promise.resolve(supabase.from('contract_ai_readings').select('created_at, file_name, status, error, result').eq('contract_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()),
+    tenantReadP.then(t => getAnthropicKeyForTenant(t)),
+  ])
+  const actionPlanP = Promise.all([
+    Promise.resolve(supabase.from('action_plans')
+      .select('id, title, origin, description, phase, cycle, gut_g, gut_u, gut_t, five_whys, ishikawa, root_cause, cause_method, efficacy_result, efficacy_note, efficacy_checked_at, standardization, created_at, closed_at, cancel_reason')
+      .eq('contract_id', id)),
+    tenantReadP.then(t => supabase.from('organization_settings').select('action_plan_settings').eq('tenant_id', t).maybeSingle()),
+  ])
+  const rulerP = (async () => {
+    if (!isCurrentlyInContractsPipeline) return { rulerRun: null, rulerOrg: null, rulerTaskRows: [] as unknown[], rulerPeople: [] as unknown[] }
+    const t = await tenantReadP
+    const [{ data: rulerRun }, { data: rulerOrg }] = await Promise.all([
+      supabase.from('renewal_ruler_runs')
+        .select('id, status, period_end, steps, lock_renewed, started_at, ready_at, finished_at')
+        .eq('contract_id', id).order('started_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('organization_settings').select('copilot_settings').eq('tenant_id', t).maybeSingle(),
+    ])
+    const { data: rulerTaskRows } = rulerRun?.id
+      ? await supabase.from('activities').select('status, assigned_to, metadata').eq('contract_id', id)
+          .eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', rulerRun.id as string)
+      : { data: [] }
+    const ids = [...new Set(((rulerTaskRows ?? []) as { assigned_to: string | null }[]).map(x => x.assigned_to).filter((x): x is string => !!x))]
+    const { data: rulerPeople } = ids.length ? await supabase.from('profiles').select('id, full_name').in('id', ids) : { data: [] }
+    return { rulerRun, rulerOrg, rulerTaskRows: (rulerTaskRows ?? []) as unknown[], rulerPeople: (rulerPeople ?? []) as unknown[] }
+  })()
+  const implP = Promise.all([getContractSchedule(id), getImplementationTemplates()])
+  const tabCfgP = tenantIdP.then(t => supabase.from('organization_settings').select('pipeline_tab_config').eq('tenant_id', t).maybeSingle())
+  const billingP = (async () => (await createScopedAdmin())
+    .from('organization_settings').select('billing_cnpjs').eq('tenant_id', await resolveTenantId({ contractId: contract.id })).maybeSingle())()
+  const mkP = Promise.resolve(supabase.from('marketing_campaigns').select('id, name, status').order('name'))
+  const orgMiscP = tenantIdP.then(t => supabase.from('organization_settings').select('inbound_email_domain, zapsign_api_token').eq('tenant_id', t).maybeSingle())
+
+  const currentProfile = await profileP
 
   // Farmer · leitura do contrato (última leitura + PDFs disponíveis)
-  const [{ data: lastReading }, aiKeyInfo] = await Promise.all([
-    supabase.from('contract_ai_readings').select('created_at, file_name, status, error, result').eq('contract_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    getAnthropicKeyForTenant(await resolveTenantForReading({ contractId: id })),
-  ])
+  const [{ data: lastReading }, aiKeyInfo] = await readingP
   const readingResult = lastReading?.status === 'ok' && lastReading.result ? normalizeReading(lastReading.result) : null
   const readingChecks = readingResult ? checkReading(readingResult, { valid_from: contract.valid_from ?? null, valid_until: contract.valid_until ?? null, monthly_value: (contract as any).monthly_value ?? null }) : null
   // Aba "Contrato e aditivos": só arquivos marcados como contrato/aditivo
@@ -264,51 +299,28 @@ export default async function ContractDetailPage({
     contract.owner_id === currentProfile?.id || currentProfile?.role === 'admin'
 
   // Plano de ação (tratativas PDCA) e ferramentas ligadas pela empresa
-  const [{ data: actionPlans }, { data: actionPlanOrg }] = await Promise.all([
-    supabase.from('action_plans')
-      .select('id, title, origin, description, phase, cycle, gut_g, gut_u, gut_t, five_whys, ishikawa, root_cause, cause_method, efficacy_result, efficacy_note, efficacy_checked_at, standardization, created_at, closed_at, cancel_reason')
-      .eq('contract_id', id),
-    supabase.from('organization_settings').select('action_plan_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
-  ])
+  const [{ data: actionPlans }, { data: actionPlanOrg }] = await actionPlanP
 
   // Régua de renovação (processo interno da renovação)
-  const [{ data: rulerRun }, { data: rulerOrg }] = isCurrentlyInContractsPipeline
-    ? await Promise.all([
-        supabase.from('renewal_ruler_runs')
-          .select('id, status, period_end, steps, lock_renewed, started_at, ready_at, finished_at')
-          .eq('contract_id', id).order('started_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('organization_settings').select('copilot_settings').eq('tenant_id', await resolveTenantForReading({ contractId: id })).maybeSingle(),
-      ])
-    : [{ data: null }, { data: null }]
+  const { rulerRun, rulerOrg, rulerTaskRows, rulerPeople } = await rulerP as {
+    rulerRun: { id: string } & Record<string, unknown> | null; rulerOrg: { copilot_settings?: unknown } | null
+    rulerTaskRows: unknown[]; rulerPeople: unknown[]
+  }
   const rulerCfg = resolveRulerSettings(rulerOrg?.copilot_settings)
   const rulerEnabled = rulerCfg.enabled
-  // Tarefas por área da régua (quem está com cada parte)
-  const { data: rulerTaskRows } = rulerRun?.id
-    ? await supabase.from('activities').select('status, assigned_to, metadata').eq('contract_id', id)
-        .eq('metadata->>kind', 'handoff').eq('metadata->>ruler_run_id', rulerRun.id as string)
-    : { data: [] }
-  const rulerTaskPeople = [...new Set(((rulerTaskRows ?? []) as { assigned_to: string | null }[]).map(t => t.assigned_to).filter((x): x is string => !!x))]
-  const { data: rulerPeople } = rulerTaskPeople.length ? await supabase.from('profiles').select('id, full_name').in('id', rulerTaskPeople) : { data: [] }
   const rulerName = new Map(((rulerPeople ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? '—']))
   const rulerAreaTasks = ((rulerTaskRows ?? []) as { status: string; assigned_to: string | null; metadata: Record<string, unknown> | null }[])
     .map(t => ({ stepId: String(t.metadata?.step_id ?? ''), area: t.metadata?.area_name ? String(t.metadata.area_name) : null, person: t.assigned_to ? rulerName.get(t.assigned_to) ?? '—' : '—', done: t.status === 'done' }))
 
   // Dados de implantação
-  const [implementationSchedule, implementationTemplates] = await Promise.all([
-    getContractSchedule(id),
-    getImplementationTemplates(),
-  ])
+  const [implementationSchedule, implementationTemplates] = await implP
 
   // Busca o pipeline do contrato (via pipeline_run)
   const implementationPipelineId = (contract as any)?.current_pipeline_id
   // Configuração de abas por pipeline — com fallback seguro
   let pipelineTabConfig: { order: string[] | null; hidden: string[] } = { order: null, hidden: [] }
   try {
-    const tabOrderData = await supabase
-      .from('organization_settings')
-      .select('pipeline_tab_config')
-      .eq('tenant_id', await resolveTenantId())
-      .maybeSingle()
+    const tabOrderData = await tabCfgP
 
     const allPipelineConfig = (tabOrderData?.data as any)?.pipeline_tab_config ?? {}
     const pipelineId = (contract as any)?.current_pipeline_id
@@ -365,7 +377,7 @@ export default async function ContractDetailPage({
     supabase.from('email_templates').select('id, name').eq('context', 'contract').eq('channel', 'email').order('name'),
     supabase.from('contract_emails').select('id, from_email, to_email, cc_email, bcc_email, subject, body, sent_at, status, triggered_automatically, error_message, opened_at, direction').eq('contract_id', contract.id).order('sent_at', { ascending: false }),
     getConnectedEmailAccount().catch(() => null),
-    supabase.from('organization_settings').select('inbound_email_domain').eq('tenant_id', await resolveTenantId()).maybeSingle(),
+    orgMiscP,
     supabase.from('custom_fields').select('id, name, field_key, field_type, select_options').order('name'),
     getContractCustomFieldValues(contract.id).catch(() => ({} as Record<string, string>)),
     getContractContacts(contract.id),
@@ -374,7 +386,7 @@ export default async function ContractDetailPage({
       : Promise.resolve({ data: [] as { id: string; name: string; role: string | null }[] }),
     supabase.from('zapsign_templates').select('id, name, type').order('name'),
     supabase.from('zapsign_documents').select('id, name, status, sent_at, signed_at, source, document_kind, signers, signed_file_id').eq('contract_id', contract.id).order('created_at', { ascending: false }),
-    supabase.from('organization_settings').select('zapsign_api_token').eq('tenant_id', await resolveTenantId()).maybeSingle(),
+    orgMiscP,
     supabase.from('proposal_status').select('status, proposal_value, actor_name, actor_email, updated_at, technical_snapshot, technical_comment, technical_restrictions, review_token, submitted_at, submitted_by_name, technical_approved_at, technical_approved_by_name, technical_approved_by_role, commercial_approved_at, commercial_approved_by_name, commercial_approved_by_role, client_status, client_approved_at, client_approved_by_name, client_review_token, texto_objetivos, texto_atividades, texto_estrutura_apoio').eq('contract_id', contract.id).maybeSingle(),
   ])
 
@@ -384,12 +396,11 @@ export default async function ContractDetailPage({
       : null
 
   // CNPJs de faturamento da empresa (Configurações → billing_cnpjs)
-  const { data: billingOrg } = await (await createScopedAdmin())
-    .from('organization_settings').select('billing_cnpjs').eq('tenant_id', await resolveTenantId({ contractId: contract.id })).maybeSingle()
+  const { data: billingOrg } = await billingP
   const billingCnpjs = (Array.isArray(billingOrg?.billing_cnpjs) ? billingOrg.billing_cnpjs : []) as { value: string; label: string }[]
 
   // Origem de marketing (campanha) — liga a oportunidade ao resultado da campanha
-  const { data: mkCampaigns } = await supabase.from('marketing_campaigns').select('id, name, status').order('name')
+  const { data: mkCampaigns } = await mkP
   const originLead = (contract as { lead_id?: string | null }).lead_id ?? null
 
   return (
