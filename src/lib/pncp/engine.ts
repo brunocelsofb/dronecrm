@@ -389,3 +389,80 @@ export async function backfillStep(deadlineMs: number): Promise<{ day: string | 
   await admin.from('pncp_sync_state').upsert({ key: 'backfill', value: { next: prev, mods_done: [] }, updated_at: new Date().toISOString() })
   return { day, saved, done: false, partial: false }
 }
+
+// ── Acompanhamento das licitações que a empresa disputa ─────────────────────────
+// Para as marcadas "Vamos participar" ou que viraram oportunidade: lê no PNCP a situação de cada
+// item e o vencedor; se mudou desde a última leitura, guarda e avisa quem a empresa escolheu
+// (configuração da inteligência) e o responsável pela licitação.
+export type PncpSettings = { own_cnpjs: string[]; recipient_ids: string[]; channels: { sino?: boolean; whatsapp?: boolean; email?: boolean } }
+
+export async function loadPncpSettings(tenantId: string): Promise<PncpSettings> {
+  const { data } = await createAdminClient().from('pncp_settings').select('own_cnpjs, recipient_ids, channels').eq('tenant_id', tenantId).maybeSingle()
+  const d = (data ?? {}) as Partial<PncpSettings>
+  const c = d.channels ?? {}
+  return { own_cnpjs: d.own_cnpjs ?? [], recipient_ids: d.recipient_ids ?? [], channels: { sino: c.sino !== false, email: c.email !== false, whatsapp: c.whatsapp === true } }
+}
+
+// Lê o resultado de uma licitação do radar e guarda no radar da empresa. Devolve se mudou.
+export async function refreshMatchResult(tenantId: string, matchId: string, row: PncpRow, settings: PncpSettings, prevSig: string | null) {
+  const { fetchResultado, outcomeFor } = await import('./results')
+  const res = await fetchResultado(row)
+  if (!res) return null
+  const out = outcomeFor(res, row, settings.own_cnpjs)
+  const changed = res.sig !== prevSig
+  const patch: Record<string, unknown> = { tracked_at: new Date().toISOString() }
+  if (changed || prevSig === null) {
+    Object.assign(patch, {
+      result: res, result_status: out.status, won_value: out.wonValue || null,
+      homologado_value: res.homologadoTotal || null, winners: out.winners,
+    })
+    if (out.status !== 'aguardando') patch.result_at = new Date().toISOString()
+  }
+  await createAdminClient().from('pncp_matches').update(patch).eq('id', matchId).eq('tenant_id', tenantId)
+  return { res, out, changed }
+}
+
+export async function trackParticipations(tenantId: string, deadlineMs: number): Promise<{ checked: number; changed: number; notified: number }> {
+  const admin = createAdminClient()
+  const run = { checked: 0, changed: 0, notified: 0 }
+  const settings = await loadPncpSettings(tenantId)
+  const { data } = await admin.from('pncp_matches')
+    .select('id, numero_controle, assigned_to, decided_by, result, result_status, tracked_at')
+    .eq('tenant_id', tenantId).in('status', ['participar', 'oportunidade'])
+    .or('result_status.is.null,result_status.eq.aguardando')
+    .order('tracked_at', { ascending: true, nullsFirst: true }).limit(60)
+  const list = (data ?? []) as { id: string; numero_controle: string; assigned_to: string | null; decided_by: string | null; result: { sig?: string } | null }[]
+  if (!list.length) return run
+  const { data: rows } = await admin.from('pncp_contratacoes').select('*').in('numero_controle', list.map(l => l.numero_controle))
+  const byId = new Map(((rows ?? []) as PncpRow[]).map(r => [r.numero_controle, r]))
+  const { notifyPerson } = await import('@/lib/agent/handoff')
+  const { OUTCOME_LABEL } = await import('./results')
+  for (const m of list) {
+    if (Date.now() > deadlineMs) break
+    const row = byId.get(m.numero_controle)
+    if (!row) continue
+    // Só depois que as propostas encerraram (antes disso não há resultado) e até 1 ano depois
+    if (row.data_encerramento && Date.parse(row.data_encerramento) > Date.now()) continue
+    if (row.data_encerramento && Date.now() - Date.parse(row.data_encerramento) > 365 * 86_400_000) continue
+    const prevSig = m.result?.sig ?? null
+    const r = await refreshMatchResult(tenantId, m.id, row, settings, prevSig)
+    run.checked++
+    if (!r || !r.changed) continue
+    run.changed++
+    // Primeira leitura sem nada de novo (tudo em andamento e sem vencedor): não avisa
+    if (prevSig === null && r.out.status === 'aguardando' && !r.res.comResultado) continue
+    const lines = r.res.itens.slice(0, 6).map(i => {
+      const v = i.vencedores[0]
+      return `• Item ${i.numero}: ${i.situacao}${v ? ` · vencedor ${v.nome} (${BRL(v.valorTotal)})` : ''}`
+    }).join('\n')
+    const head = r.out.status === 'ganhou' ? `🏆 Ganhamos ${BRL(r.out.wonValue)}` : `📣 ${OUTCOME_LABEL[r.out.status]}`
+    const text = `${head} · ${row.orgao_nome ?? ''} (${row.uf ?? ''})\n${(row.objeto ?? '').slice(0, 160)}\n\n${lines}${r.res.itens.length > 6 ? `\n… e mais ${r.res.itens.length - 6} item(ns)` : ''}` +
+      `\n\nEstimado ${BRL(r.res.estimadoTotal)} · homologado ${BRL(r.res.homologadoTotal)}${pncpUrl(row) ? `\nEdital: ${pncpUrl(row)}` : ''}\n${appUrl()}/licitacoes`
+    const to = new Set([...settings.recipient_ids, ...(m.assigned_to ? [m.assigned_to] : m.decided_by ? [m.decided_by] : [])])
+    for (const u of to) {
+      const ch = await notifyPerson(tenantId, u, { text, subject: `Licitação: ${OUTCOME_LABEL[r.out.status]} · ${row.orgao_nome ?? ''}` }, settings.channels)
+      if (ch.length) run.notified++
+    }
+  }
+  return run
+}

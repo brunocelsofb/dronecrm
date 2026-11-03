@@ -4,14 +4,16 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, ExternalLink, X, FileText, Sparkles, Clock, Bell } from 'lucide-react'
-import { fmtBRL } from '@/lib/format'
+import { Search, ExternalLink, X, FileText, Sparkles, Clock, Bell, Trophy } from 'lucide-react'
+import { fmtBRL, fmtPct } from '@/lib/format'
 import { UFS } from '@/lib/geo/uf'
 import { MODALIDADES, STATUS_LABEL, SEARCH_SITUACOES, pncpUrl, type MatchStatus, type PncpRow, type SearchSituacao } from '@/lib/pncp/catalog'
 import {
-  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero,
+  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero, getResultado,
   type SearchHit, type DetailItem, type DetailFile,
 } from '@/lib/actions/licitacoes'
+import { OUTCOME_LABEL, type Resultado, type Outcome } from '@/lib/pncp/results'
+import { SupplierDrawer } from './supplier-profile'
 
 type Opt = { id: string; name: string }
 const RECENT_KEY = 'licitacoes:recentes'
@@ -241,6 +243,8 @@ export function DetailDrawer({ numero, pipelines, nowMs, onClose }: { numero: st
               )}
             </div>
 
+            <ResultPanel numero={numero} closed={!!r.data_encerramento && Date.parse(r.data_encerramento) < nowMs} />
+
             {/* Agente */}
             <div className="rounded-xl border border-gray-200 p-4">
               <div className="flex items-center justify-between gap-2">
@@ -289,6 +293,70 @@ export function DetailDrawer({ numero, pipelines, nowMs, onClose }: { numero: st
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Resultado: situação de cada item, vencedor e valor homologado ─────────────
+const OUTCOME_TONE: Record<Outcome, string> = {
+  aguardando: 'bg-gray-100 text-gray-700', ganhou: 'bg-positive-100 text-positive-700', perdeu: 'bg-warn-100 text-warn-700',
+  sem_vencedor: 'bg-gray-100 text-gray-600', cancelada: 'bg-negative-100 text-negative-700',
+}
+function ResultPanel({ numero, closed }: { numero: string; closed: boolean }) {
+  const [r, setR] = useState<{ res: Resultado; status: Outcome; wonValue: number; ownSet: boolean } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [sup, setSup] = useState<{ ni: string; nome: string } | null>(null)
+  const load = async () => {
+    setBusy(true); setErr(null)
+    const x = await getResultado(numero)
+    setBusy(false)
+    if (x.ok) setR(x); else setErr(x.error)
+  }
+  useEffect(() => {
+    if (!closed) return
+    let alive = true
+    getResultado(numero).then(x => { if (!alive) return; if (x.ok) setR(x); else setErr(x.error) })
+    return () => { alive = false }
+  }, [numero, closed])
+
+  const desconto = r && r.res.estimadoTotal > 0 && r.res.homologadoTotal > 0 ? (1 - r.res.homologadoTotal / r.res.estimadoTotal) * 100 : null
+  return (
+    <div className="rounded-xl border border-gray-200 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900"><Trophy className="h-4 w-4 text-brand-700" />Resultado</p>
+        {r ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${OUTCOME_TONE[r.status]}`}>{r.status === 'ganhou' ? `Ganhamos ${fmtBRL(r.wonValue)}` : OUTCOME_LABEL[r.status]}</span>
+          : <button type="button" disabled={busy} onClick={load} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{busy ? 'Buscando…' : 'Ver resultado no PNCP'}</button>}
+      </div>
+      {(busy || closed) && !r && !err && <p className="mt-2 text-xs text-gray-500">Lendo os itens e os vencedores no PNCP…</p>}
+      {err && <p className="mt-2 text-xs text-negative-700">{err}</p>}
+      {r && (
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-gray-600">
+            Estimado {fmtBRL(r.res.estimadoTotal)} · homologado {r.res.homologadoTotal > 0 ? fmtBRL(r.res.homologadoTotal) : '—'}
+            {desconto !== null && <> · desconto {fmtPct(desconto)}</>} · {r.res.comResultado} de {r.res.itensTotal} item(ns) com vencedor
+          </p>
+          {!r.ownSet && <p className="text-[11px] text-gray-500">Para o CRM saber quando vocês ganham, o administrador cadastra os CNPJs da empresa em Licitações → Inteligência.</p>}
+          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+            {r.res.itens.slice(0, 60).map(i => (
+              <li key={i.numero} className="px-3 py-2 text-xs">
+                <p className="text-gray-800"><b>Item {i.numero}</b> · {i.situacao}{i.estimado ? ` · estimado ${fmtBRL(i.estimado)}` : ''}</p>
+                <p className="line-clamp-1 text-gray-500">{i.descricao}</p>
+                {i.vencedores.map(v => (
+                  <p key={v.ni} className="mt-0.5 text-gray-700">
+                    Vencedor: <button type="button" onClick={() => setSup({ ni: v.ni, nome: v.nome })} className="font-medium text-brand-700 hover:underline">{v.nome}</button>
+                    {v.porte ? <span className="text-gray-400"> ({v.porte})</span> : null} · {fmtBRL(v.valorTotal)}{v.valorUnitario ? ` (${fmtBRL(v.valorUnitario)} un.)` : ''}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ul>
+          {r.res.itensTotal > r.res.itens.length && <p className="text-[11px] text-gray-500">Mostrando {r.res.itens.length} de {r.res.itensTotal} itens.</p>}
+          <p className="text-[11px] text-gray-400">O PNCP publica o vencedor de cada item; quem participou e não ganhou não é publicado.</p>
+        </div>
+      )}
+      {!r && !busy && !err && !closed && <p className="mt-1 text-xs text-gray-500">Ainda recebendo propostas. Depois da sessão, o vencedor e o valor aparecem aqui.</p>}
+      {sup && <SupplierDrawer cnpj={sup.ni} name={sup.nome} onClose={() => setSup(null)} />}
     </div>
   )
 }

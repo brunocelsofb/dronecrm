@@ -12,6 +12,7 @@ import {
   saveWatcher, deleteWatcher, searchNow, setMatchStatus, assignMatch, analyzeMatch, convertMatch, type WatcherInput,
 } from '@/lib/actions/licitacoes'
 import { SearchTab, DetailDrawer } from './search-tab'
+import { IntelTab } from './intel-tab'
 
 export type MatchView = {
   id: string; numero_controle: string; watcher_ids: string[]; status: MatchStatus; assigned_to: string | null
@@ -48,12 +49,13 @@ function Score({ v }: { v: number }) {
 export function LicitacoesView({ isAdmin, matches, watchers, people, areas, pipelines, nowMs }: {
   isAdmin: boolean; matches: MatchView[]; watchers: WatcherView[]; people: Opt[]; areas: Opt[]; pipelines: Opt[]; nowMs: number
 }) {
-  const [tab, setTab] = useState<'pesquisar' | 'radar' | 'monitoramentos'>('pesquisar')
+  const [tab, setTab] = useState<'pesquisar' | 'radar' | 'monitoramentos' | 'inteligencia'>('pesquisar')
   const [prefill, setPrefill] = useState<string | null>(null)
   const TABS = [
     { key: 'pesquisar' as const, label: 'Pesquisar' },
     { key: 'radar' as const, label: `Meus alertas (${matches.filter(m => m.status === 'nova' || m.status === 'analisando').length})` },
     { key: 'monitoramentos' as const, label: `Monitoramentos (${watchers.length})` },
+    { key: 'inteligencia' as const, label: 'Inteligência' },
   ]
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
@@ -71,6 +73,7 @@ export function LicitacoesView({ isAdmin, matches, watchers, people, areas, pipe
       </nav>
       {tab === 'pesquisar' && <SearchTab isAdmin={isAdmin} pipelines={pipelines} nowMs={nowMs} onCreateAlert={q => { setPrefill(q); setTab('monitoramentos') }} />}
       {tab === 'radar' && <Radar matches={matches} watchers={watchers} people={people} pipelines={pipelines} nowMs={nowMs} onSetup={() => setTab('monitoramentos')} />}
+      {tab === 'inteligencia' && <IntelTab isAdmin={isAdmin} people={people} pipelines={pipelines} nowMs={nowMs} />}
       {tab === 'monitoramentos' && <Watchers isAdmin={isAdmin} watchers={watchers} people={people} areas={areas} prefill={prefill} onPrefillUsed={() => setPrefill(null)} />}
     </div>
   )

@@ -391,3 +391,133 @@ export async function loadBaseNow(): Promise<Result> {
   try { const { after } = await import('next/server'); after(job) } catch { await job() }
   return { ok: true }
 }
+
+// ── Resultado (vencedor e valor por item) ─────────────────────────────────────
+export async function getResultado(numero: string): Promise<{ ok: true; res: import('@/lib/pncp/results').Resultado; status: import('@/lib/pncp/results').Outcome; wonValue: number; ownSet: boolean } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { data } = await createAdminClient().from('pncp_contratacoes').select('*').eq('numero_controle', numero).maybeSingle()
+  const row = data as PncpRow | null
+  if (!row) return { ok: false, error: 'Licitação não encontrada.' }
+  const { loadPncpSettings, refreshMatchResult } = await import('@/lib/pncp/engine')
+  const { fetchResultado, outcomeFor } = await import('@/lib/pncp/results')
+  const settings = await loadPncpSettings(g.tenantId)
+  const { data: m } = await g.db.from('pncp_matches').select('id, result').eq('numero_controle', numero).maybeSingle()
+  if (m?.id) {
+    const r = await refreshMatchResult(g.tenantId, m.id as string, row, settings, ((m.result as { sig?: string } | null)?.sig) ?? null)
+    if (!r) return { ok: false, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
+    return { ok: true, res: r.res, status: r.out.status, wonValue: r.out.wonValue, ownSet: settings.own_cnpjs.length > 0 }
+  }
+  const res = await fetchResultado(row)
+  if (!res) return { ok: false, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
+  const out = outcomeFor(res, row, settings.own_cnpjs)
+  return { ok: true, res, status: out.status, wonValue: out.wonValue, ownSet: settings.own_cnpjs.length > 0 }
+}
+
+// ── Contratos de um CNPJ no PNCP (nós ou concorrente) ────────────────────────
+export async function getSupplierProfile(cnpj: string) {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const { supplierContracts, supplierSummary, isCnpj } = await import('@/lib/pncp/results')
+  if (!isCnpj(cnpj)) return { ok: false as const, error: 'Informe um CNPJ com 14 números.' }
+  const r = await supplierContracts(cnpj)
+  if (!r) return { ok: false as const, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
+  return { ok: true as const, summary: supplierSummary(r.items), items: r.items.slice(0, 60) }
+}
+
+// ── Configuração da inteligência (CNPJs da empresa, quem recebe o acompanhamento) ─
+export async function saveIntelSettings(input: { own_cnpjs: string; recipient_ids: string[]; channels: { sino: boolean; whatsapp: boolean; email: boolean } }): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const { onlyDigits } = await import('@/lib/pncp/results')
+  const list = [...new Set(String(input.own_cnpjs ?? '').split(/[\n,;\s]+/).map(onlyDigits).filter(Boolean))]
+  const bad = list.filter(c => c.length !== 14)
+  if (bad.length) return { ok: false, error: `CNPJ inválido: ${bad[0]}. Use 14 números.` }
+  if (list.length > 20) return { ok: false, error: 'Até 20 CNPJs.' }
+  const ids = (Array.isArray(input.recipient_ids) ? input.recipient_ids : []).filter(x => /^[0-9a-f-]{36}$/i.test(String(x))).slice(0, 50)
+  const ch = { sino: input.channels?.sino === true, whatsapp: input.channels?.whatsapp === true, email: input.channels?.email === true }
+  const { error } = await g.db.from('pncp_settings').upsert({
+    tenant_id: g.tenantId, own_cnpjs: list, recipient_ids: ids, channels: ch, updated_by: g.userId, updated_at: new Date().toISOString(),
+  }, { onConflict: 'tenant_id' })
+  if (error) return { ok: false, error: 'Não foi possível salvar.' }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+export async function saveCompetitor(input: { cnpj: string; name?: string | null; note?: string | null }): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { onlyDigits } = await import('@/lib/pncp/results')
+  const cnpj = onlyDigits(input.cnpj)
+  if (cnpj.length !== 14) return { ok: false, error: 'Informe um CNPJ com 14 números.' }
+  const { error } = await g.db.from('pncp_competitors').upsert({
+    tenant_id: g.tenantId, cnpj, name: String(input.name ?? '').trim().slice(0, 200) || null,
+    note: String(input.note ?? '').trim().slice(0, 1000) || null, created_by: g.userId,
+  }, { onConflict: 'tenant_id,cnpj' })
+  if (error) return { ok: false, error: 'Não foi possível salvar o concorrente.' }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+export async function deleteCompetitor(id: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { error } = await g.db.from('pncp_competitors').delete().eq('id', id)
+  if (error) return { ok: false, error: 'Não foi possível remover.' }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+// Acompanha agora (em segundo plano) as licitações que a empresa disputa
+export async function trackNow(): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const { tenantId, userId } = g
+  const job = async () => {
+    const { trackParticipations } = await import('@/lib/pncp/engine')
+    const { notifyPerson } = await import('@/lib/agent/handoff')
+    const r = await trackParticipations(tenantId, Date.now() + 200_000)
+    await notifyPerson(tenantId, userId, {
+      text: `📣 Acompanhamento de licitações: ${r.checked} conferida(s) no PNCP, ${r.changed} com novidade.`, subject: 'Acompanhamento de licitações',
+    }, { sino: true, whatsapp: false, email: false })
+  }
+  try { const { after } = await import('next/server'); after(job) } catch { await job() }
+  return { ok: true }
+}
+
+// ── Central de inteligência ───────────────────────────────────────────────────
+export type IntelRow = {
+  id: string; numero_controle: string; status: MatchStatus; result_status: string | null; contract_id: string | null
+  won_value: number | null; homologado_value: number | null; winners: string[]; result_at: string | null; created_at: string
+  orgao_nome: string | null; uf: string | null; objeto: string | null; modalidade_nome: string | null
+  valor_estimado: number | null; data_encerramento: string | null; link: string | null
+}
+export async function getIntel() {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const [{ data: ms }, { data: comp }, { data: st }] = await Promise.all([
+    g.db.from('pncp_matches').select('id, numero_controle, status, result_status, contract_id, won_value, homologado_value, winners, result_at, created_at').order('created_at', { ascending: false }).limit(3000),
+    g.db.from('pncp_competitors').select('id, cnpj, name, note, created_at').order('created_at', { ascending: false }),
+    g.db.from('pncp_settings').select('own_cnpjs, recipient_ids, channels').maybeSingle(),
+  ])
+  const matches = (ms ?? []) as Omit<IntelRow, 'orgao_nome' | 'uf' | 'objeto' | 'modalidade_nome' | 'valor_estimado' | 'data_encerramento' | 'link'>[]
+  const ids = matches.map(m => m.numero_controle)
+  const rows = new Map<string, PncpRow>()
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await createAdminClient().from('pncp_contratacoes').select('*').in('numero_controle', ids.slice(i, i + 300))
+    for (const r of (data ?? []) as PncpRow[]) rows.set(r.numero_controle, r)
+  }
+  const list: IntelRow[] = matches.map(m => {
+    const r = rows.get(m.numero_controle)
+    return {
+      ...m, winners: m.winners ?? [], orgao_nome: r?.orgao_nome ?? null, uf: r?.uf ?? null, objeto: r?.objeto ?? null,
+      modalidade_nome: r?.modalidade_nome ?? null, valor_estimado: r?.valor_estimado ?? null, data_encerramento: r?.data_encerramento ?? null,
+      link: r ? pncpUrl(r) : null,
+    }
+  })
+  return {
+    ok: true as const, list,
+    competitors: (comp ?? []) as { id: string; cnpj: string; name: string | null; note: string | null; created_at: string }[],
+    settings: (st ?? { own_cnpjs: [], recipient_ids: [], channels: { sino: true, email: true, whatsapp: false } }) as { own_cnpjs: string[]; recipient_ids: string[]; channels: { sino?: boolean; whatsapp?: boolean; email?: boolean } },
+  }
+}
