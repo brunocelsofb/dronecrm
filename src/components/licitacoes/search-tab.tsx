@@ -47,7 +47,7 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
   const [mod, setMod] = useState('')
   const [ate, setAte] = useState('')
   const [page, setPage] = useState(1)
-  const [res, setRes] = useState<{ rows: SearchHit[]; total: number; pages: number; base: number } | null>(null)
+  const [res, setRes] = useState<{ rows: SearchHit[]; total: number; pages: number; base: number; baseFrom: string | null } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [recent, setRecent] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
@@ -107,7 +107,7 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
       {baseMsg && <p role="status" className="text-sm text-positive-700">{baseMsg}</p>}
       {res && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação aberta' : 'licitações abertas'}{q.trim() ? ` com "${q.trim()}"` : ''} · base com {res.base.toLocaleString('pt-BR')} publicações (novas às 8h e 17h; dias anteriores carregados aos poucos)
+          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação aberta' : 'licitações abertas'}{q.trim() ? ` com "${q.trim()}"` : ''} · base com {res.base.toLocaleString('pt-BR')} publicações{res.baseFrom ? ` desde ${new Date(res.baseFrom).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : ''} (novas às 8h e 17h; dias anteriores carregados algumas vezes ao dia até completar 45 dias)
             {isAdmin && <button type="button" disabled={baseBusy} onClick={async () => { setBaseBusy(true); const r = await loadBaseNow(); setBaseBusy(false); setErr(r.ok ? null : r.error); setBaseMsg(r.ok ? 'Carregando mais dias na base em segundo plano. Você recebe um aviso no sino quando terminar.' : null) }}
               className="ml-2 font-medium text-brand-700 hover:underline disabled:opacity-50">{baseBusy ? 'iniciando…' : 'carregar mais dias agora'}</button>}
           </span>
@@ -117,7 +117,7 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
 
       {res && res.rows.length === 0 && (
         <p className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-          Nada encontrado. Tente menos palavras (todas precisam aparecer no objeto) ou tire os filtros. A base cresce a cada hora até cobrir os últimos 45 dias.
+          Nada encontrado entre as licitações abertas da base{res.baseFrom ? ` (publicadas desde ${new Date(res.baseFrom).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })})` : ''}. Tente menos palavras (todas precisam aparecer no objeto) ou tire os filtros. A base vai sendo completada até cobrir os últimos 45 dias.
         </p>
       )}
 

@@ -247,7 +247,7 @@ export type SearchInput = { q: string; uf?: string | null; modalidade?: number |
 export type SearchHit = PncpRow & { match_id: string | null; match_status: MatchStatus | null; ai_score: number | null }
 const SEARCH_PAGE = 30
 
-export async function searchContratacoes(input: SearchInput): Promise<{ ok: true; rows: SearchHit[]; total: number; page: number; pages: number; base: number } | { ok: false; error: string }> {
+export async function searchContratacoes(input: SearchInput): Promise<{ ok: true; rows: SearchHit[]; total: number; page: number; pages: number; base: number; baseFrom: string | null } | { ok: false; error: string }> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
   const admin = createAdminClient()
@@ -272,10 +272,14 @@ export async function searchContratacoes(input: SearchInput): Promise<{ ok: true
     ? await g.db.from('pncp_matches').select('id, numero_controle, status, ai_score').in('numero_controle', rows.map(r => r.numero_controle))
     : { data: [] }
   const byId = new Map(((ms ?? []) as { id: string; numero_controle: string; status: MatchStatus; ai_score: number | null }[]).map(m => [m.numero_controle, m]))
-  const { count: base } = await admin.from('pncp_contratacoes').select('numero_controle', { count: 'exact', head: true })
+  const [{ count: base }, { data: oldest }] = await Promise.all([
+    admin.from('pncp_contratacoes').select('numero_controle', { count: 'exact', head: true }),
+    admin.from('pncp_contratacoes').select('data_publicacao').not('data_publicacao', 'is', null).order('data_publicacao', { ascending: true }).limit(1).maybeSingle(),
+  ])
   const total = count ?? rows.length
   return {
     ok: true, page, total, pages: Math.max(1, Math.ceil(total / SEARCH_PAGE)), base: base ?? 0,
+    baseFrom: (oldest as { data_publicacao: string | null } | null)?.data_publicacao ?? null,
     rows: rows.map(r => { const m = byId.get(r.numero_controle); return { ...r, match_id: m?.id ?? null, match_status: m?.status ?? null, ai_score: m?.ai_score ?? null } }),
   }
 }

@@ -314,17 +314,26 @@ export const BACKFILL_DAYS = 45
 export async function backfillStep(deadlineMs: number): Promise<{ day: string | null; saved: number; done: boolean; partial: boolean }> {
   const admin = createAdminClient()
   const { data } = await admin.from('pncp_sync_state').select('value').eq('key', 'backfill').maybeSingle()
-  const st = (data?.value ?? {}) as { next?: string }
+  const st = (data?.value ?? {}) as { next?: string; mods_done?: number[] }
   const today = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
   const limit = new Date(Date.parse(`${today}T12:00:00Z`) - BACKFILL_DAYS * 86_400_000).toISOString().slice(0, 10)
   const day = st.next ?? new Date(Date.parse(`${today}T12:00:00Z`) - 2 * 86_400_000).toISOString().slice(0, 10)
   if (day < limit) return { day: null, saved: 0, done: true, partial: false }
   const d = new Date(`${day}T15:00:00Z`)
-  const r = await syncPublications({ from: d, to: d, ufs: null, deadlineMs })
-  // Só avança quando o dia terminou; se o tempo acabou, a próxima rodada repete o mesmo dia
-  if (!r.partial) {
-    const prev = new Date(Date.parse(`${day}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
-    await admin.from('pncp_sync_state').upsert({ key: 'backfill', value: { next: prev }, updated_at: new Date().toISOString() })
+  // Uma modalidade por vez, guardando o progresso: se o tempo acabar no meio do dia,
+  // a próxima rodada continua da modalidade que faltou (não repete o dia inteiro).
+  const done = new Set(st.mods_done ?? [])
+  let saved = 0
+  for (const mod of SEARCH_MODALIDADES) {
+    if (done.has(mod)) continue
+    if (Date.now() > deadlineMs - 20_000) return { day, saved, done: false, partial: true }
+    const r = await syncPublications({ from: d, to: d, ufs: null, modalidades: [mod], deadlineMs })
+    saved += r.saved
+    if (r.partial) return { day, saved, done: false, partial: true }
+    done.add(mod)
+    await admin.from('pncp_sync_state').upsert({ key: 'backfill', value: { next: day, mods_done: [...done] }, updated_at: new Date().toISOString() })
   }
-  return { day, saved: r.saved, done: false, partial: r.partial }
+  const prev = new Date(Date.parse(`${day}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  await admin.from('pncp_sync_state').upsert({ key: 'backfill', value: { next: prev, mods_done: [] }, updated_at: new Date().toISOString() })
+  return { day, saved, done: false, partial: false }
 }
