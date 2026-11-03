@@ -129,6 +129,8 @@ export async function createNewTenantAndUser(formData: FormData): Promise<void> 
   // Funil básico + motivos de perda (a empresa ajusta em Funis e Etapas)
   const { seedTenantDefaults } = await import('@/lib/tenant/seed')
   const seeded = await seedTenantDefaults(tenant.id)
+  // Licença nova já nasce no modo de fábrica (régua e regras sugeridas montadas)
+  try { const { seedFactoryConfig } = await import('@/lib/tenant/seed'); await seedFactoryConfig(tenant.id) } catch (e) { console.error('[nova empresa] modo de fábrica:', e) }
   if (!seeded.ok) console.error('[super-admin] funil básico não criado:', seeded.error)
 
   revalidatePath('/super-admin')

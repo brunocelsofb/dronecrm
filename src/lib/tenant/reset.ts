@@ -5,7 +5,7 @@
 
 import * as XLSX from 'xlsx'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { seedTenantDefaults } from './seed'
+import { seedTenantDefaults, seedFactoryConfig } from './seed'
 
 // Ordem respeita as referências entre tabelas (filhas antes das mães)
 const RESET_TABLES = [
@@ -24,6 +24,26 @@ const RESET_TABLES = [
   'contacts', 'companies', 'stages', 'pipelines', 'lost_reasons', 'tags', 'custom_fields', 'email_templates',
   'implementation_templates', 'zapsign_templates', 'monthly_goals', 'storage_legacy_objects',
 ] as const
+
+// "Limpar dados de teste": só o que é movimento (clientes, oportunidades, contratos, mensagens…).
+// Fica toda a configuração: funis e etapas, agentes e regras, régua, áreas, textos, chave da IA,
+// WhatsApp conectado, modelos, campos, metas, catálogos, campanhas e descadastros (LGPD).
+const DATA_ONLY = new Set<string>([
+  'agent_rule_hits', 'page_visits', 'ads_meta_lead_events',
+  'retail_stock_movements', 'retail_order_messages', 'retail_order_events', 'retail_loyalty_entries', 'retail_order_items',
+  'retail_campaign_sends', 'retail_orders', 'retail_customers',
+  'action_plan_items', 'assistant_action_log', 'automation_rule_triggers', 'contract_contacts', 'contract_custom_field_values',
+  'contract_emails', 'contract_files', 'contract_tags', 'dimensioning_reviews', 'transfer_requests', 'proposal_status', 'company_tags',
+  'lead_activities', 'stage_history', 'proposal_approvals', 'proposal_items', 'proposal_content_blocks', 'ticket_messages',
+  'task_comments', 'implementation_tasks',
+  'activities', 'notifications', 'contract_whatsapp_messages', 'whatsapp_conversation_status', 'whatsapp_conversation_assignments',
+  'whatsapp_capture_prompts', 'nps_surveys', 'custom_surveys', 'zapsign_documents', 'billing_submissions', 'billing_records',
+  'contract_ai_readings', 'contract_renewals', 'contract_measurements', 'implementation_schedules',
+  'proposals', 'tickets', 'leads', 'pipeline_runs', 'contracts', 'renewal_ruler_runs', 'action_plans', 'company_files',
+  'whatsapp_contact_kind', 'sdr_conversations', 'contacts', 'companies',
+])
+export const RESET_DATA_TABLES = RESET_TABLES.filter(t => DATA_ONLY.has(t))
+export type ResetMode = 'data' | 'factory'
 
 // Tabelas que vão na cópia (planilha) — inclui as filhas sem tenant_id via contrato
 const EXPORT_TABLES = [
@@ -74,10 +94,22 @@ export async function buildTenantExport(tenantId: string): Promise<Buffer> {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }
 
-export async function resetTenantData(tenantId: string): Promise<{ counts: Record<string, number>; whatsapp: string[] }> {
+export async function resetTenantData(tenantId: string, mode: ResetMode = 'factory'): Promise<{ counts: Record<string, number>; whatsapp: string[] }> {
   const admin = createAdminClient()
   const { data: tenant } = await admin.from('tenants').select('name').eq('id', tenantId).maybeSingle()
   if (!tenant) throw new Error('Empresa não encontrada.')
+
+  // Limpar só os dados: configuração, agentes e WhatsApp ficam
+  if (mode === 'data') {
+    await admin.from('pipeline_runs').update({ previous_run_id: null }).eq('tenant_id', tenantId).not('previous_run_id', 'is', null)
+    const counts: Record<string, number> = {}
+    for (const t of RESET_DATA_TABLES) {
+      const { error, count } = await admin.from(t).delete({ count: 'exact' }).eq('tenant_id', tenantId)
+      if (error) throw new Error(`Falha ao apagar ${t}: ${error.message}`)
+      counts[t] = count ?? 0
+    }
+    return { counts, whatsapp: [] }
+  }
 
   // 1. WhatsApp: remove as instâncias da empresa no servidor
   const removed: string[] = []
@@ -118,7 +150,8 @@ export async function resetTenantData(tenantId: string): Promise<{ counts: Recor
 
   await admin.from('profiles').update({ impersonating_tenant_id: null }).eq('impersonating_tenant_id', tenantId)
 
-  // 5. Licença nova: funil básico
+  // 5. Modo de fábrica: funil básico + régua e regras sugeridas já montadas
   await seedTenantDefaults(tenantId)
+  await seedFactoryConfig(tenantId)
   return { counts, whatsapp: removed }
 }

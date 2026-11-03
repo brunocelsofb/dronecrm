@@ -40,3 +40,27 @@ export async function seedTenantDefaults(tenantId: string): Promise<{ ok: boolea
 
   return { ok: true }
 }
+
+// "Modo de fábrica": além do funil básico, a empresa já nasce com o que o CRM sabe fazer montado —
+// régua de renovação ligada com os passos modelo e as regras sugeridas da Central (desligadas, para
+// a empresa revisar e ligar). Textos, marcos (90/60/30/15) e tarefas dos agentes usam o padrão do sistema.
+// A empresa só ajusta: dias, áreas, pessoas, chave da IA e WhatsApp.
+export async function seedFactoryConfig(tenantId: string): Promise<void> {
+  const admin = createAdminClient()
+  const { RULER_MODEL_STEPS } = await import('@/lib/agent/renewal-ruler')
+  const { data: org } = await admin.from('organization_settings').select('copilot_settings').eq('tenant_id', tenantId).maybeSingle()
+  const cs = ((org?.copilot_settings ?? {}) as Record<string, unknown>)
+  if (!cs.renewal_ruler) {
+    await admin.from('organization_settings')
+      .update({ copilot_settings: { ...cs, renewal_ruler: { enabled: true, lock_renewed: true, steps: RULER_MODEL_STEPS.map(x => ({ ...x })) } } })
+      .eq('tenant_id', tenantId)
+  }
+  const { count } = await admin.from('agent_rules').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  if (!count) {
+    const { getTenantFeatures } = await import('@/lib/config/tenant-features')
+    const { suggestedRules } = await import('@/lib/agent/rules-catalog')
+    const { features } = await getTenantFeatures(tenantId)
+    const rows = suggestedRules(features).map(r => ({ ...r, tenant_id: tenantId, created_by: null }))
+    if (rows.length) await admin.from('agent_rules').insert(rows)
+  }
+}

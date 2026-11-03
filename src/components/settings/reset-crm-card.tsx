@@ -1,7 +1,9 @@
 'use client'
 
-// "Resetar CRM": apaga tudo da empresa (menos usuários e licença).
-// Passos obrigatórios: baixar a cópia e digitar o nome exato da empresa.
+// "Resetar CRM", em dois modos:
+//   • Limpar dados de teste (recomendado): apaga o movimento e mantém toda a configuração
+//   • Voltar ao modo de fábrica: apaga tudo e remonta o padrão (funil, régua e regras sugeridas)
+// Passos obrigatórios: escolher o modo, baixar a cópia e digitar o nome exato da empresa.
 
 import { useState, useTransition } from 'react'
 import { resetCrm } from '@/lib/actions/reset'
@@ -11,18 +13,34 @@ export function ResetCrmCard({ tenantName, tenantId, compact = false }: { tenant
   const [downloaded, setDownloaded] = useState(false)
   const [typed, setTyped] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
+  const [mode, setMode] = useState<'data' | 'factory'>('data')
   const [pending, start] = useTransition()
   const exportUrl = '/api/tenant/export'
   const canReset = downloaded && typed.trim() === tenantName.trim() && !pending
 
   const body = (
     <div className="space-y-3">
-      <p className="text-sm text-gray-700">
-        Apaga <strong>todos</strong> os dados de <strong>{tenantName}</strong>: contratos, oportunidades, leads, empresas, contatos,
-        atividades, mensagens, propostas, chamados, pesquisas, funis e etapas, WhatsApps conectados (inclusive no servidor),
-        agentes IA (chave e textos) e configurações. Ficam só os <strong>usuários</strong> e a <strong>licença</strong>.
-        O CRM volta como novo, com o funil básico. <strong>Não tem como desfazer.</strong>
-      </p>
+      <fieldset className="space-y-2">
+        <legend className="mb-1 text-xs font-semibold text-gray-700">O que fazer com {tenantName}?</legend>
+        <label className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${mode === 'data' ? 'border-brand-700 bg-brand-100' : 'border-gray-200'}`}>
+          <input type="radio" name={`mode-${tenantId ?? 'me'}`} checked={mode === 'data'} onChange={() => { setMode('data'); setMsg(null) }} className="mt-1" />
+          <span>
+            <b>Limpar dados de teste</b> <span className="text-xs text-positive-700">(recomendado)</span><br />
+            <span className="text-gray-600">Apaga contratos, oportunidades, leads, empresas, contatos, atividades, mensagens, propostas, chamados, pesquisas, faturamento e réguas em andamento.
+              <b> Mantém</b> funis e etapas, agentes de IA (chave, tarefas e regras), régua de renovação, áreas, textos, WhatsApp conectado, modelos e configurações.</span>
+          </span>
+        </label>
+        <label className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${mode === 'factory' ? 'border-negative-600 bg-negative-100' : 'border-gray-200'}`}>
+          <input type="radio" name={`mode-${tenantId ?? 'me'}`} checked={mode === 'factory'} onChange={() => { setMode('factory'); setMsg(null) }} className="mt-1" />
+          <span>
+            <b>Voltar ao modo de fábrica</b><br />
+            <span className="text-gray-600">Apaga <b>tudo</b>, inclusive configurações, chave da IA, áreas e WhatsApps conectados (também no servidor).
+              O CRM volta montado no padrão: funil básico, régua de renovação com os passos modelo e as regras sugeridas (para revisar e ligar), textos e marcos padrão.
+              Depois é só ajustar: dias, áreas, pessoas, chave da IA e WhatsApp.</span>
+          </span>
+        </label>
+        <p className="text-xs text-gray-500">Ficam sempre os <strong>usuários</strong> e a <strong>licença</strong>. <strong>Não tem como desfazer.</strong></p>
+      </fieldset>
 
       {tenantId ? (
         // Plataforma: o Super Admin não baixa os dados de outra empresa (privacidade).
@@ -60,13 +78,13 @@ export function ResetCrmCard({ tenantName, tenantId, compact = false }: { tenant
       <button
         disabled={!canReset}
         onClick={() => start(async () => {
-          const r = await resetCrm(typed, tenantId)
-          setMsg(r.error ?? `✓ CRM resetado. ${r.summary ?? ''}`)
+          const r = await resetCrm(typed, tenantId, mode)
+          setMsg(r.error ?? `✓ ${mode === 'data' ? 'Dados de teste apagados' : 'CRM no modo de fábrica'}. ${r.summary ?? ''}`)
           if (!r.error) { setTyped(''); setDownloaded(false) }
         })}
         className="rounded-lg bg-red-600 px-5 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
       >
-        {pending ? 'Resetando…' : '3. Resetar CRM'}
+        {pending ? 'Apagando…' : mode === 'data' ? '3. Limpar dados de teste' : '3. Voltar ao modo de fábrica'}
       </button>
       {msg && <p role="status" className="text-sm text-gray-800">{msg}</p>}
     </div>

@@ -9,7 +9,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { resetTenantData } from '@/lib/tenant/reset'
 
-export async function resetCrm(confirmName: string, tenantIdArg?: string): Promise<{ ok?: true; error?: string; summary?: string }> {
+export async function resetCrm(confirmName: string, tenantIdArg?: string, mode: 'data' | 'factory' = 'factory'): Promise<{ ok?: true; error?: string; summary?: string }> {
+  if (mode !== 'data' && mode !== 'factory') return { error: 'Escolha o tipo de reset.' }
   const { data: { user } } = await (await createClient()).auth.getUser()
   if (!user) return { error: 'Não autenticado.' }
   const admin = createAdminClient()
@@ -29,16 +30,18 @@ export async function resetCrm(confirmName: string, tenantIdArg?: string): Promi
   if (confirmName.trim() !== String(tenant.name).trim()) return { error: `Digite exatamente: ${tenant.name}` }
 
   try {
-    const r = await resetTenantData(tenantId)
+    const r = await resetTenantData(tenantId, mode)
     if (tenantIdArg) {
       // Reset feito pela plataforma fica no registro de acessos da empresa
       const { logSupport } = await import('@/lib/tenant/support')
-      await logSupport({ tenantId, actorId: user.id, action: 'reset', detail: 'Super Admin resetou os dados do CRM' })
+      await logSupport({ tenantId, actorId: user.id, action: 'reset', detail: mode === 'data' ? 'Super Admin limpou os dados de teste do CRM' : 'Super Admin voltou o CRM ao modo de fábrica' })
     }
     const total = Object.values(r.counts).reduce((a, b) => a + b, 0)
     console.log('[reset] empresa', tenantId, 'por', user.id, r)
     revalidatePath('/', 'layout')
-    return { ok: true, summary: `${total} registro(s) apagado(s); ${r.whatsapp.length} WhatsApp removido(s). Funil básico recriado.` }
+    return { ok: true, summary: mode === 'data'
+      ? `${total} registro(s) apagado(s). Configurações, agentes, régua, áreas e WhatsApp mantidos.`
+      : `${total} registro(s) apagado(s); ${r.whatsapp.length} WhatsApp removido(s). Modo de fábrica: funil básico, régua e regras sugeridas montados.` }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Falha ao resetar.' }
   }
