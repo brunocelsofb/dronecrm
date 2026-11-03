@@ -41,31 +41,49 @@ export type SyncResult = { pages: number; fetched: number; saved: number; partia
  * Baixa as publicações de [from, to] (datas) das modalidades e estados pedidos e guarda as que estão abertas.
  * ufs = null → país inteiro. Para no prazo (deadlineMs) e avisa que ficou parcial.
  */
+// Estados pedidos: muitos (ou todos) viram uma busca só no país inteiro (bem mais rápido que um por um)
+export function ufScope(ufs: string[] | null | undefined): string[] | null {
+  if (!ufs || ufs.length === 0 || ufs.length > 8) return null
+  return ufs
+}
+
+const CONCURRENCY = 6
+
 export async function syncPublications(opts: { from: Date; to: Date; ufs: string[] | null; modalidades?: number[]; deadlineMs: number }): Promise<SyncResult> {
   const admin = createAdminClient()
   const res: SyncResult = { pages: 0, fetched: 0, saved: 0, partial: false, failed: 0, numeros: [] }
   const mods = opts.modalidades?.length ? opts.modalidades : SEARCH_MODALIDADES
-  const ufs: (string | null)[] = opts.ufs && opts.ufs.length ? opts.ufs : [null]
+  const scope = ufScope(opts.ufs)
+  const ufs: (string | null)[] = scope ?? [null]
   const nowMs = Date.now()
-  for (const mod of mods) {
-    for (const uf of ufs) {
-      for (let page = 1; ; page++) {
-        if (Date.now() > opts.deadlineMs) { res.partial = true; return res }
-        const q = new URLSearchParams({ dataInicial: ymd(opts.from), dataFinal: ymd(opts.to), codigoModalidadeContratacao: String(mod), pagina: String(page), tamanhoPagina: String(PAGE) })
-        if (uf) q.set('uf', uf)
-        const p = await getPage(`${API}/contratacoes/publicacao?${q}`)
-        if (!p) { res.failed++; break }
-        res.pages++
-        res.fetched += p.data.length
-        const rows = p.data.map(mapCompra).filter((r): r is PncpRow => !!r && isOpen(r, nowMs))
-        if (rows.length) {
-          const { error } = await admin.from('pncp_contratacoes').upsert(rows.map(r => ({ ...r, baixado_em: new Date().toISOString() })), { onConflict: 'numero_controle' })
-          if (!error) { res.saved += rows.length; res.numeros.push(...rows.map(r => r.numero_controle)) }
-        }
-        if (page >= p.totalPaginas || p.data.length < PAGE) break
-      }
+  const urlFor = (mod: number, uf: string | null, page: number) => {
+    const q = new URLSearchParams({ dataInicial: ymd(opts.from), dataFinal: ymd(opts.to), codigoModalidadeContratacao: String(mod), pagina: String(page), tamanhoPagina: String(PAGE) })
+    if (uf) q.set('uf', uf)
+    return `${API}/contratacoes/publicacao?${q}`
+  }
+  const save = async (data: Record<string, unknown>[]) => {
+    res.fetched += data.length
+    const rows = data.map(mapCompra).filter((r): r is PncpRow => !!r && isOpen(r, nowMs))
+    if (!rows.length) return
+    const { error } = await admin.from('pncp_contratacoes').upsert(rows.map(r => ({ ...r, baixado_em: new Date().toISOString() })), { onConflict: 'numero_controle' })
+    if (!error) { res.saved += rows.length; res.numeros.push(...rows.map(r => r.numero_controle)) }
+  }
+  // 1ª página de cada combinação (descobre quantas páginas há), depois as demais — várias ao mesmo tempo
+  const queue: { mod: number; uf: string | null; page: number }[] = []
+  for (const mod of mods) for (const uf of ufs) queue.push({ mod, uf, page: 1 })
+  const worker = async () => {
+    while (queue.length) {
+      if (Date.now() > opts.deadlineMs) { res.partial = true; return }
+      const job = queue.shift()!
+      const p = await getPage(urlFor(job.mod, job.uf, job.page))
+      if (!p) { res.failed++; continue }
+      res.pages++
+      await save(p.data)
+      if (job.page === 1) for (let pg = 2; pg <= p.totalPaginas; pg++) queue.push({ mod: job.mod, uf: job.uf, page: pg })
     }
   }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+  if (queue.length) res.partial = true
   return res
 }
 
@@ -95,7 +113,7 @@ export async function watchedUfs(): Promise<string[] | null> {
   const rows = (data ?? []) as { ufs: string[] | null }[]
   if (!rows.length) return []
   if (rows.some(r => !r.ufs || r.ufs.length === 0)) return null
-  return [...new Set(rows.flatMap(r => r.ufs ?? []))]
+  return ufScope([...new Set(rows.flatMap(r => r.ufs ?? []))])
 }
 
 // Pessoas que recebem o aviso do monitoramento: escolhidas + coordenador e gerente das áreas

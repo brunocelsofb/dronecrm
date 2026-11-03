@@ -7,6 +7,8 @@ import { LicitacoesView, type MatchView, type WatcherView } from '@/components/l
 import type { PncpRow } from '@/lib/pncp/catalog'
 
 export const dynamic = 'force-dynamic'
+// "Buscar agora" continua rodando depois da resposta (segundo plano)
+export const maxDuration = 300
 
 export default async function LicitacoesPage() {
   const access = await getUserAccess()

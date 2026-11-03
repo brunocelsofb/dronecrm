@@ -212,9 +212,8 @@ function Watchers({ isAdmin, watchers, people, areas }: { isAdmin: boolean; watc
     const r = await searchNow(7)
     setBusy(false)
     setMsg(r.ok
-      ? `${r.created} licitação(ões) nova(s) no radar${r.analyzed ? `, ${r.analyzed} analisada(s) pelo agente` : ''}.${r.partial ? ' A busca parou no tempo limite: clique de novo para continuar.' : ''}`
+      ? 'Busca iniciada no PNCP. Ela roda em segundo plano (alguns minutos) e você recebe um aviso no sino quando terminar; depois é só abrir o Radar.'
       : r.error)
-    router.refresh()
   }
 
   if (editing) return <WatcherForm initial={editing} people={people} areas={areas} onDone={() => { setEditing(null); router.refresh() }} onCancel={() => setEditing(null)} />
@@ -224,7 +223,7 @@ function Watchers({ isAdmin, watchers, people, areas }: { isAdmin: boolean; watc
       {isAdmin && (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setEditing({ ...EMPTY })} className="inline-flex items-center gap-1 rounded-lg bg-brand-700 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-800"><Plus className="h-4 w-4" />Novo monitoramento</button>
-          {watchers.length > 0 && <button type="button" disabled={busy} onClick={runNow} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60">{busy ? 'Buscando no PNCP… (pode levar alguns minutos)' : 'Buscar agora (últimos 7 dias)'}</button>}
+          {watchers.length > 0 && <button type="button" disabled={busy} onClick={runNow} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60">{busy ? 'Iniciando…' : 'Buscar agora (últimos 7 dias)'}</button>}
           {msg && <p role="status" className="w-full text-sm text-gray-700">{msg}</p>}
         </div>
       )}

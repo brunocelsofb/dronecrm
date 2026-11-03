@@ -95,8 +95,9 @@ export async function deleteWatcher(id: string): Promise<Result> {
   return { ok: true }
 }
 
-// "Buscar agora": baixa os últimos dias dos estados monitorados pela empresa e confere os monitoramentos
-export async function searchNow(days = 7): Promise<{ ok: true; found: number; created: number; partial: boolean; analyzed: number } | { ok: false; error: string }> {
+// "Buscar agora": roda em segundo plano (a tela responde na hora) e avisa no sino quando terminar.
+// Baixa os últimos dias dos estados/modalidades monitorados e confere os monitoramentos da empresa.
+export async function searchNow(days = 7): Promise<{ ok: true; started: true } | { ok: false; error: string }> {
   const g = await guard(true)
   if ('error' in g) return { ok: false, error: g.error }
   const d = Math.max(1, Math.min(15, Math.round(days)))
@@ -105,12 +106,28 @@ export async function searchNow(days = 7): Promise<{ ok: true; found: number; cr
   if (!list.length) return { ok: false, error: 'Crie e ligue um monitoramento antes de buscar.' }
   const ufs = list.some(w => !w.ufs?.length) ? null : [...new Set(list.flatMap(w => w.ufs))]
   const mods = list.some(w => !w.modalidades?.length) ? undefined : [...new Set(list.flatMap(w => w.modalidades))]
-  const { syncPublications, matchTenant } = await import('@/lib/pncp/engine')
-  const now = new Date()
-  const sync = await syncPublications({ from: new Date(now.getTime() - d * 86_400_000), to: now, ufs, modalidades: mods, deadlineMs: Date.now() + 200_000 })
-  const run = await matchTenant(g.tenantId, { notify: false })
-  revalidatePath('/licitacoes')
-  return { ok: true, found: run.candidates, created: run.created, partial: sync.partial, analyzed: run.analyzed }
+  const { tenantId, userId } = g
+  const job = async () => {
+    const { syncPublications, matchTenant } = await import('@/lib/pncp/engine')
+    const { notifyPerson } = await import('@/lib/agent/handoff')
+    const now = new Date()
+    const started = Date.now()
+    let text: string
+    try {
+      const sync = await syncPublications({ from: new Date(now.getTime() - d * 86_400_000), to: now, ufs, modalidades: mods, deadlineMs: started + 230_000 })
+      const run = await matchTenant(tenantId, { notify: false })
+      text = `🔎 Busca de licitações concluída: ${sync.saved} abertas baixadas do PNCP, ${run.created} nova(s) no radar` +
+        `${run.analyzed ? `, ${run.analyzed} analisada(s) pelo agente` : ''}.${sync.partial ? ' A busca parou no tempo limite; o restante entra nas buscas automáticas (8h e 17h) ou clique de novo.' : ''}`
+    } catch (e) {
+      text = `🔎 A busca de licitações falhou: ${(e as Error)?.message ?? 'erro'}. Tente de novo em alguns minutos.`
+    }
+    await notifyPerson(tenantId, userId, { text, subject: 'Busca de licitações' }, { sino: true, whatsapp: false, email: false })
+  }
+  try {
+    const { after } = await import('next/server')
+    after(job)
+  } catch { await job() }
+  return { ok: true, started: true }
 }
 
 export async function setMatchStatus(id: string, status: MatchStatus, note?: string): Promise<Result> {
