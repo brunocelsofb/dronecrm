@@ -274,9 +274,9 @@ function WatcherForm({ initial, people, areas, onDone, onCancel }: { initial: Wa
         <input className={input} value={w.name} maxLength={80} onChange={e => set({ name: e.target.value })} placeholder="Ex.: Engenharia clínica — Sudeste" />
       </label>
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="block text-xs font-medium text-gray-700">Procurar no objeto (uma por linha; basta uma aparecer)
+        <label className="block text-xs font-medium text-gray-700">Procurar no objeto (uma linha por assunto; basta uma linha bater — todas as palavras da linha, em qualquer ordem; frase exata entre aspas)
           <textarea className={`${input} min-h-[110px]`} value={String(w.keywords)} onChange={e => set({ keywords: e.target.value })}
-            placeholder={'engenharia clínica\nmanutenção preventiva e corretiva de equipamentos médico\nequipamentos médico-hospitalares'} />
+            placeholder={'engenharia clínica\nmanutenção equipamentos médicos\nmanutenção equipamentos hospitalares\ncalibração equipamentos médicos'} />
         </label>
         <label className="block text-xs font-medium text-gray-700">Descartar se tiver (opcional)
           <textarea className={`${input} min-h-[110px]`} value={String(w.exclude)} onChange={e => set({ exclude: e.target.value })} placeholder={'odontológico\nveterinário'} />

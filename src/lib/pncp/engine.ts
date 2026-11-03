@@ -8,7 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  SEARCH_MODALIDADES, mapCompra, matchWatcher, isOpen, normText, pncpUrl, modalidadeNome,
+  SEARCH_MODALIDADES, mapCompra, matchWatcher, isOpen, termWords, pncpUrl, modalidadeNome,
   type PncpRow, type WatcherRule,
 } from './catalog'
 
@@ -130,7 +130,11 @@ async function recipientsOf(tenantId: string, w: WatcherRow): Promise<string[]> 
 async function candidates(watchers: WatcherRow[], numeros?: string[]): Promise<PncpRow[]> {
   const admin = createAdminClient()
   const nowIso = new Date().toISOString()
-  const terms = [...new Set(watchers.flatMap(w => w.keywords.map(normText)))].filter(t => t.length >= 3).map(t => t.replace(/[%,()*]/g, ' ').trim()).filter(Boolean)
+  // Pré-filtro no banco: a palavra mais longa de cada linha (a conferência completa é feita depois)
+  const terms = [...new Set(watchers.flatMap(w => w.keywords.map(k => {
+    const tw = termWords(k)
+    return tw.phrase ?? [...tw.words].sort((a, b) => b.length - a.length)[0] ?? ''
+  })))].map(t => t.replace(/[%,()*."]/g, ' ').trim()).filter(t => t.length >= 3)
   if (!terms.length) return []
   const out: PncpRow[] = []
   const base = () => admin.from('pncp_contratacoes').select('*')
@@ -162,6 +166,7 @@ export async function matchTenant(tenantId: string, opts: { numeros?: string[]; 
   if (!watchers.length) return run
   const rows = (await candidates(watchers, opts.numeros)).filter(r => isOpen(r, Date.now()))
   run.candidates = rows.length
+  await admin.from('pncp_watchers').update({ last_run_at: new Date().toISOString() }).eq('tenant_id', tenantId).in('id', watchers.map(w => w.id))
   const hits = new Map<string, { row: PncpRow; watcherIds: string[] }>()
   for (const r of rows) for (const w of watchers) if (matchWatcher(r, w).length) {
     const h = hits.get(r.numero_controle) ?? { row: r, watcherIds: [] }
@@ -175,7 +180,6 @@ export async function matchTenant(tenantId: string, opts: { numeros?: string[]; 
     const { error } = await admin.from('pncp_matches').insert(fresh.slice(i, i + 200).map(h => ({ tenant_id: tenantId, numero_controle: h.row.numero_controle, watcher_ids: h.watcherIds })))
     if (!error) run.created += Math.min(200, fresh.length - i)
   }
-  await admin.from('pncp_watchers').update({ last_run_at: new Date().toISOString() }).eq('tenant_id', tenantId).in('id', watchers.map(w => w.id))
 
   // Análise do agente de IA (monitoramentos com a análise ligada), até 15 por rodada
   if (opts.analyze !== false) {

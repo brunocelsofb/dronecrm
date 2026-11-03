@@ -113,6 +113,38 @@ export function matchWatcher(r: Pick<PncpRow, 'objeto_norm' | 'uf' | 'modalidade
     if (w.max_value !== null && v > w.max_value) return []
   }
   const text = ` ${r.objeto_norm} `
-  if (w.exclude.some(x => text.includes(normText(x)))) return []
-  return w.keywords.filter(k => text.includes(normText(k)))
+  if (w.exclude.some(x => termHits(text, x))) return []
+  return w.keywords.filter(k => termHits(text, k))
+}
+
+// Palavras que não ajudam a achar (ignoradas quando a linha tem várias palavras)
+const STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'a', 'o', 'as', 'os', 'na', 'no', 'nas', 'nos', 'por', 'ou'])
+
+// Palavras de uma linha: entre aspas = frase exata; senão, cada palavra (≥ 3 letras, sem "de", "e"…)
+export function termWords(term: string): { phrase: string | null; words: string[] } {
+  const t = term.trim()
+  if (/^".+"$/.test(t)) return { phrase: normText(t.slice(1, -1)), words: [] }
+  const words = normText(t).split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w))
+  return { phrase: null, words: words.length ? words : [normText(t)] }
+}
+
+// A linha bate? Frase: aparece igual. Palavras: todas aparecem, em qualquer ordem
+// (aceita plural e variações simples: "equipamento" acha "equipamentos", "médico" acha "médico-hospitalar").
+export function termHits(textNorm: string, term: string): boolean {
+  const { phrase, words } = termWords(term)
+  if (phrase) return textNorm.includes(phrase)
+  return words.every(w => textNorm.includes(stem(w)))
+}
+
+// Raiz simples para achar singular e plural: médicos → medico, hospitalares → hospitalar,
+// hospitais → hospital, calibrações → calibraca(o), equipamentos → equipamento
+export function stem(w: string): string {
+  if (w.length <= 4) return w
+  if (w.endsWith('oes') || w.endsWith('aes')) return w.slice(0, -3) + 'a'
+  if (w.endsWith('ais')) return w.slice(0, -3) + 'a'
+  if (w.endsWith('res') || w.endsWith('zes')) return w.slice(0, -2)
+  if (w.endsWith('s')) return w.slice(0, -1)
+  if (w.endsWith('ao')) return w.slice(0, -1)
+  if (w.endsWith('al')) return w.slice(0, -1)   // hospital ↔ hospitais
+  return w
 }

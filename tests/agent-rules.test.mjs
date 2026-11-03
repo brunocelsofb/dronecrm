@@ -221,3 +221,15 @@ test('licitações: leitura do PNCP e monitoramento por objeto', () => {
   assert.equal(pncpDate('2026-01-02'), '2026-01-02T00:00:00-03:00')
   assert.equal(normText(' Órgão  Público '), 'orgao publico')
 })
+
+import { termHits, stem } from '../src/lib/pncp/catalog.ts'
+test('licitações: palavras em qualquer ordem, plural e frase exata', () => {
+  const t = normText('Contratação de empresa especializada para manutenção preventiva, corretiva e calibração com fornecimento de peças em equipamentos médico-hospitalar')
+  assert.equal(termHits(t, 'manutenção equipamentos médicos'), true)
+  assert.equal(termHits(t, 'calibrações de equipamentos hospitalares'), true)
+  assert.equal(termHits(t, 'engenharia clínica'), false)
+  assert.equal(termHits(t, '"manutenção equipamentos"'), false)   // frase exata
+  assert.equal(termHits(t, '"manutenção preventiva"'), true)
+  assert.equal(termHits(normText('serviços em hospitais estaduais'), 'hospital'), true)
+  assert.equal(stem('hospitais'), 'hospita')
+})
