@@ -17,7 +17,10 @@ async function getJson(url: string, ms = 25_000): Promise<unknown | null> {
       if (r.status === 204 || r.status === 404) return []
       if (r.ok) return await r.json()
       console.warn('[pncp] HTTP', r.status, url.slice(0, 160))
-    } catch (e) { console.warn('[pncp] falha', (e as Error)?.name, url.slice(0, 160)) } finally { clearTimeout(t) }
+    } catch (e) {
+      const c = (e as { cause?: { code?: string; message?: string } })?.cause
+      console.warn('[pncp] falha', (e as Error)?.name, (e as Error)?.message, c?.code ?? '', c?.message ?? '', url.slice(0, 160))
+    } finally { clearTimeout(t) }
   }
   return null
 }
@@ -122,7 +125,11 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
   let total = 0
   for (let page = 1; page <= maxPages; page++) {
     const q = new URLSearchParams({ q: d, tipos_documento: 'contrato', ordenacao: '-data', pagina: String(page), tam_pagina: '50' })
-    const j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 30_000)) as { items?: Record<string, unknown>[]; total?: number } | null
+    let j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 30_000)) as { items?: Record<string, unknown>[]; total?: number } | null
+    if (!j) {
+      const q2 = new URLSearchParams({ q: d, tipos_documento: 'contrato', pagina: String(page), tam_pagina: '20' })
+      j = (await getJson(`${PNCP_SEARCH_URL}?${q2}`, 30_000)) as typeof j
+    }
     if (!j || Array.isArray(j)) { if (page === 1 && !j) return null; break }
     total = Number(j.total ?? 0)
     const list = j.items ?? []
