@@ -585,3 +585,16 @@ export async function setMatchOutcome(id: string, status: import('@/lib/pncp/res
   revalidatePath('/licitacoes')
   return { ok: true }
 }
+
+// Cadastro na Receita, quadro societário e sanções de um CNPJ (perfil do fornecedor)
+export async function getSupplierExtras(cnpj: string) {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const { fetchCadastro, fetchSancoes, onlyDigits } = await import('@/lib/pncp/results')
+  const d = onlyDigits(cnpj)
+  if (d.length !== 14) return { ok: false as const, error: 'Informe um CNPJ com 14 números.' }
+  const [cadastro, sancoes] = await Promise.all([fetchCadastro(d), fetchSancoes(d)])
+  // Guarda a consulta para o acompanhamento diário avisar só do que for novo
+  if (sancoes) await g.db.from('pncp_competitors').update({ sanctions: sancoes, sanctions_at: sancoes.lidoEm }).eq('cnpj', d)
+  return { ok: true as const, cadastro, sancoes }
+}

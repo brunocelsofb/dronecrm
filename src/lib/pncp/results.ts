@@ -176,3 +176,53 @@ export async function fetchArquivos(row: Pick<PncpRow, 'orgao_cnpj' | 'ano_compr
   return (Array.isArray(j) ? (j as Record<string, unknown>[]) : []).filter(f => f.statusAtivo !== false)
     .map(f => `${String(f.tipoDocumentoNome ?? 'Arquivo')}: ${String(f.titulo ?? '')}`.slice(0, 200))
 }
+
+// ── Sanções e penalidades (consulta consolidada do TCU: inidôneos TCU, CEIS, CNEP, CNIA/CNJ) ──
+export type Sancao = { tipo: string; descricao: string; emissor: string; situacao: string; link: string | null; observacao: string | null }
+export const SANCAO_LABEL: Record<string, string> = { NADA_CONSTA: 'Nada consta', CONSTA: 'Consta', SISTEMA_INDISPONIVEL: 'Fonte fora do ar' }
+export async function fetchSancoes(cnpj: string): Promise<{ itens: Sancao[]; razao: string | null; lidoEm: string } | null> {
+  const d = onlyDigits(cnpj)
+  if (d.length !== 14) return null
+  const j = await getJson(`https://certidoes-apf.apps.tcu.gov.br/api/rest/publico/certidoes/${d}?seEmitirPDF=false`, 30_000)
+  if (!j || Array.isArray(j)) return null
+  const x = j as { certidoes?: Record<string, unknown>[]; razaoSocial?: string }
+  return {
+    razao: x.razaoSocial ?? null, lidoEm: new Date().toISOString(),
+    itens: (x.certidoes ?? []).map(c => ({
+      tipo: String(c.tipo ?? ''), descricao: String(c.descricao ?? c.tipo ?? ''), emissor: String(c.emissor ?? ''),
+      situacao: String(c.situacao ?? ''), link: typeof c.linkConsultaManual === 'string' ? c.linkConsultaManual : null,
+      observacao: typeof c.observacao === 'string' ? c.observacao : null,
+    })),
+  }
+}
+// Sanções que passaram a constar (ignora fonte fora do ar)
+export function newSancoes(prev: { itens: Sancao[] } | null, cur: { itens: Sancao[] }): Sancao[] {
+  const was = new Map((prev?.itens ?? []).map(s => [s.tipo, s.situacao]))
+  return cur.itens.filter(s => s.situacao !== 'NADA_CONSTA' && s.situacao !== 'SISTEMA_INDISPONIVEL' && was.get(s.tipo) !== s.situacao)
+}
+
+// ── Cadastro na Receita e quadro societário (BrasilAPI) ──────────────────────
+export type Cadastro = {
+  razao: string | null; fantasia: string | null; situacao: string | null; abertura: string | null; capital: number | null
+  porte: string | null; cnae: string | null; cidade: string | null; uf: string | null
+  socios: { nome: string; qualificacao: string | null; desde: string | null; faixa: string | null }[]
+}
+export async function fetchCadastro(cnpj: string): Promise<Cadastro | null> {
+  const d = onlyDigits(cnpj)
+  if (d.length !== 14) return null
+  const j = await getJson(`https://brasilapi.com.br/api/cnpj/v1/${d}`, 15_000)
+  if (!j || Array.isArray(j)) return null
+  const x = j as Record<string, unknown>
+  const qsa = Array.isArray(x.qsa) ? (x.qsa as Record<string, unknown>[]) : []
+  return {
+    razao: (x.razao_social as string) ?? null, fantasia: (x.nome_fantasia as string) || null,
+    situacao: (x.descricao_situacao_cadastral as string) ?? null, abertura: (x.data_inicio_atividade as string) ?? null,
+    capital: n(x.capital_social), porte: (x.porte as string) ?? null,
+    cnae: x.cnae_fiscal_descricao ? `${x.cnae_fiscal ?? ''} · ${x.cnae_fiscal_descricao}` : null,
+    cidade: (x.municipio as string) ?? null, uf: (x.uf as string) ?? null,
+    socios: qsa.map(s => ({
+      nome: String(s.nome_socio ?? '—'), qualificacao: (s.qualificacao_socio as string) ?? null,
+      desde: (s.data_entrada_sociedade as string) ?? null, faixa: (s.faixa_etaria as string) ?? null,
+    })),
+  }
+}

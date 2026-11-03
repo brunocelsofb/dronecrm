@@ -3,10 +3,10 @@
 // quanto somam, em que estados e com quais órgãos.
 
 import { useEffect, useState } from 'react'
-import { X, ExternalLink, Bookmark } from 'lucide-react'
+import { X, ExternalLink, Bookmark, ShieldCheck, ShieldAlert, Users } from 'lucide-react'
 import { fmtBRL } from '@/lib/format'
-import { getSupplierProfile, saveCompetitor } from '@/lib/actions/licitacoes'
-import type { SupplierContract } from '@/lib/pncp/results'
+import { getSupplierProfile, saveCompetitor, getSupplierExtras } from '@/lib/actions/licitacoes'
+import { SANCAO_LABEL, type SupplierContract, type Sancao, type Cadastro } from '@/lib/pncp/results'
 
 type Summary = { contratos: number; valor: number; nome: string | null; ufs: { uf: string; n: number; valor: number }[]; orgaos: { nome: string; uf: string | null; n: number; valor: number }[] }
 
@@ -43,6 +43,7 @@ export function SupplierProfileBody({ cnpj, name, canSave, onSaved }: { cnpj: st
         )}
       </div>
       {saved && <p role="status" className="text-xs text-positive-700">{saved}</p>}
+      <Extras cnpj={cnpj} />
       {!s && !err && <p className="text-sm text-gray-500">Buscando os contratos no PNCP…</p>}
       {err && <p className="text-sm text-negative-700">{err}</p>}
       {s && (
@@ -100,6 +101,62 @@ export function SupplierDrawer({ cnpj, name, onClose }: { cnpj: string; name?: s
       <div className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="mb-3 flex justify-end"><button type="button" onClick={onClose} aria-label="Fechar" className="rounded p-1 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button></div>
         <SupplierProfileBody cnpj={cnpj} name={name} canSave />
+      </div>
+    </div>
+  )
+}
+
+// Sanções (TCU) + cadastro na Receita com o quadro societário
+const brDay = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10).split('-').reverse().join('/') : v ?? '—')
+function Extras({ cnpj }: { cnpj: string }) {
+  const [x, setX] = useState<{ cadastro: Cadastro | null; sancoes: { itens: Sancao[]; lidoEm: string } | null } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    getSupplierExtras(cnpj).then(r => { if (!alive) return; if (r.ok) setX({ cadastro: r.cadastro, sancoes: r.sancoes }); else setErr(r.error) })
+    return () => { alive = false }
+  }, [cnpj])
+  if (err) return <p className="text-xs text-negative-700">{err}</p>
+  if (!x) return <p className="text-xs text-gray-500">Consultando sanções e quadro societário…</p>
+  const consta = (x.sancoes?.itens ?? []).filter(s => s.situacao === 'CONSTA' || (s.situacao !== 'NADA_CONSTA' && s.situacao !== 'SISTEMA_INDISPONIVEL'))
+  const c = x.cadastro
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className={`rounded-xl border p-3 ${consta.length ? 'border-negative-600 bg-negative-100' : 'border-gray-200'}`}>
+        <p className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-800">
+          {consta.length ? <ShieldAlert className="h-4 w-4 text-negative-700" /> : <ShieldCheck className="h-4 w-4 text-positive-700" />}Sanções e penalidades
+        </p>
+        {!x.sancoes ? <p className="text-xs text-gray-500">A consulta do TCU não respondeu agora. Tente abrir de novo.</p> : (
+          <ul className="space-y-1 text-xs">
+            {x.sancoes.itens.map(s => (
+              <li key={s.tipo} className="flex justify-between gap-2">
+                <span className="min-w-0 text-gray-700">{s.descricao} <span className="text-gray-400">({s.emissor})</span>
+                  {s.observacao && <span className="block text-negative-700">{s.observacao}</span>}</span>
+                <span className={`shrink-0 font-medium ${s.situacao === 'NADA_CONSTA' ? 'text-positive-700' : s.situacao === 'SISTEMA_INDISPONIVEL' ? 'text-gray-400' : 'text-negative-700'}`}>
+                  {s.link && s.situacao !== 'NADA_CONSTA' ? <a href={s.link} target="_blank" rel="noreferrer" className="hover:underline">{SANCAO_LABEL[s.situacao] ?? s.situacao}</a> : (SANCAO_LABEL[s.situacao] ?? s.situacao)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-1 text-[10px] text-gray-400">Fonte: consulta consolidada do TCU (inidôneos TCU, CEIS, CNEP, improbidade CNJ){x.sancoes ? ` · ${new Date(x.sancoes.lidoEm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : ''}.</p>
+      </div>
+      <div className="rounded-xl border border-gray-200 p-3">
+        <p className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-800"><Users className="h-4 w-4 text-brand-700" />Cadastro e quadro societário</p>
+        {!c ? <p className="text-xs text-gray-500">A consulta da Receita não respondeu agora. Tente abrir de novo.</p> : (
+          <div className="space-y-1 text-xs text-gray-700">
+            <p className="font-medium text-gray-900">{c.razao}{c.fantasia ? <span className="font-normal text-gray-500"> · {c.fantasia}</span> : null}</p>
+            <p>Situação: <b className={/ativa/i.test(c.situacao ?? '') ? 'text-positive-700' : 'text-negative-700'}>{c.situacao ?? '—'}</b> · desde {brDay(c.abertura)}{c.porte ? ` · ${c.porte}` : ''}</p>
+            <p>Capital social: {fmtBRL(c.capital)}{c.cidade ? ` · ${c.cidade}/${c.uf ?? ''}` : ''}</p>
+            {c.cnae && <p className="text-gray-500">{c.cnae}</p>}
+            {c.socios.length ? (
+              <ul className="mt-1 divide-y divide-gray-100 rounded-lg border border-gray-100">
+                {c.socios.map((s, i) => <li key={`${s.nome}-${i}`} className="px-2 py-1"><b className="font-medium text-gray-900">{s.nome}</b><span className="block text-gray-500">{s.qualificacao ?? '—'}{s.desde ? ` · desde ${brDay(s.desde)}` : ''}{s.faixa ? ` · ${s.faixa}` : ''}</span></li>)}
+              </ul>
+            ) : <p className="text-gray-500">Quadro societário não informado na Receita.</p>}
+          </div>
+        )}
+        <p className="mt-1 text-[10px] text-gray-400">Fonte: Receita Federal (via BrasilAPI).</p>
       </div>
     </div>
   )

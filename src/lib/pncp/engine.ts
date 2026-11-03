@@ -526,3 +526,40 @@ export async function trackParticipations(tenantId: string, deadlineMs: number, 
   }
   return run
 }
+
+// ── Sanções: confere todo dia a empresa e os concorrentes acompanhados; avisa só o que passou a constar ──
+export async function checkSanctions(tenantId: string, deadlineMs: number): Promise<{ checked: number; alerts: number }> {
+  const admin = createAdminClient()
+  const out = { checked: 0, alerts: 0 }
+  const { fetchSancoes, newSancoes, fmtCnpj } = await import('./results')
+  const settings = await loadPncpSettings(tenantId)
+  const { data: st } = await admin.from('pncp_settings').select('own_sanctions').eq('tenant_id', tenantId).maybeSingle()
+  const ownPrev = ((st?.own_sanctions ?? {}) as Record<string, { itens: import('./results').Sancao[] }>)
+  const { data: comps } = await admin.from('pncp_competitors').select('id, cnpj, name, sanctions').eq('tenant_id', tenantId).limit(200)
+  const lines: string[] = []
+  const ownNext: Record<string, unknown> = { ...ownPrev }
+  for (const c of settings.own_cnpjs) {
+    if (Date.now() > deadlineMs) break
+    const s = await fetchSancoes(c); if (!s) continue
+    out.checked++
+    const fresh = newSancoes(ownPrev[c] ?? null, s)
+    for (const x of fresh) lines.push(`⚠️ Nossa empresa (${fmtCnpj(c)}): ${x.descricao} — ${x.situacao}`)
+    ownNext[c] = s
+  }
+  if (settings.own_cnpjs.length) await admin.from('pncp_settings').update({ own_sanctions: ownNext, own_sanctions_at: new Date().toISOString() }).eq('tenant_id', tenantId)
+  for (const c of (comps ?? []) as { id: string; cnpj: string; name: string | null; sanctions: { itens: import('./results').Sancao[] } | null }[]) {
+    if (Date.now() > deadlineMs) break
+    const s = await fetchSancoes(c.cnpj); if (!s) continue
+    out.checked++
+    for (const x of newSancoes(c.sanctions, s)) lines.push(`Concorrente ${c.name ?? fmtCnpj(c.cnpj)}: ${x.descricao} — ${x.situacao}`)
+    await admin.from('pncp_competitors').update({ sanctions: s, sanctions_at: s.lidoEm }).eq('id', c.id).eq('tenant_id', tenantId)
+  }
+  if (!lines.length) return out
+  const { notifyPerson } = await import('@/lib/agent/handoff')
+  const text = `🛡️ Sanções e penalidades (consulta TCU: inidôneos, CEIS, CNEP, improbidade)\n${lines.map(l => `• ${l}`).join('\n')}\n\nVeja em ${appUrl()}/licitacoes (Inteligência)`
+  for (const u of settings.recipient_ids) {
+    const ch = await notifyPerson(tenantId, u, { text, subject: 'Licitações: sanção nova encontrada' }, settings.channels)
+    if (ch.length) out.alerts++
+  }
+  return out
+}
