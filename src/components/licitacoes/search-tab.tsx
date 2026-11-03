@@ -9,7 +9,7 @@ import { fmtBRL } from '@/lib/format'
 import { UFS } from '@/lib/geo/uf'
 import { MODALIDADES, STATUS_LABEL, pncpUrl, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
 import {
-  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero,
+  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero, loadBaseNow,
   type SearchHit, type DetailItem, type DetailFile,
 } from '@/lib/actions/licitacoes'
 
@@ -51,6 +51,8 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
   const [err, setErr] = useState<string | null>(null)
   const [recent, setRecent] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
+  const [baseBusy, setBaseBusy] = useState(false)
+  const [baseMsg, setBaseMsg] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   function run(p = 1, text = q) {
@@ -102,9 +104,13 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
       )}
 
       {err && <p className="text-sm text-negative-700">{err}</p>}
+      {baseMsg && <p role="status" className="text-sm text-positive-700">{baseMsg}</p>}
       {res && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação aberta' : 'licitações abertas'}{q.trim() ? ` com "${q.trim()}"` : ''} · base com {res.base.toLocaleString('pt-BR')} publicações (atualiza às 8h e 17h)</span>
+          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação aberta' : 'licitações abertas'}{q.trim() ? ` com "${q.trim()}"` : ''} · base com {res.base.toLocaleString('pt-BR')} publicações (novas às 8h e 17h; dias anteriores carregados aos poucos)
+            {isAdmin && <button type="button" disabled={baseBusy} onClick={async () => { setBaseBusy(true); const r = await loadBaseNow(); setBaseBusy(false); setErr(r.ok ? null : r.error); setBaseMsg(r.ok ? 'Carregando mais dias na base em segundo plano. Você recebe um aviso no sino quando terminar.' : null) }}
+              className="ml-2 font-medium text-brand-700 hover:underline disabled:opacity-50">{baseBusy ? 'iniciando…' : 'carregar mais dias agora'}</button>}
+          </span>
           {isAdmin && q.trim() && <button type="button" onClick={() => onCreateAlert(q.trim())} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Bell className="h-3.5 w-3.5" />Criar alerta com esta busca</button>}
         </div>
       )}

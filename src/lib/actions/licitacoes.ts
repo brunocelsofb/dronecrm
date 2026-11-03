@@ -348,3 +348,32 @@ export async function convertNumero(numero: string, pipelineId: string): Promise
   if (!id) return { ok: false, error: 'Licitação não encontrada.' }
   return convertMatch(id, pipelineId)
 }
+
+// Admin: carrega mais dias antigos na base da pesquisa agora (em segundo plano; avisa no sino)
+export async function loadBaseNow(): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const { tenantId, userId } = g
+  const job = async () => {
+    const { backfillStep } = await import('@/lib/pncp/engine')
+    const { notifyPerson } = await import('@/lib/agent/handoff')
+    const started = Date.now()
+    const days: string[] = []
+    let saved = 0, done = false
+    while (Date.now() - started < 220_000) {
+      const b = await backfillStep(started + 240_000)
+      if (b.day && !b.partial) days.push(b.day.split('-').reverse().join('/'))
+      saved += b.saved
+      if (b.done) { done = true; break }
+      if (b.partial) break
+    }
+    const { count } = await createAdminClient().from('pncp_contratacoes').select('numero_controle', { count: 'exact', head: true })
+    await notifyPerson(tenantId, userId, {
+      text: done ? `🔎 A base de licitações já cobre os últimos 45 dias (${(count ?? 0).toLocaleString('pt-BR')} abertas).`
+        : `🔎 Base de licitações: ${days.length} dia(s) carregado(s)${days.length ? ` (${days[days.length - 1]} a ${days[0]})` : ''}, ${saved} abertas a mais. Total: ${(count ?? 0).toLocaleString('pt-BR')}. Clique de novo para carregar mais.`,
+      subject: 'Base de licitações',
+    }, { sino: true, whatsapp: false, email: false })
+  }
+  try { const { after } = await import('next/server'); after(job) } catch { await job() }
+  return { ok: true }
+}
