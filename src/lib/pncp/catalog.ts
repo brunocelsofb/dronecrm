@@ -148,3 +148,43 @@ export function stem(w: string): string {
   if (w.endsWith('al')) return w.slice(0, -1)   // hospital ↔ hospitais
   return w
 }
+
+// ── Busca por palavra do portal do PNCP (/api/search) ───────────────────────
+// É a mesma busca do site pncp.gov.br: procura em qualquer período, com a situação escolhida.
+export const PNCP_SEARCH_URL = 'https://pncp.gov.br/api/search/'
+export const SEARCH_SITUACOES = [
+  { id: 'abertas', nome: 'Abertas (recebendo propostas)', api: 'recebendo_proposta' },
+  { id: 'encerradas', nome: 'Encerradas', api: 'encerradas' },
+  { id: 'todas', nome: 'Todas (qualquer período)', api: null },
+] as const
+export type SearchSituacao = typeof SEARCH_SITUACOES[number]['id']
+
+// Texto digitado → consulta do PNCP. "entre aspas" = frase exata; senão todas as palavras (+palavra).
+export function pncpSearchQuery(text: string): string {
+  const t = text.trim()
+  if (!t) return ''
+  const { phrase, words } = termWords(t)
+  if (phrase) return `"${phrase}"`
+  return words.map(w => `+${w}`).join(' ')
+}
+
+// Um item do /api/search → linha da cópia local (mesmo formato do mapCompra)
+export function mapSearchItem(d: Record<string, unknown>): PncpRow | null {
+  const id = str(d.numero_controle_pncp, 80)
+  if (!id) return null
+  const objeto = str(d.description)
+  const info = str(d.informacao_complementar)
+  return {
+    numero_controle: id,
+    orgao_cnpj: str(d.orgao_cnpj, 20), orgao_nome: str(d.orgao_nome, 300), esfera: str(d.esfera_id, 2),
+    unidade_nome: str(d.unidade_nome, 300), uf: str(d.uf, 2), municipio: str(d.municipio_nome, 120), codigo_ibge: str(d.codigo_ibge, 10),
+    modalidade_id: num(d.modalidade_licitacao_id), modalidade_nome: str(d.modalidade_licitacao_nome, 80),
+    objeto, objeto_norm: normText(`${objeto ?? ''} ${info ?? ''}`).slice(0, 6000),
+    info_complementar: info,
+    valor_estimado: num(d.valor_total_estimado), srp: typeof d.srp === 'boolean' ? d.srp : null,
+    situacao_id: d.cancelado === true ? 3 : num(d.situacao_id), situacao_nome: str(d.situacao_nome, 60),
+    data_publicacao: pncpDate(d.data_publicacao_pncp), data_abertura: pncpDate(d.data_inicio_vigencia), data_encerramento: pncpDate(d.data_fim_vigencia),
+    link_origem: str(d.link_sistema_origem, 1000) ?? str(d.link_processo_eletronico, 1000),
+    ano_compra: num(d.ano), sequencial_compra: num(d.numero_sequencial), atualizado_em: pncpDate(d.data_atualizacao_pncp),
+  }
+}

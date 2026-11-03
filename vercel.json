@@ -42,30 +42,6 @@
     {
       "path": "/api/cron/pncp",
       "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "30 13 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "30 16 * * *"
-    },
-    {
-      "path": "/api/cron/pncp-backfill",
-      "schedule": "0 23 * * *"
     }
   ]
 }

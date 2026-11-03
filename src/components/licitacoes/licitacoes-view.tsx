@@ -220,10 +220,10 @@ function Watchers({ isAdmin, watchers, people, areas, prefill, onPrefillUsed }: 
 
   async function runNow() {
     setBusy(true); setMsg(null)
-    const r = await searchNow(7)
+    const r = await searchNow()
     setBusy(false)
     setMsg(r.ok
-      ? 'Busca iniciada no PNCP. Ela roda em segundo plano (alguns minutos) e você recebe um aviso no sino quando terminar; depois é só abrir o Radar.'
+      ? 'Busca iniciada no PNCP. Ela roda em segundo plano (alguns minutos) e você recebe um aviso no sino quando terminar; depois é só abrir "Meus alertas".'
       : r.error)
   }
 

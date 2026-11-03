@@ -1,5 +1,5 @@
 'use client'
-// Licitações · Pesquisar: busca na hora na base do PNCP do CRM + painel lateral com itens,
+// Licitações · Pesquisar: busca por palavra direto no PNCP (qualquer período) + painel lateral com itens,
 // arquivos do edital, análise do agente e "Adicionar ao funil".
 
 import { useEffect, useState, useTransition } from 'react'
@@ -7,9 +7,9 @@ import { useRouter } from 'next/navigation'
 import { Search, ExternalLink, X, FileText, Sparkles, Clock, Bell } from 'lucide-react'
 import { fmtBRL } from '@/lib/format'
 import { UFS } from '@/lib/geo/uf'
-import { MODALIDADES, STATUS_LABEL, pncpUrl, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
+import { MODALIDADES, STATUS_LABEL, SEARCH_SITUACOES, pncpUrl, type MatchStatus, type PncpRow, type SearchSituacao } from '@/lib/pncp/catalog'
 import {
-  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero, loadBaseNow,
+  searchContratacoes, getContratacaoDetail, saveToRadar, analyzeNumero, convertNumero,
   type SearchHit, type DetailItem, type DetailFile,
 } from '@/lib/actions/licitacoes'
 
@@ -41,31 +41,35 @@ export function Countdown({ iso, nowMs }: { iso: string | null; nowMs: number })
   )
 }
 
+function sitLabel(sit: SearchSituacao, n: number) {
+  if (sit === 'abertas') return n === 1 ? ' aberta' : ' abertas'
+  if (sit === 'encerradas') return n === 1 ? ' encerrada' : ' encerradas'
+  return ''
+}
+
 export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmin: boolean; pipelines: Opt[]; nowMs: number; onCreateAlert: (q: string) => void }) {
   const [q, setQ] = useState('')
   const [uf, setUf] = useState('')
   const [mod, setMod] = useState('')
-  const [ate, setAte] = useState('')
+  const [sit, setSit] = useState<SearchSituacao>('abertas')
   const [page, setPage] = useState(1)
-  const [res, setRes] = useState<{ rows: SearchHit[]; total: number; pages: number; base: number; baseFrom: string | null } | null>(null)
+  const [res, setRes] = useState<{ rows: SearchHit[]; total: number; pages: number; live: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [recent, setRecent] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
-  const [baseBusy, setBaseBusy] = useState(false)
-  const [baseMsg, setBaseMsg] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   function run(p = 1, text = q) {
     setPage(p)
     start(async () => {
       setErr(null)
-      const r = await searchContratacoes({ q: text, uf: uf || null, modalidade: mod ? Number(mod) : null, encerraAte: ate || null, page: p })
+      const r = await searchContratacoes({ q: text, uf: uf || null, modalidade: mod ? Number(mod) : null, situacao: sit, page: p })
       if (!r.ok) { setErr(r.error); return }
       setRes(r)
       if (text.trim()) { pushRecent(text.trim()); setRecent(readRecent()) }
     })
   }
-  // Primeira abertura: mostra as que encerram primeiro
+  // Primeira abertura: as abertas mais recentes
   useEffect(() => {
     start(async () => {
       const r = await searchContratacoes({ q: '', page: 1 })
@@ -90,9 +94,9 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
           <option value="">Todas as modalidades</option>
           {MODALIDADES.filter(m => m.busca).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
         </select>
-        <label className="flex items-center gap-1 text-xs text-gray-600">propostas até
-          <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="rounded-xl border border-gray-300 bg-white px-2 py-1.5 text-sm" />
-        </label>
+        <select value={sit} onChange={e => setSit(e.target.value as SearchSituacao)} aria-label="Situação" className="rounded-xl border border-gray-300 bg-white px-2 py-2 text-sm">
+          {SEARCH_SITUACOES.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}
+        </select>
         <button type="submit" disabled={pending} className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">{pending ? 'Buscando…' : 'Buscar'}</button>
       </form>
 
@@ -104,12 +108,10 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
       )}
 
       {err && <p className="text-sm text-negative-700">{err}</p>}
-      {baseMsg && <p role="status" className="text-sm text-positive-700">{baseMsg}</p>}
       {res && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação aberta' : 'licitações abertas'}{q.trim() ? ` com "${q.trim()}"` : ''} · base com {res.base.toLocaleString('pt-BR')} publicações{res.baseFrom ? ` desde ${new Date(res.baseFrom).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : ''} (novas às 8h e 17h; dias anteriores carregados algumas vezes ao dia até completar 45 dias)
-            {isAdmin && <button type="button" disabled={baseBusy} onClick={async () => { setBaseBusy(true); const r = await loadBaseNow(); setBaseBusy(false); setErr(r.ok ? null : r.error); setBaseMsg(r.ok ? 'Carregando mais dias na base em segundo plano. Você recebe um aviso no sino quando terminar.' : null) }}
-              className="ml-2 font-medium text-brand-700 hover:underline disabled:opacity-50">{baseBusy ? 'iniciando…' : 'carregar mais dias agora'}</button>}
+          <span><b className="text-gray-800">{res.total.toLocaleString('pt-BR')}</b> {res.total === 1 ? 'licitação' : 'licitações'}{sitLabel(sit, res.total)}{q.trim() ? ` com "${q.trim()}"` : ''} no PNCP
+            {!res.live && <span className="ml-1 text-warn-700">· o PNCP não respondeu agora; mostrando só o que o CRM já tinha baixado</span>}
           </span>
           {isAdmin && q.trim() && <button type="button" onClick={() => onCreateAlert(q.trim())} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"><Bell className="h-3.5 w-3.5" />Criar alerta com esta busca</button>}
         </div>
@@ -117,7 +119,7 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
 
       {res && res.rows.length === 0 && (
         <p className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-          Nada encontrado entre as licitações abertas da base{res.baseFrom ? ` (publicadas desde ${new Date(res.baseFrom).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })})` : ''}. Tente menos palavras (todas precisam aparecer no objeto) ou tire os filtros. A base vai sendo completada até cobrir os últimos 45 dias.
+          Nada encontrado no PNCP. Tente menos palavras (todas precisam aparecer), use &ldquo;aspas&rdquo; para a frase exata, mude a situação ou tire os filtros.
         </p>
       )}
 

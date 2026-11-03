@@ -8,7 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  SEARCH_MODALIDADES, mapCompra, matchWatcher, isOpen, termWords, pncpUrl, modalidadeNome,
+  SEARCH_MODALIDADES, SEARCH_SITUACOES, PNCP_SEARCH_URL, pncpSearchQuery, mapSearchItem, type SearchSituacao, mapCompra, matchWatcher, isOpen, termWords, pncpUrl, modalidadeNome,
   type PncpRow, type WatcherRule,
 } from './catalog'
 
@@ -85,6 +85,56 @@ export async function syncPublications(opts: { from: Date; to: Date; ufs: string
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   if (queue.length) res.partial = true
   return res
+}
+
+// ── Busca por palavra no PNCP (a mesma do portal), em qualquer período ──────────
+// Guarda o que veio na cópia local, para o painel, o radar e o funil usarem a mesma linha.
+export async function pncpLiveSearch(opts: { q: string; situacao: SearchSituacao; uf?: string | null; modalidade?: number | null; page: number; size: number }):
+  Promise<{ rows: PncpRow[]; total: number } | null> {
+  const sit = SEARCH_SITUACOES.find(x => x.id === opts.situacao) ?? SEARCH_SITUACOES[0]
+  const q = new URLSearchParams({ tipos_documento: 'edital', ordenacao: '-data', pagina: String(opts.page), tam_pagina: String(opts.size) })
+  const query = pncpSearchQuery(opts.q)
+  if (query) q.set('q', query)
+  if (sit.api) q.set('status', sit.api)
+  if (opts.uf) q.set('ufs', opts.uf)
+  if (opts.modalidade) q.set('modalidades', String(opts.modalidade))
+  let j: { items?: Record<string, unknown>[]; total?: number } | null = null
+  for (let attempt = 0; attempt < 2 && !j; attempt++) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 20_000)
+    try {
+      const r = await fetch(`${PNCP_SEARCH_URL}?${q}`, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal })
+      if (r.ok) j = await r.json()
+    } catch { /* tenta de novo */ } finally { clearTimeout(timer) }
+  }
+  if (!j) return null
+  const rows = (j.items ?? []).map(mapSearchItem).filter((r): r is PncpRow => !!r)
+  if (rows.length) {
+    await createAdminClient().from('pncp_contratacoes')
+      .upsert(rows.map(r => ({ ...r, baixado_em: new Date().toISOString() })), { onConflict: 'numero_controle' })
+  }
+  return { rows, total: Number(j.total ?? rows.length) }
+}
+
+// Procura no PNCP cada linha dos monitoramentos da empresa (só abertas, qualquer data de publicação).
+// Assim o radar acha também o que foi publicado antes de o monitoramento existir.
+export async function seedWatchers(tenantId: string, deadlineMs: number): Promise<string[]> {
+  const watchers = await loadWatchers(tenantId)
+  const numeros = new Set<string>()
+  for (const w of watchers) {
+    const ufs = w.ufs.length === 1 ? w.ufs : [null]
+    const mods = w.modalidades.length === 1 ? w.modalidades : [null]
+    for (const term of w.keywords) for (const uf of ufs) for (const mod of mods) {
+      for (let page = 1; page <= 4; page++) {
+        if (Date.now() > deadlineMs) return [...numeros]
+        const r = await pncpLiveSearch({ q: term, situacao: 'abertas', uf, modalidade: mod, page, size: 50 })
+        if (!r) break
+        for (const row of r.rows) numeros.add(row.numero_controle)
+        if (page * 50 >= r.total) break
+      }
+    }
+  }
+  return [...numeros]
 }
 
 // ── Monitoramentos da empresa ────────────────────────────────────────────────

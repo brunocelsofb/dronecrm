@@ -9,7 +9,7 @@ import { scopeAdminClient } from '@/lib/tenant/scoped-admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
-import { parseTerms, MATCH_STATUS, MODALIDADES, pncpUrl, termWords, stem, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
+import { parseTerms, MATCH_STATUS, MODALIDADES, pncpUrl, termWords, stem, SEARCH_SITUACOES, type SearchSituacao, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
 import { normalizeUf } from '@/lib/geo/uf'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -97,27 +97,21 @@ export async function deleteWatcher(id: string): Promise<Result> {
 
 // "Buscar agora": roda em segundo plano (a tela responde na hora) e avisa no sino quando terminar.
 // Baixa os últimos dias dos estados/modalidades monitorados e confere os monitoramentos da empresa.
-export async function searchNow(days = 7): Promise<{ ok: true; started: true } | { ok: false; error: string }> {
+export async function searchNow(): Promise<{ ok: true; started: true } | { ok: false; error: string }> {
   const g = await guard(true)
   if ('error' in g) return { ok: false, error: g.error }
-  const d = Math.max(1, Math.min(15, Math.round(days)))
-  const { data: ws } = await g.db.from('pncp_watchers').select('ufs, modalidades').eq('enabled', true)
-  const list = (ws ?? []) as { ufs: string[]; modalidades: number[] }[]
-  if (!list.length) return { ok: false, error: 'Crie e ligue um monitoramento antes de buscar.' }
-  const ufs = list.some(w => !w.ufs?.length) ? null : [...new Set(list.flatMap(w => w.ufs))]
-  const mods = list.some(w => !w.modalidades?.length) ? undefined : [...new Set(list.flatMap(w => w.modalidades))]
+  const { count } = await g.db.from('pncp_watchers').select('id', { count: 'exact', head: true }).eq('enabled', true)
+  if (!count) return { ok: false, error: 'Crie e ligue um monitoramento antes de buscar.' }
   const { tenantId, userId } = g
   const job = async () => {
-    const { syncPublications, matchTenant } = await import('@/lib/pncp/engine')
+    const { seedWatchers, matchTenant } = await import('@/lib/pncp/engine')
     const { notifyPerson } = await import('@/lib/agent/handoff')
-    const now = new Date()
-    const started = Date.now()
     let text: string
     try {
-      const sync = await syncPublications({ from: new Date(now.getTime() - d * 86_400_000), to: now, ufs, modalidades: mods, deadlineMs: started + 230_000 })
-      const run = await matchTenant(tenantId, { notify: false })
-      text = `🔎 Busca de licitações concluída: ${sync.saved} abertas baixadas do PNCP, ${run.created} nova(s) no radar` +
-        `${run.analyzed ? `, ${run.analyzed} analisada(s) pelo agente` : ''}.${sync.partial ? ' A busca parou no tempo limite; o restante entra nas buscas automáticas (8h e 17h) ou clique de novo.' : ''}`
+      const numeros = await seedWatchers(tenantId, Date.now() + 200_000)
+      const run = numeros.length ? await matchTenant(tenantId, { numeros, notify: false }) : { created: 0, analyzed: 0 }
+      text = `🔎 Busca de licitações concluída: ${numeros.length} aberta(s) no PNCP com as palavras dos monitoramentos, ${run.created} nova(s) no radar` +
+        `${run.analyzed ? `, ${run.analyzed} analisada(s) pelo agente` : ''}.`
     } catch (e) {
       text = `🔎 A busca de licitações falhou: ${(e as Error)?.message ?? 'erro'}. Tente de novo em alguns minutos.`
     }
@@ -243,44 +237,54 @@ export async function convertMatch(id: string, pipelineId: string): Promise<{ ok
 }
 
 // ── Pesquisa na base (resultado na hora) ─────────────────────────────────────
-export type SearchInput = { q: string; uf?: string | null; modalidade?: number | null; encerraAte?: string | null; page?: number }
+export type SearchInput = { q: string; uf?: string | null; modalidade?: number | null; situacao?: SearchSituacao; page?: number }
 export type SearchHit = PncpRow & { match_id: string | null; match_status: MatchStatus | null; ai_score: number | null }
 const SEARCH_PAGE = 30
 
-export async function searchContratacoes(input: SearchInput): Promise<{ ok: true; rows: SearchHit[]; total: number; page: number; pages: number; base: number; baseFrom: string | null } | { ok: false; error: string }> {
+export async function searchContratacoes(input: SearchInput): Promise<{ ok: true; rows: SearchHit[]; total: number; page: number; pages: number; live: boolean } | { ok: false; error: string }> {
   const g = await guard()
   if ('error' in g) return { ok: false, error: g.error }
-  const admin = createAdminClient()
   const page = Math.max(1, Math.min(50, Math.round(Number(input.page) || 1)))
-  let q = admin.from('pncp_contratacoes').select('*', { count: 'exact' })
-    .or(`data_encerramento.is.null,data_encerramento.gte.${new Date().toISOString()}`)
   const text = String(input.q ?? '').trim().slice(0, 200)
-  if (text) {
-    const tw = termWords(text)
-    const parts = tw.phrase ? [tw.phrase] : tw.words.map(stem)
-    for (const p of parts) q = q.ilike('objeto_norm', `%${p.replace(/[%_]/g, ' ')}%`)
-  }
   const uf = normalizeUf(input.uf ?? null)
-  if (uf) q = q.eq('uf', uf)
-  if (input.modalidade) q = q.eq('modalidade_id', Number(input.modalidade))
-  if (input.encerraAte && /^\d{4}-\d{2}-\d{2}$/.test(input.encerraAte)) q = q.lte('data_encerramento', `${input.encerraAte}T23:59:59-03:00`)
-  const { data, count, error } = await q.order('data_encerramento', { ascending: true, nullsFirst: false })
-    .range((page - 1) * SEARCH_PAGE, page * SEARCH_PAGE - 1)
-  if (error) return { ok: false, error: error.message }
-  const rows = (data ?? []) as PncpRow[]
+  const modalidade = input.modalidade ? Number(input.modalidade) : null
+  const situacao: SearchSituacao = SEARCH_SITUACOES.some(x => x.id === input.situacao) ? input.situacao! : 'abertas'
+  let rows: PncpRow[] = []
+  let total = 0
+  let live = true
+  const { pncpLiveSearch } = await import('@/lib/pncp/engine')
+  const r = await pncpLiveSearch({ q: text, situacao, uf, modalidade, page, size: SEARCH_PAGE })
+  if (r) { rows = r.rows; total = r.total }
+  else {
+    // PNCP fora do ar: usa a cópia local (só o que o CRM já baixou)
+    live = false
+    let q = createAdminClient().from('pncp_contratacoes').select('*', { count: 'exact' })
+    const nowIso = new Date().toISOString()
+    if (situacao === 'abertas') q = q.or(`data_encerramento.is.null,data_encerramento.gte.${nowIso}`)
+    if (situacao === 'encerradas') q = q.lt('data_encerramento', nowIso)
+    if (text) {
+      const tw = termWords(text)
+      const parts = tw.phrase ? [tw.phrase] : tw.words.map(stem)
+      for (const p of parts) q = q.ilike('objeto_norm', `%${p.replace(/[%_]/g, ' ')}%`)
+    }
+    if (uf) q = q.eq('uf', uf)
+    if (modalidade) q = q.eq('modalidade_id', modalidade)
+    const { data, count, error } = await q.order('data_encerramento', { ascending: situacao === 'abertas', nullsFirst: false })
+      .range((page - 1) * SEARCH_PAGE, page * SEARCH_PAGE - 1)
+    if (error) return { ok: false, error: 'O PNCP não respondeu e a cópia local falhou. Tente de novo em instantes.' }
+    rows = (data ?? []) as PncpRow[]
+    total = count ?? rows.length
+  }
+  // Abertas: as que encerram primeiro no topo (dentro da página)
+  if (situacao === 'abertas') rows.sort((a, b) => (Date.parse(a.data_encerramento ?? '') || Infinity) - (Date.parse(b.data_encerramento ?? '') || Infinity))
   const { data: ms } = rows.length
-    ? await g.db.from('pncp_matches').select('id, numero_controle, status, ai_score').in('numero_controle', rows.map(r => r.numero_controle))
+    ? await g.db.from('pncp_matches').select('id, numero_controle, status, ai_score').in('numero_controle', rows.map(x => x.numero_controle))
     : { data: [] }
   const byId = new Map(((ms ?? []) as { id: string; numero_controle: string; status: MatchStatus; ai_score: number | null }[]).map(m => [m.numero_controle, m]))
-  const [{ count: base }, { data: oldest }] = await Promise.all([
-    admin.from('pncp_contratacoes').select('numero_controle', { count: 'exact', head: true }),
-    admin.from('pncp_contratacoes').select('data_publicacao').not('data_publicacao', 'is', null).order('data_publicacao', { ascending: true }).limit(1).maybeSingle(),
-  ])
-  const total = count ?? rows.length
+  const pages = Math.max(1, Math.min(50, Math.ceil(total / SEARCH_PAGE)))
   return {
-    ok: true, page, total, pages: Math.max(1, Math.ceil(total / SEARCH_PAGE)), base: base ?? 0,
-    baseFrom: (oldest as { data_publicacao: string | null } | null)?.data_publicacao ?? null,
-    rows: rows.map(r => { const m = byId.get(r.numero_controle); return { ...r, match_id: m?.id ?? null, match_status: m?.status ?? null, ai_score: m?.ai_score ?? null } }),
+    ok: true, page, total, pages, live,
+    rows: rows.map(x => { const m = byId.get(x.numero_controle); return { ...x, match_id: m?.id ?? null, match_status: m?.status ?? null, ai_score: m?.ai_score ?? null } }),
   }
 }
 
