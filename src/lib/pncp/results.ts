@@ -130,7 +130,9 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
   for (let page = 1; page <= maxPages; page++) {
     const q = new URLSearchParams({ q: d, tipos_documento: 'contrato', ordenacao: '-data', pagina: String(page), tam_pagina: '50' })
     let j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 30_000)) as { items?: Record<string, unknown>[]; total?: number } | null
+    let reserva = false
     if (!j) {
+      reserva = true
       // Reserva: sem compressão, conexão nova e página menor (o PNCP às vezes derruba a conexão nesta consulta)
       const q2 = new URLSearchParams({ q: d, tipos_documento: 'contrato', pagina: String(page), tam_pagina: '10' })
       j = (await getJson(`${PNCP_SEARCH_URL}?${q2}`, 30_000, 2, { 'Accept-Encoding': 'identity', Connection: 'close' })) as typeof j
@@ -150,7 +152,7 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
         fornecedor_nome: (x.fornecedor_nome as string | null) ?? null, url,
       })
     }
-    if (page * 50 >= total || list.length < 10) break
+    if (reserva || page * 50 >= total || list.length < 50) break
   }
   return { items, total }
 }
