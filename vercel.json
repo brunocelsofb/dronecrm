@@ -42,6 +42,10 @@
     {
       "path": "/api/cron/pncp",
       "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/pncp-backfill",
+      "schedule": "25 * * * *"
     }
   ]
 }

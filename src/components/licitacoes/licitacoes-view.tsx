@@ -1,7 +1,7 @@
 'use client'
 // Tela de Licitações (PNCP): Radar (o que bateu, com decisão e análise do agente) e Monitoramentos.
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ExternalLink, Sparkles, Search, Plus, Trash2, Clock } from 'lucide-react'
@@ -11,6 +11,7 @@ import { MODALIDADES, STATUS_LABEL, pncpUrl, type MatchStatus, type PncpRow } fr
 import {
   saveWatcher, deleteWatcher, searchNow, setMatchStatus, assignMatch, analyzeMatch, convertMatch, type WatcherInput,
 } from '@/lib/actions/licitacoes'
+import { SearchTab, DetailDrawer } from './search-tab'
 
 export type MatchView = {
   id: string; numero_controle: string; watcher_ids: string[]; status: MatchStatus; assigned_to: string | null
@@ -47,24 +48,30 @@ function Score({ v }: { v: number }) {
 export function LicitacoesView({ isAdmin, matches, watchers, people, areas, pipelines, nowMs }: {
   isAdmin: boolean; matches: MatchView[]; watchers: WatcherView[]; people: Opt[]; areas: Opt[]; pipelines: Opt[]; nowMs: number
 }) {
-  const [tab, setTab] = useState<'radar' | 'monitoramentos'>(watchers.length ? 'radar' : 'monitoramentos')
+  const [tab, setTab] = useState<'pesquisar' | 'radar' | 'monitoramentos'>('pesquisar')
+  const [prefill, setPrefill] = useState<string | null>(null)
+  const TABS = [
+    { key: 'pesquisar' as const, label: 'Pesquisar' },
+    { key: 'radar' as const, label: `Meus alertas (${matches.filter(m => m.status === 'nova' || m.status === 'analisando').length})` },
+    { key: 'monitoramentos' as const, label: `Monitoramentos (${watchers.length})` },
+  ]
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Licitações</h1>
-        <p className="text-sm text-gray-500">Contratações públicas do PNCP que batem com o que a empresa vende. Analise, decida e transforme em oportunidade no funil.</p>
+        <p className="text-sm text-gray-500">Contratações públicas abertas do PNCP. Pesquise, abra o edital, peça a análise do agente e coloque no funil.</p>
       </div>
       <nav className="flex gap-1 border-b border-gray-200" aria-label="Seções">
-        {(['radar', 'monitoramentos'] as const).map(t => (
-          <button key={t} type="button" onClick={() => setTab(t)} aria-current={tab === t ? 'page' : undefined}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t ? 'border-brand-700 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
-            {t === 'radar' ? `Radar (${matches.filter(m => m.status === 'nova' || m.status === 'analisando').length})` : `Monitoramentos (${watchers.length})`}
+        {TABS.map(t => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)} aria-current={tab === t.key ? 'page' : undefined}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t.key ? 'border-brand-700 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+            {t.label}
           </button>
         ))}
       </nav>
-      {tab === 'radar'
-        ? <Radar matches={matches} watchers={watchers} people={people} pipelines={pipelines} nowMs={nowMs} onSetup={() => setTab('monitoramentos')} />
-        : <Watchers isAdmin={isAdmin} watchers={watchers} people={people} areas={areas} />}
+      {tab === 'pesquisar' && <SearchTab isAdmin={isAdmin} pipelines={pipelines} nowMs={nowMs} onCreateAlert={q => { setPrefill(q); setTab('monitoramentos') }} />}
+      {tab === 'radar' && <Radar matches={matches} watchers={watchers} people={people} pipelines={pipelines} nowMs={nowMs} onSetup={() => setTab('monitoramentos')} />}
+      {tab === 'monitoramentos' && <Watchers isAdmin={isAdmin} watchers={watchers} people={people} areas={areas} prefill={prefill} onPrefillUsed={() => setPrefill(null)} />}
     </div>
   )
 }
@@ -92,8 +99,8 @@ function Radar({ matches, watchers, people, pipelines, nowMs, onSetup }: { match
   if (!watchers.length) {
     return (
       <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
-        <p className="text-sm font-medium text-gray-800">Nenhum monitoramento ainda</p>
-        <p className="mt-1 text-sm text-gray-500">Diga o que procurar no objeto das licitações (por exemplo, &quot;manutenção de equipamentos médico-hospitalares&quot;) e em quais estados.</p>
+        <p className="text-sm font-medium text-gray-800">Nenhum alerta ainda</p>
+        <p className="mt-1 text-sm text-gray-500">Um monitoramento avisa sozinho, duas vezes por dia, quando sair licitação com as palavras que você escolher. Você também pode pesquisar na hora na aba Pesquisar.</p>
         <button type="button" onClick={onSetup} className="mt-3 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800">Criar monitoramento</button>
       </div>
     )
@@ -133,6 +140,7 @@ function MatchCard({ m, wName, people, pipelines, nowMs }: { m: MatchView; wName
   const [err, setErr] = useState<string | null>(null)
   const [more, setMore] = useState(false)
   const [pipe, setPipe] = useState(pipelines[0]?.id ?? '')
+  const [detail, setDetail] = useState(false)
   const r = m.row
   const link = pncpUrl(r)
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>) => start(async () => {
@@ -159,6 +167,7 @@ function MatchCard({ m, wName, people, pipelines, nowMs }: { m: MatchView; wName
       {long && <button type="button" onClick={() => setMore(v => !v)} className="text-[11px] text-brand-700 hover:underline">{more ? 'mostrar menos' : 'ler tudo'}</button>}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
         <span>Valor estimado: <b className="tabular-nums text-gray-900">{r.valor_estimado && r.valor_estimado > 0 ? fmtBRL(r.valor_estimado) : 'não informado'}</b></span>
+        <button type="button" onClick={() => setDetail(true)} className="font-medium text-brand-700 hover:underline">Itens e arquivos do edital</button>
         {link && <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-700 hover:underline">Ver no PNCP<ExternalLink className="h-3 w-3" /></a>}
         {r.link_origem && /^https?:\/\//.test(r.link_origem) && <a href={r.link_origem} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-700 hover:underline">Sistema de origem<ExternalLink className="h-3 w-3" /></a>}
       </div>
@@ -188,6 +197,7 @@ function MatchCard({ m, wName, people, pipelines, nowMs }: { m: MatchView; wName
         </div>
       )}
       {pending && <p className="mt-1 text-[11px] text-gray-400">Salvando…</p>}
+      {detail && <DetailDrawer numero={m.numero_controle} pipelines={pipelines} nowMs={nowMs} onClose={() => { setDetail(false); router.refresh() }} />}
       {err && <p className="mt-1 text-xs text-negative-700">{err}</p>}
     </li>
   )
@@ -199,9 +209,10 @@ const EMPTY: WatcherInput = {
   recipient_ids: [], area_ids: [], channels: { sino: true, whatsapp: true, email: false }, ai_analysis: true, remind_days: 3, enabled: true,
 }
 
-function Watchers({ isAdmin, watchers, people, areas }: { isAdmin: boolean; watchers: WatcherView[]; people: Opt[]; areas: Opt[] }) {
+function Watchers({ isAdmin, watchers, people, areas, prefill, onPrefillUsed }: { isAdmin: boolean; watchers: WatcherView[]; people: Opt[]; areas: Opt[]; prefill?: string | null; onPrefillUsed?: () => void }) {
   const router = useRouter()
-  const [editing, setEditing] = useState<WatcherInput | null>(null)
+  const [editing, setEditing] = useState<WatcherInput | null>(prefill && isAdmin ? { ...EMPTY, name: prefill.slice(0, 80), keywords: prefill } : null)
+  useEffect(() => { if (prefill) onPrefillUsed?.() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const pName = new Map(people.map(p => [p.id, p.name]))

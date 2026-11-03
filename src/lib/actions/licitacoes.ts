@@ -9,7 +9,7 @@ import { scopeAdminClient } from '@/lib/tenant/scoped-admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
 import { getTenantFeatures } from '@/lib/config/tenant-features'
-import { parseTerms, MATCH_STATUS, MODALIDADES, pncpUrl, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
+import { parseTerms, MATCH_STATUS, MODALIDADES, pncpUrl, termWords, stem, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
 import { normalizeUf } from '@/lib/geo/uf'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -240,4 +240,111 @@ export async function convertMatch(id: string, pipelineId: string): Promise<{ ok
   await g.db.from('pncp_matches').update({ status: 'oportunidade', contract_id: contract.id, decided_by: g.userId, updated_at: now }).eq('id', m.id)
   revalidatePath('/licitacoes'); revalidatePath('/pipeline')
   return { ok: true, contractId: contract.id as string }
+}
+
+// ── Pesquisa na base (resultado na hora) ─────────────────────────────────────
+export type SearchInput = { q: string; uf?: string | null; modalidade?: number | null; encerraAte?: string | null; page?: number }
+export type SearchHit = PncpRow & { match_id: string | null; match_status: MatchStatus | null; ai_score: number | null }
+const SEARCH_PAGE = 30
+
+export async function searchContratacoes(input: SearchInput): Promise<{ ok: true; rows: SearchHit[]; total: number; page: number; pages: number; base: number } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const admin = createAdminClient()
+  const page = Math.max(1, Math.min(50, Math.round(Number(input.page) || 1)))
+  let q = admin.from('pncp_contratacoes').select('*', { count: 'exact' })
+    .or(`data_encerramento.is.null,data_encerramento.gte.${new Date().toISOString()}`)
+  const text = String(input.q ?? '').trim().slice(0, 200)
+  if (text) {
+    const tw = termWords(text)
+    const parts = tw.phrase ? [tw.phrase] : tw.words.map(stem)
+    for (const p of parts) q = q.ilike('objeto_norm', `%${p.replace(/[%_]/g, ' ')}%`)
+  }
+  const uf = normalizeUf(input.uf ?? null)
+  if (uf) q = q.eq('uf', uf)
+  if (input.modalidade) q = q.eq('modalidade_id', Number(input.modalidade))
+  if (input.encerraAte && /^\d{4}-\d{2}-\d{2}$/.test(input.encerraAte)) q = q.lte('data_encerramento', `${input.encerraAte}T23:59:59-03:00`)
+  const { data, count, error } = await q.order('data_encerramento', { ascending: true, nullsFirst: false })
+    .range((page - 1) * SEARCH_PAGE, page * SEARCH_PAGE - 1)
+  if (error) return { ok: false, error: error.message }
+  const rows = (data ?? []) as PncpRow[]
+  const { data: ms } = rows.length
+    ? await g.db.from('pncp_matches').select('id, numero_controle, status, ai_score').in('numero_controle', rows.map(r => r.numero_controle))
+    : { data: [] }
+  const byId = new Map(((ms ?? []) as { id: string; numero_controle: string; status: MatchStatus; ai_score: number | null }[]).map(m => [m.numero_controle, m]))
+  const { count: base } = await admin.from('pncp_contratacoes').select('numero_controle', { count: 'exact', head: true })
+  const total = count ?? rows.length
+  return {
+    ok: true, page, total, pages: Math.max(1, Math.ceil(total / SEARCH_PAGE)), base: base ?? 0,
+    rows: rows.map(r => { const m = byId.get(r.numero_controle); return { ...r, match_id: m?.id ?? null, match_status: m?.status ?? null, ai_score: m?.ai_score ?? null } }),
+  }
+}
+
+// ── Detalhe (painel): itens e arquivos do edital direto do PNCP ─────────────
+export type DetailItem = { numero: number; descricao: string; quantidade: number | null; unidade: string | null; valorUnitario: number | null; valorTotal: number | null; tipo: string | null }
+export type DetailFile = { titulo: string; tipo: string | null; url: string }
+export async function getContratacaoDetail(numero: string): Promise<{ ok: true; row: PncpRow; items: DetailItem[]; files: DetailFile[]; itemsTotal: number; match: { id: string; status: MatchStatus; ai_score: number | null; ai_summary: string | null; contract_id: string | null } | null; warn?: string } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { data } = await createAdminClient().from('pncp_contratacoes').select('*').eq('numero_controle', numero).maybeSingle()
+  const row = data as PncpRow | null
+  if (!row) return { ok: false, error: 'Licitação não encontrada na base.' }
+  const { data: m } = await g.db.from('pncp_matches').select('id, status, ai_score, ai_summary, contract_id').eq('numero_controle', numero).maybeSingle()
+  const base = row.orgao_cnpj && row.ano_compra && row.sequencial_compra ? `https://pncp.gov.br/api/pncp/v1/orgaos/${row.orgao_cnpj}/compras/${row.ano_compra}/${row.sequencial_compra}` : null
+  const get = async (url: string) => {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15_000)
+    try { const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal }); return r.ok ? await r.json() : null } catch { return null } finally { clearTimeout(t) }
+  }
+  let items: DetailItem[] = [], files: DetailFile[] = [], warn: string | undefined
+  if (base) {
+    const [it, ar, qt] = await Promise.all([get(`${base}/itens?pagina=1&tamanhoPagina=50`), get(`${base}/arquivos`), get(`${base}/itens/quantidade`)])
+    if (Array.isArray(it)) items = (it as Record<string, unknown>[]).map(x => ({
+      numero: Number(x.numeroItem) || 0, descricao: String(x.descricao ?? '').trim(), quantidade: x.quantidade === null ? null : Number(x.quantidade),
+      unidade: (x.unidadeMedida as string | null) ?? null, valorUnitario: x.valorUnitarioEstimado === null ? null : Number(x.valorUnitarioEstimado),
+      valorTotal: x.valorTotal === null ? null : Number(x.valorTotal), tipo: (x.materialOuServicoNome as string | null) ?? null,
+    }))
+    if (Array.isArray(ar)) files = (ar as Record<string, unknown>[]).filter(f => f.statusAtivo !== false).map(f => ({
+      titulo: String(f.titulo ?? 'Arquivo'), tipo: (f.tipoDocumentoNome as string | null) ?? null, url: String(f.url ?? f.uri ?? ''),
+    })).filter(f => /^https:\/\/pncp\.gov\.br\//.test(f.url))
+    if (it === null && ar === null) warn = 'O PNCP não respondeu agora; itens e arquivos não carregaram. Tente abrir de novo.'
+    return { ok: true, row, items, files, itemsTotal: typeof qt === 'number' ? qt : items.length, match: (m as never) ?? null, warn }
+  }
+  return { ok: true, row, items, files, itemsTotal: 0, match: (m as never) ?? null }
+}
+
+// Garante o item no radar da empresa (para decidir, analisar ou virar oportunidade a partir da pesquisa)
+async function ensureMatch(g: G, numero: string): Promise<string | null> {
+  const { data: m } = await g.db.from('pncp_matches').select('id').eq('numero_controle', numero).maybeSingle()
+  if (m?.id) return m.id as string
+  const { data: row } = await createAdminClient().from('pncp_contratacoes').select('numero_controle').eq('numero_controle', numero).maybeSingle()
+  if (!row) return null
+  const { data: ins } = await g.db.from('pncp_matches').insert({ numero_controle: numero, watcher_ids: [], status: 'analisando', assigned_to: g.userId }).select('id').single()
+  return (ins?.id as string | undefined) ?? null
+}
+
+export async function saveToRadar(numero: string, status: MatchStatus = 'analisando'): Promise<Result & { id?: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const id = await ensureMatch(g, numero)
+  if (!id) return { ok: false, error: 'Licitação não encontrada.' }
+  if (status !== 'analisando') { const r = await setMatchStatus(id, status); if (!r.ok) return r }
+  revalidatePath('/licitacoes')
+  return { ok: true, id }
+}
+
+export async function analyzeNumero(numero: string): Promise<Result & { id?: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const id = await ensureMatch(g, numero)
+  if (!id) return { ok: false, error: 'Licitação não encontrada.' }
+  const r = await analyzeMatch(id)
+  return r.ok ? { ok: true, id } : r
+}
+
+export async function convertNumero(numero: string, pipelineId: string): Promise<{ ok: true; contractId: string } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const id = await ensureMatch(g, numero)
+  if (!id) return { ok: false, error: 'Licitação não encontrada.' }
+  return convertMatch(id, pipelineId)
 }
