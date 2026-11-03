@@ -77,11 +77,13 @@ export async function saveWatcher(input: WatcherInput): Promise<Result & { id?: 
   if (input.id) {
     const { error } = await g.db.from('pncp_watchers').update(row).eq('id', input.id)
     if (error) return { ok: false, error: error.message }
+    await runSeedLater(g.tenantId, g.userId)
     revalidatePath('/licitacoes')
     return { ok: true, id: input.id }
   }
   const { data, error } = await g.db.from('pncp_watchers').insert({ ...row, created_by: g.userId }).select('id').single()
   if (error || !data) return { ok: false, error: error?.message ?? 'Não foi possível salvar.' }
+  await runSeedLater(g.tenantId, g.userId)
   revalidatePath('/licitacoes')
   return { ok: true, id: data.id as string }
 }
@@ -91,8 +93,32 @@ export async function deleteWatcher(id: string): Promise<Result> {
   if ('error' in g) return { ok: false, error: g.error }
   const { error } = await g.db.from('pncp_watchers').delete().eq('id', id)
   if (error) return { ok: false, error: error.message }
+  // Alertas ainda "para decidir" que só este monitoramento achou saem junto (os já decididos ficam)
+  const { data: left } = await g.db.from('pncp_matches').select('id, watcher_ids').eq('status', 'nova').contains('watcher_ids', [id])
+  const rows = (left ?? []) as { id: string; watcher_ids: string[] }[]
+  const drop = rows.filter(m => m.watcher_ids.every(w => w === id)).map(m => m.id)
+  for (const m of rows.filter(r => !drop.includes(r.id))) {
+    await g.db.from('pncp_matches').update({ watcher_ids: m.watcher_ids.filter(w => w !== id) }).eq('id', m.id)
+  }
+  if (drop.length) await g.db.from('pncp_matches').delete().in('id', drop)
   revalidatePath('/licitacoes')
   return { ok: true }
+}
+
+// Depois de salvar um monitoramento: procura as palavras no PNCP na hora (segundo plano) e avisa no sino
+async function runSeedLater(tenantId: string, userId: string) {
+  const job = async () => {
+    const { seedWatchers, matchTenant } = await import('@/lib/pncp/engine')
+    const { notifyPerson } = await import('@/lib/agent/handoff')
+    try {
+      const numeros = await seedWatchers(tenantId, Date.now() + 200_000)
+      const run = numeros.length ? await matchTenant(tenantId, { numeros, notify: false }) : { created: 0 }
+      await notifyPerson(tenantId, userId, {
+        text: `🔎 Monitoramento salvo e conferido no PNCP: ${run.created} licitação(ões) aberta(s) nova(s) em "Meus alertas".`, subject: 'Licitações',
+      }, { sino: true, whatsapp: false, email: false })
+    } catch { /* a rotina das 8h e 17h confere de novo */ }
+  }
+  try { const { after } = await import('next/server'); after(job) } catch { await job() }
 }
 
 // "Buscar agora": roda em segundo plano (a tela responde na hora) e avisa no sino quando terminar.

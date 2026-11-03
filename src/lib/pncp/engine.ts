@@ -225,8 +225,18 @@ export async function matchTenant(tenantId: string, opts: { numeros?: string[]; 
     h.watcherIds.push(w.id); hits.set(r.numero_controle, h)
   }
   if (!hits.size) return run
-  const { data: existing } = await admin.from('pncp_matches').select('numero_controle').eq('tenant_id', tenantId).in('numero_controle', [...hits.keys()])
-  const have = new Set(((existing ?? []) as { numero_controle: string }[]).map(e => e.numero_controle))
+  const { data: existing } = await admin.from('pncp_matches').select('id, numero_controle, watcher_ids').eq('tenant_id', tenantId).in('numero_controle', [...hits.keys()])
+  const ex = (existing ?? []) as { id: string; numero_controle: string; watcher_ids: string[] | null }[]
+  const have = new Set(ex.map(e => e.numero_controle))
+  // Já estava no radar: só registra quais monitoramentos atuais também acham (sem avisar de novo)
+  const liveIds = new Set(watchers.map(w => w.id))
+  for (const e of ex) {
+    const h = hits.get(e.numero_controle)
+    if (!h) continue
+    const next = [...new Set([...(e.watcher_ids ?? []).filter(w => liveIds.has(w)), ...h.watcherIds])]
+    const cur = e.watcher_ids ?? []
+    if (next.length !== cur.length || next.some(w => !cur.includes(w))) await admin.from('pncp_matches').update({ watcher_ids: next }).eq('id', e.id).eq('tenant_id', tenantId)
+  }
   const fresh = [...hits.values()].filter(h => !have.has(h.row.numero_controle))
   for (let i = 0; i < fresh.length; i += 200) {
     const { error } = await admin.from('pncp_matches').insert(fresh.slice(i, i + 200).map(h => ({ tenant_id: tenantId, numero_controle: h.row.numero_controle, watcher_ids: h.watcherIds })))
