@@ -19,6 +19,7 @@ import {
   SquareKanban,
   Store,
   Sparkles,
+  Landmark,
 } from 'lucide-react'
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
@@ -39,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/contracts', label: 'Oportunidades', icon: FileText, feature: 'contracts' },
       { href: '/propostas', label: 'Propostas', icon: FileText, feature: 'propostas' },
       { href: '/leads', label: 'Leads', icon: Target, feature: 'leads' },
+      { href: '/licitacoes', label: 'Licitações', icon: Landmark, feature: 'licitacoes' },
     ],
   },
   {

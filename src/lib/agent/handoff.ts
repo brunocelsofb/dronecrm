@@ -16,7 +16,9 @@ export const HANDOFF_MIN_NOTE = 5
 
 // Avisa uma pessoa da equipe: sino sempre; WhatsApp (telefone do cadastro) e e-mail (pelo
 // responsável pelos envios) quando houver. Interno: sai sozinho.
-export async function notifyPerson(tenantId: string, userId: string | null | undefined, msg: { text: string; subject?: string; contractId?: string | null }): Promise<string[]> {
+export async function notifyPerson(tenantId: string, userId: string | null | undefined, msg: { text: string; subject?: string; contractId?: string | null },
+  channels: { sino?: boolean; whatsapp?: boolean; email?: boolean } = {}): Promise<string[]> {
+  const ch = { sino: channels.sino !== false, whatsapp: channels.whatsapp !== false, email: channels.email !== false }
   if (!userId) return []
   const db = scopeAdminClient(createAdminClient(), tenantId, null)
   const [{ data: p }, { data: org }] = await Promise.all([
@@ -31,10 +33,12 @@ export async function notifyPerson(tenantId: string, userId: string | null | und
     if (p.email && msg.subject) record({ kind: 'email', to: String(p.email), subject: msg.subject, html: esc(msg.text) })
     return ['prévia']
   }
-  await db.from('notifications').insert({ user_id: userId, contract_id: msg.contractId ?? null, message: msg.text.slice(0, 500), read: false })
-  done.push('sino')
+  if (ch.sino) {
+    await db.from('notifications').insert({ user_id: userId, contract_id: msg.contractId ?? null, message: msg.text.slice(0, 500), read: false })
+    done.push('sino')
+  }
   const phone = String(p.phone ?? '').replace(/\D/g, '')
-  if (phone.length >= 10) {
+  if (ch.whatsapp && phone.length >= 10) {
     try {
       const { sendWhatsApp } = await import('./briefing-core')
       const r = await sendWhatsApp(msg.text, tenantId, phone)
@@ -42,7 +46,7 @@ export async function notifyPerson(tenantId: string, userId: string | null | und
     } catch { /* segue sem WhatsApp */ }
   }
   const sender = (org as { auto_sender_id?: string | null } | null)?.auto_sender_id
-  if (p.email && msg.subject && sender) {
+  if (ch.email && p.email && msg.subject && sender) {
     try {
       const { sendEmailForUser } = await import('@/lib/email/send')
       await sendEmailForUser(sender, String(p.email), msg.subject, `<div style="font-family:Arial,sans-serif;font-size:14px;white-space:pre-wrap">${esc(msg.text)}</div>`)

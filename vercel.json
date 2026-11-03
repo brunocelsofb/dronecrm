@@ -34,6 +34,14 @@
     {
       "path": "/api/cron/agent-tasks",
       "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/cron/pncp",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/pncp",
+      "schedule": "0 20 * * *"
     }
   ]
 }

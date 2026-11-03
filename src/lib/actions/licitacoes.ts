@@ -1,0 +1,226 @@
+'use server'
+// Licitações (PNCP): monitoramentos (admin), decisões no radar, análise do agente e "virar oportunidade".
+// Sempre na empresa atual; nunca em acesso de suporte.
+
+import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { scopeAdminClient } from '@/lib/tenant/scoped-admin'
+import { resolveTenantId } from '@/lib/tenant/context'
+import { getSupportSession, SUPPORT_READONLY_MESSAGE } from '@/lib/tenant/support'
+import { getTenantFeatures } from '@/lib/config/tenant-features'
+import { parseTerms, MATCH_STATUS, MODALIDADES, pncpUrl, type MatchStatus, type PncpRow } from '@/lib/pncp/catalog'
+import { normalizeUf } from '@/lib/geo/uf'
+
+type Result = { ok: true } | { ok: false; error: string }
+type G = { tenantId: string; userId: string; isAdmin: boolean; db: ReturnType<typeof createAdminClient> }
+
+async function guard(adminOnly = false): Promise<G | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Não autenticado.' }
+  const [{ data: me }, tenantId, s] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+    resolveTenantId(), getSupportSession(),
+  ])
+  if (!tenantId) return { error: 'Empresa não identificada.' }
+  if (s && s.tenantId === tenantId) return { error: SUPPORT_READONLY_MESSAGE }
+  const tf = await getTenantFeatures(tenantId)
+  if (!tf.features.includes('licitacoes')) return { error: 'A aba Licitações não está liberada no plano da empresa.' }
+  const isAdmin = me?.role === 'admin'
+  if (adminOnly && !isAdmin) return { error: 'Só o administrador da empresa altera os monitoramentos.' }
+  return { tenantId, userId: user.id, isAdmin, db: scopeAdminClient(createAdminClient(), tenantId, user.id) }
+}
+
+export type WatcherInput = {
+  id?: string | null; name: string; keywords: string | string[]; exclude: string | string[]
+  ufs: string[]; modalidades: number[]; min_value: number | null; max_value: number | null
+  recipient_ids: string[]; area_ids: string[]; channels: { sino: boolean; whatsapp: boolean; email: boolean }
+  ai_analysis: boolean; remind_days: number; enabled: boolean
+}
+
+export async function saveWatcher(input: WatcherInput): Promise<Result & { id?: string }> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const name = String(input.name ?? '').trim().slice(0, 80)
+  if (!name) return { ok: false, error: 'Dê um nome ao monitoramento.' }
+  const keywords = parseTerms(input.keywords)
+  if (!keywords.length) return { ok: false, error: 'Informe ao menos uma palavra ou frase do objeto.' }
+  if (keywords.some(k => k.length < 3)) return { ok: false, error: 'Cada palavra precisa ter ao menos 3 letras.' }
+  const ufs = [...new Set((input.ufs ?? []).map(u => normalizeUf(u)).filter((u): u is string => !!u))]
+  const valid = new Set(MODALIDADES.map(m => m.id))
+  const modalidades = [...new Set((input.modalidades ?? []).map(Number).filter(m => valid.has(m)))]
+  const minV = input.min_value === null || input.min_value === undefined || String(input.min_value) === '' ? null : Number(input.min_value)
+  const maxV = input.max_value === null || input.max_value === undefined || String(input.max_value) === '' ? null : Number(input.max_value)
+  if ((minV !== null && (!Number.isFinite(minV) || minV < 0)) || (maxV !== null && (!Number.isFinite(maxV) || maxV < 0))) return { ok: false, error: 'Valores inválidos.' }
+  if (minV !== null && maxV !== null && minV > maxV) return { ok: false, error: 'O valor mínimo é maior que o máximo.' }
+  const remind = Math.round(Number(input.remind_days))
+  if (!Number.isFinite(remind) || remind < 0 || remind > 30) return { ok: false, error: 'Lembrete do prazo: de 0 a 30 dias antes.' }
+  // Pessoas e áreas precisam ser da empresa
+  const ids = [...new Set(input.recipient_ids ?? [])]
+  if (ids.length) {
+    const { data } = await g.db.from('profiles').select('id').in('id', ids)
+    if ((data ?? []).length !== ids.length) return { ok: false, error: 'Escolha pessoas da própria empresa.' }
+  }
+  const areas = [...new Set(input.area_ids ?? [])]
+  if (areas.length) {
+    const { data } = await g.db.from('org_areas').select('id').in('id', areas)
+    if ((data ?? []).length !== areas.length) return { ok: false, error: 'Área inválida.' }
+  }
+  if (!ids.length && !areas.length) return { ok: false, error: 'Escolha quem recebe os avisos (pessoa ou área).' }
+  const row = {
+    name, keywords, exclude: parseTerms(input.exclude), ufs, modalidades, min_value: minV, max_value: maxV,
+    recipient_ids: ids, area_ids: areas,
+    channels: { sino: input.channels?.sino !== false, whatsapp: !!input.channels?.whatsapp, email: !!input.channels?.email },
+    ai_analysis: !!input.ai_analysis, remind_days: remind, enabled: input.enabled !== false, updated_at: new Date().toISOString(),
+  }
+  if (input.id) {
+    const { error } = await g.db.from('pncp_watchers').update(row).eq('id', input.id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath('/licitacoes')
+    return { ok: true, id: input.id }
+  }
+  const { data, error } = await g.db.from('pncp_watchers').insert({ ...row, created_by: g.userId }).select('id').single()
+  if (error || !data) return { ok: false, error: error?.message ?? 'Não foi possível salvar.' }
+  revalidatePath('/licitacoes')
+  return { ok: true, id: data.id as string }
+}
+
+export async function deleteWatcher(id: string): Promise<Result> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const { error } = await g.db.from('pncp_watchers').delete().eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+// "Buscar agora": baixa os últimos dias dos estados monitorados pela empresa e confere os monitoramentos
+export async function searchNow(days = 7): Promise<{ ok: true; found: number; created: number; partial: boolean; analyzed: number } | { ok: false; error: string }> {
+  const g = await guard(true)
+  if ('error' in g) return { ok: false, error: g.error }
+  const d = Math.max(1, Math.min(15, Math.round(days)))
+  const { data: ws } = await g.db.from('pncp_watchers').select('ufs, modalidades').eq('enabled', true)
+  const list = (ws ?? []) as { ufs: string[]; modalidades: number[] }[]
+  if (!list.length) return { ok: false, error: 'Crie e ligue um monitoramento antes de buscar.' }
+  const ufs = list.some(w => !w.ufs?.length) ? null : [...new Set(list.flatMap(w => w.ufs))]
+  const mods = list.some(w => !w.modalidades?.length) ? undefined : [...new Set(list.flatMap(w => w.modalidades))]
+  const { syncPublications, matchTenant } = await import('@/lib/pncp/engine')
+  const now = new Date()
+  const sync = await syncPublications({ from: new Date(now.getTime() - d * 86_400_000), to: now, ufs, modalidades: mods, deadlineMs: Date.now() + 200_000 })
+  const run = await matchTenant(g.tenantId, { notify: false })
+  revalidatePath('/licitacoes')
+  return { ok: true, found: run.candidates, created: run.created, partial: sync.partial, analyzed: run.analyzed }
+}
+
+export async function setMatchStatus(id: string, status: MatchStatus, note?: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (!MATCH_STATUS.includes(status) || status === 'oportunidade') return { ok: false, error: 'Situação inválida.' }
+  const patch: Record<string, unknown> = { status, decided_by: g.userId, updated_at: new Date().toISOString() }
+  if (note !== undefined) patch.note = String(note).trim().slice(0, 1000) || null
+  if (status === 'participar') patch.reminded_at = null
+  const { error } = await g.db.from('pncp_matches').update(patch).eq('id', id).neq('status', 'oportunidade')
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+export async function assignMatch(id: string, userId: string | null): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  if (userId) {
+    const { data } = await g.db.from('profiles').select('id').eq('id', userId).maybeSingle()
+    if (!data) return { ok: false, error: 'Pessoa inválida.' }
+  }
+  const { error } = await g.db.from('pncp_matches').update({ assigned_to: userId, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) return { ok: false, error: error.message }
+  if (userId && userId !== g.userId) {
+    const { data: m } = await g.db.from('pncp_matches').select('numero_controle').eq('id', id).maybeSingle()
+    const { data: r } = m ? await createAdminClient().from('pncp_contratacoes').select('objeto, orgao_nome, uf').eq('numero_controle', m.numero_controle).maybeSingle() : { data: null }
+    const { notifyPerson } = await import('@/lib/agent/handoff')
+    await notifyPerson(g.tenantId, userId, { text: `🔎 Licitação atribuída a você: ${(r?.objeto as string | undefined)?.slice(0, 160) ?? ''} (${r?.orgao_nome ?? ''} · ${r?.uf ?? ''}). Veja em Licitações no CRM.`, subject: 'Licitação atribuída a você' })
+  }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+export async function analyzeMatch(id: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { data: m } = await g.db.from('pncp_matches').select('numero_controle, watcher_ids').eq('id', id).maybeSingle()
+  if (!m) return { ok: false, error: 'Item não encontrado.' }
+  const { data: row } = await createAdminClient().from('pncp_contratacoes').select('*').eq('numero_controle', m.numero_controle).maybeSingle()
+  if (!row) return { ok: false, error: 'Contratação não encontrada.' }
+  const { data: ws } = await g.db.from('pncp_watchers').select('name, keywords').in('id', (m.watcher_ids as string[]) ?? [])
+  const { analyzeContratacao } = await import('@/lib/pncp/engine')
+  const r = await analyzeContratacao(g.tenantId, row as PncpRow, (ws ?? []) as { name: string; keywords: string[] }[])
+  if (!r.ok) return { ok: false, error: r.error }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+// Virar oportunidade: o órgão vira empresa (pelo CNPJ) e a contratação entra no funil escolhido
+export async function convertMatch(id: string, pipelineId: string): Promise<{ ok: true; contractId: string } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { data: m } = await g.db.from('pncp_matches').select('id, numero_controle, status, contract_id, ai_summary, assigned_to').eq('id', id).maybeSingle()
+  if (!m) return { ok: false, error: 'Item não encontrado.' }
+  if (m.contract_id) return { ok: true, contractId: m.contract_id as string }
+  const { data: rowData } = await createAdminClient().from('pncp_contratacoes').select('*').eq('numero_controle', m.numero_controle).maybeSingle()
+  const row = rowData as PncpRow | null
+  if (!row) return { ok: false, error: 'Contratação não encontrada.' }
+  const { data: pipe } = await g.db.from('pipelines').select('id, type').eq('id', pipelineId).maybeSingle()
+  if (!pipe || pipe.type !== 'vendas') return { ok: false, error: 'Escolha um funil de vendas.' }
+  const { data: stage } = await g.db.from('stages').select('id').eq('pipeline_id', pipe.id).order('order_index').limit(1).maybeSingle()
+  if (!stage) return { ok: false, error: 'O funil escolhido não tem etapas.' }
+
+  // Órgão como empresa (reaproveita pelo CNPJ)
+  const cnpj = String(row.orgao_cnpj ?? '').replace(/\D/g, '')
+  let companyId: string | null = null
+  if (cnpj.length === 14) {
+    const { data: found } = await g.db.from('companies').select('id').eq('cnpj', cnpj).maybeSingle()
+    companyId = (found?.id as string | undefined) ?? null
+  }
+  if (!companyId) {
+    const { data: comp, error } = await g.db.from('companies').insert({
+      name: row.orgao_nome ?? 'Órgão público', cnpj: cnpj.length === 14 ? cnpj : null, owner_id: g.userId, status: 'prospect',
+      state: normalizeUf(row.uf), city: row.municipio,
+    }).select('id').single()
+    if (error || !comp) return { ok: false, error: `Falha ao criar o órgão: ${error?.message ?? ''}` }
+    companyId = comp.id as string
+  }
+
+  let processNumber = `PNCP-${Date.now()}`
+  try {
+    const { data: seq } = await (await createClient()).rpc('next_opportunity_number' as never)
+    if (seq) processNumber = seq as unknown as string
+  } catch { /* usa o número provisório */ }
+  const link = pncpUrl(row)
+  const fmt = (v: number | null) => (v && v > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : 'não informado')
+  const enc = row.data_encerramento ? new Date(row.data_encerramento).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'
+  const owner = (m.assigned_to as string | null) ?? g.userId
+  const { data: contract, error: cErr } = await g.db.from('contracts').insert({
+    process_number: processNumber,
+    title: (row.objeto ?? 'Licitação').slice(0, 180),
+    client_name: row.orgao_nome ?? 'Órgão público',
+    description: [`Licitação PNCP ${row.numero_controle}`, `${row.modalidade_nome ?? ''} · ${row.unidade_nome ?? ''} — ${row.municipio ?? ''}/${row.uf ?? ''}`,
+      `Valor estimado: ${fmt(row.valor_estimado)} · Propostas até: ${enc}`, link ? `Edital: ${link}` : '', row.link_origem ? `Sistema de origem: ${row.link_origem}` : '',
+      '', row.objeto ?? '', m.ai_summary ? `\nAnálise do agente:\n${m.ai_summary}` : ''].filter(x => x !== null).join('\n').slice(0, 8000),
+    company_id: companyId, owner_id: owner, current_assignee_id: owner,
+    uf: normalizeUf(row.uf), municipality: row.municipio, lead_source: 'PNCP',
+  }).select('id').single()
+  if (cErr || !contract) return { ok: false, error: cErr?.message ?? 'Falha ao criar a oportunidade.' }
+  const now = new Date().toISOString()
+  const { data: run } = await g.db.from('pipeline_runs').insert({
+    contract_id: contract.id, pipeline_id: pipe.id, stage_id: stage.id, stage_entered_at: now,
+    value: row.valor_estimado && row.valor_estimado > 0 ? row.valor_estimado : 0, created_by: g.userId,
+    expected_close_date: row.data_encerramento ? row.data_encerramento.slice(0, 10) : null,
+  }).select('id').single()
+  if (run) await g.db.from('stage_history').insert({ pipeline_run_id: run.id, stage_id: stage.id, entered_at: now, changed_by: g.userId })
+  await g.db.from('activities').insert({ contract_id: contract.id, user_id: g.userId, type: 'system',
+    content: `🔎 Oportunidade criada a partir da licitação ${row.numero_controle} (PNCP).${link ? ` Edital: ${link}` : ''}` })
+  await g.db.from('pncp_matches').update({ status: 'oportunidade', contract_id: contract.id, decided_by: g.userId, updated_at: now }).eq('id', m.id)
+  revalidatePath('/licitacoes'); revalidatePath('/pipeline')
+  return { ok: true, contractId: contract.id as string }
+}

@@ -24,6 +24,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'financeiro',          label: 'Financeiro',           paths: ['/financeiro'] },
   { key: 'pipeline',            label: 'Funil',                paths: ['/pipeline', '/pipelines', '/settings/campos-oportunidade', '/custom-fields', '/settings/layout-abas', '/settings/plano-de-acao', '/settings/motivos-perda', '/settings/numeracao', '/tags', '/automations', '/regras', '/email-templates', '/settings/email'] },
   { key: 'leads',               label: 'Leads',                paths: ['/leads', '/settings/lead-scoring', '/settings/lead-routing'] },
+  { key: 'licitacoes',          label: 'Licitações (PNCP)',    paths: ['/licitacoes'] },
   { key: 'marketing',           label: 'Marketing',            paths: ['/marketing'] },
   { key: 'sdr',                 label: 'SDR de IA',            paths: ['/sdr', '/settings/sdr'] },
   { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts', '/settings/zapsign', '/zapsign'] },

@@ -197,3 +197,27 @@ test('estado: sigla, nome e variações viram UF', () => {
   assert.equal(normalizeUf('XX'), null)
   assert.equal(normalizeUf(''), null)
 })
+
+import { mapCompra, matchWatcher, parseTerms, pncpDate, isOpen, normText } from '../src/lib/pncp/catalog.ts'
+test('licitações: leitura do PNCP e monitoramento por objeto', () => {
+  const r = mapCompra({
+    numeroControlePNCP: '123-1-000001/2026', objetoCompra: 'Contratação de empresa para MANUTENÇÃO preventiva de equipamentos médico-hospitalares',
+    orgaoEntidade: { cnpj: '12345678000199', razaoSocial: 'Hospital X' }, unidadeOrgao: { ufSigla: 'SP', municipioNome: 'Campinas' },
+    modalidadeId: 6, valorTotalEstimado: 250000, dataEncerramentoProposta: '2026-11-20T10:00:00', situacaoCompraId: 1,
+  })
+  assert.equal(r.uf, 'SP')
+  assert.equal(r.data_encerramento, '2026-11-20T10:00:00-03:00')
+  assert.ok(r.objeto_norm.includes('manutencao preventiva de equipamentos medico-hospitalares'))
+  const w = { keywords: ['Equipamentos médico-hospitalares'], exclude: [], ufs: ['SP'], modalidades: [6], min_value: 100000, max_value: null }
+  assert.deepEqual(matchWatcher(r, w), ['Equipamentos médico-hospitalares'])
+  assert.deepEqual(matchWatcher(r, { ...w, ufs: ['RJ'] }), [])
+  assert.deepEqual(matchWatcher(r, { ...w, exclude: ['preventiva'] }), [])
+  assert.deepEqual(matchWatcher(r, { ...w, min_value: 300000 }), [])
+  assert.deepEqual(matchWatcher({ ...r, valor_estimado: 0 }, { ...w, min_value: 300000 }).length, 1) // sigiloso não descarta
+  assert.equal(isOpen(r, Date.parse('2026-11-19T00:00:00Z')), true)
+  assert.equal(isOpen(r, Date.parse('2026-11-21T00:00:00Z')), false)
+  assert.equal(isOpen({ ...r, situacao_id: 2 }, 0), false)
+  assert.deepEqual(parseTerms('engenharia clínica, Engenharia Clinica\nmanutenção;'), ['engenharia clínica', 'manutenção'])
+  assert.equal(pncpDate('2026-01-02'), '2026-01-02T00:00:00-03:00')
+  assert.equal(normText(' Órgão  Público '), 'orgao publico')
+})
