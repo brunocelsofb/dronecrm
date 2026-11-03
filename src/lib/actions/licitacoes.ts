@@ -344,7 +344,7 @@ export async function getContratacaoDetail(numero: string): Promise<{ ok: true; 
   const base = row.orgao_cnpj && row.ano_compra && row.sequencial_compra ? `https://pncp.gov.br/api/pncp/v1/orgaos/${row.orgao_cnpj}/compras/${row.ano_compra}/${row.sequencial_compra}` : null
   const get = async (url: string) => {
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15_000)
-    try { const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal }); return r.ok ? await r.json() : null } catch { return null } finally { clearTimeout(t) }
+    try { const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'DroneCRM/1.0 (+https://app.comercialdrone.com.br)' }, cache: 'no-store', signal: ctrl.signal }); return r.ok ? await r.json() : null } catch { return null } finally { clearTimeout(t) }
   }
   let items: DetailItem[] = [], files: DetailFile[] = [], warn: string | undefined
   if (base) {

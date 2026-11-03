@@ -8,15 +8,19 @@ import { PNCP_SEARCH_URL, pncpDate, type PncpRow } from './catalog'
 
 const PNCP = 'https://pncp.gov.br/api/pncp/v1'
 
-async function getJson(url: string, ms = 25_000): Promise<unknown | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+// Identificação do CRM nas chamadas (alguns serviços públicos recusam chamadas sem ela)
+const UA = 'DroneCRM/1.0 (+https://app.comercialdrone.com.br)'
+async function getJson(url: string, ms = 25_000, attempts = 3): Promise<unknown | null> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 1200 * attempt))   // conexão derrubada: espera um pouco e tenta de novo
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), ms)
     try {
-      const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal })
+      const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': UA }, cache: 'no-store', signal: ctrl.signal })
       if (r.status === 204 || r.status === 404) return []
       if (r.ok) return await r.json()
       console.warn('[pncp] HTTP', r.status, url.slice(0, 160))
+      if (r.status === 400 || r.status === 422) return null   // pedido inválido: não adianta repetir
     } catch (e) {
       const c = (e as { cause?: { code?: string; message?: string } })?.cause
       console.warn('[pncp] falha', (e as Error)?.name, (e as Error)?.message, c?.code ?? '', c?.message ?? '', url.slice(0, 160))
@@ -217,8 +221,8 @@ export type Cadastro = {
 export async function fetchCadastro(cnpj: string): Promise<Cadastro | null> {
   const d = onlyDigits(cnpj)
   if (d.length !== 14) return null
-  const j = await getJson(`https://brasilapi.com.br/api/cnpj/v1/${d}`, 15_000)
-  if (!j || Array.isArray(j)) return null
+  const j = await getJson(`https://brasilapi.com.br/api/cnpj/v1/${d}`, 15_000, 2)
+  if (!j || Array.isArray(j)) return fetchCadastroReceitaWs(d)
   const x = j as Record<string, unknown>
   const qsa = Array.isArray(x.qsa) ? (x.qsa as Record<string, unknown>[]) : []
   return {
@@ -231,5 +235,23 @@ export async function fetchCadastro(cnpj: string): Promise<Cadastro | null> {
       nome: String(s.nome_socio ?? '—'), qualificacao: (s.qualificacao_socio as string) ?? null,
       desde: (s.data_entrada_sociedade as string) ?? null, faixa: (s.faixa_etaria as string) ?? null,
     })),
+  }
+}
+
+// Reserva: ReceitaWS (gratuita, poucas consultas por minuto)
+async function fetchCadastroReceitaWs(d: string): Promise<Cadastro | null> {
+  const j = await getJson(`https://receitaws.com.br/v1/cnpj/${d}`, 15_000, 1)
+  if (!j || Array.isArray(j)) return null
+  const x = j as Record<string, unknown>
+  if (x.status === 'ERROR') return null
+  const at = Array.isArray(x.atividade_principal) ? (x.atividade_principal[0] as Record<string, unknown> | undefined) : undefined
+  const brToIso = (v: unknown) => (typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v) ? v.split('/').reverse().join('-') : null)
+  const qsa = Array.isArray(x.qsa) ? (x.qsa as Record<string, unknown>[]) : []
+  return {
+    razao: (x.nome as string) ?? null, fantasia: (x.fantasia as string) || null, situacao: (x.situacao as string) ?? null,
+    abertura: brToIso(x.abertura), capital: n(String(x.capital_social ?? '').replace(/\./g, '').replace(',', '.')),
+    porte: (x.porte as string) ?? null, cnae: at ? `${at.code ?? ''} · ${at.text ?? ''}` : null,
+    cidade: (x.municipio as string) ?? null, uf: (x.uf as string) ?? null,
+    socios: qsa.map(s => ({ nome: String(s.nome ?? '—'), qualificacao: (s.qual as string) ?? null, desde: null, faixa: null })),
   }
 }

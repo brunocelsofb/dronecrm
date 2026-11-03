@@ -24,7 +24,7 @@ async function getPage(url: string): Promise<{ data: Record<string, unknown>[]; 
     try {
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), 30_000)
-      const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal })
+      const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'DroneCRM/1.0 (+https://app.comercialdrone.com.br)' }, cache: 'no-store', signal: ctrl.signal })
       clearTimeout(timer)
       if (r.status === 204) return { data: [], totalPaginas: 0 }
       if (!r.ok) continue
@@ -105,7 +105,7 @@ export async function pncpLiveSearch(opts: { q: string; situacao: SearchSituacao
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 20_000)
     try {
-      const r = await fetch(`${PNCP_SEARCH_URL}?${q}`, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal })
+      const r = await fetch(`${PNCP_SEARCH_URL}?${q}`, { headers: { Accept: 'application/json', 'User-Agent': 'DroneCRM/1.0 (+https://app.comercialdrone.com.br)' }, cache: 'no-store', signal: ctrl.signal })
       if (r.ok) j = await r.json()
     } catch { /* tenta de novo */ } finally { clearTimeout(timer) }
   }

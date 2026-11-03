@@ -111,12 +111,20 @@ const brDay = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice
 function Extras({ cnpj }: { cnpj: string }) {
   const [x, setX] = useState<{ cadastro: Cadastro | null; sancoes: { itens: Sancao[]; lidoEm: string } | null } | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   useEffect(() => {
     let alive = true
     getSupplierExtras(cnpj).then(r => { if (!alive) return; if (r.ok) setX({ cadastro: r.cadastro, sancoes: r.sancoes }); else setErr(r.error) })
     return () => { alive = false }
   }, [cnpj])
-  if (err) return <p className="text-xs text-negative-700">{err}</p>
+  const retry = async () => {
+    setBusy(true); setErr(null)
+    const r = await getSupplierExtras(cnpj)
+    setBusy(false)
+    if (r.ok) setX({ cadastro: r.cadastro ?? x?.cadastro ?? null, sancoes: r.sancoes ?? x?.sancoes ?? null }); else setErr(r.error)
+  }
+  const retryBtn = <button type="button" disabled={busy} onClick={retry} className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">{busy ? 'Consultando…' : 'Tentar de novo'}</button>
+  if (err) return <div><p className="text-xs text-negative-700">{err}</p>{retryBtn}</div>
   if (!x) return <p className="text-xs text-gray-500">Consultando sanções e quadro societário…</p>
   const consta = (x.sancoes?.itens ?? []).filter(s => s.situacao === 'CONSTA' || (s.situacao !== 'NADA_CONSTA' && s.situacao !== 'SISTEMA_INDISPONIVEL'))
   const c = x.cadastro
@@ -126,7 +134,7 @@ function Extras({ cnpj }: { cnpj: string }) {
         <p className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-800">
           {consta.length ? <ShieldAlert className="h-4 w-4 text-negative-700" /> : <ShieldCheck className="h-4 w-4 text-positive-700" />}Sanções e penalidades
         </p>
-        {!x.sancoes ? <p className="text-xs text-gray-500">A consulta do TCU não respondeu agora. Tente abrir de novo.</p> : (
+        {!x.sancoes ? <div><p className="text-xs text-gray-500">A consulta do TCU não respondeu agora.</p>{retryBtn}</div> : (
           <ul className="space-y-1 text-xs">
             {x.sancoes.itens.map(s => (
               <li key={s.tipo} className="flex justify-between gap-2">
@@ -143,7 +151,7 @@ function Extras({ cnpj }: { cnpj: string }) {
       </div>
       <div className="rounded-xl border border-gray-200 p-3">
         <p className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-800"><Users className="h-4 w-4 text-brand-700" />Cadastro e quadro societário</p>
-        {!c ? <p className="text-xs text-gray-500">A consulta da Receita não respondeu agora. Tente abrir de novo.</p> : (
+        {!c ? <div><p className="text-xs text-gray-500">A consulta da Receita não respondeu agora.</p>{retryBtn}</div> : (
           <div className="space-y-1 text-xs text-gray-700">
             <p className="font-medium text-gray-900">{c.razao}{c.fantasia ? <span className="font-normal text-gray-500"> · {c.fantasia}</span> : null}</p>
             <p>Situação: <b className={/ativa/i.test(c.situacao ?? '') ? 'text-positive-700' : 'text-negative-700'}>{c.situacao ?? '—'}</b> · desde {brDay(c.abertura)}{c.porte ? ` · ${c.porte}` : ''}</p>
@@ -156,7 +164,7 @@ function Extras({ cnpj }: { cnpj: string }) {
             ) : <p className="text-gray-500">Quadro societário não informado na Receita.</p>}
           </div>
         )}
-        <p className="mt-1 text-[10px] text-gray-400">Fonte: Receita Federal (via BrasilAPI).</p>
+        <p className="mt-1 text-[10px] text-gray-400">Fonte: Receita Federal (via BrasilAPI ou ReceitaWS).</p>
       </div>
     </div>
   )
