@@ -413,35 +413,81 @@ export async function loadPncpSettings(tenantId: string): Promise<PncpSettings> 
   return { own_cnpjs: d.own_cnpjs ?? [], recipient_ids: d.recipient_ids ?? [], channels: { sino: c.sino !== false, email: c.email !== false, whatsapp: c.whatsapp === true } }
 }
 
-// Lê o resultado de uma licitação do radar e guarda no radar da empresa. Devolve se mudou.
-export async function refreshMatchResult(tenantId: string, matchId: string, row: PncpRow, settings: PncpSettings, prevSig: string | null) {
-  const { fetchResultado, outcomeFor } = await import('./results')
-  const res = await fetchResultado(row)
-  if (!res) return null
-  const out = outcomeFor(res, row, settings.own_cnpjs)
-  const changed = res.sig !== prevSig
-  const patch: Record<string, unknown> = { tracked_at: new Date().toISOString() }
-  if (changed || prevSig === null) {
-    Object.assign(patch, {
-      result: res, result_status: out.status, won_value: out.wonValue || null,
-      homologado_value: res.homologadoTotal || null, winners: out.winners,
-    })
-    if (out.status !== 'aguardando') patch.result_at = new Date().toISOString()
+// Foto do acompanhamento guardada em pncp_matches.result: situação, prazos, arquivos e itens/vencedores.
+export type TrackSnap = {
+  sig: string; situacao: string | null; situacao_id: number | null; encerramento: string | null; abertura: string | null
+  arquivos: string[]; res: import('./results').Resultado | null; lidoEm: string
+  log: { at: string; lines: string[] }[]
+}
+const brDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
+
+// O que mudou entre duas fotos, em frases curtas
+function diffSnap(a: TrackSnap | null, b: TrackSnap): string[] {
+  const out: string[] = []
+  if (!a) return out
+  if (a.situacao !== b.situacao) out.push(`Situação no PNCP: ${a.situacao ?? '—'} → ${b.situacao ?? '—'}`)
+  if (a.encerramento !== b.encerramento) out.push(`Prazo das propostas: ${brDateTime(a.encerramento)} → ${brDateTime(b.encerramento)}`)
+  if (a.abertura !== b.abertura) out.push(`Abertura: ${brDateTime(a.abertura)} → ${brDateTime(b.abertura)}`)
+  const novos = b.arquivos.filter(f => !a.arquivos.includes(f))
+  for (const f of novos.slice(0, 5)) out.push(`Novo arquivo no edital: ${f}`)
+  const ai = new Map((a.res?.itens ?? []).map(i => [i.numero, i]))
+  for (const i of b.res?.itens ?? []) {
+    const p = ai.get(i.numero)
+    if (p && p.situacao !== i.situacao) out.push(`Item ${i.numero}: ${p.situacao} → ${i.situacao}`)
+    const was = new Set((p?.vencedores ?? []).map(v => v.ni))
+    for (const v of i.vencedores) if (!was.has(v.ni)) out.push(`Item ${i.numero}: vencedor ${v.nome} (${BRL(v.valorTotal)})`)
   }
-  await createAdminClient().from('pncp_matches').update(patch).eq('id', matchId).eq('tenant_id', tenantId)
-  return { res, out, changed }
+  return out
 }
 
-export async function trackParticipations(tenantId: string, deadlineMs: number): Promise<{ checked: number; changed: number; notified: number }> {
+// Lê no PNCP a situação, os arquivos e (depois da sessão) o resultado; guarda e devolve o que mudou.
+export async function refreshMatchResult(tenantId: string, matchId: string, row: PncpRow, settings: PncpSettings, prev: TrackSnap | { sig?: string } | null) {
+  const { fetchResultado, fetchCompraHead, fetchArquivos, outcomeFor } = await import('./results')
   const admin = createAdminClient()
-  const run = { checked: 0, changed: 0, notified: 0 }
+  const head = await fetchCompraHead(row)
+  let cur = row
+  if (head) {
+    const m = mapCompra(head)
+    if (m) { cur = { ...row, ...m, objeto_norm: m.objeto_norm || row.objeto_norm }; await admin.from('pncp_contratacoes').update({ ...m, baixado_em: new Date().toISOString() }).eq('numero_controle', row.numero_controle) }
+  }
+  const sessaoPassou = !cur.data_encerramento || Date.parse(cur.data_encerramento) < Date.now()
+  const [arquivos, res] = await Promise.all([
+    fetchArquivos(cur),
+    sessaoPassou || head?.existeResultado === true ? fetchResultado(cur) : Promise.resolve(null),
+  ])
+  if (!head && arquivos === null && !res) return null   // PNCP fora do ar
+  const old = prev && 'lidoEm' in prev ? (prev as TrackSnap) : null
+  const snap: TrackSnap = {
+    sig: '', situacao: cur.situacao_nome, situacao_id: cur.situacao_id, encerramento: cur.data_encerramento, abertura: cur.data_abertura,
+    arquivos: arquivos ?? old?.arquivos ?? [], res: res ?? old?.res ?? null, lidoEm: new Date().toISOString(), log: old?.log ?? [],
+  }
+  snap.sig = [snap.situacao, snap.encerramento, snap.abertura, snap.arquivos.length, snap.res?.sig ?? ''].join('#')
+  const lines = diffSnap(old, snap)
+  if (lines.length) snap.log = [{ at: snap.lidoEm, lines }, ...snap.log].slice(0, 30)
+  const out = snap.res ? outcomeFor(snap.res, cur, settings.own_cnpjs)
+    : { status: (cur.situacao_id === 2 || cur.situacao_id === 3 ? 'cancelada' : 'aguardando') as import('./results').Outcome, wonValue: 0, winners: [] as string[] }
+  const changed = !old || old.sig !== snap.sig
+  const patch: Record<string, unknown> = {
+    tracked_at: snap.lidoEm, result: snap, result_status: out.status, won_value: out.wonValue || null,
+    homologado_value: snap.res?.homologadoTotal || null, winners: out.winners,
+  }
+  if (out.status !== 'aguardando' && changed) patch.result_at = snap.lidoEm
+  await admin.from('pncp_matches').update(patch).eq('id', matchId).eq('tenant_id', tenantId)
+  return { res: snap.res, out, changed, lines, first: !old, snap, row: cur }
+}
+
+export async function trackParticipations(tenantId: string, deadlineMs: number, onlyIds?: string[]): Promise<{ tracked: number; checked: number; changed: number; notified: number; failed: number }> {
+  const admin = createAdminClient()
+  const run = { tracked: 0, checked: 0, changed: 0, notified: 0, failed: 0 }
   const settings = await loadPncpSettings(tenantId)
-  const { data } = await admin.from('pncp_matches')
+  let q = admin.from('pncp_matches')
     .select('id, numero_controle, assigned_to, decided_by, result, result_status, tracked_at')
     .eq('tenant_id', tenantId).in('status', ['participar', 'oportunidade'])
     .or('result_status.is.null,result_status.eq.aguardando')
-    .order('tracked_at', { ascending: true, nullsFirst: true }).limit(60)
-  const list = (data ?? []) as { id: string; numero_controle: string; assigned_to: string | null; decided_by: string | null; result: { sig?: string } | null }[]
+  if (onlyIds?.length) q = q.in('id', onlyIds)
+  const { data } = await q.order('tracked_at', { ascending: true, nullsFirst: true }).limit(80)
+  const list = (data ?? []) as { id: string; numero_controle: string; assigned_to: string | null; decided_by: string | null; result: TrackSnap | null }[]
+  run.tracked = list.length
   if (!list.length) return run
   const { data: rows } = await admin.from('pncp_contratacoes').select('*').in('numero_controle', list.map(l => l.numero_controle))
   const byId = new Map(((rows ?? []) as PncpRow[]).map(r => [r.numero_controle, r]))
@@ -451,26 +497,25 @@ export async function trackParticipations(tenantId: string, deadlineMs: number):
     if (Date.now() > deadlineMs) break
     const row = byId.get(m.numero_controle)
     if (!row) continue
-    // Só depois que as propostas encerraram (antes disso não há resultado) e até 1 ano depois
-    if (row.data_encerramento && Date.parse(row.data_encerramento) > Date.now()) continue
     if (row.data_encerramento && Date.now() - Date.parse(row.data_encerramento) > 365 * 86_400_000) continue
-    const prevSig = m.result?.sig ?? null
-    const r = await refreshMatchResult(tenantId, m.id, row, settings, prevSig)
+    const r = await refreshMatchResult(tenantId, m.id, row, settings, m.result)
+    if (!r) { run.failed++; continue }
     run.checked++
-    if (!r || !r.changed) continue
+    if (!r.changed) continue
     run.changed++
-    // Primeira leitura sem nada de novo (tudo em andamento e sem vencedor): não avisa
-    if (prevSig === null && r.out.status === 'aguardando' && !r.res.comResultado) continue
-    const lines = r.res.itens.slice(0, 6).map(i => {
-      const v = i.vencedores[0]
-      return `• Item ${i.numero}: ${i.situacao}${v ? ` · vencedor ${v.nome} (${BRL(v.valorTotal)})` : ''}`
-    }).join('\n')
-    const head = r.out.status === 'ganhou' ? `🏆 Ganhamos ${BRL(r.out.wonValue)}` : `📣 ${OUTCOME_LABEL[r.out.status]}`
-    const text = `${head} · ${row.orgao_nome ?? ''} (${row.uf ?? ''})\n${(row.objeto ?? '').slice(0, 160)}\n\n${lines}${r.res.itens.length > 6 ? `\n… e mais ${r.res.itens.length - 6} item(ns)` : ''}` +
-      `\n\nEstimado ${BRL(r.res.estimadoTotal)} · homologado ${BRL(r.res.homologadoTotal)}${pncpUrl(row) ? `\nEdital: ${pncpUrl(row)}` : ''}\n${appUrl()}/licitacoes`
+    // Primeira leitura: só avisa se já há algo fora do normal (suspensa, revogada, com resultado)
+    const lines = r.first
+      ? [`Acompanhamento iniciado. Situação no PNCP: ${r.snap.situacao ?? '—'}; propostas até ${brDateTime(r.snap.encerramento)}.`,
+         ...(r.res?.comResultado ? [`${r.res.comResultado} item(ns) com vencedor.`] : [])]
+      : r.lines
+    if (r.first && r.snap.situacao_id === 1 && !r.res?.comResultado) continue
+    if (!lines.length) continue
+    const head = r.out.status === 'ganhou' ? `🏆 Ganhamos ${BRL(r.out.wonValue)}` : r.out.status !== 'aguardando' ? `📣 ${OUTCOME_LABEL[r.out.status]}` : '📣 Novidade na licitação'
+    const text = `${head} · ${r.row.orgao_nome ?? ''} (${r.row.uf ?? ''})\n${(r.row.objeto ?? '').slice(0, 160)}\n\n${lines.map(l => `• ${l}`).join('\n')}` +
+      `${pncpUrl(r.row) ? `\n\nEdital: ${pncpUrl(r.row)}` : ''}\n${appUrl()}/licitacoes`
     const to = new Set([...settings.recipient_ids, ...(m.assigned_to ? [m.assigned_to] : m.decided_by ? [m.decided_by] : [])])
     for (const u of to) {
-      const ch = await notifyPerson(tenantId, u, { text, subject: `Licitação: ${OUTCOME_LABEL[r.out.status]} · ${row.orgao_nome ?? ''}` }, settings.channels)
+      const ch = await notifyPerson(tenantId, u, { text, subject: `Licitação: ${lines[0].slice(0, 80)} · ${r.row.orgao_nome ?? ''}` }, settings.channels)
       if (ch.length) run.notified++
     }
   }

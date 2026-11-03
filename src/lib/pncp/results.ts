@@ -8,7 +8,7 @@ import { PNCP_SEARCH_URL, pncpDate, type PncpRow } from './catalog'
 
 const PNCP = 'https://pncp.gov.br/api/pncp/v1'
 
-async function getJson(url: string, ms = 15_000): Promise<unknown | null> {
+async function getJson(url: string, ms = 25_000): Promise<unknown | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), ms)
@@ -16,7 +16,8 @@ async function getJson(url: string, ms = 15_000): Promise<unknown | null> {
       const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: ctrl.signal })
       if (r.status === 204 || r.status === 404) return []
       if (r.ok) return await r.json()
-    } catch { /* tenta de novo */ } finally { clearTimeout(t) }
+      console.warn('[pncp] HTTP', r.status, url.slice(0, 160))
+    } catch (e) { console.warn('[pncp] falha', (e as Error)?.name, url.slice(0, 160)) } finally { clearTimeout(t) }
   }
   return null
 }
@@ -121,7 +122,7 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
   let total = 0
   for (let page = 1; page <= maxPages; page++) {
     const q = new URLSearchParams({ q: d, tipos_documento: 'contrato', ordenacao: '-data', pagina: String(page), tam_pagina: '50' })
-    const j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 20_000)) as { items?: Record<string, unknown>[]; total?: number } | null
+    const j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 30_000)) as { items?: Record<string, unknown>[]; total?: number } | null
     if (!j || Array.isArray(j)) { if (page === 1 && !j) return null; break }
     total = Number(j.total ?? 0)
     const list = j.items ?? []
@@ -160,4 +161,18 @@ export function supplierSummary(items: SupplierContract[]) {
     ufs: [...byUf.entries()].map(([uf, v]) => ({ uf, ...v })).sort((a, b) => b.valor - a.valor),
     orgaos: [...byOrgao.values()].sort((a, b) => b.valor - a.valor).slice(0, 10),
   }
+}
+
+// ── Situação atual da compra e arquivos (para acompanhar antes do resultado) ──
+export async function fetchCompraHead(row: Pick<PncpRow, 'orgao_cnpj' | 'ano_compra' | 'sequencial_compra'>): Promise<Record<string, unknown> | null> {
+  if (!row.orgao_cnpj || !row.ano_compra || !row.sequencial_compra) return null
+  const j = await getJson(`https://pncp.gov.br/api/consulta/v1/orgaos/${row.orgao_cnpj}/compras/${row.ano_compra}/${row.sequencial_compra}`, 25_000)
+  return j && !Array.isArray(j) ? (j as Record<string, unknown>) : null
+}
+export async function fetchArquivos(row: Pick<PncpRow, 'orgao_cnpj' | 'ano_compra' | 'sequencial_compra'>): Promise<string[] | null> {
+  if (!row.orgao_cnpj || !row.ano_compra || !row.sequencial_compra) return null
+  const j = await getJson(`${PNCP}/orgaos/${row.orgao_cnpj}/compras/${row.ano_compra}/${row.sequencial_compra}/arquivos`)
+  if (j === null) return null
+  return (Array.isArray(j) ? (j as Record<string, unknown>[]) : []).filter(f => f.statusAtivo !== false)
+    .map(f => `${String(f.tipoDocumentoNome ?? 'Arquivo')}: ${String(f.titulo ?? '')}`.slice(0, 200))
 }

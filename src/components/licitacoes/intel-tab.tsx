@@ -118,8 +118,8 @@ export function IntelTab({ isAdmin, people, pipelines, nowMs }: { isAdmin: boole
           ? <p className="text-xs text-gray-500">Nada aqui ainda. Marque &ldquo;Vamos participar&rdquo; ou coloque no funil a partir da pesquisa ou dos alertas; depois da sessão, o CRM acompanha o resultado no PNCP.</p>
           : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-xs">
-                <thead className="text-gray-500"><tr><th className="py-1.5 pr-2 font-medium">Órgão</th><th className="pr-2 font-medium">Objeto</th><th className="pr-2 font-medium">Estimado</th><th className="pr-2 font-medium">Resultado</th><th className="pr-2 font-medium">Vencedor / homologado</th><th className="font-medium">Funil</th></tr></thead>
+              <table className="w-full min-w-[860px] text-left text-xs">
+                <thead className="text-gray-500"><tr><th className="py-1.5 pr-2 font-medium">Órgão</th><th className="pr-2 font-medium">Objeto</th><th className="pr-2 font-medium">Estimado</th><th className="pr-2 font-medium">Situação no PNCP / novidade</th><th className="pr-2 font-medium">Resultado</th><th className="pr-2 font-medium">Vencedor / homologado</th><th className="font-medium">Funil</th></tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {rows.map(m => {
                     const o = outcomeOf(m)
@@ -129,6 +129,11 @@ export function IntelTab({ isAdmin, people, pipelines, nowMs }: { isAdmin: boole
                         <td className="py-2 pr-2 text-gray-800">{m.orgao_nome ?? '—'} / {m.uf ?? '—'}</td>
                         <td className="max-w-xs pr-2"><button type="button" onClick={() => setOpen(m.numero_controle)} className="line-clamp-2 text-left text-brand-700 hover:underline">{m.objeto ?? '—'}</button></td>
                         <td className="pr-2 tabular-nums">{fmtBRL(m.valor_estimado)}</td>
+                        <td className="max-w-[16rem] pr-2">
+                          <span className={/suspens|revogad|anulad/i.test(m.situacao ?? '') ? 'font-semibold text-negative-700' : 'text-gray-700'}>{m.situacao ?? '—'}</span>
+                          {m.last_change && <span className="mt-0.5 block text-gray-500">{new Date(m.last_change.at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}: {m.last_change.lines[0]}{m.last_change.lines.length > 1 ? ` (+${m.last_change.lines.length - 1})` : ''}</span>}
+                          <span className="block text-[10px] text-gray-400">{m.tracked_at ? `conferido ${new Date(m.tracked_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'ainda não conferido'}</span>
+                        </td>
                         <td className="pr-2">{o === 'ganhou' ? <span className="font-semibold text-positive-700">Ganhamos {fmtBRL(m.won_value)}</span> : <span className="text-gray-700">{OUTCOME_LABEL[o]}</span>}</td>
                         <td className="pr-2">
                           {w ? <button type="button" onClick={() => setSup({ ni: w[0], nome: w.slice(1).join('|') })} className="text-brand-700 hover:underline">{w.slice(1).join('|') || fmtCnpjView(w[0])}</button> : <span className="text-gray-400">—</span>}
@@ -236,7 +241,7 @@ function IntelSettings({ people, settings, onSaved }: { people: Opt[]; settings:
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4">
       <p className="text-sm font-semibold text-gray-900">Acompanhamento das licitações que disputamos</p>
-      <p className="mb-3 text-xs text-gray-500">Duas vezes ao dia o CRM confere no PNCP as licitações marcadas &ldquo;Vamos participar&rdquo; ou que foram para o funil: situação de cada item (homologado, deserto…), vencedor e valor. Quando muda, avisa as pessoas abaixo e o responsável pela licitação.</p>
+      <p className="mb-3 text-xs text-gray-500">Duas vezes ao dia (e logo que vocês decidem disputar) o CRM confere no PNCP as licitações marcadas &ldquo;Vamos participar&rdquo; ou que foram para o funil: suspensão, revogação, mudança de prazo, arquivo novo no edital (retificação, esclarecimento) e, depois da sessão, situação de cada item, vencedor e valor. Quando muda, avisa as pessoas abaixo e o responsável pela licitação.</p>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block text-xs text-gray-700">CNPJs da empresa (um por linha; matriz e filiais)
           <textarea value={cnpjs} onChange={e => setCnpjs(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm" placeholder="00.000.000/0001-00" />

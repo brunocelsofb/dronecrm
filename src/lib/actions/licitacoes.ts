@@ -159,8 +159,18 @@ export async function setMatchStatus(id: string, status: MatchStatus, note?: str
   if (status === 'participar') patch.reminded_at = null
   const { error } = await g.db.from('pncp_matches').update(patch).eq('id', id).neq('status', 'oportunidade')
   if (error) return { ok: false, error: error.message }
+  if (status === 'participar') await trackLater(g.tenantId, [id])
   revalidatePath('/licitacoes')
   return { ok: true }
+}
+
+// Começa a acompanhar no PNCP (em segundo plano) logo que a empresa decide disputar
+async function trackLater(tenantId: string, ids: string[]) {
+  const job = async () => {
+    const { trackParticipations } = await import('@/lib/pncp/engine')
+    await trackParticipations(tenantId, Date.now() + 60_000, ids).catch(() => null)
+  }
+  try { const { after } = await import('next/server'); after(job) } catch { /* a rotina diária acompanha */ }
 }
 
 export async function assignMatch(id: string, userId: string | null): Promise<Result> {
@@ -258,6 +268,7 @@ export async function convertMatch(id: string, pipelineId: string): Promise<{ ok
   await g.db.from('activities').insert({ contract_id: contract.id, user_id: g.userId, type: 'system',
     content: `🔎 Oportunidade criada a partir da licitação ${row.numero_controle} (PNCP).${link ? ` Edital: ${link}` : ''}` })
   await g.db.from('pncp_matches').update({ status: 'oportunidade', contract_id: contract.id, decided_by: g.userId, updated_at: now }).eq('id', m.id)
+  await trackLater(g.tenantId, [m.id as string])
   revalidatePath('/licitacoes'); revalidatePath('/pipeline')
   return { ok: true, contractId: contract.id as string }
 }
@@ -425,15 +436,9 @@ export async function getResultado(numero: string): Promise<{ ok: true; res: imp
   const { data } = await createAdminClient().from('pncp_contratacoes').select('*').eq('numero_controle', numero).maybeSingle()
   const row = data as PncpRow | null
   if (!row) return { ok: false, error: 'Licitação não encontrada.' }
-  const { loadPncpSettings, refreshMatchResult } = await import('@/lib/pncp/engine')
+  const { loadPncpSettings } = await import('@/lib/pncp/engine')
   const { fetchResultado, outcomeFor } = await import('@/lib/pncp/results')
   const settings = await loadPncpSettings(g.tenantId)
-  const { data: m } = await g.db.from('pncp_matches').select('id, result').eq('numero_controle', numero).maybeSingle()
-  if (m?.id) {
-    const r = await refreshMatchResult(g.tenantId, m.id as string, row, settings, ((m.result as { sig?: string } | null)?.sig) ?? null)
-    if (!r) return { ok: false, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
-    return { ok: true, res: r.res, status: r.out.status, wonValue: r.out.wonValue, ownSet: settings.own_cnpjs.length > 0 }
-  }
   const res = await fetchResultado(row)
   if (!res) return { ok: false, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
   const out = outcomeFor(res, row, settings.own_cnpjs)
@@ -448,7 +453,10 @@ export async function getSupplierProfile(cnpj: string) {
   if (!isCnpj(cnpj)) return { ok: false as const, error: 'Informe um CNPJ com 14 números.' }
   const r = await supplierContracts(cnpj)
   if (!r) return { ok: false as const, error: 'O PNCP não respondeu agora. Tente de novo em instantes.' }
-  return { ok: true as const, summary: supplierSummary(r.items), items: r.items.slice(0, 60) }
+  const summary = supplierSummary(r.items)
+  // Concorrente guardado sem nome: completa com a razão social do PNCP
+  if (summary.nome) await g.db.from('pncp_competitors').update({ name: summary.nome }).eq('cnpj', cnpj.replace(/\D/g, '')).or('name.is.null,name.like.%/%')
+  return { ok: true as const, summary, items: r.items.slice(0, 60) }
 }
 
 // ── Configuração da inteligência (CNPJs da empresa, quem recebe o acompanhamento) ─
@@ -477,7 +485,7 @@ export async function saveCompetitor(input: { cnpj: string; name?: string | null
   const cnpj = onlyDigits(input.cnpj)
   if (cnpj.length !== 14) return { ok: false, error: 'Informe um CNPJ com 14 números.' }
   const { error } = await g.db.from('pncp_competitors').upsert({
-    tenant_id: g.tenantId, cnpj, name: String(input.name ?? '').trim().slice(0, 200) || null,
+    tenant_id: g.tenantId, cnpj, name: (/^[\d./-]+$/.test(String(input.name ?? '').trim()) ? '' : String(input.name ?? '').trim()).slice(0, 200) || null,
     note: String(input.note ?? '').trim().slice(0, 1000) || null, created_by: g.userId,
   }, { onConflict: 'tenant_id,cnpj' })
   if (error) return { ok: false, error: 'Não foi possível salvar o concorrente.' }
@@ -504,7 +512,10 @@ export async function trackNow(): Promise<Result> {
     const { notifyPerson } = await import('@/lib/agent/handoff')
     const r = await trackParticipations(tenantId, Date.now() + 200_000)
     await notifyPerson(tenantId, userId, {
-      text: `📣 Acompanhamento de licitações: ${r.checked} conferida(s) no PNCP, ${r.changed} com novidade.`, subject: 'Acompanhamento de licitações',
+      text: r.tracked === 0
+        ? '📣 Acompanhamento de licitações: nenhuma licitação para acompanhar. Marque "Vamos participar" ou coloque no funil para o CRM acompanhar no PNCP.'
+        : `📣 Acompanhamento de licitações: ${r.checked} de ${r.tracked} conferida(s) no PNCP${r.failed ? ` (${r.failed} sem resposta do PNCP; tenta de novo na próxima rodada)` : ''}, ${r.changed} com novidade. Veja em Licitações → Inteligência.`,
+      subject: 'Acompanhamento de licitações',
     }, { sino: true, whatsapp: false, email: false })
   }
   try { const { after } = await import('next/server'); after(job) } catch { await job() }
@@ -517,16 +528,18 @@ export type IntelRow = {
   won_value: number | null; homologado_value: number | null; winners: string[]; result_at: string | null; created_at: string
   orgao_nome: string | null; uf: string | null; objeto: string | null; modalidade_nome: string | null
   valor_estimado: number | null; data_encerramento: string | null; link: string | null
+  tracked_at: string | null; situacao: string | null; last_change: { at: string; lines: string[] } | null
 }
 export async function getIntel() {
   const g = await guard()
   if ('error' in g) return { ok: false as const, error: g.error }
   const [{ data: ms }, { data: comp }, { data: st }] = await Promise.all([
-    g.db.from('pncp_matches').select('id, numero_controle, status, result_status, contract_id, won_value, homologado_value, winners, result_at, created_at').order('created_at', { ascending: false }).limit(3000),
+    g.db.from('pncp_matches').select('id, numero_controle, status, result_status, contract_id, won_value, homologado_value, winners, result_at, created_at, tracked_at, result').order('created_at', { ascending: false }).limit(3000),
     g.db.from('pncp_competitors').select('id, cnpj, name, note, created_at').order('created_at', { ascending: false }),
     g.db.from('pncp_settings').select('own_cnpjs, recipient_ids, channels').maybeSingle(),
   ])
-  const matches = (ms ?? []) as Omit<IntelRow, 'orgao_nome' | 'uf' | 'objeto' | 'modalidade_nome' | 'valor_estimado' | 'data_encerramento' | 'link'>[]
+  type Raw = Omit<IntelRow, 'orgao_nome' | 'uf' | 'objeto' | 'modalidade_nome' | 'valor_estimado' | 'data_encerramento' | 'link' | 'situacao' | 'last_change'> & { result: { situacao?: string | null; log?: { at: string; lines: string[] }[] } | null }
+  const matches = (ms ?? []) as Raw[]
   const ids = matches.map(m => m.numero_controle)
   const rows = new Map<string, PncpRow>()
   for (let i = 0; i < ids.length; i += 300) {
@@ -535,8 +548,9 @@ export async function getIntel() {
   }
   const list: IntelRow[] = matches.map(m => {
     const r = rows.get(m.numero_controle)
+    const { result, ...rest } = m
     return {
-      ...m, winners: m.winners ?? [], orgao_nome: r?.orgao_nome ?? null, uf: r?.uf ?? null, objeto: r?.objeto ?? null,
+      ...rest, winners: m.winners ?? [], situacao: result?.situacao ?? r?.situacao_nome ?? null, last_change: result?.log?.[0] ?? null, orgao_nome: r?.orgao_nome ?? null, uf: r?.uf ?? null, objeto: r?.objeto ?? null,
       modalidade_nome: r?.modalidade_nome ?? null, valor_estimado: r?.valor_estimado ?? null, data_encerramento: r?.data_encerramento ?? null,
       link: r ? pncpUrl(r) : null,
     }
