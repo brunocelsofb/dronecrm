@@ -10,13 +10,13 @@ const PNCP = 'https://pncp.gov.br/api/pncp/v1'
 
 // Identificação do CRM nas chamadas (alguns serviços públicos recusam chamadas sem ela)
 const UA = 'DroneCRM/1.0 (+https://app.comercialdrone.com.br)'
-async function getJson(url: string, ms = 25_000, attempts = 3): Promise<unknown | null> {
+async function getJson(url: string, ms = 25_000, attempts = 3, extra: Record<string, string> = {}): Promise<unknown | null> {
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt) await new Promise(r => setTimeout(r, 1200 * attempt))   // conexão derrubada: espera um pouco e tenta de novo
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), ms)
     try {
-      const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': UA }, cache: 'no-store', signal: ctrl.signal })
+      const r = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': UA, ...extra }, cache: 'no-store', signal: ctrl.signal })
       if (r.status === 204 || r.status === 404) return []
       if (r.ok) return await r.json()
       console.warn('[pncp] HTTP', r.status, url.slice(0, 160))
@@ -131,8 +131,9 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
     const q = new URLSearchParams({ q: d, tipos_documento: 'contrato', ordenacao: '-data', pagina: String(page), tam_pagina: '50' })
     let j = (await getJson(`${PNCP_SEARCH_URL}?${q}`, 30_000)) as { items?: Record<string, unknown>[]; total?: number } | null
     if (!j) {
-      const q2 = new URLSearchParams({ q: d, tipos_documento: 'contrato', pagina: String(page), tam_pagina: '20' })
-      j = (await getJson(`${PNCP_SEARCH_URL}?${q2}`, 30_000)) as typeof j
+      // Reserva: sem compressão, conexão nova e página menor (o PNCP às vezes derruba a conexão nesta consulta)
+      const q2 = new URLSearchParams({ q: d, tipos_documento: 'contrato', pagina: String(page), tam_pagina: '10' })
+      j = (await getJson(`${PNCP_SEARCH_URL}?${q2}`, 30_000, 2, { 'Accept-Encoding': 'identity', Connection: 'close' })) as typeof j
     }
     if (!j || Array.isArray(j)) { if (page === 1 && !j) return null; break }
     total = Number(j.total ?? 0)
@@ -149,7 +150,7 @@ export async function supplierContracts(cnpj: string, maxPages = 4): Promise<{ i
         fornecedor_nome: (x.fornecedor_nome as string | null) ?? null, url,
       })
     }
-    if (page * 50 >= total || list.length < 50) break
+    if (page * 50 >= total || list.length < 10) break
   }
   return { items, total }
 }
