@@ -52,6 +52,8 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
   const [uf, setUf] = useState('')
   const [mod, setMod] = useState('')
   const [sit, setSit] = useState<SearchSituacao>('abertas')
+  const [de, setDe] = useState('')
+  const [ate, setAte] = useState('')
   const [page, setPage] = useState(1)
   const [res, setRes] = useState<{ rows: SearchHit[]; total: number; pages: number; live: boolean } | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -63,7 +65,7 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
     setPage(p)
     start(async () => {
       setErr(null)
-      const r = await searchContratacoes({ q: text, uf: uf || null, modalidade: mod ? Number(mod) : null, situacao: sit, page: p })
+      const r = await searchContratacoes({ q: text, uf: uf || null, modalidade: mod ? Number(mod) : null, situacao: sit, de: de || null, ate: ate || null, page: p })
       if (!r.ok) { setErr(r.error); return }
       setRes(r)
       if (text.trim()) { pushRecent(text.trim()); setRecent(readRecent()) }
@@ -97,6 +99,12 @@ export function SearchTab({ isAdmin, pipelines, nowMs, onCreateAlert }: { isAdmi
         <select value={sit} onChange={e => setSit(e.target.value as SearchSituacao)} aria-label="Situação" className="rounded-xl border border-gray-300 bg-white px-2 py-2 text-sm">
           {SEARCH_SITUACOES.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}
         </select>
+        <span className="flex items-center gap-1 text-xs text-gray-600">publicadas de
+          <input type="date" value={de} onChange={e => setDe(e.target.value)} aria-label="Publicadas a partir de" className="rounded-xl border border-gray-300 bg-white px-2 py-1.5 text-sm" />
+          até
+          <input type="date" value={ate} onChange={e => setAte(e.target.value)} aria-label="Publicadas até" className="rounded-xl border border-gray-300 bg-white px-2 py-1.5 text-sm" />
+          {(de || ate) && <button type="button" onClick={() => { setDe(''); setAte('') }} aria-label="Limpar período" className="rounded p-1 text-gray-400 hover:text-gray-700"><X className="h-3.5 w-3.5" /></button>}
+        </span>
         <button type="submit" disabled={pending} className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-60">{pending ? 'Buscando…' : 'Buscar'}</button>
       </form>
 

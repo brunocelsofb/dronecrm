@@ -237,7 +237,7 @@ export async function convertMatch(id: string, pipelineId: string): Promise<{ ok
 }
 
 // ── Pesquisa na base (resultado na hora) ─────────────────────────────────────
-export type SearchInput = { q: string; uf?: string | null; modalidade?: number | null; situacao?: SearchSituacao; page?: number }
+export type SearchInput = { q: string; uf?: string | null; modalidade?: number | null; situacao?: SearchSituacao; de?: string | null; ate?: string | null; page?: number }
 export type SearchHit = PncpRow & { match_id: string | null; match_status: MatchStatus | null; ai_score: number | null }
 const SEARCH_PAGE = 30
 
@@ -249,11 +249,15 @@ export async function searchContratacoes(input: SearchInput): Promise<{ ok: true
   const uf = normalizeUf(input.uf ?? null)
   const modalidade = input.modalidade ? Number(input.modalidade) : null
   const situacao: SearchSituacao = SEARCH_SITUACOES.some(x => x.id === input.situacao) ? input.situacao! : 'abertas'
+  const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  let de = isDay(input.de) ? input.de! : null
+  let ate = isDay(input.ate) ? input.ate! : null
+  if (de && ate && de > ate) [de, ate] = [ate, de]
   let rows: PncpRow[] = []
   let total = 0
   let live = true
   const { pncpLiveSearch } = await import('@/lib/pncp/engine')
-  const r = await pncpLiveSearch({ q: text, situacao, uf, modalidade, page, size: SEARCH_PAGE })
+  const r = await pncpLiveSearch({ q: text, situacao, uf, modalidade, de, ate, page, size: SEARCH_PAGE })
   if (r) { rows = r.rows; total = r.total }
   else {
     // PNCP fora do ar: usa a cópia local (só o que o CRM já baixou)
@@ -269,6 +273,8 @@ export async function searchContratacoes(input: SearchInput): Promise<{ ok: true
     }
     if (uf) q = q.eq('uf', uf)
     if (modalidade) q = q.eq('modalidade_id', modalidade)
+    if (de) q = q.gte('data_publicacao', `${de}T00:00:00-03:00`)
+    if (ate) q = q.lte('data_publicacao', `${ate}T23:59:59-03:00`)
     const { data, count, error } = await q.order('data_encerramento', { ascending: situacao === 'abertas', nullsFirst: false })
       .range((page - 1) * SEARCH_PAGE, page * SEARCH_PAGE - 1)
     if (error) return { ok: false, error: 'O PNCP não respondeu e a cópia local falhou. Tente de novo em instantes.' }

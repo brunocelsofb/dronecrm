@@ -89,7 +89,7 @@ export async function syncPublications(opts: { from: Date; to: Date; ufs: string
 
 // ── Busca por palavra no PNCP (a mesma do portal), em qualquer período ──────────
 // Guarda o que veio na cópia local, para o painel, o radar e o funil usarem a mesma linha.
-export async function pncpLiveSearch(opts: { q: string; situacao: SearchSituacao; uf?: string | null; modalidade?: number | null; page: number; size: number }):
+export async function pncpLiveSearch(opts: { q: string; situacao: SearchSituacao; uf?: string | null; modalidade?: number | null; de?: string | null; ate?: string | null; page: number; size: number }):
   Promise<{ rows: PncpRow[]; total: number } | null> {
   const sit = SEARCH_SITUACOES.find(x => x.id === opts.situacao) ?? SEARCH_SITUACOES[0]
   const q = new URLSearchParams({ tipos_documento: 'edital', ordenacao: '-data', pagina: String(opts.page), tam_pagina: String(opts.size) })
@@ -98,6 +98,8 @@ export async function pncpLiveSearch(opts: { q: string; situacao: SearchSituacao
   if (sit.api) q.set('status', sit.api)
   if (opts.uf) q.set('ufs', opts.uf)
   if (opts.modalidade) q.set('modalidades', String(opts.modalidade))
+  if (opts.de) q.set('data_publicacao_inicio', opts.de)
+  if (opts.ate) q.set('data_publicacao_fim', opts.ate)
   let j: { items?: Record<string, unknown>[]; total?: number } | null = null
   for (let attempt = 0; attempt < 2 && !j; attempt++) {
     const ctrl = new AbortController()
