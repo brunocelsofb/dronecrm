@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Trash2, Search, RefreshCw } from 'lucide-react'
 import { fmtBRL, fmtRatio } from '@/lib/format'
-import { getIntel, saveIntelSettings, deleteCompetitor, trackNow, type IntelRow } from '@/lib/actions/licitacoes'
+import { getIntel, saveIntelSettings, deleteCompetitor, trackNow, setMatchOutcome, type IntelRow } from '@/lib/actions/licitacoes'
 import { OUTCOME_LABEL, type Outcome } from '@/lib/pncp/results'
 import { DetailDrawer } from './search-tab'
 import { SupplierDrawer, SupplierProfileBody, fmtCnpjView } from './supplier-profile'
@@ -134,7 +134,14 @@ export function IntelTab({ isAdmin, people, pipelines, nowMs }: { isAdmin: boole
                           {m.last_change && <span className="mt-0.5 block text-gray-500">{new Date(m.last_change.at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}: {m.last_change.lines[0]}{m.last_change.lines.length > 1 ? ` (+${m.last_change.lines.length - 1})` : ''}</span>}
                           <span className="block text-[10px] text-gray-400">{m.tracked_at ? `conferido ${new Date(m.tracked_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'ainda não conferido'}</span>
                         </td>
-                        <td className="pr-2">{o === 'ganhou' ? <span className="font-semibold text-positive-700">Ganhamos {fmtBRL(m.won_value)}</span> : <span className="text-gray-700">{OUTCOME_LABEL[o]}</span>}</td>
+                        <td className="pr-2">
+                          {o === 'ganhou' ? <span className="font-semibold text-positive-700">Ganhamos{m.won_value ? ` ${fmtBRL(m.won_value)}` : ''}</span> : <span className={o === 'cancelada' ? 'font-semibold text-negative-700' : 'text-gray-700'}>{OUTCOME_LABEL[o]}</span>}
+                          <select value="" aria-label="Marcar resultado" onChange={async e => { const v = e.target.value as Outcome; if (!v) return; const r = await setMatchOutcome(m.id, v); if (r.ok) load(); else setErr(r.error ?? 'Não foi possível.') }}
+                            className="mt-1 block rounded border border-gray-200 px-1 py-0.5 text-[11px] text-gray-600">
+                            <option value="">marcar…</option>
+                            {(Object.keys(OUTCOME_LABEL) as Outcome[]).filter(k => k !== o).map(k => <option key={k} value={k}>{k === 'aguardando' ? 'Voltar para o automático' : OUTCOME_LABEL[k]}</option>)}
+                          </select>
+                        </td>
                         <td className="pr-2">
                           {w ? <button type="button" onClick={() => setSup({ ni: w[0], nome: w.slice(1).join('|') })} className="text-brand-700 hover:underline">{w.slice(1).join('|') || fmtCnpjView(w[0])}</button> : <span className="text-gray-400">—</span>}
                           {m.winners.length > 1 && <span className="text-gray-400"> +{m.winners.length - 1}</span>}

@@ -481,12 +481,12 @@ export async function trackParticipations(tenantId: string, deadlineMs: number, 
   const run = { tracked: 0, checked: 0, changed: 0, notified: 0, failed: 0 }
   const settings = await loadPncpSettings(tenantId)
   let q = admin.from('pncp_matches')
-    .select('id, numero_controle, assigned_to, decided_by, result, result_status, tracked_at')
+    .select('id, numero_controle, assigned_to, decided_by, contract_id, result, result_status, tracked_at')
     .eq('tenant_id', tenantId).in('status', ['participar', 'oportunidade'])
     .or('result_status.is.null,result_status.eq.aguardando')
   if (onlyIds?.length) q = q.in('id', onlyIds)
   const { data } = await q.order('tracked_at', { ascending: true, nullsFirst: true }).limit(80)
-  const list = (data ?? []) as { id: string; numero_controle: string; assigned_to: string | null; decided_by: string | null; result: TrackSnap | null }[]
+  const list = (data ?? []) as { id: string; numero_controle: string; assigned_to: string | null; decided_by: string | null; contract_id: string | null; result: TrackSnap | null }[]
   run.tracked = list.length
   if (!list.length) return run
   const { data: rows } = await admin.from('pncp_contratacoes').select('*').in('numero_controle', list.map(l => l.numero_controle))
@@ -510,6 +510,11 @@ export async function trackParticipations(tenantId: string, deadlineMs: number, 
       : r.lines
     if (r.first && r.snap.situacao_id === 1 && !r.res?.comResultado) continue
     if (!lines.length) continue
+    // Oportunidade no funil: registra a novidade no histórico dela (suspensão, cancelamento, resultado…)
+    if (m.contract_id) {
+      await admin.from('activities').insert({ tenant_id: tenantId, contract_id: m.contract_id, user_id: m.assigned_to ?? m.decided_by, type: 'system',
+        content: `🔎 Licitação no PNCP: ${lines.join(' · ')}${r.out.status !== 'aguardando' ? ` (${OUTCOME_LABEL[r.out.status]})` : ''}` })
+    }
     const head = r.out.status === 'ganhou' ? `🏆 Ganhamos ${BRL(r.out.wonValue)}` : r.out.status !== 'aguardando' ? `📣 ${OUTCOME_LABEL[r.out.status]}` : '📣 Novidade na licitação'
     const text = `${head} · ${r.row.orgao_nome ?? ''} (${r.row.uf ?? ''})\n${(r.row.objeto ?? '').slice(0, 160)}\n\n${lines.map(l => `• ${l}`).join('\n')}` +
       `${pncpUrl(r.row) ? `\n\nEdital: ${pncpUrl(r.row)}` : ''}\n${appUrl()}/licitacoes`

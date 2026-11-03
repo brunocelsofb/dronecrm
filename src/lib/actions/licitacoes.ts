@@ -561,3 +561,27 @@ export async function getIntel() {
     settings: (st ?? { own_cnpjs: [], recipient_ids: [], channels: { sino: true, email: true, whatsapp: false } }) as { own_cnpjs: string[]; recipient_ids: string[]; channels: { sino?: boolean; whatsapp?: boolean; email?: boolean } },
   }
 }
+
+// Resultado marcado à mão (quando o PNCP não publica ou publica diferente). O acompanhamento
+// automático não sobrescreve um resultado já definido; "aguardando" devolve para o automático.
+export async function setMatchOutcome(id: string, status: import('@/lib/pncp/results').Outcome, note?: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { OUTCOME_LABEL } = await import('@/lib/pncp/results')
+  if (!(status in OUTCOME_LABEL)) return { ok: false, error: 'Resultado inválido.' }
+  const { data: m } = await g.db.from('pncp_matches').select('id, contract_id, numero_controle').eq('id', id).maybeSingle()
+  if (!m) return { ok: false, error: 'Licitação não encontrada no radar.' }
+  const now = new Date().toISOString()
+  const txt = String(note ?? '').trim().slice(0, 500)
+  const { error } = await g.db.from('pncp_matches').update({
+    result_status: status, result_at: status === 'aguardando' ? null : now, updated_at: now,
+    ...(txt ? { note: txt } : {}),
+  }).eq('id', id)
+  if (error) return { ok: false, error: 'Não foi possível salvar.' }
+  if (m.contract_id) {
+    await g.db.from('activities').insert({ contract_id: m.contract_id, user_id: g.userId, type: 'system',
+      content: `🔎 Licitação ${m.numero_controle}: resultado marcado como "${OUTCOME_LABEL[status]}"${txt ? ` — ${txt}` : ''}.` })
+  }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
