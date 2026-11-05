@@ -258,3 +258,37 @@ async function fetchCadastroReceitaWs(d: string): Promise<Cadastro | null> {
     socios: qsa.map(s => ({ nome: String(s.nome ?? '—'), qualificacao: (s.qual as string) ?? null, desde: null, faixa: null })),
   }
 }
+
+// ── Itens ganhos por um CNPJ (Compras.gov · resultados da Lei 14.133, últimos 12 meses) ──
+// Mostra o que o fornecedor venceu mesmo antes de virar contrato. Período máximo da fonte: 365 dias.
+export type ItemGanhoCompra = { numero_controle: string; orgao_cnpj: string | null; uf: string | null; itens: number; valor: number; data: string | null; unitarios: number[] }
+export async function supplierItemsWon(cnpj: string): Promise<{ compras: ItemGanhoCompra[]; itens: number; valor: number } | null> {
+  const d = onlyDigits(cnpj)
+  if (d.length !== 14) return null
+  const fim = new Date(Date.now() - 3 * 3600_000)
+  const ini = new Date(fim.getTime() - 364 * 86_400_000)
+  const ymd = (x: Date) => x.toISOString().slice(0, 10)
+  const rows: Record<string, unknown>[] = []
+  for (let page = 1; page <= 4; page++) {
+    const q = new URLSearchParams({ pagina: String(page), tamanhoPagina: '500', niFornecedor: d, dataResultadoPncpInicial: ymd(ini), dataResultadoPncpFinal: ymd(fim) })
+    const j = await getJson(`https://dadosabertos.compras.gov.br/modulo-contratacoes/3_consultarResultadoItensContratacoes_PNCP_14133?${q}`, 40_000, 2)
+    if (!j || Array.isArray(j)) { if (page === 1) return null; break }
+    const x = j as { resultado?: Record<string, unknown>[]; totalPaginas?: number }
+    rows.push(...(x.resultado ?? []))
+    if (page >= Number(x.totalPaginas ?? 1)) break
+  }
+  const by = new Map<string, ItemGanhoCompra>()
+  for (const r of rows) {
+    if (r.dataCancelamentoPncp) continue
+    const id = String(r.numeroControlePNCPCompra ?? r.idContratacaoPNCP ?? '')
+    if (!id) continue
+    const g = by.get(id) ?? { numero_controle: id, orgao_cnpj: (r.orgaoEntidadeCnpj as string) ?? null, uf: (r.unidadeOrgaoUfSigla as string) ?? null, itens: 0, valor: 0, data: null, unitarios: [] }
+    g.itens++; g.valor += n(r.valorTotalHomologado) ?? 0
+    const u = n(r.valorUnitarioHomologado); if (u !== null && g.unitarios.length < 5) g.unitarios.push(u)
+    const dt = typeof r.dataResultadoPncp === 'string' ? r.dataResultadoPncp.slice(0, 10) : null
+    if (dt && (!g.data || dt > g.data)) g.data = dt
+    by.set(id, g)
+  }
+  const compras = [...by.values()].sort((a, b) => (b.data ?? '').localeCompare(a.data ?? ''))
+  return { compras, itens: compras.reduce((s, c) => s + c.itens, 0), valor: compras.reduce((s, c) => s + c.valor, 0) }
+}

@@ -3,9 +3,9 @@
 // quanto somam, em que estados e com quais órgãos.
 
 import { useEffect, useState } from 'react'
-import { X, ExternalLink, Bookmark, ShieldCheck, ShieldAlert, Users } from 'lucide-react'
+import { X, ExternalLink, Bookmark, ShieldCheck, ShieldAlert, Users, Trophy } from 'lucide-react'
 import { fmtBRL } from '@/lib/format'
-import { getSupplierProfile, saveCompetitor, getSupplierExtras } from '@/lib/actions/licitacoes'
+import { getSupplierProfile, saveCompetitor, getSupplierExtras, getSupplierItemsWon } from '@/lib/actions/licitacoes'
 import { SANCAO_LABEL, type SupplierContract, type Sancao, type Cadastro } from '@/lib/pncp/results'
 
 type Summary = { contratos: number; valor: number; nome: string | null; ufs: { uf: string; n: number; valor: number }[]; orgaos: { nome: string; uf: string | null; n: number; valor: number }[] }
@@ -44,6 +44,7 @@ export function SupplierProfileBody({ cnpj, name, canSave, onSaved }: { cnpj: st
       </div>
       {saved && <p role="status" className="text-xs text-positive-700">{saved}</p>}
       <Extras cnpj={cnpj} />
+      <ItemsWon cnpj={cnpj} />
       {!s && !err && <p className="text-sm text-gray-500">Buscando os contratos no PNCP…</p>}
       {err && <p className="text-sm text-negative-700">{err}</p>}
       {s && (
@@ -166,6 +167,46 @@ function Extras({ cnpj }: { cnpj: string }) {
         )}
         <p className="mt-1 text-[10px] text-gray-400">Fonte: Receita Federal (via BrasilAPI ou ReceitaWS).</p>
       </div>
+    </div>
+  )
+}
+
+// Itens ganhos nos últimos 12 meses (Compras.gov), agrupados por licitação
+type Won = Extract<Awaited<ReturnType<typeof getSupplierItemsWon>>, { ok: true }>
+function ItemsWon({ cnpj }: { cnpj: string }) {
+  const [w, setW] = useState<Won | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let alive = true
+    getSupplierItemsWon(cnpj).then(r => { if (!alive) return; if (r.ok) setW(r); else setErr(r.error) })
+    return () => { alive = false }
+  }, [cnpj])
+  const retry = async () => { setBusy(true); setErr(null); const r = await getSupplierItemsWon(cnpj); setBusy(false); if (r.ok) setW(r); else setErr(r.error) }
+  return (
+    <div className="rounded-xl border border-gray-200 p-3">
+      <p className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-gray-800"><Trophy className="h-4 w-4 text-brand-700" />Itens ganhos nos últimos 12 meses</p>
+      {err && <div><p className="text-xs text-gray-500">{err}</p><button type="button" disabled={busy} onClick={retry} className="mt-1 rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">{busy ? 'Consultando…' : 'Tentar de novo'}</button></div>}
+      {!w && !err && <p className="text-xs text-gray-500">Consultando os resultados no Compras.gov…</p>}
+      {w && (w.licitacoes === 0 ? <p className="text-xs text-gray-500">Nenhum item ganho nos últimos 12 meses (licitações da Lei 14.133 com resultado publicado).</p> : (
+        <>
+          <p className="text-xs text-gray-700"><b>{w.itens.toLocaleString('pt-BR')}</b> item(ns) em <b>{w.licitacoes.toLocaleString('pt-BR')}</b> licitação(ões) · {fmtBRL(w.valor)} homologado</p>
+          <ul className="mt-2 space-y-1.5">
+            {w.compras.map(c => (
+              <li key={c.numero_controle} className="rounded-lg border border-gray-100 px-3 py-2 text-xs">
+                <p className="font-medium text-gray-800">{c.orgao_nome ?? `Órgão CNPJ ${fmtCnpjView(c.orgao_cnpj ?? '')}`}{c.uf ? ` / ${c.uf}` : ''} · {fmtBRL(c.valor)}</p>
+                {c.objeto && <p className="line-clamp-2 text-gray-600">{c.objeto}</p>}
+                <p className="text-gray-400">
+                  {c.itens} item(ns){c.data ? ` · resultado em ${c.data.split('-').reverse().join('/')}` : ''}
+                  {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="ml-2 inline-flex items-center gap-0.5 text-brand-700 hover:underline"><ExternalLink className="h-3 w-3" />PNCP</a>}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {w.licitacoes > w.compras.length && <p className="mt-1 text-[11px] text-gray-500">Mostrando as {w.compras.length} mais recentes.</p>}
+        </>
+      ))}
+      <p className="mt-1 text-[10px] text-gray-400">Fonte: Compras.gov (dados abertos), resultados por item da Lei 14.133. Mostra só o que a empresa venceu.</p>
     </div>
   )
 }

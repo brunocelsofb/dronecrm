@@ -598,3 +598,26 @@ export async function getSupplierExtras(cnpj: string) {
   if (sancoes) await g.db.from('pncp_competitors').update({ sanctions: sancoes, sanctions_at: sancoes.lidoEm }).eq('cnpj', d)
   return { ok: true as const, cadastro, sancoes }
 }
+
+// Itens que um CNPJ ganhou nos últimos 12 meses (Compras.gov), com órgão e objeto quando já conhecidos
+export async function getSupplierItemsWon(cnpj: string) {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const { supplierItemsWon, isCnpj } = await import('@/lib/pncp/results')
+  if (!isCnpj(cnpj)) return { ok: false as const, error: 'Informe um CNPJ com 14 números.' }
+  const r = await supplierItemsWon(cnpj)
+  if (!r) return { ok: false as const, error: 'O Compras.gov não respondeu agora. Tente de novo em instantes.' }
+  const top = r.compras.slice(0, 40)
+  const { data } = top.length ? await createAdminClient().from('pncp_contratacoes').select('numero_controle, orgao_nome, objeto, municipio').in('numero_controle', top.map(c => c.numero_controle)) : { data: [] }
+  const info = new Map(((data ?? []) as { numero_controle: string; orgao_nome: string | null; objeto: string | null; municipio: string | null }[]).map(x => [x.numero_controle, x]))
+  return {
+    ok: true as const, itens: r.itens, valor: r.valor, licitacoes: r.compras.length,
+    compras: top.map(c => {
+      const i = info.get(c.numero_controle)
+      const [cnpjOrg, rest] = c.numero_controle.split('-1-')
+      const [seq, ano] = (rest ?? '').split('/')
+      return { ...c, orgao_nome: i?.orgao_nome ?? null, objeto: i?.objeto ?? null, municipio: i?.municipio ?? null,
+        url: cnpjOrg && seq && ano ? `https://pncp.gov.br/app/editais/${cnpjOrg}/${ano}/${Number(seq)}` : null }
+    }),
+  }
+}
