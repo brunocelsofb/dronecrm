@@ -210,6 +210,17 @@ function levelLabel(level: AlertLevel, days: number): string {
   return level === 0 ? `vencido há ${Math.abs(days)} dia(s)` : `vence em ${days} dia(s)`
 }
 
+// Régua de renovação: começa no primeiro marco que o contrato alcançar (não só no de preparação).
+// Se já existe régua aberta, não faz nada. Na prévia ("Testar"), só anota que começaria.
+async function ensureRuler(c: RenewalCandidate) {
+  try {
+    const { inPreview, record } = await import('./agent-preview')
+    if (inPreview()) { record({ kind: 'nota', text: `Régua de renovação: começaria (ou seguiria) para ${c.client_name}.` }); return }
+    const { startRenewalRuler } = await import('./renewal-ruler-engine')
+    await startRenewalRuler(c.id, { firstDone: false, periodEnd: c.valid_until })
+  } catch (e) { console.error('[expiration] régua não iniciada:', e) }
+}
+
 // ─── Processa um contrato ─────────────────────────────────────────────────────
 
 async function processContract(
@@ -250,16 +261,12 @@ async function processContract(
         `histórico de atendimento e satisfação do cliente, e definir a proposta de renovação.` + readingText,
       metadata: { kind: 'renewal_alert', alert_level: level, alert_days: markDays, valid_until: c.valid_until },
     })
-    // A régua de renovação começa junto com o "preparar" (aviso interno às áreas no 1º passo)
-    try {
-      const { inPreview } = await import('./agent-preview')
-      if (!inPreview()) {
-        const { startRenewalRuler } = await import('./renewal-ruler-engine')
-        await startRenewalRuler(c.id, { firstDone: false, periodEnd: c.valid_until })
-      }
-    } catch (e) { console.error('[expiration] régua não iniciada:', e) }
+    await ensureRuler(c)
     return { ...base, activity: r.status, detail: r.status === 'error' ? r.error : r.status === 'skipped' ? r.reason : undefined }
   }
+
+  // Contrato que entrou já perto do vencimento (depois do marco de preparação): a régua começa agora
+  if (level !== 0) await ensureRuler(c)
 
   // 60 / 30 / 15 / vencido: aviso ao cliente, aguardando aprovação do consultor
   // Aviso vai por WhatsApp E e-mail juntos: exige os dois no contato
