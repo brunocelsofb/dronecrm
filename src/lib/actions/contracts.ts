@@ -276,6 +276,12 @@ export async function createContract(
     content: isVendasCadastro ? 'Oportunidade cadastrada.' : 'Contrato cadastrado.',
   })
 
+  // Já entrou dentro da janela de renovação (ex.: 1 mês de validade): régua e aviso na hora
+  if (!isVendasCadastro && contract.valid_until) {
+    const { renewalKickoffLater } = await import('@/lib/agent/expiration-alerts')
+    await renewalKickoffLater(contract.id as string)
+  }
+
   revalidatePath('/contracts')
   redirect('/contracts')
 }
@@ -355,6 +361,12 @@ export async function updateContract(
     type: 'system',
     content: 'Dados da oportunidade editados.',
   })
+
+  // Validade dentro da janela de renovação: régua e aviso na hora (não espera a rotina das 5h)
+  if (valid_until) {
+    const { renewalKickoffLater } = await import('@/lib/agent/expiration-alerts')
+    await renewalKickoffLater(contractId)
+  }
 
   revalidatePath(`/contracts/${contractId}`)
   revalidatePath('/contracts')

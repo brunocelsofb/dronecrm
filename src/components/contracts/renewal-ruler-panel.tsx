@@ -109,7 +109,7 @@ export function RenewalRulerPanel({
             <p className="text-sm text-gray-500">
               {run
                 ? run.status === 'done' ? `Concluída em ${fmtDateTime(run.finished_at)} (vencimento ${brDate(run.period_end)}).` : `Cancelada em ${fmtDateTime(run.finished_at)}.`
-                : 'Ela começa sozinha junto com o "preparar a renovação" (Central de regras → Renovação). Se precisar adiantar, inicie agora.'}
+                : 'Ela começa sozinha quando o contrato entra na janela de renovação (Central de regras → Renovação): na hora, se ele já entrar perto do vencimento. Se precisar adiantar, inicie agora.'}
             </p>
           </div>
           {enabled && canAct && (

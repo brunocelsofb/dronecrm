@@ -128,6 +128,9 @@ export async function checkAndTriggerRenewals() {
           type: 'automation_triggered',
           content: `Movido automaticamente para renovação — contrato vence em ${daysUntilExpiry} dia(s) (junto com o "preparar a renovação", a ${prepDays} dias).`,
         })
+        // Entrou na renovação: régua e aviso do marco atual na hora (não espera a rotina das 5h)
+        const { renewalKickoffLater } = await import('@/lib/agent/expiration-alerts')
+        await renewalKickoffLater(contract.id as string)
       }
     }
   }
@@ -372,11 +375,16 @@ export async function moveContractStage(
   // Regras da Central: "entrou na etapa"
   if (newStage.id !== run.stage_id) {
     const { resolveTenantId } = await import('@/lib/tenant/context')
-    const { data: pt } = await supabase.from('pipelines').select('type').eq('id', newStage.pipeline_id).maybeSingle()
+    const { data: pt } = await supabase.from('pipelines').select('type, renewal_target_stage_id').eq('id', newStage.pipeline_id).maybeSingle()
     await fireRulesAfter(await resolveTenantId({ contractId }), 'evt_stage', {
       contractId, pipelineId: newStage.pipeline_id, stageId: newStage.id, pipelineType: (pt?.type as string | null) ?? null,
       value: run.value ?? null, episode: `evt_stage:${run.id}:${newStage.id}:${now.slice(0, 16)}`,
     })
+    // Entrou na etapa de renovação: régua e aviso do marco atual na hora (se estiver na janela)
+    if (pt?.renewal_target_stage_id && pt.renewal_target_stage_id === newStage.id) {
+      const { renewalKickoffLater } = await import('@/lib/agent/expiration-alerts')
+      await renewalKickoffLater(contractId)
+    }
   }
 
   // Automação de e-mail configurada DIRETO no template (atalho rápido,

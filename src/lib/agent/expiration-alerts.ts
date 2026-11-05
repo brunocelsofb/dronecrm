@@ -106,16 +106,19 @@ async function fetchCandidates(
   supabase: ReturnType<typeof getAdminClient>,
   tenantId: string,
   prepDays: number = DEFAULT_RENEWAL_LEVELS.prep,
+  onlyContractId?: string,
 ): Promise<RenewalCandidate[]> {
   const today = todayBR()
 
-  const { data: contracts, error } = await supabase
+  let q = supabase
     .from('contracts')
     .select('id, tenant_id, process_number, client_name, valid_until, monthly_value, contact_id, owner_id, current_assignee_id')
     .not('valid_until', 'is', null)
     .gte('valid_until', addDays(today, -90))
     .lte('valid_until', addDays(today, prepDays))
     .eq('tenant_id', tenantId)
+  if (onlyContractId) q = q.eq('id', onlyContractId)
+  const { data: contracts, error } = await q
 
   if (error) throw new Error(`erro ao buscar contratos: ${error.message}`)
   if (!contracts?.length) return []
@@ -456,4 +459,35 @@ export async function runExpirationAlerts(tenantId: string): Promise<ExpirationA
     internal_email: internalEmail,
     errors,
   }
+}
+
+// ─── Um contrato, na hora ─────────────────────────────────────────────────────
+// Quando o contrato é criado, muda a validade ou entra na etapa de renovação já dentro da
+// janela (ex.: entrou hoje com 1 mês de validade), não espera a rotina das 5h: abre a régua
+// e monta o aviso do marco em que ele está (aguardando revisão, como na rotina diária).
+// Mesmas regras e mesma trava de repetição da rotina diária. Respeita a tarefa ligada/desligada.
+export async function runRenewalForContract(contractId: string): Promise<{ ok: boolean; level?: AlertLevel | null; activity?: string; detail?: string }> {
+  const supabase = getAdminClient()
+  const { data: k } = await supabase.from('contracts').select('tenant_id, valid_until').eq('id', contractId).maybeSingle()
+  const tenantId = (k?.tenant_id as string | null) ?? null
+  if (!tenantId || !k?.valid_until) return { ok: false, detail: 'sem validade' }
+  // Tarefa "Avisos de renovação" desligada ou pausada na tela IA: não faz nada (o dia da semana não importa aqui)
+  const { data: task } = await supabase.from('agent_tasks').select('enabled, paused_until').eq('tenant_id', tenantId).eq('task_key', 'renewal_alerts').maybeSingle()
+  if (task && (task.enabled === false || (task.paused_until && String(task.paused_until).slice(0, 10) >= todayBR()))) return { ok: false, detail: 'tarefa de renovação desligada ou pausada' }
+  const { loadTaskOptions } = await import('./agent-task-options')
+  const [baseOrg, taskOpts] = await Promise.all([fetchOrgConfig(supabase, tenantId), loadTaskOptions(tenantId, 'renewal_alerts')])
+  const org: OrgConfig = { ...baseOrg, assignee: taskOpts.assignee ?? null }
+  const [c] = await fetchCandidates(supabase, tenantId, org.levels.prep, contractId)
+  if (!c) return { ok: true, level: null, detail: 'fora da janela de renovação' }
+  const level = levelFor(c.days_until_expiry, org.levels)
+  if (level === null) return { ok: true, level: null }
+  const r = await processContract(supabase, c, level, org)
+  console.log(`[expiration] na hora: ${c.process_number ?? c.id} (${c.client_name}) ${level}d → ${r.activity}${r.detail ? ` (${r.detail})` : ''}`)
+  return { ok: true, level, activity: r.activity, detail: r.detail }
+}
+
+// Agenda para depois da resposta (não atrasa a tela). Use nas ações de contrato.
+export async function renewalKickoffLater(contractId: string) {
+  const job = () => runRenewalForContract(contractId).then(() => undefined).catch(e => console.error('[expiration] na hora falhou:', e))
+  try { const { after } = await import('next/server'); after(job) } catch { await job() }
 }
