@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import { X, ExternalLink, Bookmark, ShieldCheck, ShieldAlert, Users, Trophy } from 'lucide-react'
 import { fmtBRL } from '@/lib/format'
-import { getSupplierProfile, saveCompetitor, getSupplierExtras, getSupplierItemsWon } from '@/lib/actions/licitacoes'
+import { getSupplierProfile, saveCompetitor, getSupplierExtras, getSupplierItemsWon, getBidHistory } from '@/lib/actions/licitacoes'
 import { SANCAO_LABEL, type SupplierContract, type Sancao, type Cadastro } from '@/lib/pncp/results'
 
 type Summary = { contratos: number; valor: number; nome: string | null; ufs: { uf: string; n: number; valor: number }[]; orgaos: { nome: string; uf: string | null; n: number; valor: number }[] }
@@ -44,6 +44,7 @@ export function SupplierProfileBody({ cnpj, name, canSave, onSaved }: { cnpj: st
       </div>
       {saved && <p role="status" className="text-xs text-positive-700">{saved}</p>}
       <Extras cnpj={cnpj} />
+      <AgainstUs cnpj={cnpj} />
       <ItemsWon cnpj={cnpj} />
       {!s && !err && <p className="text-sm text-gray-500">Buscando os contratos no PNCP…</p>}
       {err && <p className="text-sm text-negative-700">{err}</p>}
@@ -207,6 +208,35 @@ function ItemsWon({ cnpj }: { cnpj: string }) {
         </>
       ))}
       <p className="mt-1 text-[10px] text-gray-400">Fonte: Compras.gov (dados abertos), resultados por item da Lei 14.133. Mostra só o que a empresa venceu.</p>
+    </div>
+  )
+}
+
+// Disputas contra nós registradas pela equipe (só aparece se houver)
+type Hist = Extract<Awaited<ReturnType<typeof getBidHistory>>, { ok: true }>
+function AgainstUs({ cnpj }: { cnpj: string }) {
+  const [h, setH] = useState<Hist | null>(null)
+  useEffect(() => {
+    let alive = true
+    getBidHistory(cnpj).then(r => { if (alive && r.ok) setH(r) })
+    return () => { alive = false }
+  }, [cnpj])
+  if (!h || h.disputas === 0) return null
+  const venceuNos = h.rows.filter(r => r.us && r.position !== null && r.us.position !== null && r.position < r.us.position).length
+  return (
+    <div className="rounded-xl border border-gray-200 p-3">
+      <p className="mb-1 text-xs font-semibold text-gray-800">Contra nós (registrado pela equipe)</p>
+      <p className="text-xs text-gray-700">{h.disputas} disputa(s) · venceu {h.vitorias} · ficou à nossa frente em {venceuNos}</p>
+      <ul className="mt-2 space-y-1 text-xs">
+        {h.rows.slice(0, 20).map((r, i) => (
+          <li key={`${r.match_id}-${i}`} className="rounded-lg border border-gray-100 px-3 py-1.5">
+            <p className="text-gray-800">{r.orgao_nome ?? '—'}{r.uf ? ` / ${r.uf}` : ''}</p>
+            {r.objeto && <p className="line-clamp-1 text-gray-500">{r.objeto}</p>}
+            <p className="text-gray-600">Ele: {r.position ? `${r.position}º` : '—'}{r.value !== null ? ` · ${fmtBRL(r.value)}` : ''}{r.won ? ' · venceu' : ''}
+              {r.us ? <> · Nós: {r.us.position ? `${r.us.position}º` : '—'}{r.us.value !== null ? ` · ${fmtBRL(r.us.value)}` : ''}</> : null}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

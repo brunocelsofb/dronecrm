@@ -14,6 +14,7 @@ import {
 } from '@/lib/actions/licitacoes'
 import { OUTCOME_LABEL, type Resultado, type Outcome } from '@/lib/pncp/results'
 import { SupplierDrawer } from './supplier-profile'
+import { BidsPanel } from './bids-panel'
 
 type Opt = { id: string; name: string }
 const RECENT_KEY = 'licitacoes:recentes'
@@ -244,6 +245,7 @@ export function DetailDrawer({ numero, pipelines, nowMs, onClose }: { numero: st
             </div>
 
             <ResultPanel numero={numero} closed={!!r.data_encerramento && Date.parse(r.data_encerramento) < nowMs} />
+            <BidsPanel numero={numero} />
 
             {/* Agente */}
             <div className="rounded-xl border border-gray-200 p-4">

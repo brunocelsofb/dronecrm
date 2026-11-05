@@ -621,3 +621,92 @@ export async function getSupplierItemsWon(cnpj: string) {
     }),
   }
 }
+
+// ── Quem disputou cada licitação (registrado pela equipe a partir da sessão pública) ─────────
+export type BidRow = { id: string; cnpj: string | null; name: string; is_us: boolean; position: number | null; value: number | null; won: boolean; note: string | null }
+export async function listBids(numero: string): Promise<{ ok: true; matchId: string | null; bids: BidRow[]; own: string[] } | { ok: false; error: string }> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const [{ data: m }, { data: st }] = await Promise.all([
+    g.db.from('pncp_matches').select('id').eq('numero_controle', numero).maybeSingle(),
+    g.db.from('pncp_settings').select('own_cnpjs').maybeSingle(),
+  ])
+  const own = ((st?.own_cnpjs as string[] | undefined) ?? [])
+  if (!m?.id) return { ok: true, matchId: null, bids: [], own }
+  const { data } = await g.db.from('pncp_bids').select('id, cnpj, name, is_us, position, value, won, note').eq('match_id', m.id)
+    .order('position', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
+  return { ok: true, matchId: m.id as string, bids: (data ?? []) as BidRow[], own }
+}
+
+export async function saveBid(numero: string, input: { id?: string | null; cnpj?: string | null; name: string; is_us?: boolean; position?: number | null; value?: number | null; won?: boolean; note?: string | null }): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const cnpj = String(input.cnpj ?? '').replace(/\D/g, '')
+  if (cnpj && cnpj.length !== 14) return { ok: false, error: 'CNPJ com 14 números (ou deixe em branco).' }
+  const name = String(input.name ?? '').trim().slice(0, 200)
+  if (!name) return { ok: false, error: 'Informe o nome da empresa.' }
+  const pos = input.position === null || input.position === undefined || input.position === ('' as never) ? null : Math.round(Number(input.position))
+  if (pos !== null && (!Number.isFinite(pos) || pos < 1 || pos > 999)) return { ok: false, error: 'Posição inválida.' }
+  const val = input.value === null || input.value === undefined || input.value === ('' as never) ? null : Number(input.value)
+  if (val !== null && (!Number.isFinite(val) || val < 0)) return { ok: false, error: 'Lance inválido.' }
+  const matchId = await ensureMatch(g, numero)
+  if (!matchId) return { ok: false, error: 'Licitação não encontrada.' }
+  const row = {
+    match_id: matchId, numero_controle: numero, cnpj: cnpj || null, name, is_us: input.is_us === true,
+    position: pos, value: val, won: input.won === true || pos === 1, note: String(input.note ?? '').trim().slice(0, 500) || null,
+  }
+  const { error } = input.id
+    ? await g.db.from('pncp_bids').update(row).eq('id', input.id)
+    : await g.db.from('pncp_bids').insert({ ...row, created_by: g.userId })
+  if (error) return { ok: false, error: 'Não foi possível salvar.' }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+export async function deleteBid(id: string): Promise<Result> {
+  const g = await guard()
+  if ('error' in g) return { ok: false, error: g.error }
+  const { error } = await g.db.from('pncp_bids').delete().eq('id', id)
+  if (error) return { ok: false, error: 'Não foi possível remover.' }
+  revalidatePath('/licitacoes')
+  return { ok: true }
+}
+
+// Histórico de um concorrente contra nós (pelo que a equipe registrou)
+export async function getBidHistory(cnpj: string) {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const d = String(cnpj ?? '').replace(/\D/g, '')
+  if (d.length !== 14) return { ok: false as const, error: 'CNPJ inválido.' }
+  const { data } = await g.db.from('pncp_bids').select('match_id, numero_controle, position, value, won, cnpj').like('cnpj', `${d.slice(0, 8)}%`).eq('is_us', false).limit(500)
+  const mine = (data ?? []) as { match_id: string; numero_controle: string; position: number | null; value: number | null; won: boolean }[]
+  if (!mine.length) return { ok: true as const, disputas: 0, vitorias: 0, rows: [] }
+  const ids = [...new Set(mine.map(b => b.match_id))]
+  const [{ data: us }, { data: rows }] = await Promise.all([
+    g.db.from('pncp_bids').select('match_id, position, value, won').in('match_id', ids).eq('is_us', true),
+    createAdminClient().from('pncp_contratacoes').select('numero_controle, orgao_nome, uf, objeto').in('numero_controle', [...new Set(mine.map(b => b.numero_controle))]),
+  ])
+  const usBy = new Map(((us ?? []) as { match_id: string; position: number | null; value: number | null; won: boolean }[]).map(u => [u.match_id, u]))
+  const info = new Map(((rows ?? []) as { numero_controle: string; orgao_nome: string | null; uf: string | null; objeto: string | null }[]).map(r => [r.numero_controle, r]))
+  return {
+    ok: true as const, disputas: ids.length, vitorias: mine.filter(b => b.won).length,
+    rows: mine.map(b => ({ ...b, ...(info.get(b.numero_controle) ?? { orgao_nome: null, uf: null, objeto: null }), us: usBy.get(b.match_id) ?? null })),
+  }
+}
+
+// Concorrentes que mais aparecem nas disputas registradas (para a Inteligência)
+export async function getBidRivals() {
+  const g = await guard()
+  if ('error' in g) return { ok: false as const, error: g.error }
+  const { data } = await g.db.from('pncp_bids').select('match_id, cnpj, name, won, is_us').limit(5000)
+  const list = (data ?? []) as { match_id: string; cnpj: string | null; name: string; won: boolean; is_us: boolean }[]
+  const usWon = new Set(list.filter(b => b.is_us && b.won).map(b => b.match_id))
+  const by = new Map<string, { cnpj: string | null; name: string; disputas: number; vitorias: number; contraNosGanhamos: number }>()
+  for (const b of list.filter(x => !x.is_us)) {
+    const k = b.cnpj?.slice(0, 8) || b.name.toLowerCase()
+    const x = by.get(k) ?? { cnpj: b.cnpj, name: b.name, disputas: 0, vitorias: 0, contraNosGanhamos: 0 }
+    x.disputas++; if (b.won) x.vitorias++; if (usWon.has(b.match_id)) x.contraNosGanhamos++
+    by.set(k, x)
+  }
+  return { ok: true as const, disputasRegistradas: new Set(list.map(b => b.match_id)).size, rivals: [...by.values()].sort((a, b) => b.disputas - a.disputas).slice(0, 15) }
+}

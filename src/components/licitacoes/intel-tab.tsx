@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Trash2, Search, RefreshCw } from 'lucide-react'
 import { fmtBRL, fmtRatio } from '@/lib/format'
-import { getIntel, saveIntelSettings, deleteCompetitor, trackNow, setMatchOutcome, type IntelRow } from '@/lib/actions/licitacoes'
+import { getIntel, saveIntelSettings, deleteCompetitor, trackNow, setMatchOutcome, getBidRivals, type IntelRow } from '@/lib/actions/licitacoes'
 import { OUTCOME_LABEL, type Outcome } from '@/lib/pncp/results'
 import { DetailDrawer } from './search-tab'
 import { SupplierDrawer, SupplierProfileBody, fmtCnpjView } from './supplier-profile'
@@ -176,6 +176,7 @@ export function IntelTab({ isAdmin, people, pipelines, nowMs }: { isAdmin: boole
         </section>
       </div>
 
+      <BidRivals onOpen={(ni, nome) => setSup({ ni, nome })} />
       <OwnContracts cnpjs={d.settings.own_cnpjs} />
       <Competitors list={d.competitors} onChange={load} onOpen={(ni, nome) => setSup({ ni, nome })} />
       {isAdmin && <IntelSettings people={people} settings={d.settings} onSaved={load} />}
@@ -274,6 +275,36 @@ function IntelSettings({ people, settings, onSaved }: { people: Opt[]; settings:
           className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"><RefreshCw className="h-4 w-4" />Conferir agora</button>
         {msg && <span role="status" className="text-xs text-gray-600">{msg}</span>}
       </div>
+    </section>
+  )
+}
+
+// Concorrentes que mais aparecem nas disputas que a equipe registrou
+function BidRivals({ onOpen }: { onOpen: (ni: string, nome: string | null) => void }) {
+  const [r, setR] = useState<Extract<Awaited<ReturnType<typeof getBidRivals>>, { ok: true }> | null>(null)
+  useEffect(() => {
+    let alive = true
+    getBidRivals().then(x => { if (alive && x.ok) setR(x) })
+    return () => { alive = false }
+  }, [])
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4">
+      <p className="mb-1 text-sm font-semibold text-gray-900">Concorrentes que mais encontramos</p>
+      {!r || r.rivals.length === 0
+        ? <p className="text-xs text-gray-500">Registre quem disputou em cada licitação (painel da licitação → &ldquo;Quem disputou&rdquo;). Aqui aparecem os concorrentes que mais cruzam com vocês.</p>
+        : (
+          <>
+            <p className="mb-2 text-xs text-gray-500">{r.disputasRegistradas} disputa(s) registrada(s) pela equipe.</p>
+            <ul className="divide-y divide-gray-100 text-xs">
+              {r.rivals.map(x => (
+                <li key={x.cnpj ?? x.name} className="flex justify-between gap-2 py-1.5">
+                  {x.cnpj ? <button type="button" onClick={() => onOpen(x.cnpj as string, x.name)} className="min-w-0 truncate text-left text-brand-700 hover:underline">{x.name}</button> : <span className="min-w-0 truncate text-gray-800">{x.name}</span>}
+                  <span className="shrink-0 text-gray-600">{x.disputas} disputa(s) · venceu {x.vitorias} · nós vencemos {x.contraNosGanhamos}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
     </section>
   )
 }
