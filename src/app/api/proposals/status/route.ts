@@ -125,12 +125,21 @@ export async function POST(req: Request) {
     proposal_value ? `Valor: R$ ${Number(proposal_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : null,
   ].filter(Boolean).join(' · ') + `.`
 
+  // Qual proposta: código, versão e valor ficam no registro (o histórico mostra e liga à proposta)
+  const { data: propInfo } = proposal_id
+    ? await supabase.from('proposals').select('control_code, version, proposal_value').eq('id', proposal_id).maybeSingle()
+    : { data: null }
+
   const { error: actError } = await supabase.from('activities').insert({
     contract_id,
     type: 'proposal',
     content: activityContent,
     metadata: {
       proposal_id: proposal_id ?? null,
+      contract_id,
+      control_code: propInfo?.control_code ?? null,
+      version: propInfo?.version ?? null,
+      proposal_value: Number(proposal_value ?? propInfo?.proposal_value) || null,
       new_status: status,
       actor: loggedName,
       comment: comment ?? null,

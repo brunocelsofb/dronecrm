@@ -636,6 +636,7 @@ export default async function ContractDetailPage({
                   <TimelineFeed
                     events={activities ?? []}
                     contractId={contract.id}
+                    proposals={(proposals ?? []).map((p: any) => ({ id: p.id, control_code: p.control_code, version: p.version, proposal_value: p.proposal_value }))}
                     currentUserRole={currentProfile?.role ?? 'member'}
                   />
                 </div>

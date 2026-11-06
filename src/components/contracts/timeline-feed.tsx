@@ -32,6 +32,10 @@ const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; lab
   whatsapp_sent:        { icon: '📲', color: '#166534', bg: '#dcfce7',  label: 'WhatsApp enviado' },
 }
 
+export type TimelineProposal = { id: string; control_code: string | null; version: number | null; proposal_value: number | null }
+
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 })
+
 // Tarefas do Copiloto ainda abertas ficam só na aba Atividades; no Histórico
 // entra apenas o registro depois de concluídas (ex.: aviso enviado ao cliente).
 function isOpenCopilotTask(e: Event): boolean {
@@ -51,9 +55,11 @@ export function TimelineFeed({
   currentUserRole,
   noteEndpointField = 'contract_id',
   notePlaceholder = 'Adicione uma nota sobre esta oportunidade...',
+  proposals = [],
 }: {
   events: Event[]
   contractId: string
+  proposals?: TimelineProposal[]
   currentUserRole?: string
   noteEndpointField?: 'contract_id' | 'company_id'
   notePlaceholder?: string
@@ -225,6 +231,28 @@ export function TimelineFeed({
                           {e.content}
                         </p>
                       )}
+                      {/* Qual proposta (código, versão e valor) com atalho para abrir */}
+                      {(() => {
+                        const pid = e.metadata?.proposal_id as string | undefined
+                        if (!pid || (e.type !== 'proposal' && e.type !== 'client_decision' && e.type !== 'client_rejection')) return null
+                        const p = proposals.find(x => x.id === pid)
+                        const code = (e.metadata?.control_code as string | undefined) ?? p?.control_code
+                        const version = (e.metadata?.version as number | undefined) ?? p?.version
+                        const value = Number(e.metadata?.proposal_value ?? p?.proposal_value) || 0
+                        const cid = (e.metadata?.contract_id as string | undefined) ?? (noteEndpointField === 'contract_id' ? contractId : undefined)
+                        return (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#e8e7f4', color: '#524e9c' }}>
+                              📄 {code ?? 'Proposta'}{version ? ` · versão ${version}` : ''}{value > 0 ? ` · ${brl(value)}/mês` : ''}
+                            </span>
+                            {cid && (
+                              <a href={`/contracts/${cid}/proposals/${pid}`} style={{ fontSize: 11, fontWeight: 600, color: '#1B556B' }}>
+                                Abrir proposta →
+                              </a>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
                         {e.profiles?.full_name && (
                           <span style={{ fontSize: 10, color: '#b0b8c8' }}>{e.profiles.full_name}</span>

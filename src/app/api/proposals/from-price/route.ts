@@ -308,9 +308,13 @@ export async function POST(req: Request) {
   }
 
   // 4. Atividade
+  const { data: propInfo } = proposal_id
+    ? await supabase.from('proposals').select('control_code, version').eq('id', proposal_id).maybeSingle()
+    : { data: null }
   await supabase.from('activities').insert({
     contract_id,
-    type: 'price',
+    type: 'proposal', // 'price' não é aceito na tabela de atividades (o registro se perdia)
+    metadata: proposal_id ? { proposal_id, contract_id, control_code: propInfo?.control_code ?? null, version: propInfo?.version ?? null, proposal_value: Number(proposal_value) || null } : null,
     content: `Proposta precificada no Price: ${fmtBRL(Number(proposal_value))}/mês${margem_pct ? ` · Margem: ${fmtPct(Number(margem_pct))}` : ''}.${priceSync ? ` Proposta montada com as ${priceSync}.` : ' Itens preenchidos automaticamente.'}`,
   })
 
