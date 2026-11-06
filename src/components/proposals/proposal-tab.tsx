@@ -146,8 +146,10 @@ function ActionsMenu({
               }} />
             )}
 
-            {/* Gerar PDF */}
-            <MenuItem icon={generatingPdf ? '⏳' : '📄'} label="Gerar PDF" onClick={handleGeneratePdf} />
+            {/* Gerar PDF — só depois que o Price enviou a precificação (antes sai zerado) */}
+            {Number(proposal.proposal_value) > 0 && (
+              <MenuItem icon={generatingPdf ? '⏳' : '📄'} label="Gerar PDF" onClick={handleGeneratePdf} />
+            )}
 
             {/* Excluir — só admin */}
             {currentUserRole === 'admin' && (

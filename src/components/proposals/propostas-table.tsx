@@ -129,8 +129,10 @@ function DropdownMenu({ p, currentUserRole }: { p: ProposalRow; currentUserRole:
               <Item icon="🔗" label="Ver link público"
                 onClick={() => { setMenuPos(null); window.open(`/proposals/client/${p.client_review_token}`, '_blank') }} />
             )}
-            <Item icon="📄" label="Gerar PDF"
-              onClick={() => { setMenuPos(null); window.open(`/api/proposals/generate-pdf/${p.contract_id}?proposal_id=${p.id}`, '_blank') }} />
+            {Number(p.proposal_value) > 0 && (
+              <Item icon="📄" label="Gerar PDF"
+                onClick={() => { setMenuPos(null); window.open(`/api/proposals/generate-pdf/${p.contract_id}?proposal_id=${p.id}`, '_blank') }} />
+            )}
           </div>
         </>
       )}

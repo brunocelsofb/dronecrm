@@ -22,8 +22,16 @@ export async function GET(
   // 1. Busca proposta (novo modelo ou legado)
   let serviceType = 'clinica'
   if (proposalId) {
-    const { data } = await admin.from('proposals').select('template_service_type').eq('id', proposalId).maybeSingle()
-    serviceType = data?.template_service_type ?? 'clinica'
+    const { data } = await admin.from('proposals').select('template_service_type, proposal_value').eq('id', proposalId).maybeSingle()
+    if (!data) return NextResponse.json({ error: 'Proposta não encontrada.' }, { status: 404 })
+    // Sem precificação o PDF sairia zerado: primeiro o Price envia o valor
+    if (!(Number(data.proposal_value) > 0)) {
+      return new NextResponse(
+        '<!doctype html><meta charset="utf-8"><title>Proposta sem precificação</title><body style="font-family:sans-serif;padding:32px;color:#1B556B"><h2>Proposta ainda sem precificação</h2><p>Abra o Price pela proposta, faça a precificação e clique em “Finalizar e Retornar ao CRM”. Depois disso o PDF fica disponível.</p></body>',
+        { status: 409, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+      )
+    }
+    serviceType = data.template_service_type ?? 'clinica'
   }
 
   // 2. Gera o miolo com o motor unificado
