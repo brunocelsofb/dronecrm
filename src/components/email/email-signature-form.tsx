@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef, useEffect } from 'react'
 import { Bold, Italic, Strikethrough } from 'lucide-react'
 import { updateEmailSignature } from '@/lib/actions/email'
@@ -105,10 +106,10 @@ export function EmailSignatureForm({ currentSignature }: { currentSignature: str
 
     const supabase = createClient()
     const storagePath = await tenantStoragePath(supabase, `signatures/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: uploadErr } = await supabase.storage.from('proposal-files').upload(storagePath, file)
+    const up = await uploadFile('proposal-files', storagePath, file)
 
-    if (uploadErr) {
-      setUploadError(`Falha no upload: ${uploadErr.message}`)
+    if (!up.ref) {
+      setUploadError(`Falha no upload: ${up.error}`)
       setUploadingImage(false)
       return
     }

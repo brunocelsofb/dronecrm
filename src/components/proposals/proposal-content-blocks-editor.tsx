@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { addImageBlock, addTableBlock, deleteContentBlock, updateBlockIntroduction, updateTableBlock } from '@/lib/actions/proposals'
@@ -176,13 +177,13 @@ export function ProposalContentBlocksEditor({
     setUploadingImage(true); setError(null)
     const supabase = createClient()
     const storagePath = await tenantStoragePath(supabase, `proposal-content/${proposalId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
-    if (uploadError) { setError(`Falha no upload: ${uploadError.message}`); setUploadingImage(false); return }
-    const result = await addImageBlock(proposalId, contractId, storagePath, imageSize)
+    const up = await uploadFile('proposal-files', storagePath, file)
+    if (!up.ref) { setError(`Falha no upload: ${up.error}`); setUploadingImage(false); return }
+    const result = await addImageBlock(proposalId, contractId, up.ref, imageSize)
     setUploadingImage(false)
     if (result.error) { setError(result.error) }
     else {
-      setBlocks(prev => [...prev, { id: result.id ?? crypto.randomUUID(), block_type: 'image', image_storage_path: storagePath, table_data: null, image_size: imageSize, introduction: null }])
+      setBlocks(prev => [...prev, { id: result.id ?? crypto.randomUUID(), block_type: 'image', image_storage_path: up.ref, table_data: null, image_size: imageSize, introduction: null }])
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }

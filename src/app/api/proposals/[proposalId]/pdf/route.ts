@@ -1,3 +1,4 @@
+import { storeDownload } from '@/lib/files/store'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -18,7 +19,7 @@ export async function GET(
     return NextResponse.json({ error: 'PDF não encontrado.' }, { status: 404 })
   }
 
-  const { data, error } = await supabase.storage.from('proposal-files').download(proposal.pdf_storage_path)
+  const { data, error } = await storeDownload('proposal-files', proposal.pdf_storage_path)
 
   if (error || !data) {
     return NextResponse.json({ error: 'Falha ao carregar o PDF.' }, { status: 404 })

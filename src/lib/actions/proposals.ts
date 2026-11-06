@@ -1,4 +1,5 @@
 'use server'
+import { storeUpload, refOk } from '@/lib/files/store'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -288,6 +289,7 @@ export async function createProposalVersion(
 // qualquer ponto da proposta.
 // ------------------------------------------------------------
 export async function addImageBlock(proposalId: string, contractId: string, storagePath: string, imageSize = 'medium'): Promise<ActionState & { id?: string }> {
+  if (!(await refOk(storagePath))) return { error: 'Arquivo inválido para esta empresa.' }
   const supabase = await createClient()
   const { count } = await supabase.from('proposal_content_blocks').select('id', { count: 'exact', head: true }).eq('proposal_id', proposalId)
   const { data, error } = await supabase.from('proposal_content_blocks').insert({
@@ -479,11 +481,8 @@ export async function generateProposalPdf(proposalId: string, contractId: string
 
   const finalPath = tenantStoragePathFor(await requireTenantId(), `generated/${proposalId}-v${proposal.version}-${Date.now()}.pdf`)
 
-  const { error: uploadError } = await supabase.storage
-    .from('proposal-files')
-    .upload(finalPath, bytes, { contentType: 'application/pdf' })
-
-  if (uploadError) return { error: `Falha ao salvar PDF: ${uploadError.message}` }
+  const up = await storeUpload('proposal-files', finalPath, bytes, { contentType: 'application/pdf' })
+  if (!up.ref) return { error: `Falha ao salvar PDF: ${up.error ?? 'erro'}` }
 
   const token = crypto.randomUUID()
 
@@ -491,7 +490,7 @@ export async function generateProposalPdf(proposalId: string, contractId: string
     .from('proposals')
     .update({
       status: 'pending_client',
-      pdf_storage_path: finalPath,
+      pdf_storage_path: up.ref,
       token,
       updated_at: new Date().toISOString(),
     })

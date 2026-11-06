@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { PLATFORM_BRAND } from '@/lib/config/platform'
+import { storePublicUrl } from '@/lib/files/store'
 
 export type PublicBranding = {
   wallpaperUrl: string | null
@@ -29,8 +30,7 @@ export async function getPublicBranding(tenantId?: string | null): Promise<Publi
     if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
       if (rawLogo.startsWith('http')) { logoUrl = rawLogo }
       else {
-        const { data } = admin.storage.from('public-assets').getPublicUrl(rawLogo)
-        logoUrl = data.publicUrl
+        logoUrl = storePublicUrl('public-assets', rawLogo)
       }
     }
   }

@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trash2, Upload } from 'lucide-react'
@@ -28,9 +29,9 @@ export function CompanyFilesSection({ companyId, files, contractFiles, isAdmin }
     setBusy(true); setError(null)
     const sb = createClient()
     const path = await tenantStoragePath(sb, `companies/${companyId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: upErr } = await sb.storage.from('contract-files').upload(path, file)
-    if (upErr) { setBusy(false); setError(`Falha no upload: ${upErr.message}`); return }
-    const r = await registerCompanyFile(companyId, { name: file.name, path, size: file.size, type: file.type, description: desc })
+    const up = await uploadFile('contract-files', path, file)
+    if (!up.ref) { setBusy(false); setError(`Falha no upload: ${up.error}`); return }
+    const r = await registerCompanyFile(companyId, { name: file.name, path: up.ref, size: file.size, type: file.type, description: desc })
     setBusy(false)
     if (!r.ok) { setError(r.error); return }
     setDesc(''); router.refresh()

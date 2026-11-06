@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { revealMessage, isSealed } from '@/components/whatsapp/reveal-message'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -212,11 +213,11 @@ export function ContractWhatsAppSection({
 
     const supabase = createClient()
     const storagePath = await tenantStoragePath(supabase, `whatsapp-media/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file)
+    const up = await uploadFile('proposal-files', storagePath, file)
 
-    if (uploadError) {
+    if (!up.ref) {
       setBusy(false)
-      setError(`Falha no upload: ${uploadError.message}`)
+      setError(`Falha no upload: ${up.error}`)
       return
     }
 

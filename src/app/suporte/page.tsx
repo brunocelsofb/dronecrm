@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { SupportForm } from './support-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import { resolvePublicTenantId } from '@/lib/tenant/context'
+import { storePublicUrl } from '@/lib/files/store'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -25,8 +26,7 @@ export default async function PublicSupportPage({ searchParams }: { searchParams
   if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
     if (rawLogo.startsWith('http')) { finalLogoUrl = rawLogo }
     else {
-      const { data } = admin.storage.from('public-assets').getPublicUrl(rawLogo)
-      finalLogoUrl = data.publicUrl
+      finalLogoUrl = storePublicUrl('public-assets', rawLogo)
     }
   }
 

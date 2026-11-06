@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { storeDownloadByPath } from '@/lib/files/store'
 
 // Serve arquivos do bucket "proposal-files" (pastas signatures/ e
 // custom-fields/) SEM exigir login — precisa ser público porque quem
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Caminho inválido.' }, { status: 400 })
   }
 
-  const supabase = createAdminClient()
-  const { data, error } = await supabase.storage.from('proposal-files').download(fullPath)
+  // Se a pasta de propostas já usa o R2, procura lá; senão (ou arquivo antigo), no Supabase
+  const { data, error } = await storeDownloadByPath('proposal-files', fullPath)
 
   if (error || !data) {
     return NextResponse.json({ error: 'Arquivo não encontrado.' }, { status: 404 })

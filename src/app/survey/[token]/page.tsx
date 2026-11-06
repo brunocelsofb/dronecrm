@@ -3,6 +3,7 @@ import { CustomSurveyForm } from '@/components/surveys/custom-survey-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import type { Question } from '@/lib/actions/custom-surveys'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { storePublicUrl } from '@/lib/files/store'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -44,14 +45,14 @@ export default async function CustomSurveyPublicPage({
   let finalLogoUrl: string | null = null
   if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
     if (rawLogo.startsWith('http')) { finalLogoUrl = rawLogo }
-    else { const { data } = adminClient.storage.from('public-assets').getPublicUrl(rawLogo); finalLogoUrl = data.publicUrl }
+    else { finalLogoUrl = storePublicUrl('public-assets', rawLogo) }
   }
   const isHospitalar = templateName.toLowerCase().includes('hospitalar') || templateName.toLowerCase().includes('predial')
   const rawSurveyBg = isHospitalar
     ? (orgSettings as any)?.survey_hospitalar_bg_url
     : (orgSettings as any)?.survey_clinica_bg_url
   const logoUrl = (rawLogo && rawLogo.trim() && rawLogo !== 'null')
-    ? adminClient.storage.from('public-assets').getPublicUrl(rawLogo).data.publicUrl
+    ? storePublicUrl('public-assets', rawLogo)
     : null
   const surveyBgUrl = (rawSurveyBg && rawSurveyBg.startsWith('https://')) ? rawSurveyBg : null
 

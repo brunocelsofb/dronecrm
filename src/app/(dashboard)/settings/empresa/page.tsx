@@ -8,6 +8,7 @@ import { headers } from 'next/headers'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { tenantLoginPath } from '@/lib/config/platform'
 import { CopyLinkBox } from '@/components/settings/copy-link-box'
+import { storePublicUrl } from '@/lib/files/store'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +26,7 @@ export default async function EmpresaSettingsPage() {
     .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd')
     .eq('tenant_id', tenantId).maybeSingle()
   let logo: string | null = null
-  if (s?.logo_storage_path) logo = s.logo_storage_path.startsWith('http') ? s.logo_storage_path : supabase.storage.from('public-assets').getPublicUrl(s.logo_storage_path).data.publicUrl
+  if (s?.logo_storage_path) logo = storePublicUrl('public-assets', s.logo_storage_path)
   return (
     <SettingsSubpage title="Dados da empresa" description="Logo, nome, CNPJ e o visual das propostas.">
       {loginUrl && (

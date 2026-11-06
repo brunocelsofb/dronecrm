@@ -4,6 +4,7 @@
 // navegador) — reaproveita o bucket "contract-files", só que num
 // caminho separado (prefixo "dimensionamento/").
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { sendDimensioningReview, reviewDimensioning } from '@/lib/actions/workflow'
@@ -47,15 +48,15 @@ export function DimensioningSection({ contractId, reviews }: { contractId: strin
     const supabase = createClient()
     const storagePath = await tenantStoragePath(supabase, `dimensionamento/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
 
-    const { error: uploadError } = await supabase.storage.from('contract-files').upload(storagePath, file)
+    const up = await uploadFile('contract-files', storagePath, file)
 
-    if (uploadError) {
-      setError(`Falha no upload: ${uploadError.message}`)
+    if (!up.ref) {
+      setError(`Falha no upload: ${up.error}`)
       setUploading(false)
       return
     }
 
-    const result = await sendDimensioningReview(contractId, storagePath, file.name)
+    const result = await sendDimensioningReview(contractId, up.ref, file.name)
     if (result.error) setError(result.error)
 
     setUploading(false)

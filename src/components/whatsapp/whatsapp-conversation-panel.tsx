@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { revealMessage } from '@/components/whatsapp/reveal-message'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -383,8 +384,8 @@ export function WhatsAppConversationPanel({
   async function uploadToStorage(file: Blob, name: string): Promise<string | null> {
     const safeName = name.replace(/[^a-zA-Z0-9.-]/g, '_')
     const storagePath = await tenantStoragePath(supabase, `whatsapp-media/central/${Date.now()}-${safeName}`)
-    const { error: uploadError } = await supabase.storage.from('proposal-files').upload(storagePath, file, { contentType: file.type || undefined })
-    if (uploadError) { setError(`Falha no upload: ${uploadError.message}`); return null }
+    const up = await uploadFile('proposal-files', storagePath, file, file.type || undefined)
+    if (!up.ref) { setError(`Falha no upload: ${up.error}`); return null }
     return `${window.location.origin}/api/email-assets/${storagePath}`
   }
 
@@ -457,9 +458,9 @@ export function WhatsAppConversationPanel({
     setBusy(true); setError(null)
     const ext = file.type === 'image/webp' ? 'webp' : file.type === 'image/png' ? 'png' : file.type === 'image/gif' ? 'gif' : 'jpg'
     const path = await tenantStoragePath(supabase, `whatsapp-media/stickers-upload/${Date.now()}.${ext}`)
-    const { error: upErr } = await supabase.storage.from('proposal-files').upload(path, file, { contentType: file.type })
-    if (upErr) { setBusy(false); setError(`Falha no upload: ${upErr.message}`); return }
-    const r = await addStickerFromUpload(path)
+    const up = await uploadFile('proposal-files', path, file, file.type)
+    if (!up.ref) { setBusy(false); setError(`Falha no upload: ${up.error}`); return }
+    const r = await addStickerFromUpload(up.ref)
     setBusy(false)
     if (!r.ok) { setError(r.error); return }
     const st = r.sticker!

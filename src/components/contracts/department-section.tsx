@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { transferContract, returnContract } from '@/lib/actions/workflow'
@@ -12,9 +13,9 @@ type TransferLog = { id: string; content: string; created_at: string; user_name:
 async function uploadAttachment(contractId: string, file: File): Promise<{ path: string; name: string } | null> {
   const supabase = createClient()
   const storagePath = await tenantStoragePath(supabase, `transfers/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-  const { error } = await supabase.storage.from('contract-files').upload(storagePath, file)
-  if (error) throw new Error(`Falha no upload: ${error.message}`)
-  return { path: storagePath, name: file.name }
+  const up = await uploadFile('contract-files', storagePath, file)
+  if (!up.ref) throw new Error(`Falha no upload: ${up.error}`)
+  return { path: up.ref, name: file.name }
 }
 
 export function DepartmentSection({

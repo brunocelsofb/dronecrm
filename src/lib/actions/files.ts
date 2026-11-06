@@ -1,4 +1,5 @@
 'use server'
+import { isR2Ref, assertTenantRef, storeRemove, refOk } from '@/lib/files/store'
 
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
@@ -37,6 +38,7 @@ export async function registerContractFile(
   kind: DocumentKind = 'arquivo',
   alreadySigned = false
 ) {
+  if (!(await refOk(storagePath))) return { error: 'Arquivo inválido para esta empresa.' }
   const supabase = await createClient()
   const {
     data: { user },
@@ -98,7 +100,12 @@ export async function renameContractFile(fileId: string, contractId: string, new
 export async function deleteContractFile(fileId: string, contractId: string, storagePath: string) {
   const supabase = await createClient()
 
-  await supabase.storage.from('contract-files').remove([storagePath])
+  // R2: só arquivo da própria empresa; Supabase: as regras do banco de arquivos decidem
+  if (isR2Ref(storagePath)) {
+    if (assertTenantRef(storagePath, await resolveTenantId())) await storeRemove('contract-files', [storagePath])
+  } else {
+    await supabase.storage.from('contract-files').remove([storagePath])
+  }
   await supabase.from('contract_files').delete().eq('id', fileId)
 
   revalidatePath(`/contracts/${contractId}`)
@@ -109,11 +116,8 @@ export async function deleteContractFile(fileId: string, contractId: string, sto
 // válido (aqui, 1 hora) é configurável; ajuste o número se precisar de
 // mais tempo.
 export async function getFileDownloadUrl(storagePath: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase.storage
-    .from('contract-files')
-    .createSignedUrl(storagePath, 3600)
-
-  if (error || !data) return { error: error?.message ?? 'Falha ao gerar link.' }
-  return { url: data.signedUrl }
+  const { getFileUrl } = await import('./files-upload')
+  const url = await getFileUrl('contract-files', storagePath, { ttl: 3600 })
+  if (!url) return { error: 'Falha ao gerar link.' }
+  return { url }
 }

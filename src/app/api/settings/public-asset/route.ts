@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { isPlatformOwner } from '@/lib/auth/platform-owner'
+import { assertTenantRef, storePublicUrl, storeRemove, refFromPublicUrl } from '@/lib/files/store'
 
 // Só administrador da empresa; fundo do login comum só o Super Admin na própria conta
 async function checkAccess(column: string): Promise<NextResponse | null> {
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
-  const { url, value, column } = await req.json()
+  const { url: rawUrl, ref, value, column } = await req.json()
   if (!ALLOWED_COLS.includes(column))
     return NextResponse.json({ error: 'Coluna não permitida' }, { status: 400 })
   const denied = await checkAccess(column)
@@ -32,8 +33,13 @@ export async function POST(req: Request) {
 
   const tenantId = await resolveTenantId()
   // Imagem enviada pela própria empresa (pasta dela); cor do fundo é texto livre
-  if (url && !(typeof url === 'string' && url.includes(`/public-assets/${tenantId}/`))) {
-    return NextResponse.json({ error: 'Imagem inválida para esta empresa.' }, { status: 400 })
+  let url: string | null = null
+  if (ref) {
+    if (!assertTenantRef(String(ref), tenantId)) return NextResponse.json({ error: 'Imagem inválida para esta empresa.' }, { status: 400 })
+    url = storePublicUrl('public-assets', String(ref))
+  } else if (rawUrl) {
+    if (!(typeof rawUrl === 'string' && (rawUrl.includes(`/public-assets/${tenantId}/`)))) return NextResponse.json({ error: 'Imagem inválida para esta empresa.' }, { status: 400 })
+    url = rawUrl
   }
   const admin = (await createScopedAdmin())
   const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('tenant_id', tenantId)
@@ -44,7 +50,7 @@ export async function POST(req: Request) {
   revalidatePath('/suporte')
   revalidatePath('/(auth)/login', 'layout')
   revalidatePath('/captura')
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, url })
 }
 
 export async function DELETE(req: Request) {
@@ -77,12 +83,10 @@ export async function DELETE(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   // Apaga do Storage se for URL do Supabase (extrai o path do bucket public-assets)
-  if (currentUrl && currentUrl.includes('/public-assets/')) {
-    try {
-      const path = decodeURIComponent(currentUrl.split('/public-assets/').pop() ?? '')
-      // Só apaga arquivo da pasta desta empresa
-      if (path && path.startsWith(`${await resolveTenantId()}/`) && !path.includes('..')) await admin.storage.from('public-assets').remove([path])
-    } catch { /* ignora erro de storage */ }
+  // Só apaga arquivo da pasta desta empresa (Supabase ou R2)
+  const oldRef = refFromPublicUrl('public-assets', currentUrl)
+  if (oldRef && assertTenantRef(oldRef, await resolveTenantId())) {
+    try { await storeRemove('public-assets', [oldRef]) } catch { /* ignora erro de armazenamento */ }
   }
 
   revalidatePath('/suporte')

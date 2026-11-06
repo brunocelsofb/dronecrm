@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { resolveTenantId } from '@/lib/tenant/context'
 import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { isPlatformOwner } from '@/lib/auth/platform-owner'
+import { storeUpload, storePublicUrl } from '@/lib/files/store'
 
 const ALLOWED_COLS = ['login_bg_url','support_bg_url','nps_bg_url','survey_clinica_bg_url','survey_hospitalar_bg_url','lead_bg_url']
 const ALLOWED_PATHS = ['login-bg','support-bg','nps-bg','survey-clinica','survey-hospitalar','lead-bg']
@@ -32,10 +33,10 @@ export async function POST(req: Request) {
   const path = `${await resolveTenantId()}/${bucketPath}/${Date.now()}.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg'}`
 
   const buffer = await file.arrayBuffer()
-  const { error: uploadErr } = await admin.storage.from('public-assets').upload(path, buffer, { contentType: file.type, upsert: true })
-  if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 400 })
-
-  const { data: { publicUrl } } = admin.storage.from('public-assets').getPublicUrl(path)
+  if (!/^image\//.test(file.type)) return NextResponse.json({ error: 'Envie uma imagem.' }, { status: 400 })
+  const up = await storeUpload('public-assets', path, buffer, { contentType: file.type, upsert: true })
+  if (!up.ref) return NextResponse.json({ error: up.error ?? 'Falha no envio' }, { status: 400 })
+  const publicUrl = storePublicUrl('public-assets', up.ref)
   const { error: dbErr } = await admin.from('organization_settings').update({ [column]: publicUrl }).eq('tenant_id', await resolveTenantId())
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 400 })
 

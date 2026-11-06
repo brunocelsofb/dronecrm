@@ -423,6 +423,7 @@ export async function closeRun(
     avulsoReport?: { storagePath: string; fileName: string } | null
   },
 ): Promise<MoveResult> {
+  { const { refOk } = await import('@/lib/files/store'); if (!(await refOk(extra?.avulsoReport?.storagePath))) return { error: 'Arquivo inválido para esta empresa.' } as MoveResult }
   const supabase = await createClient()
   const {
     data: { user },

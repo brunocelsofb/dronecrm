@@ -5,6 +5,7 @@
 //   - Medição: lançar o relatório do mês (medido − glosa = líquido) e ver quanto
 //     do potencial do contrato foi perdido. Sem relatório, só vale com aprovação do admin.
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -104,9 +105,9 @@ export function BillingSection({
       if (file) {
         const supabase = createClient()
         const storagePath = await tenantStoragePath(supabase, `billing/${contractId}/${year}-${month}-${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-        const { error: uploadError } = await supabase.storage.from('contract-files').upload(storagePath, file)
-        if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`)
-        filePath = storagePath
+        const up = await uploadFile('contract-files', storagePath, file)
+        if (!up.ref) throw new Error(`Falha no upload: ${up.error}`)
+        filePath = up.ref
         fileNameToSave = file.name
       }
       const r = await saveMeasurement({

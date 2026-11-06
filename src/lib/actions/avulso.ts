@@ -1,4 +1,5 @@
 'use server'
+import { refOk } from '@/lib/files/store'
 
 // Serviço avulso: relatório final anexado ANTES do ganho → o Hunter abre a
 // tarefa para o consultor dar ganho. No ganho (closeRun) o envio para
@@ -13,6 +14,7 @@ import { createAgentActivity } from '@/lib/agent/agent-activity'
 import { brl } from '@/lib/revenue/measurement'
 
 export async function attachAvulsoReport(contractId: string, storagePath: string, fileName: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await refOk(storagePath))) return { ok: false, error: 'Arquivo inválido para esta empresa.' }
   const { data: { user } } = await (await createClient()).auth.getUser()
   if (!user) return { ok: false, error: 'Usuário não autenticado.' }
   const tenantId = await resolveTenantId({ contractId })

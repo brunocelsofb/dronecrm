@@ -1,3 +1,4 @@
+import { storeDownload } from '@/lib/files/store'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -60,7 +61,7 @@ export async function GET(
 
   async function appendPdf(storagePath: string) {
     try {
-      const { data } = await admin.storage.from('proposal-files').download(storagePath)
+      const { data } = await storeDownload('proposal-files', storagePath)
       if (!data) return
       const bytes = new Uint8Array(await data.arrayBuffer())
       const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })

@@ -1,3 +1,4 @@
+import { storeDownload, storeDownloadLogo } from '@/lib/files/store'
 // Lógica de montagem do PDF, compartilhada entre:
 // 1. generateProposalPdf (o PDF "oficial", salvo e vinculado ao link do
 //    cliente, gerado só depois das aprovações internas)
@@ -69,7 +70,7 @@ export async function buildMergedProposalBytes(proposalId: string): Promise<{ by
   let logoBytes: Uint8Array | null = null
   let logoIsPng = true
   if (orgSettings?.logo_storage_path) {
-    const { data: logoFile } = await supabase.storage.from('proposal-files').download(orgSettings.logo_storage_path)
+    const { data: logoFile } = await storeDownloadLogo(orgSettings.logo_storage_path)
     if (logoFile) {
       logoBytes = new Uint8Array(await logoFile.arrayBuffer())
       logoIsPng = orgSettings.logo_storage_path.toLowerCase().endsWith('.png')
@@ -89,7 +90,7 @@ export async function buildMergedProposalBytes(proposalId: string): Promise<{ by
   const contentBlocks = await Promise.all(
     (rawContentBlocks ?? []).map(async (b) => {
       if (b.block_type === 'image' && b.image_storage_path) {
-        const { data: imgFile } = await supabase.storage.from('proposal-files').download(b.image_storage_path)
+        const { data: imgFile } = await storeDownload('proposal-files', b.image_storage_path)
         return {
           ...b,
           imageBytes: imgFile ? new Uint8Array(await imgFile.arrayBuffer()) : null,
@@ -180,7 +181,7 @@ export async function buildMergedProposalBytes(proposalId: string): Promise<{ by
           .maybeSingle()
 
         if (template) {
-          const { data: fileData } = await supabase.storage.from('proposal-files').download(template.file_storage_path)
+          const { data: fileData } = await storeDownload('proposal-files', template.file_storage_path)
           if (fileData) {
             const templateBytes = new Uint8Array(await fileData.arrayBuffer())
             const templateDoc = await PDFDocument.load(templateBytes)

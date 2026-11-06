@@ -1,4 +1,5 @@
 'use server'
+import { storeDownload } from '@/lib/files/store'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -93,7 +94,7 @@ export async function sendForSignature(input: {
       const isPdf = (file.mime_type ?? '').includes('pdf') || /\.pdf$/i.test(file.file_name ?? '')
       if (!isPdf) return { error: 'A ZapSign só recebe PDF. Converta o arquivo para PDF e anexe de novo.' }
       if ((file.file_size ?? 0) > 10 * 1024 * 1024) return { error: 'O PDF passa de 10 MB.' }
-      const { data: blob, error: dlErr } = await admin.storage.from('contract-files').download(file.storage_path)
+      const { data: blob, error: dlErr } = await storeDownload('contract-files', file.storage_path)
       if (dlErr || !blob) return { error: `Não foi possível abrir o PDF: ${dlErr?.message ?? 'sem conteúdo'}` }
       fileId = file.id
       result = await createZapSignFromPdf({

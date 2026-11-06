@@ -1,4 +1,5 @@
 'use server'
+import { refOk } from '@/lib/files/store'
 
 // Medição mensal de contratos "por medição":
 //   - valor medido (bruto) − glosa = líquido (entra na receita)
@@ -27,6 +28,7 @@ export type MeasurementInput = {
 }
 
 export async function saveMeasurement(input: MeasurementInput): Promise<MeasurementResult> {
+  if (!(await refOk(input.filePath))) return { ok: false, error: 'Arquivo inválido para esta empresa.' }
   const { data: { user } } = await (await createClient()).auth.getUser()
   if (!user) return { ok: false, error: 'Usuário não autenticado.' }
 

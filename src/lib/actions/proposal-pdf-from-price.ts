@@ -1,3 +1,4 @@
+import { storeDownload, storeDownloadLogo } from '@/lib/files/store'
 // Adaptador: converte snapshot do Price + textos em formato do buildStandardProposalPage de julho
 import { buildStandardProposalPage } from './proposal-pdf-builder'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -56,7 +57,7 @@ export async function buildPriceProposalPage(params: {
   if (org.logoStoragePath) {
     try {
       const admin = (await createScopedAdmin())
-      const { data } = await admin.storage.from('proposal-files').download(org.logoStoragePath)
+      const { data } = await storeDownloadLogo(org.logoStoragePath)
       if (data) {
         logoBytes = new Uint8Array(await data.arrayBuffer())
         logoIsPng = org.logoStoragePath.toLowerCase().endsWith('.png')

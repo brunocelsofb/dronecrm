@@ -1,3 +1,4 @@
+import { storeUpload, storeRemove } from '@/lib/files/store'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -22,10 +23,10 @@ export async function POST(req: Request) {
   const filePath = tenantStoragePathFor(await requireTenantId(), `templates/${Date.now()}-${sanitizeStorageFileName(fileName)}`)
 
   const bytes = await file.arrayBuffer()
-  const { error: upErr } = await admin.storage.from('proposal-files').upload(filePath, bytes, { contentType: 'application/pdf' })
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 })
+  const up = await storeUpload('proposal-files', filePath, bytes, { contentType: 'application/pdf' })
+  if (!up.ref) return NextResponse.json({ error: up.error ?? 'Falha no envio' }, { status: 400 })
 
-  await admin.from('proposal_templates').insert({ name, file_storage_path: filePath, file_name: fileName, page_count: pageCount, service_type: serviceType, created_by: user.id })
+  await admin.from('proposal_templates').insert({ name, file_storage_path: up.ref, file_name: fileName, page_count: pageCount, service_type: serviceType, created_by: user.id })
 
   return NextResponse.json({ ok: true })
 }
@@ -41,7 +42,7 @@ export async function DELETE(req: Request) {
 
   const admin = (await createScopedAdmin())
   const { data: t } = await admin.from('proposal_templates').select('file_storage_path').eq('id', id).maybeSingle()
-  if (t?.file_storage_path) await admin.storage.from('proposal-files').remove([t.file_storage_path])
+  if (t?.file_storage_path) await storeRemove('proposal-files', [t.file_storage_path])
   await admin.from('proposal_templates').delete().eq('id', id)
 
   return NextResponse.json({ ok: true })

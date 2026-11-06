@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { PublicTicketReplyForm } from '@/components/tickets/public-ticket-reply-form'
 import { TicketSatisfactionForm } from '@/components/tickets/ticket-satisfaction-form'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { storePublicUrl } from '@/lib/files/store'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -29,7 +30,7 @@ export default async function PublicTicketTrackingPage({ params }: { params: Pro
   const rawLogo = orgSettings?.logo_storage_path
   const supportBgUrl = (rawBg && rawBg.startsWith('https://')) ? rawBg : null
   const logoUrl = (rawLogo && rawLogo.trim() && rawLogo !== 'null')
-    ? supabase.storage.from('public-assets').getPublicUrl(rawLogo).data.publicUrl
+    ? storePublicUrl('public-assets', rawLogo)
     : null
 
   if (!ticket) {

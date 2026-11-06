@@ -1,4 +1,5 @@
 'use server'
+import { storeDownload, refPath, storeUpload, storeRemove } from '@/lib/files/store'
 // Central de WhatsApp como no app oficial: áudio de voz, reações, leitura e respostas rápidas.
 // Tudo pela empresa do usuário (createScopedAdmin); instância só se for da empresa.
 
@@ -179,7 +180,8 @@ export async function deleteQuickReply(id: string): Promise<Result> {
 export type Sticker = { id: string; url: string }
 const STICKER_MAX = 1024 * 1024 // 1 MB
 const STICKER_EXT: Record<string, string> = { 'image/webp': 'webp', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif' }
-const stickerUrl = (path: string) => `${appBaseUrl()}/api/email-assets/${path}`
+// Servida por /api/email-assets (procura no R2 quando a pasta já usa o R2, senão no Supabase)
+const stickerUrl = (path: string) => `${appBaseUrl()}/api/email-assets/${refPath(path)}`
 
 async function storeSticker(data: Buffer, mime: string, uid: string): Promise<Result<{ sticker?: Sticker }>> {
   const ext = STICKER_EXT[mime]
@@ -192,9 +194,9 @@ async function storeSticker(data: Buffer, mime: string, uid: string): Promise<Re
   const { data: existing } = await db.from('whatsapp_stickers').select('id, storage_path').eq('sha256', sha).maybeSingle()
   if (existing) return { ok: true, sticker: { id: existing.id, url: stickerUrl(existing.storage_path) } }
   const path = `${tenantId}/whatsapp-media/stickers/${sha.slice(0, 32)}.${ext}`
-  const { error: upErr } = await createAdminClient().storage.from('proposal-files').upload(path, data, { contentType: mime, upsert: true })
-  if (upErr) return { ok: false, error: `Falha ao guardar a figurinha: ${upErr.message}` }
-  const { data: row, error } = await db.from('whatsapp_stickers').insert({ storage_path: path, mime, sha256: sha, created_by: uid }).select('id, storage_path').single()
+  const up = await storeUpload('proposal-files', path, data, { contentType: mime, upsert: true })
+  if (!up.ref) return { ok: false, error: `Falha ao guardar a figurinha: ${up.error ?? 'erro'}` }
+  const { data: row, error } = await db.from('whatsapp_stickers').insert({ storage_path: up.ref, mime, sha256: sha, created_by: uid }).select('id, storage_path').single()
   if (error || !row) return { ok: false, error: error?.message ?? 'Falha ao salvar a figurinha.' }
   revalidatePath('/whatsapp')
   return { ok: true, sticker: { id: row.id, url: stickerUrl(row.storage_path) } }
@@ -220,7 +222,7 @@ export async function saveStickerFromMessage(rowId: string): Promise<Result<{ st
   // Arquivo que já está no nosso armazenamento (enviado pela Central)
   const own = String(m.media_url ?? '').match(/\/api\/email-assets\/(.+)$/)?.[1]
   if (own && tenantId && own.startsWith(`${tenantId}/`)) {
-    const { data: blob } = await createAdminClient().storage.from('proposal-files').download(decodeURIComponent(own))
+    const { data: blob } = await storeDownload('proposal-files', decodeURIComponent(own))
     if (!blob) return { ok: false, error: 'Arquivo não encontrado.' }
     return storeSticker(Buffer.from(await blob.arrayBuffer()), blob.type || 'image/webp', uid)
   }
@@ -239,13 +241,12 @@ export async function addStickerFromUpload(storagePath: string): Promise<Result<
   if (!uid) return { ok: false, error: 'Usuário não autenticado.' }
   if (await readOnlySupport()) return { ok: false, error: SUPPORT_READONLY_MESSAGE }
   const tenantId = await resolveTenantId()
-  if (!tenantId || !storagePath.startsWith(`${tenantId}/whatsapp-media/`) || storagePath.includes('..')) return { ok: false, error: 'Arquivo inválido.' }
-  const admin = createAdminClient()
-  const { data: blob } = await admin.storage.from('proposal-files').download(storagePath)
+  if (!tenantId || !refPath(storagePath).startsWith(`${tenantId}/whatsapp-media/`) || storagePath.includes('..')) return { ok: false, error: 'Arquivo inválido.' }
+  const { data: blob } = await storeDownload('proposal-files', storagePath)
   if (!blob) return { ok: false, error: 'Arquivo não encontrado.' }
   const r = await storeSticker(Buffer.from(await blob.arrayBuffer()), blob.type, uid)
   // O original enviado pela tela não é mais necessário (a figurinha guarda uma cópia)
-  if (r.ok) await admin.storage.from('proposal-files').remove([storagePath])
+  if (r.ok) await storeRemove('proposal-files', [storagePath])
   return r
 }
 

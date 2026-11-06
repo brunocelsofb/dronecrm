@@ -1,3 +1,4 @@
+import { storeUpload } from '@/lib/files/store'
 // Atualiza um documento da ZapSign no CRM a partir da própria API da ZapSign
 // (fonte da verdade). Usado pelo botão "Atualizar status" e pelo webhook —
 // o webhook não confia no corpo recebido: só usa o token do documento e
@@ -77,10 +78,10 @@ export async function applyZapSignState(doc: ZapSignDocRow, api: ZapSignDocument
       const buf = Buffer.from(await res.arrayBuffer())
       const fileName = `${doc.name} (assinado).pdf`
       const storagePath = tenantStoragePathFor(doc.tenant_id as string, `${doc.contract_id}/${Date.now()}-${sanitizeStorageFileName(fileName)}`)
-      const up = await admin.storage.from('contract-files').upload(storagePath, buf, { contentType: 'application/pdf' })
-      if (!up.error) {
+      const up = await storeUpload('contract-files', storagePath, buf, { contentType: 'application/pdf' })
+      if (up.ref) {
         const { data: file } = await admin.from('contract_files').insert({
-          tenant_id: doc.tenant_id, contract_id: doc.contract_id, file_name: fileName, storage_path: storagePath,
+          tenant_id: doc.tenant_id, contract_id: doc.contract_id, file_name: fileName, storage_path: up.ref,
           file_size: buf.byteLength, mime_type: 'application/pdf', uploaded_by: doc.created_by, document_kind: doc.document_kind,
         }).select('id').single()
         if (file) {
@@ -88,7 +89,7 @@ export async function applyZapSignState(doc: ZapSignDocRow, api: ZapSignDocument
           savedSignedFile = true
         }
       } else {
-        console.error('[zapsign] falha ao guardar PDF assinado:', up.error.message)
+        console.error('[zapsign] falha ao guardar PDF assinado:', up.error)
       }
     } else {
       console.error('[zapsign] falha ao baixar PDF assinado:', res.status)

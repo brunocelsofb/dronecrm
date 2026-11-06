@@ -294,7 +294,7 @@ export async function buildEmailFromTemplate(
     // de verdade quando usado dentro de um e-mail.
     customVars[field.field_key] =
       field.field_type === 'file' && rawValue
-        ? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/email-assets/${rawValue}`
+        ? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://crm-gestaocontratos-pi.vercel.app'}/api/email-assets/${String(rawValue).replace(/^r2:/, '')}`
         : rawValue
   }
 

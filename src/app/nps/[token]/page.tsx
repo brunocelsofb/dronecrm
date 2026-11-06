@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NpsForm } from '@/components/nps/nps-form'
 import { LogoBadge } from '@/components/ui/logo-badge'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { storePublicUrl } from '@/lib/files/store'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -36,8 +37,7 @@ export default async function NpsPublicPage({
     if (rawLogoPath.startsWith('http')) {
       finalLogoUrl = rawLogoPath
     } else {
-      const { data } = adminClient.storage.from('public-assets').getPublicUrl(rawLogoPath)
-      finalLogoUrl = data.publicUrl
+      finalLogoUrl = storePublicUrl('public-assets', rawLogoPath)
     }
   }
 

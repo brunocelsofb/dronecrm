@@ -3,7 +3,8 @@
 import { useState, useRef, useActionState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { updateOrganizationSettings, updateOrganizationLogo, type ActionState } from '@/lib/actions/settings'
-import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
+import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { uploadFile } from '@/lib/files/client-upload'
 
 const initialState: ActionState = {}
 
@@ -70,18 +71,16 @@ export function OrganizationSettingsForm({
     setPath: (v: string) => void
   ) {
     setUploading(true); setError(null)
-    const sb = createClient()
-    // Pasta da empresa (só ela grava e apaga aqui)
-    const storagePath = await tenantStoragePath(sb, `${folder}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: uploadError } = await sb.storage.from('public-assets').upload(storagePath, file)
-    if (uploadError) { setError(uploadError.message); setUploading(false); return }
-    const { data: { publicUrl } } = sb.storage.from('public-assets').getPublicUrl(storagePath)
+    // Pasta da empresa (o servidor põe o prefixo e confere o tipo); Supabase ou R2
+    const up = await uploadFile('public-assets', `${folder}/${Date.now()}-${sanitizeStorageFileName(file.name)}`, file)
+    if (!up.ref) { setError(up.error ?? 'Falha no envio'); setUploading(false); return }
     const res = await fetch('/api/settings/public-asset', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: publicUrl, column }),
+      body: JSON.stringify({ ref: up.ref, column }),
     })
     setUploading(false)
-    if (res.ok) setPath(publicUrl); else setError('Erro ao salvar')
+    const body = await res.json().catch(() => ({}))
+    if (res.ok && body.url) setPath(body.url); else setError(body.error ?? 'Erro ao salvar')
   }
 
   const npsRef = useRef<HTMLInputElement>(null)
@@ -125,27 +124,22 @@ export function OrganizationSettingsForm({
     setUploadingBg(true)
     setBgError(null)
 
-    const supabase = createClient()
-    const storagePath = await tenantStoragePath(supabase, `support-bg/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error: uploadError } = await supabase.storage.from('public-assets').upload(storagePath, file)
-
-    if (uploadError) {
-      setBgError(`Falha no upload: ${uploadError.message}`)
+    const up = await uploadFile('public-assets', `support-bg/${Date.now()}-${sanitizeStorageFileName(file.name)}`, file)
+    if (!up.ref) {
+      setBgError(`Falha no upload: ${up.error ?? 'erro'}`)
       setUploadingBg(false)
       return
     }
-
-    const { data: { publicUrl } } = supabase.storage.from('public-assets').getPublicUrl(storagePath)
-
-    // Salva a URL pública direto (não o path, pois é imagem pública)
+    // O servidor monta o endereço público (Supabase ou R2) e salva
     const res = await fetch('/api/settings/support-bg', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: publicUrl }),
+      body: JSON.stringify({ ref: up.ref }),
     })
     setUploadingBg(false)
-    if (!res.ok) setBgError('Erro ao salvar URL do wallpaper')
-    else setBgPath(publicUrl)
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || !body.url) setBgError(body.error ?? 'Erro ao salvar URL do wallpaper')
+    else setBgPath(body.url)
   }
 
   async function removeWallpaper(column: string, clearState: () => void) {

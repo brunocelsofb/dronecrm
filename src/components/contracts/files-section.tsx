@@ -7,6 +7,7 @@
 // (não tive como testar com um arquivo real). Se o upload falhar, me
 // mande a mensagem de erro exata que aparecer.
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Check, X } from 'lucide-react'
@@ -76,17 +77,15 @@ export function FilesSection({ contractId, initialFiles, mode = 'arquivos' }: { 
     // Caminho único por contrato + timestamp, pra evitar colisão de nomes
     const storagePath = await tenantStoragePath(supabase, `${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
 
-    const { error: uploadError } = await supabase.storage
-      .from('contract-files')
-      .upload(storagePath, file)
+    const up = await uploadFile('contract-files', storagePath, file)
 
-    if (uploadError) {
-      setError(`Falha no upload: ${uploadError.message}`)
+    if (!up.ref) {
+      setError(`Falha no upload: ${up.error}`)
       setUploading(false)
       return
     }
 
-    const result = await registerContractFile(contractId, file.name, storagePath, file.size, file.type, uploadKind, mode === 'contrato' && alreadySigned)
+    const result = await registerContractFile(contractId, file.name, up.ref, file.size, file.type, uploadKind, mode === 'contrato' && alreadySigned)
 
     if ('error' in result) {
       setError(result.error ?? 'Falha ao registrar o arquivo.')

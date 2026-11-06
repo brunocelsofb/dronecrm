@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { saveContractCustomFieldValues } from '@/lib/actions/custom-fields'
 import { createClient } from '@/lib/supabase/client'
@@ -33,11 +34,11 @@ export function ContractCustomFieldsSection({
 
     const supabase = createClient()
     const storagePath = await tenantStoragePath(supabase, `custom-fields/${contractId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
-    const { error } = await supabase.storage.from('proposal-files').upload(storagePath, file)
+    const up = await uploadFile('proposal-files', storagePath, file)
 
     setUploadingFieldId(null)
-    if (!error) {
-      setFilePaths((prev) => ({ ...prev, [fieldId]: storagePath }))
+    if (up.ref) {
+      setFilePaths((prev) => ({ ...prev, [fieldId]: up.ref as string }))
     }
   }
 

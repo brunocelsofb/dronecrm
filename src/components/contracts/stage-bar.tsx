@@ -1,5 +1,6 @@
 'use client'
 
+import { uploadFile } from '@/lib/files/client-upload'
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState, useTransition } from 'react'
 import { moveContractStage, reopenRun, closeRun, transferRunToPipeline } from '@/lib/actions/pipeline'
@@ -146,11 +147,11 @@ export function StageBar({
     try {
       const supabase = createClient()
       const storagePath = await tenantStoragePath(supabase, `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(file.name)}`)
-      const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, file)
-      if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
-      const reg = await registerContractFile(contractId, file.name, storagePath, file.size, file.type)
+      const up = await uploadFile('contract-files', storagePath, file)
+      if (!up.ref) { setError(`Falha no upload do relatório: ${up.error}`); return }
+      const reg = await registerContractFile(contractId, file.name, up.ref, file.size, file.type)
       if ('error' in reg) { setError(reg.error ?? 'Falha ao registrar o relatório.'); return }
-      const r = await attachAvulsoReport(contractId, storagePath, file.name)
+      const r = await attachAvulsoReport(contractId, up.ref, file.name)
       if (!r.ok) { setError(r.error); return }
       setReportMsg('Relatório anexado. O consultor recebeu a tarefa para dar ganho; no ganho, o envio para faturamento é automático.')
       router.refresh()
@@ -198,11 +199,11 @@ export function StageBar({
       if (outcome === 'won' && isAvulso && reportFile) {
         const supabase = createClient()
         const storagePath = await tenantStoragePath(supabase, `${contractId}/${Date.now()}-relatorio-${sanitizeStorageFileName(reportFile.name)}`)
-        const { error: upErr } = await supabase.storage.from('contract-files').upload(storagePath, reportFile)
-        if (upErr) { setError(`Falha no upload do relatório: ${upErr.message}`); return }
-        const reg = await registerContractFile(contractId, reportFile.name, storagePath, reportFile.size, reportFile.type)
+        const up = await uploadFile('contract-files', storagePath, reportFile)
+        if (!up.ref) { setError(`Falha no upload do relatório: ${up.error}`); return }
+        const reg = await registerContractFile(contractId, reportFile.name, up.ref, reportFile.size, reportFile.type)
         if ('error' in reg) { setError(reg.error ?? 'Falha ao registrar o relatório.'); return }
-        avulsoReport = { storagePath, fileName: reportFile.name }
+        avulsoReport = { storagePath: up.ref, fileName: reportFile.name }
       }
       const result = await closeRun(contractId, outcome, extraData?.lostReason, extraData?.accountOwnerId || null, {
         renewalNewValue: outcome === 'won' && isGestaoContratos ? renewalValueN : null,

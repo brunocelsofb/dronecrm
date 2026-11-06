@@ -1,4 +1,5 @@
 'use server'
+import { storeDownload } from '@/lib/files/store'
 
 // Farmer: ler o contrato (PDF dos arquivos do contrato) e transformar os
 // próximos passos da renovação em atividades.
@@ -42,7 +43,7 @@ export async function readContractWithAI(contractId: string): Promise<{ ok: true
 
   const loaded: { id: string; name: string; kind: 'contrato' | 'aditivo'; base64: string }[] = []
   for (const d of docs) {
-    const { data: blob, error: dlErr } = await admin.storage.from('contract-files').download(d.storage_path)
+    const { data: blob, error: dlErr } = await storeDownload('contract-files', d.storage_path)
     if (dlErr || !blob) return { ok: false, error: `Não foi possível abrir "${d.file_name}": ${dlErr?.message ?? 'sem conteúdo'}` }
     loaded.push({ id: d.id, name: d.file_name ?? 'documento.pdf', kind: d.document_kind as 'contrato' | 'aditivo', base64: Buffer.from(await blob.arrayBuffer()).toString('base64') })
   }

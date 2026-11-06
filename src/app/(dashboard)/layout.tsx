@@ -22,6 +22,7 @@ import { getImpersonationState } from '@/lib/actions/impersonate'
 import { getSupportSession, isStaleImpersonation } from '@/lib/tenant/support'
 import { DPA_VERSION } from '@/lib/legal/dpa'
 import { resolveTenantId } from '@/lib/tenant/context'
+import { storePublicUrl } from '@/lib/files/store'
 
 export default async function DashboardLayout({
   children,
@@ -101,8 +102,7 @@ export default async function DashboardLayout({
   if (rawLogo && rawLogo.trim() && rawLogo !== 'null') {
     if (rawLogo.startsWith('http')) { sidebarLogoUrl = rawLogo }
     else {
-      const { data } = adminSupa.storage.from('public-assets').getPublicUrl(rawLogo)
-      sidebarLogoUrl = data.publicUrl
+      sidebarLogoUrl = storePublicUrl('public-assets', rawLogo)
     }
   }
 

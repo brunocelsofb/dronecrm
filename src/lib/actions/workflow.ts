@@ -1,4 +1,5 @@
 'use server'
+import { refOk } from '@/lib/files/store'
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
@@ -73,6 +74,7 @@ export async function transferContract(
   filePath: string | null,
   fileName: string | null
 ): Promise<ActionState> {
+  if (!(await refOk(filePath))) return { error: 'Arquivo inválido para esta empresa.' }
   const supabase = await createClient()
   const {
     data: { user },
@@ -151,6 +153,7 @@ export async function transferContract(
 // Aceita uma nota descrevendo o que foi tratado, pra ficar registrado
 // junto do pedido original (feito na hora de transferir).
 export async function returnContract(contractId: string, note: string, filePath: string | null, fileName: string | null): Promise<ActionState> {
+  if (!(await refOk(filePath))) return { error: 'Arquivo inválido para esta empresa.' }
   const supabase = await createClient()
   const {
     data: { user },
@@ -283,6 +286,7 @@ export async function sendDimensioningReview(
   filePath: string,
   fileName: string
 ): Promise<ActionState> {
+  if (!(await refOk(filePath))) return { error: 'Arquivo inválido para esta empresa.' }
   const supabase = await createClient()
   const {
     data: { user },
