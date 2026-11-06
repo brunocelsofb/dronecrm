@@ -183,7 +183,6 @@ function MenuItem({ icon, label, onClick, danger }: { icon: string; label: strin
 }
 
 import { ProposalWorkflow } from './proposal-workflow'
-import { ProposalTextsEditor } from './proposal-texts-editor'
 import { ProposalsSection } from './proposals-section'
 
 export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems }: Props) {
@@ -321,16 +320,18 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
           />
           {!isReadOnly && currentUserRole !== 'aprovador_tecnico' && (
             <div id="montagem-proposta">
-              <ProposalTextsEditor
-                key={`texts-${selectedId}`}
-                contractId={contractId}
-                proposalId={selectedId}
-                initialData={{
-                  texto_objetivos: selected.texto_objetivos,
-                  texto_atividades: selected.texto_atividades,
-                  texto_estrutura_apoio: selected.texto_estrutura_apoio,
-                }}
-              />
+              {/* O conteúdo da proposta vem da Apresentação ao Cliente do Price e é ajustado na montagem */}
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <p className="text-sm font-medium text-gray-900">Conteúdo da proposta</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Vem da Apresentação ao Cliente do Price (seções, tabelas e itens). Para editar, excluir uma seção
+                  ou incluir imagens e tabelas, use a montagem.
+                </p>
+                <a href={`/contracts/${contractId}/proposals/${selectedId}`}
+                  className="mt-2 inline-block rounded-md border border-brand-700 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100">
+                  Abrir a montagem da proposta
+                </a>
+              </div>
             </div>
           )}
         </div>
