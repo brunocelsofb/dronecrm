@@ -28,7 +28,7 @@ export async function GET(
 
   const enriched = filtered.map(log => ({
     ...log,
-    actor_name: extractActor(log.content),
+    actor_name: (log.metadata as { actor?: string } | null)?.actor ?? extractActor(log.content),
   }))
 
   return NextResponse.json({ logs: enriched })

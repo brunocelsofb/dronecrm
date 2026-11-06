@@ -66,12 +66,23 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
 
-  // 1. Atualiza o run com o valor
-  await supabase
-    .from('pipeline_runs')
-    .update({ value: proposal_value })
-    .eq('contract_id', contract_id)
-    .eq('status', 'open')
+  // 1. Valor: em vendas muda na hora (valor estimado da oportunidade). Em contrato vigente
+  //    (funil de Gestão de Contratos = renovação/aditivo) o valor do contrato só muda na
+  //    aprovação final do cliente (api/proposals/client-review).
+  const { data: prevProp } = proposal_id
+    ? await supabase.from('proposals').select('proposal_value, control_code, version').eq('id', proposal_id).eq('contract_id', contract_id).maybeSingle()
+    : { data: null }
+  const previousValue = Number(prevProp?.proposal_value) || 0
+  const { data: openRun } = await supabase.from('pipeline_runs')
+    .select('id, pipeline_id').eq('contract_id', contract_id).eq('status', 'open').maybeSingle()
+  const { data: runPipeline } = openRun
+    ? await supabase.from('pipelines').select('type').eq('id', openRun.pipeline_id).maybeSingle()
+    : { data: null }
+  const isRenewal = runPipeline?.type === 'gestao_contratos'
+  if (openRun && !isRenewal) {
+    await supabase.from('pipeline_runs').update({ value: proposal_value }).eq('id', openRun.id)
+    await supabase.from('contracts').update({ monthly_value: proposal_value }).eq('id', contract_id)
+  }
 
   // 2. Gera review_token único para amarrar snapshot ao Price
   const { randomBytes } = await import('crypto')
@@ -308,14 +319,23 @@ export async function POST(req: Request) {
   }
 
   // 4. Atividade
-  const { data: propInfo } = proposal_id
-    ? await supabase.from('proposals').select('control_code, version').eq('id', proposal_id).maybeSingle()
-    : { data: null }
+  const v = Number(proposal_value)
+  const changed = previousValue > 0 && Math.abs(previousValue - v) >= 0.005
+  const content = previousValue > 0
+    ? (changed
+        ? `Precificação atualizada no Price: ${fmtBRL(v)}/mês (antes ${fmtBRL(previousValue)}/mês).`
+        : `Precificação reenviada pelo Price, sem mudança de valor: ${fmtBRL(v)}/mês.`)
+    : `Proposta precificada no Price: ${fmtBRL(v)}/mês.`
   await supabase.from('activities').insert({
     contract_id,
-    type: 'proposal', // 'price' não é aceito na tabela de atividades (o registro se perdia)
-    metadata: proposal_id ? { proposal_id, contract_id, control_code: propInfo?.control_code ?? null, version: propInfo?.version ?? null, proposal_value: Number(proposal_value) || null } : null,
-    content: `Proposta precificada no Price: ${fmtBRL(Number(proposal_value))}/mês${margem_pct ? ` · Margem: ${fmtPct(Number(margem_pct))}` : ''}.${priceSync ? ` Proposta montada com as ${priceSync}.` : ' Itens preenchidos automaticamente.'}`,
+    type: 'proposal', // 'price' não é aceito na tabela de atividades
+    metadata: proposal_id ? {
+      proposal_id, contract_id, actor: 'Price', kind: previousValue > 0 ? 'price_update' : 'price_first',
+      control_code: prevProp?.control_code ?? null, version: prevProp?.version ?? null, proposal_value: v || null,
+    } : null,
+    content: isRenewal && (changed || previousValue === 0)
+      ? `${content} O valor vigente do contrato só muda após a aprovação final do cliente.`
+      : content,
   })
 
   return NextResponse.json({ ok: true }, { headers: CORS })

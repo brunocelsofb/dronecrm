@@ -50,19 +50,23 @@ export async function POST(req: Request) {
       updated_at: now,
     }).eq('id', newProposal.id)
 
-    // Aditivo aprovado: substitui o valor do contrato na pipeline_run ativa
+    // Aprovação final do cliente: o valor da proposta passa a ser o valor do contrato
+    // (funil aberto e valor vigente do cadastro — o que aparece em "Valor vigente do contrato").
     if (isAprovado && newProposal.proposal_value) {
-      const { data: openRun } = await admin
-        .from('pipeline_runs').select('id, value').eq('contract_id', newProposal.contract_id).eq('status', 'open').maybeSingle()
-      if (openRun) {
-        const oldValue = Number(openRun.value) || 0
-        const newVal   = Number(newProposal.proposal_value)
-        await admin.from('pipeline_runs').update({ value: newVal }).eq('id', openRun.id)
+      const newVal = Number(newProposal.proposal_value)
+      const [{ data: openRun }, { data: cur }] = await Promise.all([
+        admin.from('pipeline_runs').select('id, value').eq('contract_id', newProposal.contract_id).eq('status', 'open').maybeSingle(),
+        admin.from('contracts').select('monthly_value').eq('id', newProposal.contract_id).maybeSingle(),
+      ])
+      const oldValue = Number(cur?.monthly_value) || Number(openRun?.value) || 0
+      if (openRun) await admin.from('pipeline_runs').update({ value: newVal }).eq('id', openRun.id)
+      await admin.from('contracts').update({ monthly_value: newVal }).eq('id', newProposal.contract_id)
+      if (Math.abs(oldValue - newVal) >= 0.005) {
         const pct = oldValue > 0 ? Math.round(((newVal - oldValue) / oldValue) * 1000) / 10 : null
         const fmtBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
         await admin.from('activities').insert({
           contract_id: newProposal.contract_id,
-          pipeline_run_id: openRun.id,
+          pipeline_run_id: openRun?.id ?? null,
           type: 'system',
           content: pct !== null
             ? `Valor do contrato atualizado para ${fmtBRL(newVal)} via proposta ${newProposal.control_code} (${fmtPct(pct, { signed: true })} sobre ${fmtBRL(oldValue)}).`

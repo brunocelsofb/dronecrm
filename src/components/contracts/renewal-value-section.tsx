@@ -8,9 +8,10 @@ function fmt(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 }
 
-export function RenewalValueSection({ contractId, currentValue, canEdit, canCreateProposal, isCurrentlyInContractsPipeline }: {
+export function RenewalValueSection({ contractId, currentValue, canEdit, canCreateProposal, isCurrentlyInContractsPipeline, pending }: {
   contractId: string
   currentValue: number
+  pending?: { value: number; code: string | null } | null
   canEdit: boolean
   canCreateProposal?: boolean
   isCurrentlyInContractsPipeline?: boolean
@@ -42,6 +43,11 @@ export function RenewalValueSection({ contractId, currentValue, canEdit, canCrea
           <p className="mt-1 text-2xl font-semibold text-gray-900 tabular-nums">
             {fmt(currentValue)}
           </p>
+          {pending && (
+            <p className="mt-1 text-xs text-gray-500">
+              Em proposta{pending.code ? ` (${pending.code})` : ''}: <strong className="text-gray-700">{fmt(pending.value)}/mês</strong> — passa a valer após a aprovação final do cliente.
+            </p>
+          )}
         </div>
 
         {!editing && (

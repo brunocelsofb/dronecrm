@@ -223,6 +223,12 @@ export default async function ContractDetailPage({
     ? (Number((contract as any).monthly_value) || Number(displayRun?.value ?? 0))
     : (proposalSum > 0 ? proposalSum : Number(displayRun?.value ?? 0))
 
+  // Renovação/aditivo em andamento: valor da proposta aberta (só vira o valor vigente na aprovação final)
+  const pendingProposal = isCurrentlyInContractsPipeline
+    ? (proposals ?? []).find(p => !['cliente_aprovado', 'cliente_recusado', 'declinada'].includes(p.workflow_status ?? '')
+        && Number(p.proposal_value) > 0 && Math.abs(Number(p.proposal_value) - estimatedValue) >= 0.005)
+    : undefined
+
   // Stages de todos os funis de vendas (para botão de transferência)
   const salesPipelineIds = (pipelines ?? []).filter(p => p.type === 'vendas').map(p => p.id)
   const { data: allStagesData } = salesPipelineIds.length > 1
@@ -520,6 +526,7 @@ export default async function ContractDetailPage({
                   <RenewalValueSection
                     contractId={contract.id}
                     currentValue={estimatedValue}
+                    pending={pendingProposal ? { value: Number(pendingProposal.proposal_value), code: pendingProposal.control_code ?? null } : null}
                     canEdit={canChangeStage}
                     canCreateProposal={['admin', 'member', 'aprovador_comercial'].includes(currentProfile?.role ?? '')}
                     isCurrentlyInContractsPipeline={isCurrentlyInContractsPipeline}
