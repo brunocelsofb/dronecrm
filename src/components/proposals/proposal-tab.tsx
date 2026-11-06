@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 
 type ProposalRow = {
@@ -189,7 +190,9 @@ import { ProposalsSection } from './proposals-section'
 
 export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems }: Props) {
   const router = useRouter()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // ?proposta=<id> (ex.: "Voltar para a proposta" da montagem) já abre essa proposta
+  const wanted = useSearchParams().get('proposta')
+  const [selectedId, setSelectedId] = useState<string | null>(wanted && proposals.some(p => p.id === wanted) ? wanted : null)
   const [creating, setCreating] = useState(false)
 
   const selected = proposals.find(p => p.id === selectedId)
