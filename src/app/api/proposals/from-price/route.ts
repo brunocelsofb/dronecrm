@@ -66,9 +66,9 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient()
 
-  // 1. Valor: em vendas muda na hora (valor estimado da oportunidade). Em contrato vigente
-  //    (funil de Gestão de Contratos = renovação/aditivo) o valor do contrato só muda na
-  //    aprovação final do cliente (api/proposals/client-review).
+  // 1. Valor: em vendas o Price muda só a previsão do funil (valor da oportunidade). O valor do
+  //    contrato (cadastro/"Valor vigente") só muda na aprovação final do cliente
+  //    (api/proposals/client-review), em qualquer funil.
   const { data: prevProp } = proposal_id
     ? await supabase.from('proposals').select('proposal_value, control_code, version').eq('id', proposal_id).eq('contract_id', contract_id).maybeSingle()
     : { data: null }
@@ -79,9 +79,9 @@ export async function POST(req: Request) {
     ? await supabase.from('pipelines').select('type').eq('id', openRun.pipeline_id).maybeSingle()
     : { data: null }
   const isRenewal = runPipeline?.type === 'gestao_contratos'
+  // O valor do contrato (cadastro) só muda na aprovação do cliente; aqui só a previsão do funil de vendas.
   if (openRun && !isRenewal) {
     await supabase.from('pipeline_runs').update({ value: proposal_value }).eq('id', openRun.id)
-    await supabase.from('contracts').update({ monthly_value: proposal_value }).eq('id', contract_id)
   }
 
   // 2. Gera review_token único para amarrar snapshot ao Price
