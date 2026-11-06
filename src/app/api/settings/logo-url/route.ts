@@ -10,6 +10,8 @@ export async function POST(req: Request) {
     const userClient = await createClient()
     const { data: { user } } = await userClient.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    const { data: profile } = await userClient.from('profiles').select('role').eq('id', user.id).maybeSingle()
+    if (profile?.role !== 'admin') return NextResponse.json({ error: 'Só o administrador da empresa troca o logo.' }, { status: 403 })
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -17,7 +19,8 @@ export async function POST(req: Request) {
 
     const admin = (await createScopedAdmin())
     const ext = file.name.split('.').pop() ?? 'png'
-    const path = `logo/${Date.now()}-logo.${ext}`
+    // Pasta da empresa: o logo de uma empresa não pode ser trocado por outra
+    const path = `${await resolveTenantId()}/logo/${Date.now()}-logo.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'png'}`
 
     const arrayBuffer = await file.arrayBuffer()
     const { error: uploadError } = await admin.storage

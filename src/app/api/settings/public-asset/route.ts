@@ -30,8 +30,13 @@ export async function POST(req: Request) {
   const denied = await checkAccess(column)
   if (denied) return denied
 
+  const tenantId = await resolveTenantId()
+  // Imagem enviada pela própria empresa (pasta dela); cor do fundo é texto livre
+  if (url && !(typeof url === 'string' && url.includes(`/public-assets/${tenantId}/`))) {
+    return NextResponse.json({ error: 'Imagem inválida para esta empresa.' }, { status: 400 })
+  }
   const admin = (await createScopedAdmin())
-  const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('tenant_id', await resolveTenantId())
+  const { error } = await admin.from('organization_settings').update({ [column]: value ?? url ?? null }).eq('tenant_id', tenantId)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   revalidatePath('/nps', 'layout')
@@ -74,8 +79,9 @@ export async function DELETE(req: Request) {
   // Apaga do Storage se for URL do Supabase (extrai o path do bucket public-assets)
   if (currentUrl && currentUrl.includes('/public-assets/')) {
     try {
-      const path = currentUrl.split('/public-assets/').pop()
-      if (path) await admin.storage.from('public-assets').remove([decodeURIComponent(path)])
+      const path = decodeURIComponent(currentUrl.split('/public-assets/').pop() ?? '')
+      // Só apaga arquivo da pasta desta empresa
+      if (path && path.startsWith(`${await resolveTenantId()}/`) && !path.includes('..')) await admin.storage.from('public-assets').remove([path])
     } catch { /* ignora erro de storage */ }
   }
 

@@ -10,7 +10,13 @@ export async function POST(req: Request) {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
+  const { data: profile } = await userClient.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (profile?.role !== 'admin') return NextResponse.json({ error: 'Só o administrador da empresa muda o fundo.' }, { status: 403 })
   const { url } = await req.json()
+  // Só imagem enviada pela própria empresa (pasta dela no armazenamento)
+  if (url && !(typeof url === 'string' && url.includes(`/public-assets/${await resolveTenantId()}/`))) {
+    return NextResponse.json({ error: 'Imagem inválida para esta empresa.' }, { status: 400 })
+  }
   const admin = (await createScopedAdmin())
 
   const { error } = await admin

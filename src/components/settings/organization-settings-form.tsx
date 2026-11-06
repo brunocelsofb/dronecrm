@@ -3,7 +3,7 @@
 import { useState, useRef, useActionState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { updateOrganizationSettings, updateOrganizationLogo, type ActionState } from '@/lib/actions/settings'
-import { sanitizeStorageFileName } from '@/lib/utils/storage'
+import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 const initialState: ActionState = {}
 
@@ -71,7 +71,8 @@ export function OrganizationSettingsForm({
   ) {
     setUploading(true); setError(null)
     const sb = createClient()
-    const storagePath = `${folder}/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    // Pasta da empresa (só ela grava e apaga aqui)
+    const storagePath = await tenantStoragePath(sb, `${folder}/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
     const { error: uploadError } = await sb.storage.from('public-assets').upload(storagePath, file)
     if (uploadError) { setError(uploadError.message); setUploading(false); return }
     const { data: { publicUrl } } = sb.storage.from('public-assets').getPublicUrl(storagePath)
@@ -125,7 +126,7 @@ export function OrganizationSettingsForm({
     setBgError(null)
 
     const supabase = createClient()
-    const storagePath = `support-bg/${Date.now()}-${sanitizeStorageFileName(file.name)}`
+    const storagePath = await tenantStoragePath(supabase, `support-bg/${Date.now()}-${sanitizeStorageFileName(file.name)}`)
     const { error: uploadError } = await supabase.storage.from('public-assets').upload(storagePath, file)
 
     if (uploadError) {

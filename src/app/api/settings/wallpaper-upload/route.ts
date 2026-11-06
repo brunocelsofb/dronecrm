@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
   const admin = (await createScopedAdmin())
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `${bucketPath}/${Date.now()}.${ext}`
+  const path = `${await resolveTenantId()}/${bucketPath}/${Date.now()}.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg'}`
 
   const buffer = await file.arrayBuffer()
   const { error: uploadErr } = await admin.storage.from('public-assets').upload(path, buffer, { contentType: file.type, upsert: true })
