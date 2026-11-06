@@ -19,6 +19,7 @@ export type AgentActivityInput = {
   assignedTo?: string | null        // profile id do responsável
   metadata?: Record<string, unknown>
   agent?: AgentName                 // quem abriu; sem isso, deduz pelo funil atual
+  dedupeIncludeDone?: boolean       // true: também não recria se já houver uma CONCLUÍDA com a mesma chave
 }
 
 // Farmer = carteira (contratos, renovação, medição, implantação, satisfação)
@@ -65,10 +66,10 @@ export async function createAgentActivity(
     .eq('contract_id', input.contractId)
     .eq('metadata->>source', 'copiloto_ia')
     .eq('metadata->>dedupe_key', input.dedupeKey)
-    .neq('status', 'done')
+    .neq('status', input.dedupeIncludeDone ? '__nenhum__' : 'done')
     .limit(1)
   if (oErr) return { status: 'error', error: oErr.message }
-  if (open && open.length > 0) return { status: 'skipped', reason: 'já existe atividade aberta' }
+  if (open && open.length > 0) return { status: 'skipped', reason: input.dedupeIncludeDone ? 'já existe (aberta ou concluída)' : 'já existe atividade aberta' }
 
   // Prévia ("Testar" na tela IA): só anota o que seria criado
   if (inPreview()) {

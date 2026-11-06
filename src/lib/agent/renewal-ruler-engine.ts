@@ -257,7 +257,7 @@ export async function startRenewalRuler(contractId: string, opts: { userId?: str
   const periodEnd = (c.valid_until as string | null)?.slice(0, 10) ?? null
   // Aviso de um período que já foi renovado (vigência mudou): não abre régua nova
   if (opts.periodEnd && opts.periodEnd.slice(0, 10) !== periodEnd) return { ok: false, error: 'O aviso é de um período anterior ao atual.' }
-  const steps = buildRunSteps(settings.steps, periodEnd)
+  const steps = buildRunSteps(settings.steps, periodEnd, new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10))
   const { data, error } = await admin.from('renewal_ruler_runs').insert({
     tenant_id: tenantId, contract_id: contractId, period_end: periodEnd, steps, current_index: 0,
     lock_renewed: settings.lock_renewed, started_by: opts.userId ?? null,
@@ -489,14 +489,23 @@ export async function markClientNoticeStep(contractId: string, opts: { userId?: 
   const r = await startRenewalRuler(contractId, { userId: opts.userId ?? null, firstDone: false, periodEnd: opts.periodEnd ?? null })
   if (!r.ok) return r
   const run = r.run
-  const idx = run.steps.findIndex(s => !s.done_at && s.done_when === 'client_notice')
-  if (idx < 0) return { ok: true as const }
-  if (openStepIndexes(run.steps).includes(idx)) await completeStepInternal(run, idx, opts.userId ?? null, 'Aviso ao cliente enviado', false, true)
-  else {
-    // Passo interno anterior ainda aberto: marca o aviso como feito sem pular a ordem dos outros
-    const steps = run.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: opts.userId ?? null, note: 'Aviso ao cliente enviado' } : s))
-    await save(run, { steps })
-    await logActivity(run, `✅ Régua de renovação: "${run.steps[idx].label}" concluído (aviso enviado).`)
+  // Todos os passos configurados como "concluído quando o aviso for enviado" (pode haver mais de um)
+  let cur = run
+  for (let guard = 0; guard < 10; guard++) {
+    const idx = cur.steps.findIndex(s => !s.done_at && s.done_when === 'client_notice')
+    if (idx < 0) break
+    if (openStepIndexes(cur.steps).includes(idx)) {
+      const ok = await completeStepInternal(cur, idx, opts.userId ?? null, 'Aviso ao cliente enviado', false, true)
+      if (!ok) break
+    } else {
+      // Passo interno anterior ainda aberto: marca o aviso como feito sem pular a ordem dos outros
+      const steps = cur.steps.map((s, i) => (i === idx ? { ...s, done_at: nowIso(), done_by: opts.userId ?? null, note: 'Aviso ao cliente enviado' } : s))
+      await save(cur, { steps })
+      await logActivity(cur, `✅ Régua de renovação: "${cur.steps[idx].label}" concluído (aviso enviado).`)
+    }
+    const { data: fresh } = await createAdminClient().from('renewal_ruler_runs').select('*').eq('id', cur.id).maybeSingle()
+    if (!fresh) break
+    cur = fresh as RulerRun
   }
   return { ok: true as const }
 }

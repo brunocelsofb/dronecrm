@@ -256,7 +256,7 @@ async function processContract(
           `${i + 1}. ${st.acao}${st.prazo ? ` (até ${formatDateBR(st.prazo)})` : ''}${st.clausula ? ` — ${st.clausula}` : ''}`).join('\n')
       : `\n\nDica: anexe o contrato e os aditivos em PDF na aba "Contrato e aditivos" e peça a leitura (Admin) — o Farmer indica aviso prévio, reajuste e os próximos passos.`
     const r = await createAgentActivity(supabase, {
-      contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
+      contractId: c.id, dedupeKey, dedupeIncludeDone: true, dueInDays, assignedTo: org.assignee ?? c.owner_id,
       activityType: 'task',
       title: `Preparar renovação — ${c.client_name}`,
       content:
@@ -276,7 +276,7 @@ async function processContract(
   const missing = [!c.contact_phone && 'WhatsApp', !c.contact_email && 'e-mail'].filter(Boolean) as string[]
   if (missing.length > 0) {
     const r = await createAgentActivity(supabase, {
-      contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
+      contractId: c.id, dedupeKey, dedupeIncludeDone: true, dueInDays, assignedTo: org.assignee ?? c.owner_id,
       activityType: 'task',
       title: `Aviso de renovação sem ${missing.join(' e ')} — ${c.client_name}`,
       content:
@@ -290,7 +290,7 @@ async function processContract(
   const draft = buildClientMessage(c, level, org)
   const draftSubject = renderRenewalTemplate(org.emailSubject, templateVars(c, org))
   const r = await createAgentActivity(supabase, {
-    contractId: c.id, dedupeKey, dueInDays, assignedTo: org.assignee ?? c.owner_id,
+    contractId: c.id, dedupeKey, dedupeIncludeDone: true, dueInDays, assignedTo: org.assignee ?? c.owner_id,
     activityType: 'whatsapp',
     title: level === 0
       ? `Enviar aviso de contrato vencido — ${c.client_name}`

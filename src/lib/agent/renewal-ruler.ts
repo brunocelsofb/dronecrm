@@ -224,10 +224,15 @@ export function dueDate(periodEnd: string | null, daysBefore: number): string | 
 }
 
 // Passos ordenados pelo prazo (mais distante do vencimento primeiro)
-export function buildRunSteps(steps: RulerStep[], periodEnd: string | null): RunStep[] {
+// today (AAAA-MM-DD): régua que começa atrasada (contrato entrou perto do vencimento) — o prazo que já
+// passou vira o dia de hoje, para não nascer "atrasado há N dias" por algo que ninguém podia ter feito.
+export function buildRunSteps(steps: RulerStep[], periodEnd: string | null, today?: string): RunStep[] {
   return [...steps]
     .sort((a, b) => b.days_before - a.days_before)
-    .map((s, i) => ({ ...s, with_previous: i > 0 && !!s.with_previous, due_date: dueDate(periodEnd, s.days_before), done_at: null, done_by: null, notified_at: null, overdue_notified_at: null }))
+    .map((s, i) => {
+      const due = dueDate(periodEnd, s.days_before)
+      return { ...s, with_previous: i > 0 && !!s.with_previous, due_date: today && due && due < today ? today : due, done_at: null, done_by: null, notified_at: null, overdue_notified_at: null }
+    })
 }
 
 // Passos que estão "em andamento" agora (chegaram e não foram concluídos); se nenhum chegou, o 1º aberto
