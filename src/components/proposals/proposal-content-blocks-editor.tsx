@@ -3,7 +3,9 @@
 import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { addImageBlock, addTableBlock, deleteContentBlock, updateBlockIntroduction, updateTableBlock } from '@/lib/actions/proposals'
+import { addImageBlock, addTableBlock, updateBlockIntroduction, updateTableBlock } from '@/lib/actions/proposals'
+import { removeProposalBlock, restorePriceSections, updateBlockTitle } from '@/lib/actions/proposal-price-sections'
+import { useRouter } from 'next/navigation'
 import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
 type ContentBlock = {
@@ -16,6 +18,9 @@ type ContentBlock = {
   introduction?: string | null
   show_totals?: boolean | null
   text_align?: string | null
+  source?: string | null
+  section_key?: string | null
+  title?: string | null
 }
 
 type EditingState = {
@@ -26,12 +31,13 @@ type EditingState = {
   saving: boolean
 }
 
+// Cores da paleta oficial
 const PRESET_COLORS = [
-  { label: 'Orbis',  value: '#1B556B' },
-  { label: 'Verde',  value: '#1f8c7d' },
-  { label: 'Cinza',  value: '#374151' },
-  { label: 'Azul',   value: '#1e40af' },
-  { label: 'Preto',  value: '#111827' },
+  { label: 'Azul petróleo', value: '#1B556B' },
+  { label: 'Verde',         value: '#32AF9D' },
+  { label: 'Coral',         value: '#E98C5F' },
+  { label: 'Roxo',          value: '#524E9C' },
+  { label: 'Azul',          value: '#00AFD1' },
 ]
 
 const BTN_SM = 'px-2 py-0.5 text-xs rounded border'
@@ -112,14 +118,19 @@ function TableControls({ rows, onCell, onAddRow, onAddCol, onDelRow, onDelCol, c
 }
 
 export function ProposalContentBlocksEditor({
-  proposalId, contractId, initialBlocks, canEdit,
+  proposalId, contractId, initialBlocks, canEdit, hasPriceApresentacao = false, hiddenPriceSections = 0,
 }: {
   proposalId: string
   contractId: string
   initialBlocks: ContentBlock[]
   canEdit: boolean
+  hasPriceApresentacao?: boolean
+  hiddenPriceSections?: number
 }) {
+  const router = useRouter()
   const [blocks, setBlocks] = useState<ContentBlock[]>(initialBlocks)
+  const [hidden, setHidden] = useState(hiddenPriceSections)
+  const [restoring, setRestoring] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editState, setEditState] = useState<EditingState | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -204,9 +215,26 @@ export function ProposalContentBlocksEditor({
     }
   }
 
-  async function handleDelete(blockId: string) {
-    setBlocks(prev => prev.filter(b => b.id !== blockId))
-    await deleteContentBlock(blockId, contractId, proposalId)
+  async function handleDelete(b: ContentBlock) {
+    setBlocks(prev => prev.filter(x => x.id !== b.id))
+    const r = await removeProposalBlock(b.id, proposalId)
+    if (!r.ok) { setError(r.error); setBlocks(prev => [...prev, b]); return }
+    if (b.source === 'price') setHidden(h => h + 1)
+  }
+
+  async function handleRestore() {
+    setRestoring(true); setError(null)
+    const r = await restorePriceSections(proposalId)
+    setRestoring(false)
+    if (!r.ok) { setError(r.error); return }
+    setHidden(0)
+    router.refresh()
+  }
+
+  async function saveTitle(blockId: string, title: string) {
+    const r = await updateBlockTitle(blockId, proposalId, title)
+    if (!r.ok) { setError(r.error); return }
+    setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, title } : b))
   }
 
   async function saveIntro(blockId: string, intro: string) {
@@ -221,8 +249,23 @@ export function ProposalContentBlocksEditor({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-sm font-medium text-gray-900">Conteúdo extra (imagens e tabelas)</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Cada item pode ter um texto de introdução que aparece antes dele no PDF.</p>
+        <h2 className="text-sm font-medium text-gray-900">Conteúdo da proposta</h2>
+        <p className="text-xs text-gray-400 mt-0.5">
+          As seções marcadas &ldquo;Price&rdquo; vêm da Apresentação ao Cliente do Price, na mesma ordem e com os mesmos valores.
+          Edite o que quiser ou exclua o que não deve ir para o cliente. Imagens e tabelas suas entram depois delas.
+        </p>
+        {canEdit && hasPriceApresentacao && hidden > 0 && (
+          <button onClick={handleRestore} disabled={restoring}
+            className="mt-2 rounded-md border border-brand-700 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+            {restoring ? 'Trazendo...' : `↺ Trazer de volta ${hidden} ${hidden === 1 ? 'seção excluída' : 'seções excluídas'} do Price`}
+          </button>
+        )}
+        {canEdit && hasPriceApresentacao && !blocks.some(b => b.source === 'price') && hidden === 0 && (
+          <button onClick={handleRestore} disabled={restoring}
+            className="mt-2 rounded-md border border-brand-700 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+            {restoring ? 'Trazendo...' : '↺ Trazer as seções da apresentação do Price'}
+          </button>
+        )}
       </div>
 
       {/* Lista de blocks */}
@@ -232,7 +275,10 @@ export function ProposalContentBlocksEditor({
             {/* Header do block */}
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                {b.block_type === 'image' ? '🖼️ Imagem' : '▦ Tabela'}
+                {b.source === 'price' && (
+                  <span className="mr-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold normal-case tracking-normal text-white" style={{ background: '#E98C5F' }}>Price</span>
+                )}
+                {b.block_type === 'image' ? '🖼️ Imagem' : b.block_type === 'text' ? '📝 Texto' : '▦ Tabela'}
                 {b.block_type === 'table' && b.table_data ? ` (${b.table_data.rows.length}×${b.table_data.rows[0]?.length ?? 0})` : ''}
               </span>
               {canEdit && (
@@ -243,16 +289,24 @@ export function ProposalContentBlocksEditor({
                   {editingId === b.id && (
                     <button onClick={cancelEdit} className="text-xs text-gray-400 hover:underline">✕ Cancelar</button>
                   )}
-                  <button onClick={() => handleDelete(b.id)} className="text-xs text-gray-400 hover:text-red-500">🗑️ Remover</button>
+                  <button onClick={() => handleDelete(b)} className="text-xs text-gray-400 hover:text-red-500">🗑️ Excluir</button>
                 </div>
               )}
             </div>
 
+            {/* Título da seção (aparece em destaque no PDF) */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Título no PDF (opcional)</label>
+              <input defaultValue={b.title ?? ''} onBlur={e => { if (e.target.value !== (b.title ?? '')) saveTitle(b.id, e.target.value) }}
+                disabled={!canEdit} placeholder="Sem título"
+                className="w-full border border-gray-200 rounded px-2 py-1 text-xs font-semibold text-gray-800 focus:outline-none focus:border-brand-700 disabled:bg-gray-50" />
+            </div>
+
             {/* Introdução */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Texto de introdução para este item</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{b.block_type === 'text' ? 'Texto' : 'Texto de introdução para este item'}</label>
               <textarea defaultValue={b.introduction ?? ''} onBlur={e => saveIntro(b.id, e.target.value)}
-                rows={5} placeholder="Digite o contexto ou introdução..." disabled={!canEdit}
+                rows={b.block_type === 'text' ? 8 : 5} placeholder="Digite o contexto ou introdução..." disabled={!canEdit}
                 className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:border-brand-700 resize-y disabled:bg-gray-50"
                 style={{ minHeight: '80px' }} />
               {savingIntro === b.id && <span className="text-xs text-gray-400">Salvando...</span>}

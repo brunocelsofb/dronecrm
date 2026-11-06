@@ -1,6 +1,7 @@
-import { fmtPct, fmtNum1 } from '@/lib/format'
+import { fmtPct, fmtNum1, fmtBRL } from '@/lib/format'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readApresentacao, sectionsToApply, writePriceBlocks } from '@/lib/proposals/price-sections'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -100,8 +101,59 @@ export async function POST(req: Request) {
     }
   }
 
-  // 3. Cria/atualiza proposta no sistema de julho com itens do Price
-  if (snap) {
+  // 3a. Apresentação ao Cliente do Price (seções já calculadas): a proposta espelha o Price.
+  //     Cada seção vira um bloco da montagem; itens = os mesmos do resumo do Price.
+  const apresentacao = proposal_id ? readApresentacao(snap) : null
+  let priceSync: string | null = null
+  if (apresentacao) {
+    const { data: prop } = await supabase.from('proposals')
+      .select('id, contract_id, tenant_id, status, workflow_status, price_sections_hidden')
+      .eq('id', proposal_id).maybeSingle()
+    const closed = ['cliente_aprovado', 'cliente_recusado', 'declinada'].includes(prop?.workflow_status ?? '')
+    if (!prop || prop.contract_id !== contract_id) {
+      return NextResponse.json({ error: 'Proposta não pertence a esta oportunidade.' }, { status: 400, headers: CORS })
+    }
+    if (prop.status === 'draft' && !closed) {
+      const tenantId = prop.tenant_id as string
+      const { data: org } = await supabase.from('organization_settings')
+        .select('price_sections, proposal_brand_color').eq('tenant_id', tenantId).maybeSingle()
+      const secoes = sectionsToApply(apresentacao, (org?.price_sections as string[] | null) ?? null, prop.price_sections_hidden as string[] | null)
+      const w = await writePriceBlocks(supabase, { proposalId: prop.id, tenantId, secoes, headerColor: org?.proposal_brand_color, mode: 'replace' })
+      if (w.error) console.error('[from-price] blocos:', w.error)
+
+      const itens = apresentacao.itens ?? []
+      if (itens.length) {
+        const categoria = snap?.tipoEngenharia ? `Engenharia ${snap.tipoEngenharia}` : null
+        const rows = itens.map((it, i) => ({
+          proposal_id: prop.id,
+          tenant_id: tenantId,
+          position: i,
+          quantity: 1,
+          category: categoria,
+          item: it.titulo.slice(0, 300),
+          characteristics: (it.descricao ?? '').slice(0, 500) || null,
+          type: it.tipo === 'Pontual' ? 'Pontual' : 'MRR',
+          delivery_forecast: null,
+          unit_value: Math.round(Number(it.valorMensal) * 100) / 100,
+          discount: 0,
+          subtotal: Math.round(Number(it.valorMensal) * 100) / 100,
+        }))
+        await supabase.from('proposal_items').delete().eq('proposal_id', prop.id).eq('tenant_id', tenantId)
+        const { error: itErr } = await supabase.from('proposal_items').insert(rows)
+        if (itErr) console.error('[from-price] itens:', itErr.message)
+      }
+      const dur = Number(apresentacao.duracaoMeses ?? snap?.contractDuration) || null
+      await supabase.from('proposals').update({
+        is_recurring: true,
+        ...(dur ? { installments: dur } : {}),
+        updated_at: new Date().toISOString(),
+      }).eq('id', prop.id).eq('tenant_id', tenantId)
+      priceSync = `${secoes.length} seções da apresentação`
+    }
+  }
+
+  // 3b. Formato antigo (Price sem a apresentação): cria/atualiza proposta com itens do Price
+  if (snap && !apresentacao) {
     const dur = snap.contractDuration ?? 12
     const escopo = (snap.escopoSanitizado ?? snap.escopoServicos ?? []).map(san).join(' - ')
     const profs = (snap.professionals ?? []).filter((p: any) => p.role?.trim())
@@ -246,7 +298,7 @@ export async function POST(req: Request) {
   await supabase.from('activities').insert({
     contract_id,
     type: 'price',
-    content: `Proposta precificada no ORBIS Price: R$ ${Number(proposal_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mes${margem_pct ? ` · Margem: ${fmtPct(Number(margem_pct))}` : ''}. Itens preenchidos automaticamente.`,
+    content: `Proposta precificada no Price: ${fmtBRL(Number(proposal_value))}/mês${margem_pct ? ` · Margem: ${fmtPct(Number(margem_pct))}` : ''}.${priceSync ? ` Proposta montada com as ${priceSync}.` : ' Itens preenchidos automaticamente.'}`,
   })
 
   return NextResponse.json({ ok: true }, { headers: CORS })

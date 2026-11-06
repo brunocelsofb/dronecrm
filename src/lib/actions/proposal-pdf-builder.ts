@@ -63,6 +63,13 @@ type ContentBlock = {
   block_type: string
   image_storage_path: string | null
   table_data: { rows: string[][] } | null
+  title?: string | null
+  source?: string | null
+  introduction?: string | null
+  imageSize?: string | null
+  headerColor?: string | null
+  textAlign?: string | null
+  showTotals?: boolean | null
   imageBytes?: Uint8Array | null
   imageIsPng?: boolean
 }
@@ -114,6 +121,25 @@ export async function buildStandardProposalPage({
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
 
+  // A fonte padrão do PDF não tem todos os caracteres (ex.: ≥, ✓, emojis): troca os conhecidos
+  // e remove o resto, para o PDF nunca falhar por causa de um texto colado.
+  const charOk = new Map<string, boolean>()
+  const SWAP: Record<string, string> = { '≥': '>=', '≤': '<=', '✓': 'v', '✔': 'v', '→': '->', '←': '<-', '\u00a0': ' ', '\t': ' ', '−': '-' }
+  function pdfSafe(str: string | null | undefined): string {
+    let out = ''
+    for (const ch of Array.from(String(str ?? ''))) {
+      if (ch === '\n') { out += ch; continue }
+      const c = SWAP[ch] ?? ch
+      let ok = charOk.get(c)
+      if (ok === undefined) {
+        try { font.encodeText(c); fontBold.encodeText(c); ok = true } catch { ok = false }
+        charOk.set(c, ok)
+      }
+      if (ok) out += c
+    }
+    return out
+  }
+
   const pageWidth = 595
   const pageHeight = 842
   const margin = 32
@@ -128,7 +154,7 @@ export async function buildStandardProposalPage({
   }
 
   function text(str: string, x: number, yPos: number, opts: { size?: number; bold?: boolean; color?: [number, number, number] } = {}) {
-    page.drawText(str || '—', {
+    page.drawText(pdfSafe(str).replace(/\n/g, ' ') || '—', {
       x,
       y: yPos,
       size: opts.size ?? 9,
@@ -290,6 +316,7 @@ export async function buildStandardProposalPage({
     // Para cada linha do texto plain, encontra os segmentos formatados correspondentes
     let plainPos = 0
     for (let li = 0; li < lines.length; li++) {
+      if (ly < margin + 2) { page = doc.addPage([pageWidth, pageHeight]); ly = pageHeight - margin }
       const lineText = lines[li]
       const isLast = li === lines.length - 1
 
@@ -356,20 +383,36 @@ export async function buildStandardProposalPage({
   }
 
   if (contentBlocks.length > 0) y -= 8
+  const NUMERIC = /^(R\$\s?)?-?[\d.]+(,\d+)?\s?%?$|^—$|^-$/
+  const TOTAL_ROW = /^(total|valor global|subtotal)/i
   for (const block of contentBlocks) {
-    // Texto de introdução justificado com quebra de linha automática
-    if ((block as any).introduction?.trim()) {
-      newPageIfNeeded(20)
-      const introLines = wrapWords((block as any).introduction.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1'), pageWidth - margin * 2, 9)
-      newPageIfNeeded(introLines.length * 13 + 8)
-      y = drawRichText((block as any).introduction, margin, y, pageWidth - margin * 2, 9)
+    // Título da seção (ex.: seções vindas do Price)
+    const title = pdfSafe(block.title).replace(/\n/g, ' ').trim()
+    if (title) {
+      newPageIfNeeded(40)
       y -= 4
+      page.drawText(title, { x: margin, y, size: 11, font: fontBold, color: rgb(...brandRgb) })
+      y -= 5
+      page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.4, color: rgb(...brandRgb) })
+      y -= 13
+    }
+    // Texto (ou introdução) justificado, respeitando parágrafos e listas
+    const intro = pdfSafe(block.introduction).trim()
+    if (intro) {
+      for (const para of intro.split('\n')) {
+        if (!para.trim()) { y -= 6; continue }
+        const plain = para.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1')
+        const n = wrapWords(plain, pageWidth - margin * 2, 9).length
+        newPageIfNeeded(Math.min(n, 3) * 13 + 4)
+        y = drawRichText(para.trim(), margin, y, pageWidth - margin * 2, 9)
+      }
+      y -= 6
     }
     if (block.block_type === 'image' && block.imageBytes) {
       try {
         const image = block.imageIsPng ? await doc.embedPng(block.imageBytes) : await doc.embedJpg(block.imageBytes)
         const sizeMap: Record<string, number> = { small: 180, medium: 320, large: 480, full: pageWidth - margin * 2 }
-        const maxW = sizeMap[(block as any).imageSize ?? 'medium'] ?? 320
+        const maxW = sizeMap[block.imageSize ?? 'medium'] ?? 320
         const scale = Math.min(maxW / image.width, 280 / image.height)
         const imgWidth = image.width * scale
         const imgHeight = image.height * scale
@@ -379,17 +422,13 @@ export async function buildStandardProposalPage({
         y -= 16
       } catch { /* ignora imagem corrompida */ }
     } else if (block.block_type === 'table' && block.table_data) {
-      const rows = block.table_data.rows
-      const numCols = rows[0]?.length ?? 1
-      const colWidth = (pageWidth - margin * 2) / numCols
-      const hColor = (block as any).headerColor ?? '#1B556B'
-      const hRgb = [
-        parseInt(hColor.slice(1,3),16)/255,
-        parseInt(hColor.slice(3,5),16)/255,
-        parseInt(hColor.slice(5,7),16)/255,
-      ] as [number,number,number]
-      const align = ((block as any).textAlign ?? 'left') as 'left' | 'center' | 'right'
-      const showTotals = (block as any).showTotals === true
+      const rows = (block.table_data.rows ?? []).map(r => (r ?? []).map(c => pdfSafe(String(c ?? '')).replace(/\n/g, ' ')))
+      const numCols = Math.max(1, ...rows.map(r => r.length))
+      const tableW = pageWidth - margin * 2
+      const hColor = block.headerColor ?? '#1B556B'
+      const hRgb = hexToRgb01(hColor)
+      const align = (block.textAlign ?? 'left') as 'left' | 'center' | 'right'
+      const showTotals = block.showTotals === true
       const colTotals: (number | null)[] = Array(numCols).fill(null)
       if (showTotals && rows.length > 1) {
         for (let c = 0; c < numCols; c++) {
@@ -405,34 +444,51 @@ export async function buildStandardProposalPage({
       const allRows = showTotals ? [...rows, colTotals.map((t, c) =>
         t !== null ? new Intl.NumberFormat('pt-BR').format(t) : (rows[0][c] ? 'Total' : '')
       )] : rows
+      const fs = 8
+      // Larguras: proporcionais ao conteúdo (mínimo 38pt), cabendo na página
+      const need = Array.from({ length: numCols }, (_, c) => Math.max(38, Math.min(260, Math.max(0, ...allRows.map((r, ri) => (ri === 0 ? fontBold : font).widthOfTextAtSize(r[c] ?? '', fs) + 8)))))
+      const sumNeed = need.reduce((a, b) => a + b, 0)
+      let widths = need.map(w => (w / sumNeed) * tableW)
+      if (sumNeed < tableW) widths = need.map(w => w + (tableW - sumNeed) / numCols)
+      // Seções do Price: colunas de valores alinhadas à direita
+      const numericCol = Array.from({ length: numCols }, (_, c) => block.source === 'price' && align === 'left' && allRows.length > 1
+        && allRows.slice(1).every(r => !(r[c] ?? '').trim() || NUMERIC.test((r[c] ?? '').trim())))
       allRows.forEach((row, ri) => {
         const isHeader = ri === 0
-        const isFooter = showTotals && ri === allRows.length - 1
-        newPageIfNeeded(18)
-        if (isHeader) {
-          page.drawRectangle({ x: margin, y: y - 14, width: pageWidth - margin * 2, height: 16, color: rgb(...hRgb) })
-        } else if (isFooter) {
-          page.drawRectangle({ x: margin, y: y - 14, width: pageWidth - margin * 2, height: 16, color: rgb(0.93, 0.94, 0.96) })
-        } else if (ri % 2 === 0) {
-          page.drawRectangle({ x: margin, y: y - 14, width: pageWidth - margin * 2, height: 16, color: rgb(0.97, 0.97, 0.98) })
-        }
-        row.forEach((cell: string, ci: number) => {
-          const cellX = margin + ci * colWidth
-          const cellStr = String(cell ?? '').slice(0, 30)
-          const cellW = font.widthOfTextAtSize(cellStr, 8)
-          let tx = cellX + 3
-          if (align === 'right')  tx = cellX + colWidth - cellW - 3
-          if (align === 'center') tx = cellX + (colWidth - cellW) / 2
-          text(cellStr, tx, y - 10, {
-            size: 8,
-            bold: isHeader || isFooter,
-            color: isHeader ? [1,1,1] : isFooter ? [0.2,0.25,0.35] : [0.1,0.12,0.2]
-          })
+        const isFooter = (showTotals && ri === allRows.length - 1) || (!isHeader && TOTAL_ROW.test((row.find(c => c.trim()) ?? '').trim()))
+        const bold = isHeader || isFooter
+        const f = bold ? fontBold : font
+        const cellLines = Array.from({ length: numCols }, (_, ci) => {
+          const w = wrapWords(row[ci] ?? '', widths[ci] - 6, fs, bold)
+          return w.length ? w : ['']
         })
-        page.drawLine({ start: { x: margin, y: y - 14 }, end: { x: pageWidth - margin, y: y - 14 }, thickness: 0.2, color: rgb(0.88, 0.88, 0.9) })
-        y -= 16
+        const nLines = Math.max(...cellLines.map(l => l.length))
+        const rowH = nLines * (fs + 2) + 6
+        newPageIfNeeded(rowH + 2)
+        if (isHeader) {
+          page.drawRectangle({ x: margin, y: y - rowH, width: tableW, height: rowH, color: rgb(...hRgb) })
+        } else if (isFooter) {
+          page.drawRectangle({ x: margin, y: y - rowH, width: tableW, height: rowH, color: rgb(0.93, 0.94, 0.96) })
+        } else if (ri % 2 === 0) {
+          page.drawRectangle({ x: margin, y: y - rowH, width: tableW, height: rowH, color: rgb(0.97, 0.97, 0.98) })
+        }
+        let cx = margin
+        cellLines.forEach((lines, ci) => {
+          const colW = widths[ci]
+          const a = numericCol[ci] ? 'right' : align
+          lines.forEach((ln, li) => {
+            const lw = f.widthOfTextAtSize(ln, fs)
+            let tx = cx + 3
+            if (a === 'right') tx = cx + colW - lw - 3
+            if (a === 'center') tx = cx + (colW - lw) / 2
+            if (ln) page.drawText(ln, { x: tx, y: y - 10 - li * (fs + 2), size: fs, font: f, color: isHeader ? rgb(1, 1, 1) : isFooter ? rgb(0.2, 0.25, 0.35) : rgb(0.1, 0.12, 0.2) })
+          })
+          cx += colW
+        })
+        page.drawLine({ start: { x: margin, y: y - rowH }, end: { x: pageWidth - margin, y: y - rowH }, thickness: 0.2, color: rgb(0.88, 0.88, 0.9) })
+        y -= rowH
       })
-      y -= 8
+      y -= 16
     }
   }
 

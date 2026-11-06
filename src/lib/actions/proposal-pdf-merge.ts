@@ -83,7 +83,7 @@ export async function buildMergedProposalBytes(proposalId: string): Promise<{ by
 
   const { data: rawContentBlocks } = await supabase
     .from('proposal_content_blocks')
-    .select('block_type, image_storage_path, table_data, image_size, header_color, introduction, show_totals, text_align')
+    .select('block_type, image_storage_path, table_data, image_size, header_color, introduction, show_totals, text_align, title, source')
     .eq('proposal_id', proposalId)
     .order('position')
 

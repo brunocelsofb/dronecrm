@@ -8,6 +8,7 @@ import { CopyLinkButton } from '@/components/nps/copy-link-button'
 import { NewVersionButton } from '@/components/proposals/new-version-button'
 import { ProposalContentBlocksEditor } from '@/components/proposals/proposal-content-blocks-editor'
 import { ProposalItemsEditor } from '@/components/proposals/proposal-items-editor'
+import { readApresentacao } from '@/lib/proposals/price-sections'
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Rascunho',
@@ -42,7 +43,7 @@ export default async function ProposalDetailPage({
     supabase.from('proposal_templates').select('id, name'),
     supabase.from('proposal_approvals').select('*').eq('proposal_id', proposalId).order('decided_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, department'),
-    supabase.from('proposal_content_blocks').select('id, block_type, image_storage_path, table_data, header_color, image_size, introduction, show_totals, text_align').eq('proposal_id', proposalId).order('position'),
+    supabase.from('proposal_content_blocks').select('id, block_type, image_storage_path, table_data, header_color, image_size, introduction, show_totals, text_align, source, section_key, title').eq('proposal_id', proposalId).order('position'),
   ])
 
   if (!proposal) notFound()
@@ -153,6 +154,8 @@ export default async function ProposalDetailPage({
             contractId={contractId}
             initialBlocks={contentBlocks ?? []}
             canEdit={canEditPages}
+            hasPriceApresentacao={!!readApresentacao(proposal.technical_snapshot)}
+            hiddenPriceSections={(proposal.price_sections_hidden ?? []).length}
           />
         </>
       )}
