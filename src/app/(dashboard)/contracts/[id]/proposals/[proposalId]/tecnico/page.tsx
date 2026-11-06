@@ -46,7 +46,7 @@ export default async function TechnicalReviewPage({ params }: { params: Promise<
         <p className="text-sm text-gray-500">
           {contract?.client_name ?? ''} · Versão {proposal.version} · {STATUS[proposal.workflow_status ?? 'rascunho'] ?? proposal.workflow_status}
         </p>
-        <p className="mt-1 text-xs text-gray-400">Só o dimensionamento, sem valores. O parecer (aprovar ou reprovar) é registrado na proposta.</p>
+        <p className="mt-1 text-xs text-gray-400">É exatamente o que o aprovador técnico vê: só o dimensionamento, sem valores. O parecer (aprovar ou reprovar) é registrado na proposta.</p>
       </div>
 
       {snap ? (

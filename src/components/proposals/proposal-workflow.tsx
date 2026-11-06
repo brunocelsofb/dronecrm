@@ -629,6 +629,17 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
                 <span style={{ fontSize: 14 }}>⚡</span> Abrir Price
               </button>
               )}
+              {/* Admin confere exatamente o que o aprovador técnico recebe (sem valores) */}
+              {!technicalView && isAdmin && proposalId && (
+                <a href={`/contracts/${contractId}/proposals/${proposalId}/tecnico`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+                    fontSize: 11, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
+                    border: '1px solid #1b556b', color: '#1b556b', background: '#fff', letterSpacing: '0.3px'
+                  }}>
+                  <span style={{ fontSize: 14 }}>🔧</span> Ver como o técnico
+                </a>
+              )}
             </div>
           </div>
 
