@@ -27,12 +27,13 @@ function fmt(v: number, currency = 'BRL') {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(v)
 }
 
-export function ProposalItemsEditor({ proposalId, contractId, initialItems, initialConditions, canEdit }: {
+export function ProposalItemsEditor({ proposalId, contractId, initialItems, initialConditions, canEdit, fromPrice = false }: {
   proposalId: string
   contractId: string
   initialItems: Item[]
   initialConditions: Conditions
   canEdit: boolean
+  fromPrice?: boolean   // itens e valores vêm do Price: não repete a tabela (o PDF também não)
 }) {
   const [items, setItems] = useState(initialItems)
   const [conditions, setConditions] = useState(initialConditions)
@@ -61,7 +62,15 @@ export function ProposalItemsEditor({ proposalId, contractId, initialItems, init
 
   return (
     <div className="space-y-4">
-      {/* Tabela de itens */}
+      {fromPrice ? (
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
+          <p className="text-sm font-medium text-gray-900">Itens e valores: vêm do Price</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {items.map(it => `${it.item} — ${fmt(Number(it.subtotal), conditions.currency)}`).join(' · ') || 'Sem itens.'} · Total {fmt(total, conditions.currency)}.
+            No PDF, o investimento sai nas tabelas do Price; para mudar valores, ajuste no Price e envie de novo.
+          </p>
+        </div>
+      ) : (
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-gray-900">Itens</h2>
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -105,6 +114,7 @@ export function ProposalItemsEditor({ proposalId, contractId, initialItems, init
         </div>
         <p className="text-right text-sm font-semibold text-gray-900">Total: {fmt(total, conditions.currency)}</p>
       </div>
+      )}
 
       {/* Condições comerciais editáveis */}
       <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">

@@ -493,9 +493,13 @@ export async function buildStandardProposalPage({
   }
 
   // ---- 2. Dados da proposta (financeiro) — após o conteúdo extra ----
+  // Proposta montada com as seções do Price: o investimento já está nas tabelas do Price;
+  // a tabela de itens repetiria os mesmos valores. Fica só o bloco de condições comerciais.
+  const fromPrice = contentBlocks.some(b => b.source === 'price')
+  const total = items.reduce((s, it) => s + Number(it.subtotal || 0), 0)
   y -= 16
   newPageIfNeeded(60)
-  text('Produtos / Serviços', margin, y, { size: 10, bold: true })
+  text(fromPrice ? 'Condições comerciais' : 'Produtos / Serviços', margin, y, { size: 10, bold: true })
   y -= 6
 
   // Linha decorativa abaixo do título
@@ -533,6 +537,7 @@ export async function buildStandardProposalPage({
     return lines
   }
 
+  if (!fromPrice) {
   y -= 8  // respiro entre linha decorativa e cabeçalho da tabela
 
   // Header com fundo cinza — altura 22pt com padding top/bottom de 7pt
@@ -556,7 +561,6 @@ export async function buildStandardProposalPage({
   page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.3, color: rgb(0.85, 0.87, 0.90) })
   y -= 2
 
-  let total = 0
   for (const [idx, it] of items.entries()) {
     // Calcula altura necessária para o item
     const charLines = it.characteristics
@@ -620,7 +624,6 @@ export async function buildStandardProposalPage({
     // Linha divisória entre itens
     page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.2, color: rgb(0.88, 0.90, 0.93) })
     y -= 4
-    total += it.subtotal
   }
 
   // Total com destaque
@@ -630,6 +633,9 @@ export async function buildStandardProposalPage({
   text('TOTAL:', col.unit.x + 8, y - 12, { size: 9, bold: true, color: [1, 1, 1] })
   text(fmtCurrency(total, proposal.currency), col.sub.x + 3, y - 12, { size: 9, bold: true, color: [1, 1, 1] })
   y -= 26
+  } else {
+    y -= 4
+  }
 
   // ---- Desconto, condição de pagamento e parcelas ----
   newPageIfNeeded(60)

@@ -147,6 +147,7 @@ export default async function ProposalDetailPage({
               currency: proposal.currency ?? 'BRL',
             }}
             canEdit={canEditPages}
+            fromPrice={(contentBlocks ?? []).some(b => (b as { source?: string | null }).source === 'price')}
           />
 
           <ProposalContentBlocksEditor
