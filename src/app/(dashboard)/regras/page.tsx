@@ -158,7 +158,7 @@ export default async function RegrasPage({ searchParams }: { searchParams: Promi
           <>
             <Block title="Linha do tempo do contrato" intro="Cada linha é uma regra: quantos dias antes do vencimento e o que acontece. Mude os dias ali mesmo.">
               <RenewalTimeline items={withWarn} levels={{ prep: L.prep, a1: L.a1, a2: L.a2, a3: L.a3 }} />
-              <p className="mt-2 text-xs text-gray-500">Ao marcar Renovado: confirmação ao cliente e e-mail interno — veja a aba <Link href="/regras?tema=eventos" className="text-brand-700 hover:underline">Ganho, perda e renovado</Link>.</p>
+              <p className="mt-2 text-xs text-gray-500">Ao marcar Renovado: confirmação ao cliente e e-mail interno — veja a aba <Link href="/regras?tema=eventos" className="text-brand-700 hover:underline">Aprovação, ganho, perda e renovado</Link>.</p>
             </Block>
             {hasPipe && funnel.length > 0 && (
               <Details title={<>Volta para a etapa de renovação, por funil <SimpleBadge /></>}>

@@ -75,6 +75,45 @@ export async function POST(req: Request) {
       }
     }
 
+    // Central de regras (Quando o cliente aprova a proposta): tarefa para o responsável dar o ganho
+    if (isAprovado) {
+      try {
+        const { eventOn } = await import('@/lib/rules/events-server')
+        const { resolveTenantId } = await import('@/lib/tenant/context')
+        const tenantId = await resolveTenantId({ contractId: newProposal.contract_id })
+        if (await eventOn(tenantId, 'proposal_approved_task')) {
+          const { createAgentActivity, agentForPipelineType, AGENT_LABEL } = await import('@/lib/agent/agent-activity')
+          const [{ data: c }, { data: run }] = await Promise.all([
+            admin.from('contracts').select('client_name, owner_id, current_assignee_id').eq('id', newProposal.contract_id).maybeSingle(),
+            admin.from('pipeline_runs').select('pipeline_id').eq('contract_id', newProposal.contract_id).eq('status', 'open').maybeSingle(),
+          ])
+          const { data: pipe } = run ? await admin.from('pipelines').select('type').eq('id', run.pipeline_id).maybeSingle() : { data: null }
+          const renewal = pipe?.type === 'gestao_contratos'
+          const agent = agentForPipelineType(pipe?.type)
+          const act = renewal ? 'marcar Renovado' : 'dar o ganho'
+          const r = await createAgentActivity(admin, {
+            contractId: newProposal.contract_id,
+            dedupeKey: `proposal_approved:${newProposal.id}`,
+            dedupeIncludeDone: true,
+            dueInDays: 1,
+            assignedTo: (c?.owner_id ?? c?.current_assignee_id ?? null) as string | null,
+            activityType: 'task',
+            agent,
+            title: `Proposta aprovada pelo cliente — ${act} (${c?.client_name ?? oppName})`,
+            content:
+              `[${AGENT_LABEL[agent]}] O cliente aprovou a proposta ${newProposal.control_code}` +
+              `${valueFmt ? ` (${valueFmt}/mês)` : ''} em ${nowFmt}, por ${name}${role ? ` (${role})` : ''}.\n` +
+              `Confira e ${act} na oportunidade para seguir${renewal ? ' com a renovação' : ' para o funil de contratos'}.` +
+              `${newProposal.proposal_value ? ' O valor do contrato já foi atualizado com o valor aprovado.' : ''}`,
+            metadata: { kind: 'proposal_approved', proposal_id: newProposal.id },
+          })
+          if (r.status === 'error') console.error('[client-review] tarefa de ganho não criada:', r.error)
+        }
+      } catch (e) {
+        console.error('[client-review] tarefa de ganho:', e)
+      }
+    }
+
     const logContent = isAprovado
       ? `✅ Proposta ${newProposal.control_code} aceita na oportunidade "${oppName}"${valueFmt ? ` · Valor: ${valueFmt}` : ''}. Aprovado por: ${name}${role ? ` (${role})` : ''}${cpfFmt ? ` · CPF: ${cpfFmt}` : ''}. Data/Hora: ${nowFmt}.`
       : `❌ Proposta ${newProposal.control_code} RECUSADA na oportunidade "${oppName}". Motivo: ${comment?.trim() || 'Não informado'}. Por: ${name}${role ? ` (${role})` : ''}${cpfFmt ? ` · CPF: ${cpfFmt}` : ''}. Data/Hora: ${nowFmt}.`

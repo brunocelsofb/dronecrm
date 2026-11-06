@@ -879,6 +879,15 @@ export async function closeRun(
     }
   }
 
+  // Ganho/Renovado dado: a tarefa "Proposta aprovada pelo cliente — dar o ganho" está cumprida
+  if (outcome === 'won') {
+    await supabase.from('activities')
+      .update({ status: 'done', completed: true })
+      .eq('contract_id', contractId)
+      .eq('metadata->>kind', 'proposal_approved')
+      .neq('status', 'done')
+  }
+
   // Regras da Central: ganho, perda (churn) ou renovado
   {
     const ev = outcome === 'lost' ? 'evt_lost' : pipelineForGateType === 'gestao_contratos' ? 'evt_renewed' : 'evt_won'

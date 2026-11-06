@@ -6,11 +6,11 @@
 export type EventKey =
   | 'won_internal_email' | 'won_impl_kickoff' | 'avulso_billing'
   | 'renewal_confirmation' | 'renewal_internal_email' | 'renewal_ruler_close'
-  | 'lost_decline_proposals' | 'impl_followup'
+  | 'lost_decline_proposals' | 'impl_followup' | 'proposal_approved_task'
 
 export type EventDef = {
   key: EventKey
-  when: 'ganho' | 'renovado' | 'perdido' | 'implantacao'
+  when: 'aprovacao' | 'ganho' | 'renovado' | 'perdido' | 'implantacao'
   who: 'farmer' | 'hunter' | null       // agente que executa; null = ação simples do sistema
   sentence: string                        // QUANDO … → FAÇA …
   detail: string
@@ -19,11 +19,15 @@ export type EventDef = {
 }
 
 export const EVENT_WHEN_LABEL: Record<EventDef['when'], string> = {
+  aprovacao: 'Quando o cliente aprova a proposta',
   ganho: 'Ao dar ganho (funil de vendas)', renovado: 'Ao marcar Renovado (gestão de contratos)',
   perdido: 'Ao dar perda', implantacao: 'Ao iniciar o cronograma de implantação',
 }
 
 export const EVENT_ACTIONS: EventDef[] = [
+  { key: 'proposal_approved_task', when: 'aprovacao', who: 'hunter', feature: 'pipeline',
+    sentence: 'Cliente aprovou a proposta → tarefa em Atividades para o responsável dar o ganho (ou marcar Renovado, na renovação)',
+    detail: 'O ganho continua com o consultor. A tarefa traz a proposta e o valor aprovado e se fecha sozinha quando o ganho (ou Renovado) é dado. Na renovação quem avisa é o Farmer.' },
   { key: 'won_internal_email', when: 'ganho', who: 'farmer', feature: 'pipeline', editHref: '/settings/copiloto?tab=interno',
     sentence: 'Ganho → e-mail interno ao time (contrato fechado) pronto para o responsável revisar e enviar',
     detail: 'Sem valores: só cliente, número e período. Destinatários e texto em Configurações → Agentes IA → Interno.' },
