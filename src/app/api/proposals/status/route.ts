@@ -130,6 +130,48 @@ export async function POST(req: Request) {
     ? await supabase.from('proposals').select('control_code, version, proposal_value').eq('id', proposal_id).maybeSingle()
     : { data: null }
 
+  // Análise técnica: tarefa para os aprovadores técnicos (Central de regras) e fechamento ao decidir
+  if (proposal_id && (status === 'em_aprovacao_tecnica' || status === 'aprovado_tecnico' || status === 'reprovado_tecnico' || status === 'rascunho')) {
+    try {
+      const adminDb = createAdminClient()
+      if (status === 'em_aprovacao_tecnica') {
+        const { eventOn } = await import('@/lib/rules/events-server')
+        const { resolveTenantId } = await import('@/lib/tenant/context')
+        const tenantId = await resolveTenantId({ contractId: contract_id })
+        if (await eventOn(tenantId, 'tech_review_task')) {
+          const { createAgentActivity } = await import('@/lib/agent/agent-activity')
+          const [{ data: techs }, { data: c }] = await Promise.all([
+            adminDb.from('profiles').select('id').eq('tenant_id', tenantId).eq('role', 'aprovador_tecnico'),
+            adminDb.from('contracts').select('client_name').eq('id', contract_id).maybeSingle(),
+          ])
+          const code = propInfo?.control_code ?? 'a proposta'
+          for (const t of (techs ?? []) as { id: string }[]) {
+            const r = await createAgentActivity(adminDb, {
+              contractId: contract_id,
+              dedupeKey: `tech_review:${proposal_id}:${t.id}`,
+              dueInDays: 2,
+              assignedTo: t.id,
+              activityType: 'task',
+              title: `Análise técnica da proposta ${code} — ${c?.client_name ?? ''}`.trim(),
+              content: `${loggedName ?? 'O comercial'} enviou ${code} para análise técnica.\n` +
+                `Veja o dimensionamento (equipamentos, equipe, escopo, SLA) em /contracts/${contract_id}/proposals/${proposal_id}/tecnico ` +
+                `e registre o parecer na aba Proposta da oportunidade (Aprovar tecnicamente ou Reprovar).`,
+              metadata: { kind: 'tech_review', proposal_id },
+            })
+            if (r.status === 'error') console.error('[status] tarefa técnica:', r.error)
+          }
+        }
+      } else {
+        // Decidido (ou voltou ao rascunho): a tarefa de análise técnica está cumprida
+        await adminDb.from('activities').update({ status: 'done', completed: true })
+          .eq('contract_id', contract_id).eq('metadata->>kind', 'tech_review')
+          .eq('metadata->>proposal_id', proposal_id).neq('status', 'done')
+      }
+    } catch (e) {
+      console.error('[status] análise técnica:', e)
+    }
+  }
+
   const { error: actError } = await supabase.from('activities').insert({
     contract_id,
     type: 'proposal',

@@ -6,11 +6,11 @@
 export type EventKey =
   | 'won_internal_email' | 'won_impl_kickoff' | 'avulso_billing'
   | 'renewal_confirmation' | 'renewal_internal_email' | 'renewal_ruler_close'
-  | 'lost_decline_proposals' | 'impl_followup' | 'proposal_approved_task'
+  | 'lost_decline_proposals' | 'impl_followup' | 'proposal_approved_task' | 'tech_review_task'
 
 export type EventDef = {
   key: EventKey
-  when: 'aprovacao' | 'ganho' | 'renovado' | 'perdido' | 'implantacao'
+  when: 'analise' | 'aprovacao' | 'ganho' | 'renovado' | 'perdido' | 'implantacao'
   who: 'farmer' | 'hunter' | null       // agente que executa; null = ação simples do sistema
   sentence: string                        // QUANDO … → FAÇA …
   detail: string
@@ -19,12 +19,16 @@ export type EventDef = {
 }
 
 export const EVENT_WHEN_LABEL: Record<EventDef['when'], string> = {
+  analise: 'Ao enviar a proposta para análise técnica',
   aprovacao: 'Quando o cliente aprova a proposta',
   ganho: 'Ao dar ganho (funil de vendas)', renovado: 'Ao marcar Renovado (gestão de contratos)',
   perdido: 'Ao dar perda', implantacao: 'Ao iniciar o cronograma de implantação',
 }
 
 export const EVENT_ACTIONS: EventDef[] = [
+  { key: 'tech_review_task', when: 'analise', who: 'hunter', feature: 'pipeline',
+    sentence: 'Proposta enviada para análise técnica → tarefa em Atividades para cada aprovador técnico, com o link do dimensionamento',
+    detail: 'Sem valores: o aprovador técnico vê só o dimensionamento (equipamentos, equipe, escopo, SLA). A tarefa se fecha sozinha quando a proposta é aprovada ou reprovada tecnicamente.' },
   { key: 'proposal_approved_task', when: 'aprovacao', who: 'hunter', feature: 'pipeline',
     sentence: 'Cliente aprovou a proposta → tarefa em Atividades para o responsável dar o ganho (ou marcar Renovado, na renovação)',
     detail: 'O ganho continua com o consultor. A tarefa traz a proposta e o valor aprovado e se fecha sozinha quando o ganho (ou Renovado) é dado. Na renovação quem avisa é o Farmer.' },

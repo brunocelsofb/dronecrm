@@ -26,8 +26,21 @@ export async function GET(
 
   const filtered = logs ?? []
 
+  // Aprovador técnico não vê valores: o servidor tira os números antes de responder
+  const { getCurrentProfile } = await import('@/lib/auth/role')
+  const me = await getCurrentProfile()
+  const hideValues = String(me?.role) === 'aprovador_tecnico'
+  const redact = (t: string | null) => !t ? t : t
+    .replace(/\s*[·.]?\s*(Valor|Margem)[^·.]*R?\$?[^·]*?(?=·|$)/gi, '')
+    .replace(/R\$\s?[\d.]+(,\d{2})?(\/m[eê]s)?/g, '—')
+    .replace(/\(antes —\)/g, '')
+
   const enriched = filtered.map(log => ({
     ...log,
+    ...(hideValues ? {
+      content: (log.metadata as { actor?: string } | null)?.actor === 'Price' ? 'Precificação enviada pelo Price.' : redact(log.content),
+      metadata: { ...(log.metadata as Record<string, unknown> | null), proposal_value: null },
+    } : {}),
     actor_name: (log.metadata as { actor?: string } | null)?.actor ?? extractActor(log.content),
   }))
 

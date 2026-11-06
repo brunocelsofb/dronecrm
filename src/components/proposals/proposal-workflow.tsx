@@ -397,13 +397,14 @@ function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
-export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl, currentUserRole, currentUserName }: {
+export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl, currentUserRole, currentUserName, technicalView = false }: {
   contractId: string
   proposalId?: string
   initialData: ProposalData | null
   priceUrl: string
   currentUserRole: string
   currentUserName: string
+  technicalView?: boolean   // aprovador técnico: só dimensionamento, sem Price e sem valores
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -605,6 +606,18 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
               <StatusBadge status={data.status} />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {technicalView ? (
+                proposalId && (
+                  <a href={`/contracts/${contractId}/proposals/${proposalId}/tecnico`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+                      fontSize: 11, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
+                      background: 'linear-gradient(135deg,#1b556b,#2a8a7a)', color: '#fff', letterSpacing: '0.3px'
+                    }}>
+                    <span style={{ fontSize: 14 }}>🔧</span> Ver dimensionamento técnico
+                  </a>
+                )
+              ) : (
               <button
                 onClick={handleOpenPrice}
                 style={{
@@ -615,10 +628,11 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
                 }}>
                 <span style={{ fontSize: 14 }}>⚡</span> Abrir Price
               </button>
+              )}
             </div>
           </div>
 
-          {data.proposal_value && (isAdmin || isComm || isTech) && (
+          {data.proposal_value && !technicalView && (isAdmin || isComm || isTech) && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               background: 'linear-gradient(135deg,#1B556B,#1e6a82)', borderRadius: 10,

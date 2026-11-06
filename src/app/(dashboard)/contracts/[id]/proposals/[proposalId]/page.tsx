@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { getCurrentProfile } from '@/lib/auth/role'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { ProposalPageOrderEditor } from '@/components/proposals/proposal-page-order-editor'
@@ -34,6 +35,8 @@ export default async function ProposalDetailPage({
   params: Promise<{ id: string; proposalId: string }>
 }) {
   const { id: contractId, proposalId } = await params
+  // Aprovador técnico não vê a montagem (valores): vai para o dimensionamento técnico
+  if (String((await getCurrentProfile())?.role) === 'aprovador_tecnico') redirect(`/contracts/${contractId}/proposals/${proposalId}/tecnico`)
   const supabase = await createClient()
 
   const [{ data: proposal }, { data: items }, { data: pages }, { data: templates }, { data: approvals }, { data: allProfiles }, { data: contentBlocks }] = await Promise.all([

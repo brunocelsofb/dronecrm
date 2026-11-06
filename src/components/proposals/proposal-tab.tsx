@@ -148,7 +148,7 @@ function ActionsMenu({
             )}
 
             {/* Gerar PDF — só depois que o Price enviou a precificação (antes sai zerado) */}
-            {Number(proposal.proposal_value) > 0 && (
+            {Number(proposal.proposal_value) > 0 && currentUserRole !== 'aprovador_tecnico' && (
               <MenuItem icon={generatingPdf ? '⏳' : '📄'} label="Gerar PDF" onClick={handleGeneratePdf} />
             )}
 
@@ -321,6 +321,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             initialData={initialData}
             priceUrl={priceUrl}
             currentUserRole={isReadOnly ? 'aprovador_tecnico' : currentUserRole}
+            technicalView={currentUserRole === 'aprovador_tecnico'}
             currentUserName={currentUserName}
           />
           {!isReadOnly && currentUserRole !== 'aprovador_tecnico' && (
@@ -395,7 +396,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             padding: '10px 20px', background: '#f8f9fb', borderBottom: '0.5px solid #e8edf5',
             borderRadius: '12px 12px 0 0',
           }}>
-            {['Código', 'Status', 'Data', 'Valor', 'Ações'].map((h, i) => (
+            {['Código', 'Status', 'Data', currentUserRole === 'aprovador_tecnico' ? '' : 'Valor', 'Ações'].map((h, i) => (
               <span key={i} style={{ fontSize: 10, fontWeight: 700, color: '#b0b8c8', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{h}</span>
             ))}
           </div>
@@ -419,7 +420,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
                   {p.updated_at ? fmtDate(p.updated_at) : fmtDate(p.created_at)}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#1f8c7d', display: 'flex', alignItems: 'center' }}>
-                  {p.proposal_value ? fmt(p.proposal_value) : '—'}
+                  {currentUserRole === 'aprovador_tecnico' ? '' : p.proposal_value ? fmt(p.proposal_value) : '—'}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                   <ActionsMenu
