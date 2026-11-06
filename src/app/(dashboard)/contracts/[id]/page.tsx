@@ -38,6 +38,7 @@ import { ContractContactsSection } from '@/components/contracts/contract-contact
 import { ContractZapSignSection } from '@/components/zapsign/contract-zapsign-section'
 import { PortfolioFieldsForm } from '@/components/carteira/portfolio-fields-form'
 import { ProposalTab } from '@/components/proposals/proposal-tab'
+import { technicalSnapshot, isTechnicalApprover } from '@/lib/proposals/technical'
 import { getContractContacts } from '@/lib/actions/contract-contacts'
 import { getConnectedEmailAccount } from '@/lib/actions/email'
 import { getContractCustomFieldValues } from '@/lib/actions/custom-fields'
@@ -95,7 +96,7 @@ export default async function ContractDetailPage({
     { data: dimensioningReviews },
     { data: allProfiles },
     { data: billingRecords },
-    { data: proposals },
+    { data: proposalsRaw },
     { data: catalogItems },
     { data: transferRequests },
   ] = await Promise.all([
@@ -214,7 +215,7 @@ export default async function ContractDetailPage({
   const isCurrentlyInContractsPipeline = displayRun ? pipelineById.get(displayRun.pipeline_id)?.type === 'gestao_contratos' : false
 
   // Ponto 1: valor agregado das propostas ativas (exclui recusadas)
-  const proposalSum = (proposals ?? [])
+  const proposalSum = (proposalsRaw ?? [])
     .filter(p => !['cliente_recusado', 'declinada'].includes(p.workflow_status ?? ''))
     .reduce((s, p) => s + Number(p.proposal_value ?? 0), 0)
   // Na carteira (Gestão de Contratos) o valor vigente é o do cadastro do contrato
@@ -225,7 +226,7 @@ export default async function ContractDetailPage({
 
   // Renovação/aditivo em andamento: valor da proposta aberta (só vira o valor vigente na aprovação final)
   const pendingProposal = isCurrentlyInContractsPipeline
-    ? (proposals ?? []).find(p => !['cliente_aprovado', 'cliente_recusado', 'declinada'].includes(p.workflow_status ?? '')
+    ? (proposalsRaw ?? []).find(p => !['cliente_aprovado', 'cliente_recusado', 'declinada'].includes(p.workflow_status ?? '')
         && Number(p.proposal_value) > 0 && Math.abs(Number(p.proposal_value) - estimatedValue) >= 0.005)
     : undefined
 
@@ -289,6 +290,10 @@ export default async function ContractDetailPage({
   const orgMiscP = tenantIdP.then(t => supabase.from('organization_settings').select('inbound_email_domain, zapsign_api_token').eq('tenant_id', t).maybeSingle())
 
   const currentProfile = await profileP
+  // Aprovador técnico: proposta só com dimensionamento (sem valor e sem a precificação completa do Price)
+  const proposals = isTechnicalApprover(currentProfile?.role)
+    ? (proposalsRaw ?? []).map(p => ({ ...p, proposal_value: null, review_token: null, client_review_token: null, technical_snapshot: technicalSnapshot(p.technical_snapshot) }))
+    : proposalsRaw
 
   // Farmer · leitura do contrato (última leitura + PDFs disponíveis)
   const [{ data: lastReading }, aiKeyInfo] = await readingP

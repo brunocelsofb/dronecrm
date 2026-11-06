@@ -5,9 +5,8 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { TechnicalDocument } from '@/components/proposals/technical-document'
 import { readApresentacao } from '@/lib/proposals/price-sections'
+import { technicalSnapshot } from '@/lib/proposals/technical'
 
-// Seções da Apresentação do Price que são dimensionamento (nunca investimento/resumo)
-const TECH_SECTIONS = ['objeto', 'escopo', 'equipe', 'sla', 'intervencoes', 'diretrizes']
 
 const STATUS: Record<string, string> = {
   rascunho: 'Rascunho', em_aprovacao_tecnica: 'Em análise técnica', aprovado_tecnico: 'Aprovada tecnicamente',
@@ -32,17 +31,9 @@ export default async function TechnicalReviewPage({ params }: { params: Promise<
   ])
   if (!proposal) notFound()
 
-  const raw = (proposal.technical_snapshot ?? null) as Snap | null
-  // Só campos técnicos (lista fechada): nada de receita, preço, margem ou estado completo do Price
-  const snap = raw ? {
-    clientName: raw.clientName ?? contract?.client_name ?? '', projectName: raw.projectName ?? '',
-    tipoEngenharia: raw.tipoEngenharia ?? '', hospitalBeds: Number(raw.hospitalBeds) || 0,
-    escopoServicos: raw.escopoServicos ?? [],
-    professionals: (raw.professionals ?? []).map(p => ({ role: p.role, quantity: p.quantity, contractType: p.contractType, hoursPerMonth: p.hoursPerMonth })),
-    totalFTE: Number(raw.totalFTE) || 0, cltCount: Number(raw.cltCount) || 0, pjCount: Number(raw.pjCount) || 0,
-    dimensionamento: raw.dimensionamento as never, sentAt: raw.sentAt ?? '',
-  } : null
-  const secoes = (readApresentacao(raw)?.secoes ?? []).filter(s => TECH_SECTIONS.includes(s.chave))
+  const raw = technicalSnapshot(proposal.technical_snapshot) as Snap | null
+  const snap = raw ? { ...raw, clientName: raw.clientName || contract?.client_name || '' } : null
+  const secoes = readApresentacao(raw)?.secoes ?? []
   const isHospitalar = (snap?.tipoEngenharia ?? '').toLowerCase().includes('hospitalar')
 
   return (

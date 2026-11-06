@@ -323,7 +323,7 @@ function ConfirmModal({ title, subtitle, requireComment = false, onConfirm, onCa
 }
 
 // ── SnapshotViewer: exibe dados técnicos do Price para o aprovador ─────────
-function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
+function SnapshotViewer({ snapshot: s, hideValues = false }: { snapshot: any; hideValues?: boolean }) {
   const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
   const kpi = (label: string, value: string | number, color = '#1a1f36') => (
     <div style={{ background: '#f8f9fb', borderRadius: 8, padding: '10px 14px', flex: 1 }}>
@@ -340,7 +340,7 @@ function SnapshotViewer({ snapshot: s }: { snapshot: any }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* KPIs principais */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {s.revenueMonthly > 0 && kpi('Valor Mensal', new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.revenueMonthly), '#1f8c7d')}
+        {!hideValues && s.revenueMonthly > 0 && kpi('Valor Mensal', new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.revenueMonthly), '#1f8c7d')}
         {s.hospitalBeds > 0 && kpi('Leitos', s.hospitalBeds)}
         {s.equipamentos?.total > 0 && kpi('Equipamentos', s.equipamentos.total)}
         {s.totalFTE > 0 && kpi('Profissionais', s.totalFTE)}
@@ -703,7 +703,13 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
       {['em_aprovacao_tecnica', 'aprovado_tecnico', 'reprovado_tecnico', 'em_aprovacao_comercial', 'aprovado_comercial'].includes(data.status) && data.technical_snapshot && card(
         <div>
           {sectionLabel('Dimensionamento Técnico — Price')}
-          <SnapshotViewer snapshot={data.technical_snapshot} />
+          <SnapshotViewer snapshot={data.technical_snapshot} hideValues={technicalView} />
+          {technicalView && proposalId && (
+            <a href={`/contracts/${contractId}/proposals/${proposalId}/tecnico`}
+              style={{ display: 'inline-block', marginTop: 12, fontSize: 12, fontWeight: 600, color: '#1b556b' }}>
+              Ver o dimensionamento completo (equipamentos, horas, SLA, intervenções) →
+            </a>
+          )}
         </div>
       )}
 
