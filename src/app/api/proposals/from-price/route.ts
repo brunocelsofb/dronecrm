@@ -2,6 +2,7 @@ import { fmtPct, fmtNum1, fmtBRL } from '@/lib/format'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { readApresentacao, sectionsToApply, writePriceBlocks } from '@/lib/proposals/price-sections'
+import { verifyPriceLinkToken } from '@/lib/proposals/price-link'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +50,18 @@ export async function POST(req: Request) {
 
   if (!contract_id || !proposal_value) {
     return NextResponse.json({ error: 'contract_id e proposal_value são obrigatórios' }, { status: 400, headers: CORS })
+  }
+
+  // Só aceita quem abriu o Price pela proposta no CRM (passe assinado, ver lib/proposals/price-link.ts)
+  const pass = verifyPriceLinkToken(body.crm_token, String(contract_id), proposal_id ?? null)
+  if (pass !== 'ok') {
+    console.warn('[from-price] passe recusado:', pass, contract_id)
+    return NextResponse.json({
+      error: pass === 'expired'
+        ? 'O link do Price expirou. Abra o Price de novo pela proposta no CRM e envie outra vez.'
+        : 'Envio não autorizado. Abra o Price pela proposta no CRM (botão Abrir Price) e envie de novo.',
+      code: `token_${pass}`,
+    }, { status: 401, headers: CORS })
   }
 
   const supabase = createAdminClient()

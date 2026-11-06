@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 const CORS = {
   'Access-Control-Allow-Origin': 'https://orbis-price.vercel.app',
@@ -16,7 +17,10 @@ export async function GET(
   { params }: { params: Promise<{ contractId: string }> }
 ) {
   const { contractId } = await params
-  const admin = createAdminClient()
+  // Precificação é conteúdo da empresa: só para quem está logado nela
+  const { data: { user } } = await (await createClient()).auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Faça login.' }, { status: 401, headers: CORS })
+  const admin = await createScopedAdmin()
 
   const { data } = await admin
     .from('proposal_status')

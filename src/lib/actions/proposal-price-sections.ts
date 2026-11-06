@@ -73,3 +73,19 @@ export async function updateBlockTitle(blockId: string, proposalId: string, titl
   const { error } = await db.from('proposal_content_blocks').update({ title: title.trim().slice(0, 200) || null }).eq('id', blockId).eq('proposal_id', proposalId)
   return error ? { ok: false, error: error.message } : { ok: true }
 }
+
+// Passe para abrir o Price por esta proposta (o Price devolve ao enviar a precificação)
+export async function getPriceLinkToken(contractId: string, proposalId: string | null): Promise<string | null> {
+  const me = await getCurrentProfile()
+  if (!me) return null
+  const tenantId = await resolveTenantId()
+  const db = await createScopedAdmin(tenantId)
+  const { data: c } = await db.from('contracts').select('id').eq('id', contractId).maybeSingle()
+  if (!c) return null
+  if (proposalId) {
+    const { data: p } = await db.from('proposals').select('id').eq('id', proposalId).eq('contract_id', contractId).maybeSingle()
+    if (!p) return null
+  }
+  const { createPriceLinkToken } = await import('@/lib/proposals/price-link')
+  return createPriceLinkToken(contractId, proposalId)
+}

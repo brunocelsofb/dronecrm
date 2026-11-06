@@ -1,5 +1,6 @@
 'use client'
 
+import { getPriceLinkToken } from '@/lib/actions/proposal-price-sections'
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -441,8 +442,10 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
     const url = new URL(priceUrl)
     if (proposalId) url.searchParams.set('proposal_id', proposalId)
     if (token) url.searchParams.set('snapshot_id', token)
+    // Passe assinado: sem ele o CRM não aceita a precificação enviada pelo Price
+    const pass = await getPriceLinkToken(contractId, proposalId ?? null).catch(() => null)
+    if (pass) url.searchParams.set('crm_token', pass)
 
-    // DEBUG TEMPORÁRIO — mostra a URL exata antes de abrir
     window.open(url.toString(), '_blank')
   }
   const isTech  = currentUserRole === 'aprovador_tecnico' || isAdmin
