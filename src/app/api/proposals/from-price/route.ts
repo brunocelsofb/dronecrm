@@ -326,7 +326,17 @@ export async function POST(req: Request) {
         ? `Precificação atualizada no Price: ${fmtBRL(v)}/mês (antes ${fmtBRL(previousValue)}/mês).`
         : `Precificação reenviada pelo Price, sem mudança de valor: ${fmtBRL(v)}/mês.`)
     : `Proposta precificada no Price: ${fmtBRL(v)}/mês.`
-  await supabase.from('activities').insert({
+  // Reenvio igual em sequência (ex.: clique duplo) não repete o registro no histórico
+  let duplicate = false
+  if (proposal_id && !changed) {
+    const since = new Date(Date.now() - 10 * 60_000).toISOString()
+    const { data: recent } = await supabase.from('activities').select('id')
+      .eq('contract_id', contract_id).eq('type', 'proposal')
+      .eq('metadata->>proposal_id', proposal_id).eq('metadata->>actor', 'Price')
+      .gte('created_at', since).limit(1)
+    duplicate = !!recent?.length
+  }
+  if (!duplicate) await supabase.from('activities').insert({
     contract_id,
     type: 'proposal', // 'price' não é aceito na tabela de atividades
     metadata: proposal_id ? {
