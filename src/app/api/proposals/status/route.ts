@@ -148,6 +148,18 @@ export async function POST(req: Request) {
     ? await supabase.from('proposals').select('control_code, version, proposal_value').eq('id', proposal_id).maybeSingle()
     : { data: null }
 
+  // Agente avisa quem precisa agir agora (Central de regras; só com Agentes de IA no plano)
+  if (proposal_id && ['em_aprovacao_tecnica', 'aprovado_tecnico', 'reprovado_tecnico', 'em_aprovacao_comercial', 'aprovado_comercial'].includes(status)) {
+    try {
+      const { resolveTenantId } = await import('@/lib/tenant/context')
+      const { notifyProposalStep } = await import('@/lib/agent/proposal-notify')
+      await notifyProposalStep({
+        tenantId: await resolveTenantId({ contractId: contract_id }), contractId: contract_id, proposalId: proposal_id,
+        step: status, actorName: loggedName, comment: comment ?? null,
+      })
+    } catch (e) { console.error('[status] aviso do agente:', e) }
+  }
+
   // Análise técnica: tarefa para os aprovadores técnicos (Central de regras) e fechamento ao decidir
   if (proposal_id && (status === 'em_aprovacao_tecnica' || status === 'aprovado_tecnico' || status === 'reprovado_tecnico' || status === 'rascunho')) {
     try {

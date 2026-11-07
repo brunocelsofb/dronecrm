@@ -6,7 +6,7 @@
 export type EventKey =
   | 'won_internal_email' | 'won_impl_kickoff' | 'avulso_billing'
   | 'renewal_confirmation' | 'renewal_internal_email' | 'renewal_ruler_close'
-  | 'lost_decline_proposals' | 'impl_followup' | 'proposal_approved_task' | 'tech_review_task'
+  | 'lost_decline_proposals' | 'impl_followup' | 'proposal_approved_task' | 'tech_review_task' | 'proposal_step_notify'
 
 export type EventDef = {
   key: EventKey
@@ -19,13 +19,16 @@ export type EventDef = {
 }
 
 export const EVENT_WHEN_LABEL: Record<EventDef['when'], string> = {
-  analise: 'Ao enviar a proposta para análise técnica',
+  analise: 'No fluxo de aprovação da proposta',
   aprovacao: 'Quando o cliente aprova a proposta',
   ganho: 'Ao dar ganho (funil de vendas)', renovado: 'Ao marcar Renovado (gestão de contratos)',
   perdido: 'Ao dar perda', implantacao: 'Ao iniciar o cronograma de implantação',
 }
 
 export const EVENT_ACTIONS: EventDef[] = [
+  { key: 'proposal_step_notify', when: 'analise', who: 'hunter', feature: 'copiloto',
+    sentence: 'A cada etapa da aprovação da proposta → o agente avisa por WhatsApp e e-mail quem precisa agir agora',
+    detail: 'Enviada para análise técnica → aprovadores técnicos (sem valores, com o link do dimensionamento). Enviada para aprovação comercial → aprovadores comerciais (sem nenhum, os administradores). Aprovada, reprovada ou decidida pelo cliente → responsável pela oportunidade, com o próximo passo. WhatsApp pelo telefone do cadastro do usuário; e-mail pelo remetente automático da empresa.' },
   { key: 'tech_review_task', when: 'analise', who: 'hunter', feature: 'pipeline',
     sentence: 'Proposta enviada para análise técnica → tarefa em Atividades para cada aprovador técnico, com o link do dimensionamento',
     detail: 'Sem valores: o aprovador técnico vê só o dimensionamento (equipamentos, equipe, escopo, SLA). A tarefa se fecha sozinha quando a proposta é aprovada ou reprovada tecnicamente.' },

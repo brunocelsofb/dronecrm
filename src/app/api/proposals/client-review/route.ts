@@ -75,6 +75,16 @@ export async function POST(req: Request) {
       }
     }
 
+    // Agente avisa o responsável da decisão do cliente (Central de regras)
+    try {
+      const { resolveTenantId } = await import('@/lib/tenant/context')
+      const { notifyProposalStep } = await import('@/lib/agent/proposal-notify')
+      await notifyProposalStep({
+        tenantId: await resolveTenantId({ contractId: newProposal.contract_id }), contractId: newProposal.contract_id,
+        proposalId: newProposal.id, step: isAprovado ? 'cliente_aprovado' : 'cliente_recusado', actorName: name,
+      })
+    } catch (e) { console.error('[client-review] aviso do agente:', e) }
+
     // Central de regras (Quando o cliente aprova a proposta): tarefa para o responsável dar o ganho
     if (isAprovado) {
       try {
