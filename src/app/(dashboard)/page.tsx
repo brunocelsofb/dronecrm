@@ -140,14 +140,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     return { initials, name, activities: actByUser.get(id) ?? 0, revenue: revByUser.get(id) ?? 0 }
   }).sort((a, b) => b.revenue - a.revenue)
 
+  // Sem acesso a valores: números de dinheiro não saem do servidor
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()
   return (
     <PremiumDashboard
       period={period}
-      kpi={{ receita: receitaAtual, meta, ticketMedio: avgTicket, ticketDelta: null, cicloMedio: avgCycle, churnPct, mrrCarteira }}
-      funnel={funnel}
-      series={series}
+      hideValues={!showValues}
+      kpi={showValues
+        ? { receita: receitaAtual, meta, ticketMedio: avgTicket, ticketDelta: null, cicloMedio: avgCycle, churnPct, mrrCarteira }
+        : { receita: 0, meta: 0, ticketMedio: 0, ticketDelta: null, cicloMedio: avgCycle, churnPct, mrrCarteira: 0 }}
+      funnel={showValues ? funnel : funnel.map(f => ({ ...f, value: 0 }))}
+      series={showValues ? series : series.map(m => ({ ...m, meta: 0, realizado: 0 }))}
       leadSources={leadSources}
-      team={team}
+      team={showValues ? team : team.map(t => ({ ...t, revenue: 0 }))}
     />
   )
 }

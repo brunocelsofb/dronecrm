@@ -140,7 +140,7 @@ function DropdownMenu({ p, currentUserRole }: { p: ProposalRow; currentUserRole:
   )
 }
 
-export function PropostasTable({ proposals, currentUserRole }: { proposals: ProposalRow[]; currentUserRole: string }) {
+export function PropostasTable({ proposals, currentUserRole, hideValues = false }: { proposals: ProposalRow[]; currentUserRole: string; hideValues?: boolean }) {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
 
@@ -255,10 +255,10 @@ export function PropostasTable({ proposals, currentUserRole }: { proposals: Prop
                     ) : '—'}
                   </td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.mrr > 0 ? '#1f8c7d' : '#b0b8c8' }}>
-                    {fmt(p.mrr)}
+                    {hideValues ? '—' : fmt(p.mrr)}
                   </td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: p.pontual > 0 ? '#524e9c' : '#b0b8c8' }}>
-                    {fmt(p.pontual)}
+                    {hideValues ? '—' : fmt(p.pontual)}
                   </td>
                   <td style={{ ...td, textAlign: 'right' }}>
                     <DropdownMenu p={p} currentUserRole={currentUserRole} />

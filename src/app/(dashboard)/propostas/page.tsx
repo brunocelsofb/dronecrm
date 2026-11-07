@@ -5,6 +5,8 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 
 
 export default async function PropostasPage() {
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()   // Configurações → Áreas e acessos
   const supabase = await createClient()
   const admin = (await createScopedAdmin())
   const impTenantId = await getActiveTenantId()
@@ -92,7 +94,7 @@ export default async function PropostasPage() {
       control_code: p.control_code,
       version: p.version,
       workflow_status: p.workflow_status,
-      proposal_value: p.proposal_value,
+      proposal_value: showValues ? p.proposal_value : null,
       created_at: p.created_at,
       updated_at: p.updated_at,
       proposal_validity_days: p.proposal_validity_days,
@@ -102,8 +104,8 @@ export default async function PropostasPage() {
       contract_title: contract?.client_name ?? contract?.title ?? contract?.process_number ?? '—',
       pipeline_stage: stageByContract.get((p.contract_id ?? '').trim().toLowerCase()) ?? null,
       responsible: profileById.get((contract as any)?.owner_id ?? '') ?? '—',
-      mrr,
-      pontual,
+      mrr: showValues ? mrr : 0,
+      pontual: showValues ? pontual : 0,
       item_summary: itemSummary,
     }
   })
@@ -118,7 +120,7 @@ export default async function PropostasPage() {
           </p>
         </div>
       </div>
-      <PropostasTable proposals={rows} currentUserRole={profile?.role ?? 'member'} />
+      <PropostasTable proposals={rows} currentUserRole={profile?.role ?? 'member'} hideValues={!showValues} />
     </div>
   )
 }

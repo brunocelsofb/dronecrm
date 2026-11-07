@@ -22,7 +22,7 @@ type Contract = {
   process_number: string
   title: string
   client_name: string
-  value: number
+  value: number | null   // null = pessoa sem acesso a valores
   run_status: string | null
   stage_id: string | null
   stage?: { name: string; color: string | null } | null
@@ -75,7 +75,7 @@ export function ContractsTable({ contracts, q }: { contracts: Contract[]; q?: st
                 </span>
               </td>
               <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 500, color: '#1a1f36' }}>
-                {fmt(Number(c.value || 0))}
+                {c.value === null ? '—' : fmt(Number(c.value || 0))}
               </td>
             </tr>
           )

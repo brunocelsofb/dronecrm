@@ -12,6 +12,8 @@ export default async function ContractsPage({
   searchParams: Promise<{ q?: string; status?: string }>
 }) {
   const { q, status } = await searchParams
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()   // Configurações → Áreas e acessos
   const { client: supabase, tenantId } = await createClientForTenant()
 
   // Busca só pipelines de tipo 'vendas' — Oportunidades são exclusivamente
@@ -111,7 +113,7 @@ export default async function ContractsPage({
       process_number: c.process_number,
       title: c.title,
       client_name: c.client_name,
-      value,
+      value: showValues ? value : null,
       run_status: r.status,
       stage_id: r.stage_id,
       pipeline_id: r.pipeline_id,
@@ -148,7 +150,7 @@ export default async function ContractsPage({
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
-          { label: 'Valor total', value: fmt(total), sub: `${enriched.length} oportunidades` },
+          { label: 'Valor total', value: showValues ? fmt(total) : '—', sub: `${enriched.length} oportunidades` },
           { label: 'Em andamento', value: String(open), sub: 'oportunidades abertas' },
           { label: 'Ganhas', value: String(won), sub: 'oportunidades fechadas' },
           { label: 'Perdidas', value: String(lost), sub: 'oportunidades perdidas' },

@@ -44,6 +44,9 @@ export default async function CarteiraPage({
 }: {
   searchParams: Promise<{ tipo?: string; alerta?: string; q?: string; coord?: string; eng?: string; uf?: string }>
 }) {
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()   // Configurações → Áreas e acessos
+  const fmtV = (v: number) => (showValues ? fmt(v) : '—')
   const { tipo, alerta, q, coord: coordFilter, eng: engFilter, uf: ufParam } = await searchParams
   const ufFilter = normalizeUf(ufParam)
   const { client: supabase, tenantId } = await createClientForTenant()
@@ -217,7 +220,7 @@ export default async function CarteiraPage({
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
-          { label: 'Valor mensal total', value: fmt(totalValorMensal), sub: `${filtered.length} contratos ativos` },
+          { label: 'Valor mensal total', value: fmtV(totalValorMensal), sub: `${filtered.length} contratos ativos` },
           { label: 'Fixos', value: String(fixos), sub: 'receita previsível' },
           { label: 'Por medição', value: String(medicoes), sub: 'variável por entrega' },
           { label: '🔴 Vencidos', value: String(vencido), sub: 'requer ação imediata', alert: vencido > 0 },
@@ -291,7 +294,7 @@ export default async function CarteiraPage({
             <div key={name} className="mb-3">
               <div className="flex justify-between mb-1">
                 <span className="text-xs font-medium text-[#1B556B]">{name}</span>
-                <span className="text-[11px] text-gray-500">{fmt(val)} · {countByCoord.get(name)} contratos</span>
+                <span className="text-[11px] text-gray-500">{fmtV(val)} · {countByCoord.get(name)} contratos</span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full rounded-full" style={{ width: `${Math.round((val / maxCoord) * 100)}%`, background: 'linear-gradient(90deg, #1B556B, #32AF9D)' }} />
@@ -308,7 +311,7 @@ export default async function CarteiraPage({
             <div key={name} className="mb-3">
               <div className="flex justify-between mb-1">
                 <span className="text-xs font-medium text-[#1B556B]">{name}</span>
-                <span className="text-[11px] text-gray-500">{fmt(val)} · {countByEng.get(name)} contratos</span>
+                <span className="text-[11px] text-gray-500">{fmtV(val)} · {countByEng.get(name)} contratos</span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full rounded-full" style={{ width: `${Math.round((val / maxEng) * 100)}%`, background: 'linear-gradient(90deg, #1B556B, #32AF9D)' }} />
@@ -405,7 +408,7 @@ export default async function CarteiraPage({
                         : <span className="text-[11px] text-gray-200">—</span>}
                     </td>
                     <td className="py-3 px-4 text-sm font-semibold text-[#1B556B]">
-                      {c.monthly_value ? fmt(c.monthly_value) : <span className="text-gray-200 text-[11px]">—</span>}
+                      {c.monthly_value ? fmtV(c.monthly_value) : <span className="text-gray-200 text-[11px]">—</span>}
                     </td>
                     <td className="py-3 px-4 text-xs text-gray-500">{c.coordinator_name ?? <span className="text-gray-200">—</span>}</td>
                     <td className="py-3 px-4 text-xs text-gray-500">{c.engineer_name ?? <span className="text-gray-200">—</span>}</td>

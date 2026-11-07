@@ -37,6 +37,9 @@ function todayBrIso(): string {
 }
 
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()   // Configurações → Áreas e acessos
+  const money = (v: number) => (showValues ? fmt(v) : '—')
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -277,7 +280,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                     </div>
                     <div className="rounded-xl border border-gray-200 p-4">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Receita mensal ativa</p>
-                      <p className="mt-1 text-sm font-semibold text-gray-900">{fmt(summary.mrr)}</p>
+                      <p className="mt-1 text-sm font-semibold text-gray-900">{money(summary.mrr)}</p>
                       <p className="text-xs text-gray-500">{summary.activeContracts} contrato(s) ativo(s) na carteira</p>
                     </div>
                   </div>
@@ -299,11 +302,11 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border border-gray-200 p-4">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Valor ganho (oportunidades)</p>
-                      <p className="mt-1 text-lg font-semibold text-gray-900">{fmt(summary.wonValue)}</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">{money(summary.wonValue)}</p>
                     </div>
                     <div className="rounded-xl border border-gray-200 p-4">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Propostas em aberto (valor)</p>
-                      <p className="mt-1 text-lg font-semibold text-gray-900">{fmt(summary.propOpenValue)}</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">{money(summary.propOpenValue)}</p>
                     </div>
                   </div>
           {(companyLeads ?? []).length > 0 && (
@@ -420,7 +423,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                         <tr key={p.id}>
                           <td className="py-2 pr-3 font-medium text-gray-900">{p.control_code ?? 'Proposta'}{p.version ? ` · v${p.version}` : ''}</td>
                           <td className="py-2 pr-3 text-gray-600">{PROP_LABEL[p.workflow_status] ?? p.workflow_status ?? '—'}</td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-gray-900">{Number(p.proposal_value) > 0 ? fmt(Number(p.proposal_value)) : '—'}</td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-gray-900">{Number(p.proposal_value) > 0 ? money(Number(p.proposal_value)) : '—'}</td>
                           <td className="py-2 pr-3 text-gray-600">{new Date(p.created_at).toLocaleDateString('pt-BR')}</td>
                           <td className="py-2"><Link href={`/contracts/${p.contract_id}/proposals`} className="text-brand-700 hover:underline">{contractNameById.get(p.contract_id) ?? 'Abrir'}</Link></td>
                         </tr>
@@ -479,7 +482,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                       {(() => {
                         const pSum = proposalSumByContractCompany.get(run.contract_id)
                         const val = pSum !== undefined ? pSum : Number(run.value)
-                        return val > 0 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) : '—'
+                        return val > 0 && showValues ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) : '—'
                       })()}
                     </span>
                   </div>

@@ -23,7 +23,8 @@ function fmtFull(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 }
 
-export function PremiumDashboard({ kpi, funnel, series, leadSources, team, period = 'month' }: {
+export function PremiumDashboard({ kpi, funnel, series, leadSources, team, period = 'month', hideValues = false }: {
+  hideValues?: boolean   // pessoa sem acesso a valores (Configurações → Áreas e acessos)
   kpi: KPI
   funnel: FunnelStage[]
   series: MonthSeries[]
@@ -31,6 +32,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
   team: TeamMember[]
   period?: string
 }) {
+  const money = (v: number) => (hideValues ? '—' : fmt(v))
   const areaRef = useRef<HTMLCanvasElement>(null)
   const donutRef = useRef<HTMLCanvasElement>(null)
   const areaChart = useRef<any>(null)
@@ -131,7 +133,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
         {/* Card em destaque: Ganhos */}
         <div className="rounded-3xl p-5 shadow-[0_4px_24px_rgba(27,85,107,0.18)] bg-gradient-to-br from-[#1B556B] to-[#0e3a4a] col-span-1">
           <p className="text-xs font-medium uppercase tracking-wider text-white/60 mb-3">Ganhos no período</p>
-          <p className="text-3xl font-bold text-white tracking-tight">{fmt(kpi.receita)}</p>
+          <p className="text-3xl font-bold text-white tracking-tight">{money(kpi.receita)}</p>
           <div className="h-1.5 bg-white/20 rounded-full mt-4 overflow-hidden">
             <div
               className="h-full rounded-full bg-[#E98C5F] transition-all"
@@ -140,21 +142,21 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
           </div>
           <div className="flex justify-between text-xs text-white/50 mt-1.5">
             <span>{fmtPct(metaPctReal)} da meta</span>
-            <span>{fmt(kpi.meta)}</span>
+            <span>{money(kpi.meta)}</span>
           </div>
         </div>
 
         {/* MRR Carteira */}
         <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
           <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">MRR Carteira</p>
-          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.mrrCarteira ? fmt(kpi.mrrCarteira) : '—'}</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.mrrCarteira ? money(kpi.mrrCarteira) : '—'}</p>
           <p className="text-xs text-gray-400 mt-2">contratos ativos em gestão</p>
         </div>
 
         {/* Ticket Médio */}
         <div className="rounded-3xl p-5 bg-white shadow-[0_2px_16px_rgba(0,0,0,0.06)]">
           <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-3">Ticket Médio</p>
-          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.ticketMedio > 0 ? fmt(kpi.ticketMedio) : '—'}</p>
+          <p className="text-3xl font-bold text-[#1B556B] tracking-tight">{kpi.ticketMedio > 0 ? money(kpi.ticketMedio) : '—'}</p>
           {kpi.cicloMedio !== null && (
             <p className="text-xs text-gray-400 mt-2">Ciclo médio: {kpi.cicloMedio} dias</p>
           )}
@@ -193,7 +195,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
                       minWidth: f.value > 0 ? 40 : 0,
                     }}
                   >
-                    {f.value > 0 ? fmt(f.value) : ''}
+                    {f.value > 0 && !hideValues ? fmt(f.value) : ''}
                   </div>
                 </div>
                 <span className="text-xs text-gray-400 w-6 text-right shrink-0">{f.count}</span>
@@ -283,7 +285,7 @@ export function PremiumDashboard({ kpi, funnel, series, leadSources, team, perio
                   <p className="text-xs font-semibold text-gray-800 leading-tight">{m.name}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{m.activities} atividades</p>
                 </div>
-                <p className="text-xs font-bold text-[#1B556B] ml-auto">{fmt(m.revenue)}</p>
+                <p className="text-xs font-bold text-[#1B556B] ml-auto">{money(m.revenue)}</p>
               </div>
             ))}
           </div>
