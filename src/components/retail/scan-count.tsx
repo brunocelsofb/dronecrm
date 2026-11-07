@@ -8,6 +8,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { applyRetailScan, linkRetailBarcode } from '@/lib/actions/retail-products'
 import { findByCode, normalizeBarcode, scanChanges } from '@/lib/retail/scan'
+import { CameraScanner } from './camera-scanner'
 
 export type CountVariant = { id: string; sku: string; barcode: string | null; color: string | null; size: string | null; stock: number; code: string; name: string; category: string | null }
 type Mode = 'entrada' | 'contagem'
@@ -42,6 +43,7 @@ export function ScanCount({ variants }: { variants: CountVariant[] }) {
   const [category, setCategory] = useState('')
   const [zeroMissing, setZeroMissing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [camera, setCamera] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [codes, setCodes] = useState<Record<string, string>>({}) // códigos ligados nesta tela (antes do refresh)
   const list = useMemo(() => variants.map(v => (codes[v.id] ? { ...v, barcode: codes[v.id] } : v)), [variants, codes])
@@ -76,10 +78,17 @@ export function ScanCount({ variants }: { variants: CountVariant[] }) {
     setCounts(c); setOrder(o); save(c, o, mode)
   }
   // Enter no campo: código/SKU conhecido soma 1; número desconhecido pede para ligar; texto vira busca
-  function enter() {
-    const raw = text.trim(); if (!raw) return
+  function enter() { handleCode(text) }
+  // Código vindo do campo (leitor USB/Bluetooth ou digitado) ou da câmera do celular
+  function handleCode(input: string, fromCamera = false) {
+    const raw = input.trim(); if (!raw) return
     const hit = findByCode(list, raw)
     if (hit) { add(hit.id); beep(true); setText(''); return }
+    if (fromCamera) {
+      beep(false); setPending(normalizeBarcode(raw)); setLinkQ('')
+      setLast({ ok: false, text: `Código ${normalizeBarcode(raw)} ainda não está ligado a nenhuma peça.` })
+      return
+    }
     if (/^[0-9A-Z-]{6,}$/i.test(raw.replace(/\s+/g, '')) && /\d{4,}/.test(raw)) {
       beep(false); setPending(normalizeBarcode(raw)); setLinkQ(''); setText('')
       setLast({ ok: false, text: `Código ${normalizeBarcode(raw)} ainda não está ligado a nenhuma peça.` })
@@ -129,7 +138,12 @@ export function ScanCount({ variants }: { variants: CountVariant[] }) {
       <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
         <label htmlFor="scan" className="block text-sm font-medium text-gray-900">Bipe a etiqueta ou digite o nome/código da peça</label>
         <input id="scan" ref={box} autoFocus autoComplete="off" className={`${inp} text-base`} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enter() } }} placeholder="ex.: 7891234567890 ou calça paris" />
-        <p className="text-xs text-gray-500">Com leitor (USB ou Bluetooth): clique aqui e bipe; cada bip soma 1. Sem leitor: digite e toque em +1 na peça.</p>
+        <p className="text-xs text-gray-500">Com leitor (USB ou Bluetooth): clique aqui e bipe; cada bip soma 1. Sem leitor: use a câmera do celular, ou digite e toque em +1 na peça.</p>
+        {!camera ? (
+          <button type="button" onClick={() => setCamera(true)} className="rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100">📷 Ler com a câmera</button>
+        ) : (
+          <CameraScanner onCode={c => handleCode(c, true)} onClose={() => { setCamera(false); box.current?.focus() }} />
+        )}
         {last && <p role="status" className={`rounded-lg px-3 py-2 text-sm ${last.ok ? 'bg-positive-100 text-positive-700' : 'bg-warn-100 text-warn-700'}`}>{last.text}</p>}
         {results.length > 0 && (
           <ul className="max-h-72 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-100">

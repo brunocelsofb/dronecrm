@@ -21,6 +21,8 @@
     "@supabase/supabase-js": "^2.110.0",
     "@svg-maps/brazil": "^2.0.0",
     "@types/papaparse": "^5.5.2",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "ai": "^4.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
