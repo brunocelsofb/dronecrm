@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { TechnicalDocument } from '@/components/proposals/technical-document'
+import { DimensionamentoTecnicoView, type DimTec } from '@/components/proposals/dimensionamento-tecnico'
 import { readApresentacao } from '@/lib/proposals/price-sections'
 import { technicalSnapshot } from '@/lib/proposals/technical'
 
@@ -18,7 +19,7 @@ const STATUS: Record<string, string> = {
 type Snap = Record<string, unknown> & {
   clientName?: string; projectName?: string; tipoEngenharia?: string; hospitalBeds?: number
   escopoServicos?: string[]; professionals?: { role: string; quantity: number; contractType: string; hoursPerMonth: number }[]
-  totalFTE?: number; cltCount?: number; pjCount?: number; dimensionamento?: unknown; sentAt?: string
+  totalFTE?: number; cltCount?: number; pjCount?: number; dimensionamento?: unknown; dimensionamentoTecnico?: unknown; sentAt?: string
 }
 
 export default async function TechnicalReviewPage({ params }: { params: Promise<{ id: string; proposalId: string }> }) {
@@ -49,7 +50,9 @@ export default async function TechnicalReviewPage({ params }: { params: Promise<
         <p className="mt-1 text-xs text-gray-400">É exatamente o que o aprovador técnico vê: só o dimensionamento, sem valores. O parecer (aprovar ou reprovar) é registrado na proposta.</p>
       </div>
 
-      {snap ? (
+      {snap?.dimensionamentoTecnico ? (
+        <DimensionamentoTecnicoView d={snap.dimensionamentoTecnico as DimTec} />
+      ) : snap ? (
         <TechnicalDocument snapshot={snap as never} showFinancials={false} isHospitalar={isHospitalar} />
       ) : (
         <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-400">

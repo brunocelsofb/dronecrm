@@ -18,6 +18,8 @@ export function technicalSnapshot(raw: unknown): Record<string, unknown> | null 
     professionals: (s.professionals ?? []).map(p => ({ role: p.role, quantity: p.quantity, contractType: p.contractType, hoursPerMonth: p.hoursPerMonth, workload: p.workload })),
     totalFTE: Number(s.totalFTE) || 0, cltCount: Number(s.cltCount) || 0, pjCount: Number(s.pjCount) || 0,
     equipamentos: s.equipamentos ?? undefined, dimensionamento: s.dimensionamento ?? undefined, sentAt: s.sentAt ?? '',
+    // Metodologia do Price (só técnico: horas, FTE, equipe, presença) — sem valores
+    dimensionamentoTecnico: s.dimensionamentoTecnico ?? undefined,
     apresentacao: ap?.secoes ? { versao: 1, secoes: ap.secoes.filter(x => TECH_SECTIONS.includes(x.chave)) } : undefined,
   }
 }

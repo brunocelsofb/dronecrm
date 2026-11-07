@@ -342,9 +342,13 @@ function SnapshotViewer({ snapshot: s, hideValues = false }: { snapshot: any; hi
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {!hideValues && s.revenueMonthly > 0 && kpi('Valor Mensal', new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.revenueMonthly), '#1f8c7d')}
         {s.hospitalBeds > 0 && kpi('Leitos', s.hospitalBeds)}
-        {s.equipamentos?.total > 0 && kpi('Equipamentos', s.equipamentos.total)}
+        {(s.dimensionamentoTecnico?.equipamentos?.total ?? s.equipamentos?.total) > 0 && kpi('Equipamentos', s.dimensionamentoTecnico?.equipamentos?.total ?? s.equipamentos.total)}
         {s.totalFTE > 0 && kpi('Profissionais', s.totalFTE)}
-        {dim?.fteDemandado > 0 && kpi('FTE Demandado', dim.fteDemandado, '#524e9c')}
+        {s.dimensionamentoTecnico
+          ? (s.dimensionamentoTecnico.metodologia
+              ? kpi('FTE calculado', String(s.dimensionamentoTecnico.metodologia.fte).replace('.', ','), '#524e9c')
+              : s.dimensionamentoTecnico.equipamentosPorTecnico && kpi('Equip. por técnico', s.dimensionamentoTecnico.equipamentosPorTecnico, '#524e9c'))
+          : dim?.fteDemandado > 0 && kpi('FTE Demandado', dim.fteDemandado, '#524e9c')}
         {s.contractDuration > 0 && kpi('Duração', `${s.contractDuration} meses`)}
       </div>
 
