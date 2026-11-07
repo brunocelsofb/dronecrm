@@ -9,7 +9,6 @@ import { createScopedAdmin } from '@/lib/tenant/scoped-admin'
 import { tenantLoginPath } from '@/lib/config/platform'
 import { CopyLinkBox } from '@/components/settings/copy-link-box'
 import { storePublicUrl } from '@/lib/files/store'
-import { PriceSectionsSettings } from '@/components/settings/price-sections-settings'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +23,7 @@ export default async function EmpresaSettingsPage() {
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
   const loginUrl = slug && host ? `${host.includes('localhost') ? 'http' : 'https'}://${host}${tenantLoginPath(slug)}` : null
   const { data: s } = await supabase.from('organization_settings')
-    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd, price_sections')
+    .select('name, company_name, company_cnpj, logo_storage_path, proposal_header_text, proposal_footer_text, proposal_brand_color, assistant_monthly_budget_usd')
     .eq('tenant_id', tenantId).maybeSingle()
   let logo: string | null = null
   if (s?.logo_storage_path) logo = storePublicUrl('public-assets', s.logo_storage_path)
@@ -41,7 +40,6 @@ export default async function EmpresaSettingsPage() {
         currentName={s?.name ?? 'CRM'} currentCompanyName={s?.company_name ?? ''} currentCompanyCnpj={s?.company_cnpj ?? ''}
         currentLogoPath={logo} currentHeaderText={s?.proposal_header_text ?? ''} currentFooterText={s?.proposal_footer_text ?? ''}
         currentBrandColor={s?.proposal_brand_color ?? '#1B556B'} currentAssistantBudget={s?.assistant_monthly_budget_usd ?? 10} />
-      <PriceSectionsSettings initial={(s?.price_sections as string[] | null) ?? null} />
     </SettingsSubpage>
   )
 }

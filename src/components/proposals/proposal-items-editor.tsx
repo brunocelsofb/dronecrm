@@ -2,6 +2,7 @@
 
 import { fmtPct, fmtNum1 } from '@/lib/format'
 import { useState } from 'react'
+import { addProposalItem, removeProposalItem } from '@/lib/actions/proposal-price-sections'
 
 type Item = {
   id: string
@@ -27,14 +28,34 @@ function fmt(v: number, currency = 'BRL') {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(v)
 }
 
-export function ProposalItemsEditor({ proposalId, contractId, initialItems, initialConditions, canEdit, fromPrice = false }: {
+type CatalogItem = { id: string; name: string; category: string | null; type: string | null; characteristics: string | null; unit_value: number | null }
+
+export function ProposalItemsEditor({ proposalId, contractId, initialItems, initialConditions, canEdit, fromPrice = false, catalog = [] }: {
   proposalId: string
   contractId: string
   initialItems: Item[]
   initialConditions: Conditions
   canEdit: boolean
   fromPrice?: boolean   // itens e valores vêm do Price: não repete a tabela (o PDF também não)
+  catalog?: CatalogItem[] // catálogo de produtos da empresa (Configurações → Propostas)
 }) {
+  const blank = { item: '', category: '', characteristics: '', quantity: 1, unit_value: 0, discount: 0, type: 'MRR' as 'MRR' | 'Pontual' }
+  const [draft, setDraft] = useState(blank)
+  const [adding, setAdding] = useState(false)
+  const [itemError, setItemError] = useState<string | null>(null)
+  function pickCatalog(id: string) {
+    const c = catalog.find(x => x.id === id)
+    if (!c) return
+    setDraft(d => ({ ...d, item: c.name, category: c.category ?? '', characteristics: c.characteristics ?? '', unit_value: Number(c.unit_value) || 0, type: c.type === 'Pontual' ? 'Pontual' : 'MRR' }))
+  }
+  async function addItem() {
+    setAdding(true); setItemError(null)
+    const r = await addProposalItem(proposalId, { ...draft, category: draft.category || null, characteristics: draft.characteristics || null })
+    setAdding(false)
+    if (!r.ok) { setItemError(r.error); return }
+    setItems(prev => [...prev, { id: r.id, item: draft.item, quantity: draft.quantity, unit_value: draft.unit_value, discount: draft.discount, subtotal: r.subtotal, category: draft.category || null, type: draft.type }])
+    setDraft(blank)
+  }
   const [items, setItems] = useState(initialItems)
   const [conditions, setConditions] = useState(initialConditions)
   const [saving, setSaving] = useState(false)
@@ -43,8 +64,10 @@ export function ProposalItemsEditor({ proposalId, contractId, initialItems, init
   const total = items.reduce((s, it) => s + Number(it.subtotal), 0)
 
   async function deleteItem(id: string) {
+    const before = items
     setItems(prev => prev.filter(it => it.id !== id))
-    await fetch(`/api/proposals/items/${id}`, { method: 'DELETE' })
+    const r = await removeProposalItem(id, proposalId)
+    if (!r.ok) { setItems(before); setItemError(r.error) }
   }
 
   async function saveConditions() {
@@ -113,6 +136,36 @@ export function ProposalItemsEditor({ proposalId, contractId, initialItems, init
           </table>
         </div>
         <p className="text-right text-sm font-semibold text-gray-900">Total: {fmt(total, conditions.currency)}</p>
+        {canEdit && (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-3 space-y-2">
+            <p className="text-xs font-medium text-gray-700">Adicionar item {catalog.length > 0 && <span className="font-normal text-gray-400">(do catálogo ou livre)</span>}</p>
+            {catalog.length > 0 && (
+              <select defaultValue="" onChange={e => { pickCatalog(e.target.value); e.target.value = '' }} className={inp}>
+                <option value="">Escolher do catálogo…</option>
+                {catalog.map(c => <option key={c.id} value={c.id}>{c.name}{c.category ? ` — ${c.category}` : ''}</option>)}
+              </select>
+            )}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+              <input value={draft.item} onChange={e => setDraft(d => ({ ...d, item: e.target.value }))} placeholder="Item" className={`${inp} sm:col-span-2`} />
+              <input type="number" min={1} value={draft.quantity} onChange={e => setDraft(d => ({ ...d, quantity: Number(e.target.value) }))} placeholder="Qtd" className={inp} title="Quantidade" />
+              <input type="number" min={0} step="0.01" value={draft.unit_value} onChange={e => setDraft(d => ({ ...d, unit_value: Number(e.target.value) }))} placeholder="Valor unitário" className={inp} title="Valor unitário" />
+              <input type="number" min={0} step="0.01" value={draft.discount} onChange={e => setDraft(d => ({ ...d, discount: Number(e.target.value) }))} placeholder="Desconto" className={inp} title="Desconto (R$)" />
+              <select value={draft.type} onChange={e => setDraft(d => ({ ...d, type: e.target.value as 'MRR' | 'Pontual' }))} className={inp} title="Tipo">
+                <option value="MRR">Mensal (MRR)</option>
+                <option value="Pontual">Pontual</option>
+              </select>
+            </div>
+            <input value={draft.characteristics} onChange={e => setDraft(d => ({ ...d, characteristics: e.target.value }))} placeholder="Descrição (opcional)" className={inp} />
+            <div className="flex items-center gap-3">
+              <button onClick={addItem} disabled={adding || !draft.item.trim()}
+                className="rounded-md bg-brand-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
+                {adding ? 'Incluindo…' : '+ Incluir item'}
+              </button>
+              <span className="text-xs text-gray-400">O valor mensal da proposta é a soma dos itens mensais.</span>
+            </div>
+            {itemError && <p className="text-xs text-negative-600">{itemError}</p>}
+          </div>
+        )}
       </div>
       )}
 

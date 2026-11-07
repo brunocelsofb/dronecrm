@@ -52,6 +52,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'contract_id e proposal_value são obrigatórios' }, { status: 400, headers: CORS })
   }
 
+  // Price é recurso do plano: empresa sem ele não recebe precificação do Price
+  {
+    const { data: ct } = await createAdminClient().from('contracts').select('tenant_id').eq('id', contract_id).maybeSingle()
+    const { getProposalConfig } = await import('@/lib/proposals/settings')
+    if (!ct || !(await getProposalConfig(ct.tenant_id as string)).priceEnabled) {
+      return NextResponse.json({ error: 'O Price não está liberado no plano desta empresa.' }, { status: 403, headers: CORS })
+    }
+  }
+
   // Só aceita quem abriu o Price pela proposta no CRM (passe assinado, ver lib/proposals/price-link.ts)
   const pass = verifyPriceLinkToken(body.crm_token, String(contract_id), proposal_id ?? null)
   if (pass !== 'ok') {

@@ -17,7 +17,7 @@ export async function savePriceSections(keys: string[] | null): Promise<Result> 
   const db = await createScopedAdmin(tenantId)
   const { error } = await db.from('organization_settings').update({ price_sections: clean }).eq('tenant_id', tenantId)
   if (error) return { ok: false, error: error.message }
-  revalidatePath('/settings/empresa')
+  revalidatePath('/settings/propostas')
   return { ok: true }
 }
 
@@ -88,4 +88,90 @@ export async function getPriceLinkToken(contractId: string, proposalId: string |
   }
   const { createPriceLinkToken } = await import('@/lib/proposals/price-link')
   return createPriceLinkToken(contractId, proposalId)
+}
+
+// Admin: regras da proposta (Configurações → Propostas)
+export async function saveProposalSettings(input: { techApproval: boolean }): Promise<Result> {
+  const me = await getCurrentProfile()
+  if (me?.role !== 'admin') return { ok: false, error: 'Só o Admin altera as regras da proposta.' }
+  const tenantId = await resolveTenantId()
+  const db = await createScopedAdmin(tenantId)
+  const { error } = await db.from('organization_settings').update({ proposal_settings: { techApproval: !!input.techApproval } }).eq('tenant_id', tenantId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath('/settings/propostas')
+  return { ok: true }
+}
+
+// ─── Itens lançados na montagem (empresas sem Price, ou proposta sem Price) ───
+// O valor da proposta sai dos itens: soma dos recorrentes (MRR) ou, sem recorrentes, de todos.
+// No funil de vendas também atualiza a previsão; o valor do contrato só muda na aprovação do cliente.
+async function recalcProposalValue(db: Awaited<ReturnType<typeof createScopedAdmin>>, proposalId: string, contractId: string) {
+  const { data: items } = await db.from('proposal_items').select('subtotal, type').eq('proposal_id', proposalId)
+  const list = (items ?? []) as { subtotal: number; type: string | null }[]
+  const mrr = list.filter(i => (i.type ?? 'MRR') === 'MRR')
+  const value = Math.round((mrr.length ? mrr : list).reduce((s, i) => s + Number(i.subtotal || 0), 0) * 100) / 100
+  await db.from('proposals').update({ proposal_value: value > 0 ? value : null, updated_at: new Date().toISOString() }).eq('id', proposalId)
+  const { data: run } = await db.from('pipeline_runs').select('id, pipelines(type)').eq('contract_id', contractId).eq('status', 'open').maybeSingle()
+  const type = (run as { pipelines?: { type?: string } | null } | null)?.pipelines?.type
+  if (run && type !== 'gestao_contratos' && value > 0) await db.from('pipeline_runs').update({ value }).eq('id', (run as { id: string }).id)
+  return value
+}
+
+export type ManualItemInput = { item: string; category?: string | null; characteristics?: string | null; quantity: number; unit_value: number; discount?: number; type: 'MRR' | 'Pontual' }
+
+export async function addProposalItem(proposalId: string, input: ManualItemInput): Promise<{ ok: true; id: string; subtotal: number; value: number } | { ok: false; error: string }> {
+  const { db, p } = await editableProposal(proposalId)
+  if (!p || !canEdit(p)) return { ok: false, error: 'A montagem não pode mais ser alterada.' }
+  const name = String(input.item ?? '').trim()
+  const qty = Number(input.quantity), unit = Number(input.unit_value), disc = Number(input.discount ?? 0)
+  if (!name) return { ok: false, error: 'Informe o item.' }
+  if (!(qty > 0) || !(unit >= 0) || !(disc >= 0)) return { ok: false, error: 'Quantidade e valores precisam ser números positivos.' }
+  const subtotal = Math.round((qty * unit - disc) * 100) / 100
+  const { count } = await db.from('proposal_items').select('id', { count: 'exact', head: true }).eq('proposal_id', proposalId)
+  const { data, error } = await db.from('proposal_items').insert({
+    proposal_id: proposalId, position: count ?? 0, quantity: qty, category: input.category ?? null, item: name.slice(0, 300),
+    characteristics: input.characteristics?.slice(0, 1000) ?? null, type: input.type === 'Pontual' ? 'Pontual' : 'MRR',
+    delivery_forecast: null, unit_value: unit, discount: disc, subtotal,
+  }).select('id').single()
+  if (error || !data) return { ok: false, error: error?.message ?? 'Falha ao incluir o item.' }
+  const value = await recalcProposalValue(db, proposalId, p.contract_id)
+  revalidatePath(`/contracts/${p.contract_id}`)
+  return { ok: true, id: data.id as string, subtotal, value }
+}
+
+export async function removeProposalItem(itemId: string, proposalId: string): Promise<{ ok: true; value: number } | { ok: false; error: string }> {
+  const { db, p } = await editableProposal(proposalId)
+  if (!p || !canEdit(p)) return { ok: false, error: 'A montagem não pode mais ser alterada.' }
+  const { error } = await db.from('proposal_items').delete().eq('id', itemId).eq('proposal_id', proposalId)
+  if (error) return { ok: false, error: error.message }
+  const value = await recalcProposalValue(db, proposalId, p.contract_id)
+  revalidatePath(`/contracts/${p.contract_id}`)
+  return { ok: true, value }
+}
+
+// Montagem sem Price: começa pelas seções padrão (mesmas da apresentação do Price), em branco.
+const DEFAULT_SECTIONS = [
+  { key: 'objeto', title: 'Objeto do Contrato' },
+  { key: 'escopo', title: 'Escopo do Contrato' },
+  { key: 'equipe', title: 'Estrutura Humana' },
+  { key: 'sla', title: 'Acordo de Nível de Serviço (SLA)' },
+  { key: 'diretrizes', title: 'Diretrizes de Atendimento' },
+]
+export async function addDefaultSections(proposalId: string): Promise<Result> {
+  const { db, tenantId, p } = await editableProposal(proposalId)
+  if (!p || !canEdit(p)) return { ok: false, error: 'A montagem não pode mais ser alterada.' }
+  const { data: existing } = await db.from('proposal_content_blocks').select('section_key, position').eq('proposal_id', proposalId)
+  const have = new Set(((existing ?? []) as { section_key: string | null }[]).map(b => b.section_key))
+  const { data: org } = await db.from('organization_settings').select('proposal_brand_color').eq('tenant_id', tenantId).maybeSingle()
+  const start = (existing ?? []).length
+  const rows = DEFAULT_SECTIONS.filter(s => !have.has(s.key)).map((s, i) => ({
+    proposal_id: proposalId, tenant_id: tenantId, source: 'modelo', section_key: s.key, title: s.title,
+    block_type: 'text', introduction: null, table_data: null, header_color: org?.proposal_brand_color || '#1B556B',
+    text_align: 'left', show_totals: false, position: start + i,
+  }))
+  if (!rows.length) return { ok: true, created: 0 }
+  const { error } = await db.from('proposal_content_blocks').insert(rows)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/contracts/${p.contract_id}/proposals/${proposalId}`)
+  return { ok: true, created: rows.length }
 }

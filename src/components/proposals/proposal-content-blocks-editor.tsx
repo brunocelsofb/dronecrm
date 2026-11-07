@@ -4,7 +4,7 @@ import { uploadFile } from '@/lib/files/client-upload'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { addImageBlock, addTableBlock, updateBlockIntroduction, updateTableBlock } from '@/lib/actions/proposals'
-import { removeProposalBlock, restorePriceSections, updateBlockTitle } from '@/lib/actions/proposal-price-sections'
+import { removeProposalBlock, restorePriceSections, updateBlockTitle, addDefaultSections } from '@/lib/actions/proposal-price-sections'
 import { useRouter } from 'next/navigation'
 import { sanitizeStorageFileName, tenantStoragePath } from '@/lib/utils/storage'
 
@@ -231,6 +231,14 @@ export function ProposalContentBlocksEditor({
     router.refresh()
   }
 
+  async function handleDefaultSections() {
+    setRestoring(true); setError(null)
+    const r = await addDefaultSections(proposalId)
+    setRestoring(false)
+    if (!r.ok) { setError(r.error); return }
+    router.refresh()
+  }
+
   async function saveTitle(blockId: string, title: string) {
     const r = await updateBlockTitle(blockId, proposalId, title)
     if (!r.ok) { setError(r.error); return }
@@ -254,6 +262,12 @@ export function ProposalContentBlocksEditor({
           As seções marcadas &ldquo;Price&rdquo; vêm da Apresentação ao Cliente do Price, na mesma ordem e com os mesmos valores.
           Edite o que quiser ou exclua o que não deve ir para o cliente. Imagens e tabelas suas entram depois delas.
         </p>
+        {canEdit && !hasPriceApresentacao && !blocks.some(b => b.block_type === 'text') && (
+          <button onClick={handleDefaultSections} disabled={restoring}
+            className="mt-2 rounded-md border border-brand-700 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">
+            {restoring ? 'Criando...' : '＋ Começar pelas seções padrão (Objeto, Escopo, Equipe, SLA, Diretrizes) — em branco para escrever'}
+          </button>
+        )}
         {canEdit && hasPriceApresentacao && hidden > 0 && (
           <button onClick={handleRestore} disabled={restoring}
             className="mt-2 rounded-md border border-brand-700 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 disabled:opacity-50">

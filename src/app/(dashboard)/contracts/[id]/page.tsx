@@ -39,6 +39,7 @@ import { ContractZapSignSection } from '@/components/zapsign/contract-zapsign-se
 import { PortfolioFieldsForm } from '@/components/carteira/portfolio-fields-form'
 import { ProposalTab } from '@/components/proposals/proposal-tab'
 import { technicalSnapshot, isTechnicalApprover } from '@/lib/proposals/technical'
+import { getProposalConfig } from '@/lib/proposals/settings'
 import { getContractContacts } from '@/lib/actions/contract-contacts'
 import { getConnectedEmailAccount } from '@/lib/actions/email'
 import { getContractCustomFieldValues } from '@/lib/actions/custom-fields'
@@ -254,6 +255,7 @@ export default async function ContractDetailPage({
   // Carregamentos independentes começam juntos (a página recarrega a cada ação: menos espera)
   const tenantReadP = resolveTenantForReading({ contractId: id })
   const tenantIdP = resolveTenantId()
+  const proposalCfgP = tenantIdP.then(t => getProposalConfig(t))
   const profileP = getCurrentProfile()
   const readingP = Promise.all([
     Promise.resolve(supabase.from('contract_ai_readings').select('created_at, file_name, status, error, result').eq('contract_id', id).order('created_at', { ascending: false }).limit(1).maybeSingle()),
@@ -290,6 +292,7 @@ export default async function ContractDetailPage({
   const orgMiscP = tenantIdP.then(t => supabase.from('organization_settings').select('inbound_email_domain, zapsign_api_token').eq('tenant_id', t).maybeSingle())
 
   const currentProfile = await profileP
+  const proposalCfg = await proposalCfgP
   // Aprovador técnico: proposta só com dimensionamento (sem valor e sem a precificação completa do Price)
   const proposals = isTechnicalApprover(currentProfile?.role)
     ? (proposalsRaw ?? []).map(p => ({ ...p, proposal_value: null, review_token: null, client_review_token: null, technical_snapshot: technicalSnapshot(p.technical_snapshot) }))
@@ -781,7 +784,7 @@ export default async function ContractDetailPage({
                 project: contract.title || contract.process_number || '',
                 crm_id: contract.id,
               })
-              const priceUrl = `https://orbis-price.vercel.app/?${priceParams.toString()}`
+              const priceUrl = `${(process.env.NEXT_PUBLIC_PRICE_URL ?? 'https://orbis-price.vercel.app').replace(/\/+$/, '')}/?${priceParams.toString()}`
               return (
                 <ProposalTab
                   contractId={contract.id}
@@ -790,6 +793,8 @@ export default async function ContractDetailPage({
                   currentUserRole={currentProfile?.role ?? 'member'}
                   currentUserName={currentProfile?.id ? (allProfilesById.get(currentProfile.id)?.full_name ?? 'Usuário') : 'Usuário'}
                   catalogItems={catalogItems ?? []}
+                  priceEnabled={proposalCfg.priceEnabled}
+                  techApproval={proposalCfg.techApproval}
                 />
               )
             })(),

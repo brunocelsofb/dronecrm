@@ -42,7 +42,6 @@ const BOXES: Box[] = [
     items: [
       { href: '/users', label: 'Usuários', description: 'Cadastro, papel, perfil e departamento', keywords: 'usuário pessoa equipe convidar senha' },
       { href: '/settings/perfis-acesso', label: 'Perfis de acesso', description: 'Abas de cada perfil (Gestor, Hunter, Farmer…)', keywords: 'permissão aba menu hunter farmer gestor' },
-      { href: '/settings/price-users', label: 'Usuários do Price', description: 'Aprovadores e precificadores da precificação' },
       { href: '/minha-conta', label: 'Minha conta', description: 'Seus dados, Gmail e assinatura de e-mail' },
     ],
   },
@@ -79,8 +78,10 @@ const BOXES: Box[] = [
   {
     title: 'Propostas', icon: FileText, description: 'Modelos e itens das propostas comerciais.',
     items: [
+      { href: '/settings/propostas', label: 'Regras da proposta', description: 'Aprovação técnica, precificação e seções do Price', keywords: 'aprovação técnica price fluxo seções' },
       { href: '/proposals/templates', label: 'Modelos de proposta', description: 'Templates de proposta comercial', keywords: 'proposta modelo' },
       { href: '/proposals/catalog', label: 'Catálogo de produtos', description: 'Produtos e serviços das propostas' },
+      { href: '/settings/price-users', label: 'Usuários do Price', description: 'Aprovadores e precificadores da precificação' },
     ],
   },
   {

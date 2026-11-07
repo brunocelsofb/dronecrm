@@ -401,7 +401,7 @@ function SnapshotViewer({ snapshot: s, hideValues = false }: { snapshot: any; hi
 }
 
 // ── Componente principal ────────────────────────────────────────────────────
-export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl, currentUserRole, currentUserName, technicalView = false }: {
+export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl, currentUserRole, currentUserName, technicalView = false, priceEnabled = true, techApproval = true }: {
   contractId: string
   proposalId?: string
   initialData: ProposalData | null
@@ -409,7 +409,12 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
   currentUserRole: string
   currentUserName: string
   technicalView?: boolean   // aprovador técnico: só dimensionamento, sem Price e sem valores
+  priceEnabled?: boolean    // empresa usa o Price (recurso do plano); senão a proposta é montada à mão
+  techApproval?: boolean    // empresa tem a etapa de aprovação técnica (Configurações → Propostas)
 }) {
+  // Etapas do fluxo desta empresa (sem a análise técnica quando ela está desligada)
+  const steps = (techApproval ? STEPS : STEPS.filter(st => st.key !== 'em_aprovacao_tecnica' && st.key !== 'aprovado_tecnico'))
+    .map((st, i) => ({ ...st, short: String(i + 1) }))
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [data, setData] = useState<ProposalData>(
@@ -610,7 +615,18 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
               <StatusBadge status={data.status} />
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {technicalView ? (
+              {!technicalView && !priceEnabled ? (
+                proposalId && (
+                  <a href={`/contracts/${contractId}/proposals/${proposalId}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+                      fontSize: 11, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
+                      background: 'linear-gradient(135deg,#1b556b,#2a8a7a)', color: '#fff', letterSpacing: '0.3px'
+                    }}>
+                    <span style={{ fontSize: 14 }}>📝</span> Montar proposta
+                  </a>
+                )
+              ) : technicalView ? (
                 proposalId && (
                   <a href={`/contracts/${contractId}/proposals/${proposalId}/tecnico`}
                     style={{
@@ -634,7 +650,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
               </button>
               )}
               {/* Admin confere exatamente o que o aprovador técnico recebe (sem valores) */}
-              {!technicalView && isAdmin && proposalId && (
+              {!technicalView && priceEnabled && techApproval && isAdmin && proposalId && (
                 <a href={`/contracts/${contractId}/proposals/${proposalId}/tecnico`}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
@@ -671,7 +687,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
         <div>
           {sectionLabel('Progresso de Aprovação')}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, paddingTop: 8, paddingBottom: 4 }}>
-            {STEPS.map((step, i) => {
+            {steps.map((step, i) => {
               const stepIdx = STEP_ORDER.indexOf(step.key)
               const isDone = stepIdx < currentIdx
               const isActive = step.key === data.status
@@ -693,7 +709,7 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
                       {step.label}
                     </p>
                   </div>
-                  {i < STEPS.length - 1 && (
+                  {i < steps.length - 1 && (
                     <div style={{ flex: 1, height: 2, background: isDone ? (isFailure ? '#dcadb3' : '#1f8c7d') : '#f1f3f8', margin: '0 4px', marginBottom: 22, borderRadius: 1 }} />
                   )}
                 </div>
@@ -737,15 +753,19 @@ export function ProposalWorkflow({ contractId, proposalId, initialData, priceUrl
             {/* Rascunho → Enviar para análise técnica */}
             {data.status === 'rascunho' && isCommMember && (
               <button
-                onClick={() => data.proposal_value ? setModal({ action: 'send_tech' }) : setError('Envie o valor do Price antes de iniciar.')}
+                onClick={() => data.proposal_value
+                  ? setModal({ action: techApproval ? 'send_tech' : 'send_comm' })
+                  : setError(priceEnabled ? 'Envie o valor do Price antes de iniciar.' : 'Lance os itens na montagem da proposta antes de iniciar.')}
                 disabled={isPending || generatingLink}
                 style={{ padding: '11px 18px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none', background: '#1b556b', color: '#fff', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>📋</span> Enviar para Análise Técnica
+                <span style={{ fontSize: 16 }}>{techApproval ? '📋' : '💼'}</span> {techApproval ? 'Enviar para Análise Técnica' : 'Enviar para Aprovação Comercial'}
               </button>
             )}
             {data.status === 'rascunho' && !data.proposal_value && (
               <div style={{ padding: '10px 14px', borderRadius: 8, background: '#fbeee5', border: '0.5px solid #ffe596' }}>
-                <p style={{ fontSize: 12, color: '#c2683d', margin: 0 }}>⚠ Abra o Price pelo botão acima, dimensione e envie o valor ao CRM antes de iniciar o fluxo de aprovação.</p>
+                <p style={{ fontSize: 12, color: '#c2683d', margin: 0 }}>{priceEnabled
+                  ? '⚠ Abra o Price pelo botão acima, dimensione e envie o valor ao CRM antes de iniciar o fluxo de aprovação.'
+                  : '⚠ Abra a montagem pelo botão acima, escreva o conteúdo e lance os itens: o valor da proposta sai deles.'}</p>
               </div>
             )}
 

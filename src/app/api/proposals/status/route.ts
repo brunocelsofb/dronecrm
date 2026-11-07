@@ -24,6 +24,22 @@ export async function POST(req: Request) {
   const supabase = (await createScopedAdmin())
   const now = new Date().toISOString()
 
+  // Regras da proposta da empresa (Configurações → Propostas): com ou sem análise técnica
+  if (proposal_id && (status === 'em_aprovacao_tecnica' || status === 'em_aprovacao_comercial')) {
+    const { getProposalConfig } = await import('@/lib/proposals/settings')
+    const { resolveTenantId } = await import('@/lib/tenant/context')
+    const cfg = await getProposalConfig(await resolveTenantId({ contractId: contract_id }))
+    if (status === 'em_aprovacao_tecnica' && !cfg.techApproval) {
+      return NextResponse.json({ error: 'Esta empresa não usa aprovação técnica: envie para a aprovação comercial.' }, { status: 400, headers: CORS })
+    }
+    if (status === 'em_aprovacao_comercial' && cfg.techApproval) {
+      const { data: cur } = await supabase.from('proposals').select('workflow_status').eq('id', proposal_id).maybeSingle()
+      if (cur && cur.workflow_status !== 'aprovado_tecnico' && cur.workflow_status !== 'em_aprovacao_comercial') {
+        return NextResponse.json({ error: 'A proposta precisa da aprovação técnica antes da comercial.' }, { status: 400, headers: CORS })
+      }
+    }
+  }
+
   // Tenta pegar usuário logado
   let loggedName = actor_name ?? null
   try {
@@ -94,11 +110,13 @@ export async function POST(req: Request) {
     )
   }
 
+  // Valor enviado junto (fluxo antigo do Price): só a previsão do funil de vendas. No funil de
+  // contratos (renovação) o valor só muda na aprovação final do cliente.
   if (proposal_value) {
-    await supabase.from('pipeline_runs')
-      .update({ value: proposal_value })
-      .eq('contract_id', contract_id)
-      .eq('status', 'open')
+    const { data: run } = await supabase.from('pipeline_runs').select('id, pipelines(type)')
+      .eq('contract_id', contract_id).eq('status', 'open').maybeSingle()
+    const type = (run as { pipelines?: { type?: string } | null } | null)?.pipelines?.type
+    if (run && type !== 'gestao_contratos') await supabase.from('pipeline_runs').update({ value: proposal_value }).eq('id', run.id)
   }
 
   const ROLE_LABELS_MAP: Record<string, string> = {

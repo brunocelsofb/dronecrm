@@ -28,7 +28,9 @@ export const FEATURES: FeatureDef[] = [
   { key: 'marketing',           label: 'Marketing',            paths: ['/marketing'] },
   { key: 'sdr',                 label: 'SDR de IA',            paths: ['/sdr', '/settings/sdr'] },
   { key: 'contracts',           label: 'Oportunidades',        paths: ['/contracts', '/settings/zapsign', '/zapsign'] },
-  { key: 'propostas',           label: 'Propostas',            paths: ['/propostas', '/proposals', '/settings/price-users'] },
+  { key: 'propostas',           label: 'Propostas',            paths: ['/propostas', '/proposals', '/settings/propostas'] },
+  // Precificação pelo Price (engenharia clínica/predial): opcional, liberado por empresa
+  { key: 'price',               label: 'Price (precificação)', paths: ['/settings/price-users'] },
   { key: 'carteira',            label: 'Gestão de Carteira',   paths: ['/carteira', '/settings/carteira', '/settings/curva-abc', '/settings/regua-renovacao', '/settings/implementation-templates'] },
   { key: 'companies',           label: 'Empresas',             paths: ['/companies', '/settings/segmentos'] },
   { key: 'tickets',             label: 'Atendimento',          paths: ['/tickets'] },
@@ -43,7 +45,7 @@ export const FEATURES: FeatureDef[] = [
 export const FEATURE_KEYS = FEATURES.map(f => f.key)
 
 // Módulos que nunca entram num plano sozinhos: o Super Admin libera por empresa
-export const OPTIONAL_FEATURES = ['varejo']
+export const OPTIONAL_FEATURES = ['varejo', 'price']
 
 // Usado só se a tabela plan_features não responder
 export const DEFAULT_PLAN_FEATURES: Record<PlanId, string[]> = {

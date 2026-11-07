@@ -39,7 +39,7 @@ export default async function ProposalDetailPage({
   if (String((await getCurrentProfile())?.role) === 'aprovador_tecnico') redirect(`/contracts/${contractId}/proposals/${proposalId}/tecnico`)
   const supabase = await createClient()
 
-  const [{ data: proposal }, { data: items }, { data: pages }, { data: templates }, { data: approvals }, { data: allProfiles }, { data: contentBlocks }] = await Promise.all([
+  const [{ data: proposal }, { data: items }, { data: pages }, { data: templates }, { data: approvals }, { data: allProfiles }, { data: contentBlocks }, { data: catalogItems }] = await Promise.all([
     supabase.from('proposals').select('*').eq('id', proposalId).maybeSingle(),
     supabase.from('proposal_items').select('*').eq('proposal_id', proposalId).order('position'),
     supabase.from('proposal_pages').select('template_id, is_standard_proposal').eq('proposal_id', proposalId).order('position'),
@@ -47,6 +47,7 @@ export default async function ProposalDetailPage({
     supabase.from('proposal_approvals').select('*').eq('proposal_id', proposalId).order('decided_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, department'),
     supabase.from('proposal_content_blocks').select('id, block_type, image_storage_path, table_data, header_color, image_size, introduction, show_totals, text_align, source, section_key, title').eq('proposal_id', proposalId).order('position'),
+    supabase.from('proposal_catalog_items').select('id, name, category, type, characteristics, unit_value').order('name'),
   ])
 
   if (!proposal) notFound()
@@ -151,6 +152,7 @@ export default async function ProposalDetailPage({
             }}
             canEdit={canEditPages}
             fromPrice={(contentBlocks ?? []).some(b => (b as { source?: string | null }).source === 'price')}
+            catalog={catalogItems ?? []}
           />
 
           <ProposalContentBlocksEditor

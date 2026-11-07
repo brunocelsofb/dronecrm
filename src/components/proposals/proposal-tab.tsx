@@ -42,6 +42,8 @@ type Props = {
   currentUserRole: string
   currentUserName: string
   catalogItems: any[]
+  priceEnabled?: boolean   // empresa usa o Price (recurso do plano)
+  techApproval?: boolean   // empresa tem a etapa de aprovação técnica
 }
 
 function fmt(v: number) {
@@ -188,7 +190,7 @@ function MenuItem({ icon, label, onClick, danger }: { icon: string; label: strin
 import { ProposalWorkflow } from './proposal-workflow'
 import { ProposalsSection } from './proposals-section'
 
-export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems }: Props) {
+export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems, priceEnabled = true, techApproval = true }: Props) {
   const router = useRouter()
   // ?proposta=<id> (ex.: "Voltar para a proposta" da montagem) já abre essa proposta
   const wanted = useSearchParams().get('proposta')
@@ -322,6 +324,8 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             priceUrl={priceUrl}
             currentUserRole={isReadOnly ? 'aprovador_tecnico' : currentUserRole}
             technicalView={currentUserRole === 'aprovador_tecnico'}
+            priceEnabled={priceEnabled}
+            techApproval={techApproval}
             currentUserName={currentUserName}
           />
           {!isReadOnly && currentUserRole !== 'aprovador_tecnico' && (
@@ -330,8 +334,9 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
               <div className="rounded-lg border border-gray-200 bg-white p-4">
                 <p className="text-sm font-medium text-gray-900">Conteúdo da proposta</p>
                 <p className="mt-0.5 text-xs text-gray-500">
-                  Vem da Apresentação ao Cliente do Price (seções, tabelas e itens). Para editar, excluir uma seção
-                  ou incluir imagens e tabelas, use a montagem.
+                  {priceEnabled
+                    ? 'Vem da Apresentação ao Cliente do Price (seções, tabelas e itens). Para editar, excluir uma seção ou incluir imagens e tabelas, use a montagem.'
+                    : 'Escrito na montagem: seções (Objeto, Escopo, Equipe, SLA…), imagens, tabelas e os itens, de onde sai o valor da proposta.'}
                 </p>
                 <a href={`/contracts/${contractId}/proposals/${selectedId}`}
                   className="mt-2 inline-block rounded-md border border-brand-700 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100">
