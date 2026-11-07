@@ -41,7 +41,7 @@ const BOXES: Box[] = [
     title: 'Equipe e acesso', icon: Users, description: 'Quem usa o CRM e o que cada um vê.',
     items: [
       { href: '/users', label: 'Usuários', description: 'Cadastro, papel, perfil e departamento', keywords: 'usuário pessoa equipe convidar senha' },
-      { href: '/settings/perfis-acesso', label: 'Perfis de acesso', description: 'Abas de cada perfil (Gestor, Hunter, Farmer…)', keywords: 'permissão aba menu hunter farmer gestor' },
+      { href: '/settings/perfis-acesso', label: 'Áreas e acessos', description: 'Áreas da empresa, abas de cada uma e quem vê valores', keywords: 'permissão aba menu hunter farmer gestor perfil área valores diretoria qualidade' },
       { href: '/minha-conta', label: 'Minha conta', description: 'Seus dados, Gmail e assinatura de e-mail' },
     ],
   },

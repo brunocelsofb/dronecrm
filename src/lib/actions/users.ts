@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from '@/lib/auth/role'
 import { requireTenantId } from '@/lib/tenant/context'
-import { isAccessProfile } from '@/lib/auth/access-profiles'
+import { isAreaId, resolveAreas } from '@/lib/auth/access-profiles'
 import { passwordProblem } from '@/lib/auth/password'
 import { profileProblems, cleanPhoneBR } from '@/lib/people/profile-complete'
 
@@ -48,7 +48,7 @@ export async function createUserByAdmin(
   const department = (formData.get('department') as string) || null
   const phone = cleanPhoneBR(formData.get('phone'))
   const rawProfile = formData.get('access_profile') as string
-  const access_profile = role === 'admin' ? null : isAccessProfile(rawProfile) ? rawProfile : 'gestor'
+  const access_profile = role === 'admin' ? null : (await isTenantArea(rawProfile)) ? rawProfile : 'gestor'
 
   if (!email || !fullName || !password) {
     return { error: 'Preencha nome, e-mail e senha.' }
@@ -172,9 +172,29 @@ export async function updateUserAccessProfile(targetUserId: string, formData: Fo
   if (currentProfile?.role !== 'admin') return
   if (!(await canManage(targetUserId))) return
   const value = formData.get('access_profile') as string
-  if (!isAccessProfile(value)) return
+  if (!(await isTenantArea(value))) return
   const supabase = createAdminClient()
   await supabase.from('profiles').update({ access_profile: value }).eq('id', targetUserId)
+  revalidatePath('/users')
+}
+
+// Área existe nesta empresa (padrão ou criada)?
+async function isTenantArea(value: unknown): Promise<boolean> {
+  if (!isAreaId(value)) return false
+  const { resolveTenantId } = await import('@/lib/tenant/context')
+  const tenantId = await resolveTenantId()
+  const { data } = await createAdminClient().from('organization_settings').select('access_areas, profile_features').eq('tenant_id', tenantId).maybeSingle()
+  return resolveAreas(data?.access_areas, data?.profile_features).some(a => a.id === value)
+}
+
+// Valores avulsos: '' = regra da área; 'sim' = liberado; 'nao' = bloqueado (só esta pessoa)
+export async function updateUserSeesValues(targetUserId: string, formData: FormData) {
+  const currentProfile = await getCurrentProfile()
+  if (currentProfile?.role !== 'admin') return
+  if (!(await canManage(targetUserId))) return
+  const v = String(formData.get('sees_values') ?? '')
+  const sees_values = v === 'sim' ? true : v === 'nao' ? false : null
+  await createAdminClient().from('profiles').update({ sees_values }).eq('id', targetUserId)
   revalidatePath('/users')
 }
 
