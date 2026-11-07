@@ -16,6 +16,11 @@ export async function GET(
   const userClient = await createClient()
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
+  // O PDF tem os valores da proposta: só para quem vê valores
+  {
+    const { canSeeValues } = await import('@/lib/auth/access')
+    if (!(await canSeeValues())) return NextResponse.json({ error: 'Sem acesso aos valores.' }, { status: 403 })
+  }
 
   const admin = (await createScopedAdmin())
 

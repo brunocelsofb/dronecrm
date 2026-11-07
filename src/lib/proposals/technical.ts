@@ -25,3 +25,13 @@ export function technicalSnapshot(raw: unknown): Record<string, unknown> | null 
 }
 
 export const isTechnicalApprover = (role: unknown) => String(role ?? '') === 'aprovador_tecnico'
+
+// Tira valores em reais de um texto (histórico) para quem não vê valores
+export function redactValues(t: string | null | undefined): string | null {
+  if (!t) return t ?? null
+  return t
+    .replace(/\s*[·.]?\s*(Valor|Margem)[^·.]*R?\$?[^·]*?(?=·|$)/gi, '')
+    .replace(/R\$\s?-?[\d.]+(,\d{2})?(\/m[eê]s)?/g, '—')
+    .replace(/\(antes —\)/g, '')
+    .replace(/\s*\([+-]?[\d.,]+% sobre —\)/g, '')
+}

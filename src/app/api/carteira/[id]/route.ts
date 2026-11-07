@@ -26,6 +26,11 @@ export async function PATCH(
   for (const key of ALLOWED_FIELDS) {
     if (key in body) update[key] = body[key]
   }
+  // Quem não vê valores não altera o valor mensal (o campo nem aparece para ele)
+  if ('monthly_value' in update) {
+    const { canSeeValues } = await import('@/lib/auth/access')
+    if (!(await canSeeValues())) delete update.monthly_value
+  }
   // Tipo do contrato define o selo de receita (Recorrente x Medição)
   if (update.contract_type === 'medicao') update.billing_type = 'metered'
   else if (update.contract_type === 'fixo') update.billing_type = 'fixed'

@@ -16,6 +16,9 @@ export default async function PipelinePage({
   const { pipeline: pipelineIdParam, tag: tagFilter } = await searchParams
   const { client: supabase, tenantId } = await createClientForTenant()
   const isAdmin = await isCurrentUserAdmin()
+  // Valores só para quem vê valores (Configurações → Áreas e acessos)
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const showValues = await canSeeValues()
 
   // Roda "no fundo" (sem await) — antes isso travava o carregamento da
   // tela toda vez que alguém visitava o Funil, mesmo quando não tinha
@@ -188,14 +191,14 @@ export default async function PipelinePage({
       processNumber: contract?.process_number ?? '',
       clientName: contract?.client_name ?? '',
       title: contract?.title ?? '',
-      value: Number(r.value) || 0,
+      value: showValues ? (Number(r.value) || 0) : 0,
       stageEnteredAt: r.stage_entered_at,
       lastActivityAt: lastActivityByContract.get(r.contract_id) ?? null,
       validUntil: null,
       freshness: computeFreshness(r.contract_id, r.stage_entered_at, r.stage_id),
       tag: tagByContract.get(r.contract_id) ?? null,
       lostReasonName: r.lost_reason_id ? lostReasonById.get(r.lost_reason_id) ?? null : null,
-      revenue: revenueInfo(r.contract_id),
+      revenue: showValues ? revenueInfo(r.contract_id) : undefined,
     }
   }
 
@@ -238,7 +241,7 @@ export default async function PipelinePage({
                   <p className={`text-sm font-semibold m-0 ${isActive ? 'text-white' : 'text-[#1B556B]'}`}>{p.name}</p>
                   {isActive && (
                     <p className="text-[11px] text-white/60 mt-1">
-                      {openCards.length} aberta{openCards.length !== 1 ? 's' : ''} · {fmtCurrency(totalOpen)}
+                      {openCards.length} aberta{openCards.length !== 1 ? 's' : ''} {showValues ? ` · ${fmtCurrency(totalOpen)}` : ''}
                     </p>
                   )}
                 </div>
@@ -298,6 +301,7 @@ export default async function PipelinePage({
           pipelineId={selectedPipeline as string}
           stages={stages}
           initialCards={filteredCards}
+          hideValues={!showValues}
           showValidity={pipelineType === 'gestao_contratos'}
           wonLabel={pipelines?.find((p) => p.id === selectedPipeline)?.won_label ?? 'Ganho'}
           lostLabel={pipelines?.find((p) => p.id === selectedPipeline)?.lost_label ?? 'Perdido'}

@@ -83,7 +83,7 @@ function MultiSelect({ options, value, onChange }: { options: string[]; value: s
   )
 }
 
-export function PortfolioFieldsForm({ contractId, initial, contractNature, companyCity, companyState, abcConfig, tags, currentTagId, activeFields, wonDate }: {
+export function PortfolioFieldsForm({ contractId, initial, contractNature, companyCity, companyState, abcConfig, tags, currentTagId, activeFields, wonDate, hideValues = false }: {
   contractId: string
   initial: PortfolioData
   contractNature?: string | null
@@ -93,6 +93,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
   tags?: { id: string; name: string; color: string }[]
   currentTagId?: string | null
   activeFields?: string[] | null
+  hideValues?: boolean   // área sem acesso a valores: não mostra nem envia o valor mensal
   wonDate?: string | null  // YYYY-MM-DD da data de ganho do funil
 }) {
   const show = (key: string) => !activeFields || activeFields.includes(key)
@@ -171,7 +172,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
       const res = await fetch(`/api/carteira/${contractId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, score_billing: fatNota || data.score_billing, score_visit: visNota || data.score_visit, score_loyalty: fidNota || data.score_loyalty }),
+        body: JSON.stringify({ ...(hideValues ? (({ monthly_value: _mv, ...rest }) => rest)(data) : data), score_billing: fatNota || data.score_billing, score_visit: visNota || data.score_visit, score_loyalty: fidNota || data.score_loyalty }),
       })
       const json = await res.json()
       if (!res.ok || json.error) throw new Error(json.error ?? 'Erro ao salvar')
@@ -253,7 +254,7 @@ export function PortfolioFieldsForm({ contractId, initial, contractNature, compa
             <option value="medicao">Por Medição</option>
           </select>
         </div>
-        <div><label style={lbl}>Valor Mensal (R$)</label><input style={inp} type="number" value={data.monthly_value ?? ''} onChange={e => set('monthly_value', e.target.value ? Number(e.target.value) : null)} /></div>
+        {!hideValues && <div><label style={lbl}>Valor Mensal (R$)</label><input style={inp} type="number" value={data.monthly_value ?? ''} onChange={e => set('monthly_value', e.target.value ? Number(e.target.value) : null)} /></div>}
         <div>
           <label style={lbl}>Natureza</label>
           <select style={{ ...inp, cursor: 'pointer' }} value={data.nature ?? ''} onChange={e => set('nature', e.target.value || null)}>

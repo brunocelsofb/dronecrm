@@ -79,7 +79,8 @@ const FRESHNESS_STYLES = {
   stale:   { border: '0.5px solid #dcadb3', background: '#fff5f5', borderLeft: '3px solid #ef4444' },
 } as const
 
-function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer, onDelete }: {
+function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer, onDelete, hideValues = false }: {
+  hideValues?: boolean
   card: RunCard; sla: number | null; showValidity: boolean; wonLabel: string; lostLabel: string
   onTransfer?: (card: RunCard) => void
   onDelete?: (card: RunCard) => void
@@ -192,7 +193,7 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer, onDele
       )}
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid #f1f3f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36' }}>{fmt(card.value)}</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: '#1a1f36' }}>{hideValues ? '' : fmt(card.value)}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {onTransfer && (
             <button
@@ -211,7 +212,8 @@ function Card({ card, sla, showValidity, wonLabel, lostLabel, onTransfer, onDele
   )
 }
 
-function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer, onDelete }: {
+function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer, onDelete, hideValues = false }: {
+  hideValues?: boolean
   stage: Stage; cards: RunCard[]; showValidity: boolean; wonLabel: string; lostLabel: string
   onTransfer?: (card: RunCard) => void
   onDelete?: (card: RunCard) => void
@@ -236,9 +238,9 @@ function Column({ stage, cards, showValidity, wonLabel, lostLabel, onTransfer, o
         <p style={{ fontSize: 12, fontWeight: 500, color: '#1a1f36', margin: 0 }}>{stage.name}</p>
         <span style={{ fontSize: 10, color: '#8892a4', background: '#fff', border: '0.5px solid #e8edf5', borderRadius: 20, padding: '2px 7px' }}>{cards.length}</span>
       </div>
-      <p style={{ fontSize: 11, color: '#8892a4', padding: '0 4px', marginBottom: 10 }}>{fmt(total)}</p>
+      {!hideValues && <p style={{ fontSize: 11, color: '#8892a4', padding: '0 4px', marginBottom: 10 }}>{fmt(total)}</p>}
       {cards.map((c) => (
-        <Card key={c.runId} card={c} sla={stage.sla_days} showValidity={showValidity} wonLabel={wonLabel} lostLabel={lostLabel} onTransfer={onTransfer} onDelete={onDelete} />
+        <Card key={c.runId} card={c} sla={stage.sla_days} showValidity={showValidity} wonLabel={wonLabel} lostLabel={lostLabel} onTransfer={onTransfer} onDelete={onDelete} hideValues={hideValues} />
       ))}
       {cards.length === 0 && (
         <p style={{ padding: '32px 0', textAlign: 'center', fontSize: 11, color: '#c8cdd8' }}>Vazio</p>
@@ -277,7 +279,9 @@ export function KanbanBoard({
   isAdmin,
   otherPipelines,
   isGestao,
+  hideValues = false,
 }: {
+  hideValues?: boolean   // pessoa sem acesso a valores: cartões e colunas sem R$
   pipelineId: string
   stages: Stage[]
   initialCards: RunCard[]
@@ -500,6 +504,7 @@ export function KanbanBoard({
         <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 }}>
           {stages.map((stage) => (
             <Column
+              hideValues={hideValues}
               key={stage.id}
               stage={stage}
               cards={visibleCards.filter((c) => c.stageId === stage.id)}

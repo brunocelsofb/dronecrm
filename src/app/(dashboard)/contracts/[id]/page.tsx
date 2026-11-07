@@ -40,6 +40,8 @@ import { PortfolioFieldsForm } from '@/components/carteira/portfolio-fields-form
 import { ProposalTab } from '@/components/proposals/proposal-tab'
 import { technicalSnapshot, isTechnicalApprover } from '@/lib/proposals/technical'
 import { getProposalConfig } from '@/lib/proposals/settings'
+import { getUserAccess } from '@/lib/auth/access'
+import { redactValues } from '@/lib/proposals/technical'
 import { getContractContacts } from '@/lib/actions/contract-contacts'
 import { getConnectedEmailAccount } from '@/lib/actions/email'
 import { getContractCustomFieldValues } from '@/lib/actions/custom-fields'
@@ -293,8 +295,10 @@ export default async function ContractDetailPage({
 
   const currentProfile = await profileP
   const proposalCfg = await proposalCfgP
-  // Aprovador técnico: proposta só com dimensionamento (sem valor e sem a precificação completa do Price)
-  const proposals = isTechnicalApprover(currentProfile?.role)
+  // Vê valores? (Configurações → Áreas e acessos, ou liberação avulsa no usuário; aprovador técnico nunca)
+  const showValues = !isTechnicalApprover(currentProfile?.role) && ((await getUserAccess())?.seesValues ?? false)
+  // Sem valores: proposta só com dimensionamento (sem valor e sem a precificação completa do Price)
+  const proposals = !showValues
     ? (proposalsRaw ?? []).map(p => ({ ...p, proposal_value: null, review_token: null, client_review_token: null, technical_snapshot: technicalSnapshot(p.technical_snapshot) }))
     : proposalsRaw
 
@@ -530,7 +534,7 @@ export default async function ContractDetailPage({
             label: 'Visão Geral',
             content: (
               <div className="space-y-6">
-                {isCurrentlyInContractsPipeline && displayRun && (
+                {showValues && isCurrentlyInContractsPipeline && displayRun && (
                   <RenewalValueSection
                     contractId={contract.id}
                     currentValue={estimatedValue}
@@ -612,7 +616,7 @@ export default async function ContractDetailPage({
                                 )[r.status]}
                               </span>
                             </div>
-                            {currentValue > 0 && (
+                            {showValues && currentValue > 0 && (
                               <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
                                 <span>
                                   {previousValue !== null ? `${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(previousValue)} → ` : ''}
@@ -649,7 +653,11 @@ export default async function ContractDetailPage({
                     />
                   )}
                   <TimelineFeed
-                    events={activities ?? []}
+                    events={showValues ? (activities ?? []) : (activities ?? []).map((e: any) => ({
+                      ...e,
+                      content: e.metadata?.actor === 'Price' ? 'Precificação enviada pelo Price.' : redactValues(e.content),
+                      metadata: e.metadata ? { ...e.metadata, proposal_value: null } : e.metadata,
+                    }))}
                     contractId={contract.id}
                     proposals={(proposals ?? []).map((p: any) => ({ id: p.id, control_code: p.control_code, version: p.version, proposal_value: p.proposal_value }))}
                     currentUserRole={currentProfile?.role ?? 'member'}
@@ -729,7 +737,7 @@ export default async function ContractDetailPage({
               </div>
             ),
           }] : []),
-          ...(isCurrentlyInContractsPipeline ? [{
+          ...(isCurrentlyInContractsPipeline && showValues ? [{
             id: 'faturamento',
             label: 'Faturamento',
             content: <BillingSection contractId={contract.id} billingType={contract.billing_type} contractValue={Number((contract as any).monthly_value) || 0} records={(billingRecords ?? []) as any} isAdmin={currentProfile?.role === 'admin'} />,
@@ -793,6 +801,7 @@ export default async function ContractDetailPage({
                   currentUserRole={currentProfile?.role ?? 'member'}
                   currentUserName={currentProfile?.id ? (allProfilesById.get(currentProfile.id)?.full_name ?? 'Usuário') : 'Usuário'}
                   catalogItems={catalogItems ?? []}
+                  hideValues={!showValues}
                   priceEnabled={proposalCfg.priceEnabled}
                   techApproval={proposalCfg.techApproval}
                 />
@@ -805,6 +814,7 @@ export default async function ContractDetailPage({
             content: (
               <PortfolioFieldsForm
                 contractId={contract.id}
+                hideValues={!showValues}
                 companyCity={(linkedCompany as any)?.city ?? null}
                 companyState={(linkedCompany as any)?.state ?? null}
                 wonDate={openRun?.started_at ? openRun.started_at.slice(0, 10) : null}
@@ -826,7 +836,7 @@ export default async function ContractDetailPage({
                   sankhya_code: (contract as any).sankhya_code ?? null,
                   cnpj_billing: (contract as any).cnpj_billing ?? null,
                   contract_type: (contract as any).contract_type ?? null,
-                  monthly_value: Number(displayRun?.value) > 0 ? Number(displayRun.value) : ((contract as any).monthly_value ?? null),
+                  monthly_value: !showValues ? null : Number(displayRun?.value) > 0 ? Number(displayRun.value) : ((contract as any).monthly_value ?? null),
                   validity_months: (contract as any).validity_months ?? null,
                   valid_until: (contract as any).valid_until ?? null,
                   engineer_name: (contract as any).engineer_name ?? null,

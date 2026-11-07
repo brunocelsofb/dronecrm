@@ -36,7 +36,11 @@ export default async function ProposalDetailPage({
 }) {
   const { id: contractId, proposalId } = await params
   // Aprovador técnico não vê a montagem (valores): vai para o dimensionamento técnico
-  if (String((await getCurrentProfile())?.role) === 'aprovador_tecnico') redirect(`/contracts/${contractId}/proposals/${proposalId}/tecnico`)
+  {
+    const { getUserAccess } = await import('@/lib/auth/access')
+    const acc = await getUserAccess()
+    if (String((await getCurrentProfile())?.role) === 'aprovador_tecnico' || !acc?.seesValues) redirect(`/contracts/${contractId}/proposals/${proposalId}/tecnico`)
+  }
   const supabase = await createClient()
 
   const [{ data: proposal }, { data: items }, { data: pages }, { data: templates }, { data: approvals }, { data: allProfiles }, { data: contentBlocks }, { data: catalogItems }] = await Promise.all([

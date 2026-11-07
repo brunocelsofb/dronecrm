@@ -44,6 +44,7 @@ type Props = {
   catalogItems: any[]
   priceEnabled?: boolean   // empresa usa o Price (recurso do plano)
   techApproval?: boolean   // empresa tem a etapa de aprovação técnica
+  hideValues?: boolean     // pessoa não vê valores
 }
 
 function fmt(v: number) {
@@ -190,7 +191,9 @@ function MenuItem({ icon, label, onClick, danger }: { icon: string; label: strin
 import { ProposalWorkflow } from './proposal-workflow'
 import { ProposalsSection } from './proposals-section'
 
-export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems, priceEnabled = true, techApproval = true }: Props) {
+export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, currentUserName, catalogItems, priceEnabled = true, techApproval = true, hideValues = false }: Props) {
+  // Sem valores: aprovador técnico ou área sem "vê valores" (Configurações → Áreas e acessos)
+  const noValues = hideValues || currentUserRole === 'aprovador_tecnico'
   const router = useRouter()
   // ?proposta=<id> (ex.: "Voltar para a proposta" da montagem) já abre essa proposta
   const wanted = useSearchParams().get('proposta')
@@ -323,12 +326,12 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             initialData={initialData}
             priceUrl={priceUrl}
             currentUserRole={isReadOnly ? 'aprovador_tecnico' : currentUserRole}
-            technicalView={currentUserRole === 'aprovador_tecnico'}
+            technicalView={noValues}
             priceEnabled={priceEnabled}
             techApproval={techApproval}
             currentUserName={currentUserName}
           />
-          {!isReadOnly && currentUserRole !== 'aprovador_tecnico' && (
+          {!isReadOnly && !noValues && (
             <div id="montagem-proposta">
               {/* O conteúdo da proposta vem da Apresentação ao Cliente do Price e é ajustado na montagem */}
               <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -401,7 +404,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
             padding: '10px 20px', background: '#f8f9fb', borderBottom: '0.5px solid #e8edf5',
             borderRadius: '12px 12px 0 0',
           }}>
-            {['Código', 'Status', 'Data', currentUserRole === 'aprovador_tecnico' ? '' : 'Valor', 'Ações'].map((h, i) => (
+            {['Código', 'Status', 'Data', noValues ? '' : 'Valor', 'Ações'].map((h, i) => (
               <span key={i} style={{ fontSize: 10, fontWeight: 700, color: '#b0b8c8', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{h}</span>
             ))}
           </div>
@@ -425,7 +428,7 @@ export function ProposalTab({ contractId, proposals, priceUrl, currentUserRole, 
                   {p.updated_at ? fmtDate(p.updated_at) : fmtDate(p.created_at)}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#1f8c7d', display: 'flex', alignItems: 'center' }}>
-                  {currentUserRole === 'aprovador_tecnico' ? '' : p.proposal_value ? fmt(p.proposal_value) : '—'}
+                  {noValues ? '' : p.proposal_value ? fmt(p.proposal_value) : '—'}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                   <ActionsMenu

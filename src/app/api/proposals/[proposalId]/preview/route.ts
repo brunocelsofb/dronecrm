@@ -17,6 +17,8 @@ export async function GET(
   } = await supabase.auth.getUser()
 
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+  const { canSeeValues } = await import('@/lib/auth/access')
+  if (!(await canSeeValues())) return NextResponse.json({ error: 'Sem acesso aos valores.' }, { status: 403 })
 
   const { bytes, error } = await buildMergedProposalBytes(proposalId)
 

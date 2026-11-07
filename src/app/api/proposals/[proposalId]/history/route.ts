@@ -29,7 +29,8 @@ export async function GET(
   // Aprovador técnico não vê valores: o servidor tira os números antes de responder
   const { getCurrentProfile } = await import('@/lib/auth/role')
   const me = await getCurrentProfile()
-  const hideValues = String(me?.role) === 'aprovador_tecnico'
+  const { canSeeValues } = await import('@/lib/auth/access')
+  const hideValues = String(me?.role) === 'aprovador_tecnico' || !(await canSeeValues())
   const redact = (t: string | null) => !t ? t : t
     .replace(/\s*[·.]?\s*(Valor|Margem)[^·.]*R?\$?[^·]*?(?=·|$)/gi, '')
     .replace(/R\$\s?[\d.]+(,\d{2})?(\/m[eê]s)?/g, '—')
