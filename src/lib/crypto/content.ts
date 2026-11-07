@@ -107,5 +107,6 @@ export function decryptDeep<T>(v: T): T {
 // Colunas guardadas cifradas (tabela → coluna → tipo)
 export const ENCRYPTED_COLUMNS: Record<string, Record<string, 'text' | 'json'>> = {
   contract_whatsapp_messages: { message: 'text' },
+  whatsapp_transfers: { note: 'text' },
   sdr_conversations: { summary: 'text', answers: 'json' },
 }

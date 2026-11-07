@@ -588,6 +588,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
       // Se existir mas bot_enabled === false, o bot fica mudo para esta instância.
       const instanceAliases = (orgSettings?.evo_instance_aliases ?? {}) as Record<string, any>
       const instanceConfig = instanceName ? instanceAliases[instanceName] : null
+
+      // ── Central de atendimento: sem ninguém com a conversa, abre a fila da área do número ──
+      try {
+        const { ensureCentralQueue } = await import('@/lib/whatsapp/central')
+        await ensureCentralQueue({
+          tenantId, phone, instance: instKey, aliases: instanceAliases, reopened: currentStatus?.is_archived === true,
+          messageAt: messageTimestamp ? new Date(Number(messageTimestamp) * 1000).toISOString() : new Date().toISOString(),
+        })
+      } catch (e) { console.error('[evo-webhook] central:', e) }
       const botEnabledForInstance = instanceConfig
         ? instanceConfig.bot_enabled !== false   // false explícito desliga; undefined/true liga
         : true                                    // instâncias sem config seguem ligadas por padrão
@@ -708,6 +717,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
             })
             .eq('phone', statusPhone)
             .eq('instance_name', statusInstance)
+
+          // Central: a conversa vai para a fila da área escolhida no menu
+          try {
+            const { channelConfig, openAreaQueue } = await import('@/lib/whatsapp/central')
+            if (channelConfig(instanceAliases, instKey).purpose === 'central') {
+              await openAreaQueue({ tenantId, phone, instance: instKey, area: chosen.department })
+            }
+          } catch (e) { console.error('[evo-webhook] central triagem:', e) }
 
           const protocolNumber = currentStatus?.protocol_number ?? null
           const confirmMsg = `Opção ${chosen.key} selecionada. Seu atendimento foi direcionado para o setor *${chosen.label}*. Um atendente responderá em breve!${protocolNumber ? ` (Protocolo: ${protocolNumber})` : ''}`

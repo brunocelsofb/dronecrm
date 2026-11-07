@@ -197,6 +197,11 @@ export async function sendContractWhatsApp(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
+  { // Central de atendimento: só quem assumiu responde
+    const { replyBlockedReason } = await import('@/lib/whatsapp/central')
+    const blocked = await replyBlockedReason(user.id, phone, instanceName)
+    if (blocked) return { error: blocked }
+  }
   if (!phone) return { error: 'Informe o telefone do destinatário.' }
   if (!message.trim()) return { error: 'Escreva a mensagem.' }
 
@@ -277,6 +282,11 @@ export async function sendContractWhatsAppMedia(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
+  { // Central de atendimento: só quem assumiu responde
+    const { replyBlockedReason } = await import('@/lib/whatsapp/central')
+    const blocked = await replyBlockedReason(user.id, phone, null)
+    if (blocked) return { error: blocked }
+  }
   if (!phone) return { error: 'Informe o telefone do destinatário.' }
 
   const creds = await getEvoCredentials()
@@ -455,9 +465,11 @@ export async function getUnlinkedWhatsAppConversations(): Promise<UnlinkedConver
     .select('phone, unlinked_sender_name, sender_photo_url, message, media_type, created_at, instance_name')
     .order('created_at', { ascending: false })
     .limit(500)
+  const { filterVisibleForMe } = await import('@/lib/whatsapp/central')
+  const visible = await filterVisibleForMe(data ?? [])
 
   const byPhone = new Map<string, UnlinkedConversation>()
-  for (const m of data ?? []) {
+  for (const m of visible) {
     if (!m.phone) continue
     const cleanPhone = m.phone.replace(/\D/g, '')
     const keyPhone = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone
@@ -482,10 +494,11 @@ export async function getUnlinkedMessagesByPhone(phone: string) {
   const last8 = cleanPhone.slice(-8)
   const { data } = await supabase
     .from('contract_whatsapp_messages')
-    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status')
+    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, instance_name')
     .ilike('phone', `%${last8}`)
     .order('created_at', { ascending: false })
-  return data ?? []
+  const { filterVisibleForMe } = await import('@/lib/whatsapp/central')
+  return filterVisibleForMe(data ?? [])
 }
 
 export async function getConversationByPhone(phone: string): Promise<{
@@ -498,12 +511,14 @@ export async function getConversationByPhone(phone: string): Promise<{
   const cleanPhone = phone.replace(/\D/g, '')
   const last10 = cleanPhone.slice(-10)
 
-  const { data } = await supabase
+  const { data: rawData } = await supabase
     .from('contract_whatsapp_messages')
     .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, lead_id, unlinked_sender_name, instance_name, zapi_message_id')
     .ilike('phone', `%${last10}`)
     .order('created_at', { ascending: true })
     .limit(500)
+  const { filterVisibleForMe } = await import('@/lib/whatsapp/central')
+  const data = await filterVisibleForMe(rawData ?? [])
 
   const leadId = data?.find((m) => m.lead_id)?.lead_id ?? null
 
@@ -673,6 +688,11 @@ export async function sendUnlinkedWhatsAppMessage(phone: string, message: string
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
+  { // Central de atendimento: só quem assumiu responde
+    const { replyBlockedReason } = await import('@/lib/whatsapp/central')
+    const blocked = await replyBlockedReason(user.id, phone, instanceName)
+    if (blocked) return { error: blocked }
+  }
   if (!message.trim()) return { error: 'Escreva a mensagem.' }
 
   const creds = await getEvoCredentials()
@@ -766,6 +786,11 @@ export async function sendUnlinkedWhatsAppMedia(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Usuário não autenticado.' }
+  { // Central de atendimento: só quem assumiu responde
+    const { replyBlockedReason } = await import('@/lib/whatsapp/central')
+    const blocked = await replyBlockedReason(user.id, phone, instanceName)
+    if (blocked) return { error: blocked }
+  }
   if (!phone) return { error: 'Informe o telefone do destinatário.' }
 
   const creds = await getEvoCredentials()
@@ -901,10 +926,11 @@ export async function getWhatsAppMessagesByLead(leadId: string) {
   const supabase = (await createScopedAdmin())
   const { data } = await supabase
     .from('contract_whatsapp_messages')
-    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status')
+    .select('id, phone, message, direction, status, triggered_automatically, error_message, created_at, media_url, media_type, media_filename, sender_photo_url, delivery_status, instance_name')
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false })
-  return data ?? []
+  const { filterVisibleForMe } = await import('@/lib/whatsapp/central')
+  return filterVisibleForMe(data ?? [])
 }
 
 export type ConversationAssignment = { assigned_to: string; assigned_to_name: string; assigned_at: string }

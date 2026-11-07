@@ -227,6 +227,8 @@ export function WhatsAppClientShell({
               onKindChange={() => router.refresh()}
               links={convData.links ?? []}
               onLinked={() => { setReloadKey(k => k + 1); router.refresh() }}
+              central={convData.central ?? null}
+              onCentralChange={() => { setReloadKey(k => k + 1); router.refresh() }}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">

@@ -82,6 +82,12 @@ export async function searchWhatsAppConversations(term: string): Promise<{ ok: t
     for (const m of (data ?? []) as Msg[]) found.push({ m, by: 'cliente' })
   }
 
+  // Central de atendimento: só o que esta pessoa pode ver
+  {
+    const { filterVisibleForMe } = await import('@/lib/whatsapp/central')
+    const visible = new Set(await filterVisibleForMe(found.map(f => f.m)))
+    for (let i = found.length - 1; i >= 0; i--) if (!visible.has(found[i].m)) found.splice(i, 1)
+  }
   // Uma linha por conversa (número + WhatsApp da empresa), com a mensagem mais recente que casou
   const byKey = new Map<string, { m: Msg; by: WhatsAppSearchHit['matchedBy'] }>()
   const rank: Record<WhatsAppSearchHit['matchedBy'], number> = { nome: 0, cliente: 1, telefone: 2, mensagem: 3 }

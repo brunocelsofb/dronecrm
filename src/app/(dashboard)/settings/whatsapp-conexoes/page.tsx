@@ -17,7 +17,9 @@ export default async function WhatsAppConexoesPage() {
   const admin = (await createScopedAdmin())
   const tenantId = await resolveTenantId()
   const { data: settings } = await admin.from('organization_settings')
-    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases').eq('tenant_id', tenantId).maybeSingle()
+    .select('evo_server_url, evo_api_key, evo_instance_name, evo_instance_aliases, access_areas, profile_features').eq('tenant_id', tenantId).maybeSingle()
+  const { resolveAreas } = await import('@/lib/auth/access-profiles')
+  const areaOptions = resolveAreas((settings as any)?.access_areas, (settings as any)?.profile_features).map(a => ({ id: a.id, label: a.label }))
   const usesPlatformServer = !(settings?.evo_server_url && settings?.evo_api_key)
   const [limit, ownedNames] = await Promise.all([getWhatsAppLimit(tenantId), getTenantInstanceNames(tenantId)])
 
@@ -44,7 +46,7 @@ export default async function WhatsAppConexoesPage() {
         usesPlatformServer={usesPlatformServer}
         limitInfo={`Seu plano permite ${limit} WhatsApp(s); em uso: ${ownedNames.length}.`}
       />
-      <WhatsAppInstancesPanel instanceAliases={(settings as any)?.evo_instance_aliases ?? {}} users={owners} />
+      <WhatsAppInstancesPanel instanceAliases={(settings as any)?.evo_instance_aliases ?? {}} users={owners} areas={areaOptions} />
     </div>
   )
 }

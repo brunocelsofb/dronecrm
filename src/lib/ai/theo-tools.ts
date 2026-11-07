@@ -170,13 +170,16 @@ export async function runTheoRead(name: string, input: In, scope?: { db: unknown
     case 'resumo_conversa_whatsapp': {
       const digits = String(input.telefone ?? '').replace(/\D/g, '')
       if (digits.length < 8) return 'Informe o telefone com DDD.'
-      const { data } = await db.from('contract_whatsapp_messages').select('direction, message, media_type, created_at').ilike('phone', `%${digits.slice(-8)}`).order('created_at', { ascending: false }).limit(40)
+      const { data: rawConv } = await db.from('contract_whatsapp_messages').select('direction, message, media_type, created_at, phone, instance_name').ilike('phone', `%${digits.slice(-8)}`).order('created_at', { ascending: false }).limit(40)
+      // Central de atendimento: o Théo só lê o que a pessoa que pergunta pode ver
+      const data = await (await import('@/lib/whatsapp/central')).filterVisibleForMe(rawConv ?? [])
       if (!data?.length) return 'Nenhuma conversa com esse telefone.'
       return json([...data].reverse().map(m => ({ quem: m.direction === 'enviado' ? 'empresa' : 'contato', quando: new Date(m.created_at as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }), texto: m.media_type && m.media_type !== 'revoked' ? `[${m.media_type}] ${String(m.message ?? '').slice(0, 200)}` : String(m.message ?? '').slice(0, 400) })))
     }
     case 'conversas_sem_resposta': {
       const hours = int(input.horas, 2, 1, 720)
-      const { data } = await db.from('contract_whatsapp_messages').select('phone, direction, created_at, unlinked_sender_name').order('created_at', { ascending: false }).limit(1500)
+      const { data: rawList } = await db.from('contract_whatsapp_messages').select('phone, direction, created_at, unlinked_sender_name, instance_name').order('created_at', { ascending: false }).limit(1500)
+      const data = await (await import('@/lib/whatsapp/central')).filterVisibleForMe(rawList ?? [])
       const latest = new Map<string, { phone: string; direction: string; created_at: string; name: string | null }>()
       for (const m of data ?? []) { const k = String(m.phone ?? '').replace(/\D/g, '').slice(-8); if (k && !latest.has(k)) latest.set(k, { phone: m.phone as string, direction: m.direction as string, created_at: m.created_at as string, name: (m.unlinked_sender_name as string) ?? null }) }
       const cut = Date.now() - hours * 3_600_000

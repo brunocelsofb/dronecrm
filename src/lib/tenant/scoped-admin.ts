@@ -35,7 +35,7 @@ export const TENANT_TABLES = new Set([
   'contract_ai_readings', 'contract_measurements', 'contract_renewals', 'contracts', 'custom_fields', 'custom_surveys', 'email_accounts', 'email_templates', 'implementation_schedules',
   'implementation_templates', 'lead_routing_rules', 'leads', 'lost_reasons', 'monthly_goals', 'notifications',
   'nps_surveys', 'organization_settings', 'pipeline_runs', 'pipelines', 'profiles', 'proposals', 'stages', 'tags',
-  'tickets', 'whatsapp_capture_prompts', 'whatsapp_conversation_assignments', 'whatsapp_conversation_status',
+  'tickets', 'whatsapp_capture_prompts', 'whatsapp_conversation_assignments', 'whatsapp_access_windows', 'whatsapp_transfers', 'whatsapp_conversation_status',
   'whatsapp_protocol_counters', 'zapsign_documents', 'zapsign_templates',
 ])
 

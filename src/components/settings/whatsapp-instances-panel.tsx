@@ -10,6 +10,9 @@ interface InstanceConfig {
   bot_enabled?: boolean
   private?: boolean   // só envio (ex.: briefing); nada dela entra no CRM
   user_id?: string    // consultor dono do WhatsApp (assina avisos; remetente do e-mail)
+  purpose?: 'shared' | 'central' | 'personal'   // Central de atendimento (padrão: compartilhado)
+  area?: string        // área que recebe a fila de conversas novas (número Central)
+  transfer_message?: string   // aviso ao cliente na transferência; {destino} = pessoa ou área
 }
 
 export interface InstanceOwnerOption {
@@ -29,7 +32,15 @@ interface Props {
   // evo_instance_aliases de organization_settings — suporta string pura (legado) e objeto (novo)
   instanceAliases: Record<string, InstanceConfig | string>
   users?: InstanceOwnerOption[]
+  areas?: { id: string; label: string }[]
 }
+
+const DEFAULT_TRANSFER_MSG = 'Transferimos seu atendimento para {destino}. Em instantes você será atendido(a). 🙏'
+const PURPOSES: { id: 'shared' | 'central' | 'personal'; label: string; hint: string }[] = [
+  { id: 'shared', label: 'Compartilhado', hint: 'Todos com a aba WhatsApp veem todas as conversas (como sempre foi).' },
+  { id: 'central', label: 'Central de atendimento', hint: 'Conversa nova vai para a fila da área. Só quem assume ou recebe a transferência vê e responde. Admin, Diretoria e o responsável pela conta veem tudo.' },
+  { id: 'personal', label: 'Pessoal do consultor', hint: 'Só o consultor deste WhatsApp e o admin veem as conversas.' },
+]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,6 +57,9 @@ function normalizeAliases(
         bot_enabled: val.bot_enabled !== false,
         private: val.private === true,
         user_id: val.user_id,
+        purpose: val.purpose,
+        area: val.area,
+        transfer_message: val.transfer_message,
       }
     }
   }
@@ -54,7 +68,7 @@ function normalizeAliases(
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export function WhatsAppInstancesPanel({ instanceAliases, users = [] }: Props) {
+export function WhatsAppInstancesPanel({ instanceAliases, users = [], areas = [] }: Props) {
   const normalized = normalizeAliases(instanceAliases ?? {})
 
   // Estado local de instâncias (inclui bot_enabled para optimistic UI)
@@ -190,6 +204,29 @@ export function WhatsAppInstancesPanel({ instanceAliases, users = [] }: Props) {
       setOwnerErrors(prev => ({ ...prev, [instanceKey]: err instanceof Error ? err.message : 'Erro ao salvar' }))
     } finally {
       setOwnerSaving(prev => ({ ...prev, [instanceKey]: false }))
+    }
+  }, [instances])
+
+  // ── Central de atendimento: finalidade, área da fila, aviso de transferência ──
+  const [centralSaving, setCentralSaving] = useState<Record<string, boolean>>({})
+  const [centralMsg, setCentralMsg] = useState<Record<string, { ok: boolean; text: string }>>({})
+  const saveCentral = useCallback(async (instanceKey: string, patch: Partial<InstanceConfig>) => {
+    const previous = instances[instanceKey]
+    setInstances(prev => ({ ...prev, [instanceKey]: { ...prev[instanceKey], ...patch } }))
+    setCentralSaving(prev => ({ ...prev, [instanceKey]: true }))
+    try {
+      const res = await fetch('/api/settings/whatsapp-instance', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instance: instanceKey, ...patch }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.ok === false) throw new Error(data?.error ?? `HTTP ${res.status}`)
+      setCentralMsg(prev => ({ ...prev, [instanceKey]: { ok: true, text: 'Salvo.' } }))
+    } catch (err) {
+      setInstances(prev => ({ ...prev, [instanceKey]: previous }))
+      setCentralMsg(prev => ({ ...prev, [instanceKey]: { ok: false, text: err instanceof Error ? err.message : 'Erro ao salvar' } }))
+    } finally {
+      setCentralSaving(prev => ({ ...prev, [instanceKey]: false }))
     }
   }, [instances])
 
@@ -473,6 +510,53 @@ export function WhatsAppInstancesPanel({ instanceAliases, users = [] }: Props) {
                 </select>
               </div>
             )}
+
+            {/* Finalidade do número (Central de atendimento) — só instâncias públicas */}
+            {!isPrivate && (() => {
+              const purpose = config.purpose ?? 'shared'
+              const saving = centralSaving[key] === true
+              const msg = centralMsg[key]
+              return (
+                <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                  <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium text-gray-700">Como este número é usado</span>
+                      <span className="text-[11px] text-gray-400">{PURPOSES.find(p => p.id === purpose)?.hint}</span>
+                    </div>
+                    <select value={purpose} disabled={saving} aria-label={`Finalidade do WhatsApp ${label}`}
+                      onChange={e => saveCentral(key, { purpose: e.target.value as InstanceConfig['purpose'] })}
+                      className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 disabled:opacity-60">
+                      {PURPOSES.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  {purpose === 'personal' && !config.user_id && (
+                    <span className="text-[11px] text-amber-600">Defina o consultor deste WhatsApp acima: só ele e o admin verão as conversas.</span>
+                  )}
+                  {purpose === 'central' && (
+                    <>
+                      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <span className="text-xs text-gray-700">Área que recebe as conversas novas
+                          <span className="block text-[11px] text-gray-400">Se o menu de triagem estiver ligado, a escolha do cliente manda para a área do setor.</span>
+                        </span>
+                        <select value={config.area ?? ''} disabled={saving} aria-label={`Área da fila do WhatsApp ${label}`}
+                          onChange={e => saveCentral(key, { area: (e.target.value || null) as unknown as string })}
+                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 disabled:opacity-60">
+                          <option value="">Comercial (padrão)</option>
+                          {areas.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                        </select>
+                      </div>
+                      <label className="flex flex-col gap-1 text-xs text-gray-700">
+                        Aviso ao cliente na transferência <span className="text-[11px] text-gray-400">{'{destino}'} vira o nome da pessoa ou da área</span>
+                        <textarea defaultValue={config.transfer_message ?? DEFAULT_TRANSFER_MSG} rows={2} disabled={saving}
+                          onBlur={e => { const v = e.target.value.trim(); if (v !== (config.transfer_message ?? DEFAULT_TRANSFER_MSG)) saveCentral(key, { transfer_message: v === DEFAULT_TRANSFER_MSG ? '' : v }) }}
+                          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700" />
+                      </label>
+                    </>
+                  )}
+                  {msg && <span role="status" className={`text-[11px] ${msg.ok ? 'text-gray-400' : 'text-red-500'}`}>{msg.ok ? msg.text : `⚠ ${msg.text}`}</span>}
+                </div>
+              )
+            })()}
 
             {/* Instância privada */}
             <div className="flex items-center justify-between gap-4">

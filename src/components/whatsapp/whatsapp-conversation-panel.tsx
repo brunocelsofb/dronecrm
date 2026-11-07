@@ -1,6 +1,8 @@
 'use client'
 
 import { uploadFile } from '@/lib/files/client-upload'
+import { CentralTransferModal } from './central-transfer-modal'
+import { assumeConversation } from '@/lib/actions/whatsapp-central'
 import { revealMessage } from '@/components/whatsapp/reveal-message'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -125,6 +127,11 @@ function FinalizarNPSModal({
   )
 }
 
+export type CentralInfo = {
+  purpose: string; area: string | null; status: string | null; canReply: boolean; reason: string | null
+  transfers: { from_name: string; to_name: string; note: string | null; share: string; created_at: string }[]
+}
+
 export function WhatsAppConversationPanel({
   phone,
   displayName,
@@ -141,6 +148,8 @@ export function WhatsAppConversationPanel({
   onKindChange,
   links = [],
   onLinked,
+  central = null,
+  onCentralChange,
 }: {
   phone: string
   displayName: string | null
@@ -157,6 +166,9 @@ export function WhatsAppConversationPanel({
   onKindChange?: () => void
   links?: { contractId: string; label: string; number: string | null; companyName: string | null }[]
   onLinked?: () => void
+  // Número marcado como Central de atendimento (null = número compartilhado, comportamento de sempre)
+  central?: CentralInfo | null
+  onCentralChange?: () => void
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -255,7 +267,7 @@ export function WhatsAppConversationPanel({
       }, (payload) => {
         const newMsg = payload.new as Message
         // O texto vem cifrado do banco: abre antes de mostrar
-        void revealMessage(newMsg).then(addMessageSafe)
+        void revealMessage(newMsg).then(m => { if (m) addMessageSafe(m) })
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -358,6 +370,18 @@ export function WhatsAppConversationPanel({
   }, [instanceName])
   useEffect(() => { loadInstances() }, [loadInstances])
   useEffect(() => { setSelectedInstance(instanceName ?? '') }, [instanceName])
+
+  const [showCentralTransfer, setShowCentralTransfer] = useState(false)
+  const [centralError, setCentralError] = useState<string | null>(null)
+  const isCentral = central?.purpose === 'central'
+  async function handleCentralAssume() {
+    setBusy(true); setCentralError(null)
+    const r = await assumeConversation(phone, instanceName ?? '')
+    setBusy(false)
+    if (!r.ok) { setCentralError(r.error); return }
+    onCentralChange?.()
+    router.refresh()
+  }
 
   async function handleClaim() {
     setBusy(true)
@@ -701,7 +725,28 @@ export function WhatsAppConversationPanel({
                 ))}
               </select>
             )}
-            {assignment ? (
+            {isCentral ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {central?.area && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">Fila: {central.area}</span>}
+                {assignment && (
+                  <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">
+                    👤 {assignment.assigned_to === currentUserId ? 'Você' : assignment.assigned_to_name}
+                  </span>
+                )}
+                {!central?.canReply && (
+                  <button onClick={handleCentralAssume} disabled={busy}
+                    className="rounded-full bg-[#1B556B] px-3 py-1 text-[10px] font-semibold text-white hover:bg-[#164659] disabled:opacity-50">
+                    🙋‍♂️ Assumir
+                  </button>
+                )}
+                {central?.canReply && (
+                  <button onClick={() => setShowCentralTransfer(true)} disabled={busy}
+                    className="rounded-full border border-gray-300 px-2 py-0.5 text-[10px] text-gray-600 hover:bg-gray-50">
+                    🔄 Transferir
+                  </button>
+                )}
+              </div>
+            ) : assignment ? (
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-medium">
                   👤 {assignment.assigned_to === currentUserId ? 'Você' : assignment.assigned_to_name}
@@ -985,8 +1030,39 @@ export function WhatsAppConversationPanel({
             </p>
           )}
 
+          {/* Central de atendimento: notas de transferência e trava de resposta */}
+          {isCentral && (central?.transfers?.length ?? 0) > 0 && (
+            <details className="rounded-md border border-[#FFE596] bg-[#FFE596]/30 px-3 py-1.5 text-xs text-gray-700" open={!!central?.canReply}>
+              <summary className="cursor-pointer font-medium">📝 Notas de transferência ({central!.transfers.length})</summary>
+              <ul className="mt-1 space-y-1">
+                {central!.transfers.map((t, i) => (
+                  <li key={i}>
+                    <span className="text-gray-500">{new Date(t.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · {t.from_name} → {t.to_name}:</span>{' '}
+                    {t.note}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {isCentral && !central?.canReply && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              <span>{central?.reason ?? 'Assuma a conversa para responder.'}</span>
+              <button onClick={handleCentralAssume} disabled={busy}
+                className="rounded-full bg-[#1B556B] px-3 py-1 text-[11px] font-semibold text-white hover:bg-[#164659] disabled:opacity-50">
+                🙋‍♂️ Assumir
+              </button>
+            </div>
+          )}
+          {centralError && <p role="alert" className="px-1 text-[11px] text-red-500">{centralError}</p>}
+          {showCentralTransfer && instanceName && (
+            <CentralTransferModal phone={phone} instance={instanceName} onClose={() => setShowCentralTransfer(false)}
+              onDone={() => { setShowCentralTransfer(false); onCentralChange?.(); router.refresh() }} />
+          )}
+
           <div
-            className={`relative flex items-end gap-1 bg-white rounded-md border p-1 focus-within:border-[#1B556B] ${dragOver ? 'border-dashed border-[#1B556B] bg-[#1B556B]/5' : 'border-gray-300'}`}
+            inert={isCentral && !central?.canReply ? true : undefined}
+            aria-disabled={isCentral && !central?.canReply ? true : undefined}
+            className={`relative flex items-end gap-1 bg-white rounded-md border p-1 focus-within:border-[#1B556B] ${dragOver ? 'border-dashed border-[#1B556B] bg-[#1B556B]/5' : 'border-gray-300'} ${isCentral && !central?.canReply ? 'opacity-50' : ''}`}
             onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true) } }}
             onDragLeave={() => setDragOver(false)}
             onDrop={e => { e.preventDefault(); setDragOver(false); attachFile(e.dataTransfer?.files?.[0]) }}

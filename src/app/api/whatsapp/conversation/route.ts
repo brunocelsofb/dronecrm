@@ -44,6 +44,12 @@ export async function GET(req: Request) {
     // Número sem nenhuma mensagem no formato canônico (caso raro): mostra o que achou pelos 8 dígitos
     if (!messages.length && data?.length) messages = [...data].reverse()
 
+    // Central de atendimento: só o trecho que esta pessoa pode ver (corte no servidor)
+    const tenantId = await resolveTenantId()
+    const { filterVisible, loadAliases, channelConfig, getViewer, canReply, userInArea } = await import('@/lib/whatsapp/central')
+    const aliasMap = await loadAliases(tenantId)
+    messages = await filterVisible(tenantId, user.id, aliasMap, messages)
+
     const leadId = messages.find(m => m.lead_id)?.lead_id ?? null
     // instanceName da mensagem mais recente
     const instanceName = [...messages].reverse().find(m => m.instance_name)?.instance_name ?? null
@@ -82,12 +88,45 @@ export async function GET(req: Request) {
     } : null
 
     // Nome do cadastro de contatos e contas às quais a conversa foi vinculada
-    const ident = (await identifyPhones(await resolveTenantId(), [cleanPhone]))[last8]
+    const ident = (await identifyPhones(tenantId, [cleanPhone]))[last8]
     if (!displayName && ident?.name) displayName = ident.name
+
+    // Situação na Central (só para números marcados como Central)
+    let central: null | {
+      purpose: string; area: string | null; status: string | null; canReply: boolean; reason: string | null
+      transfers: { from_name: string; to_name: string; note: string | null; share: string; created_at: string }[]
+    } = null
+    const convInstance = instance ?? instanceName
+    const ch = channelConfig(aliasMap, convInstance)
+    if (ch.purpose === 'central' || ch.purpose === 'personal') {
+      const viewer = await getViewer(tenantId, user.id)
+      const reply = await canReply(tenantId, viewer, aliasMap, cleanPhone, convInstance ?? '')
+      const [{ data: st }, { data: tr }] = await Promise.all([
+        admin.from('whatsapp_conversation_status').select('area, attend_status').eq('instance_name', convInstance ?? '').ilike('phone', `%${last8}`).maybeSingle(),
+        admin.from('whatsapp_transfers').select('from_user, from_area, to_user, to_area, note, share, created_at')
+          .eq('instance_name', convInstance ?? '').ilike('phone', `%${last8}`).order('created_at', { ascending: true }),
+      ])
+      // A nota da transferência é vista por quem enviou, por quem recebeu (pessoa ou área) e por quem vê tudo
+      const rows = ((tr ?? []) as { from_user: string | null; from_area: string | null; to_user: string | null; to_area: string | null; note: string | null; share: string; created_at: string }[])
+        .filter(t => viewer.seesAll || t.from_user === user.id || t.to_user === user.id || (!t.to_user && userInArea(viewer.area, t.to_area)))
+      const ids = [...new Set(rows.flatMap(t => [t.from_user, t.to_user]).filter(Boolean))] as string[]
+      const { data: people } = ids.length ? await admin.from('profiles').select('id, full_name').in('id', ids) : { data: [] }
+      const nameOf = new Map(((people ?? []) as { id: string; full_name: string | null }[]).map(p => [p.id, p.full_name ?? 'Alguém']))
+      central = {
+        purpose: ch.purpose, area: (st as { area?: string | null } | null)?.area ?? ch.area,
+        status: (st as { attend_status?: string | null } | null)?.attend_status ?? null,
+        canReply: reply.ok, reason: reply.reason ?? null,
+        transfers: rows.map(t => ({
+          from_name: t.from_user ? nameOf.get(t.from_user) ?? 'Alguém' : (t.from_area ?? 'Fila'),
+          to_name: t.to_user ? nameOf.get(t.to_user) ?? 'Alguém' : `área ${t.to_area ?? ''}`,
+          note: t.note, share: t.share, created_at: t.created_at,
+        })),
+      }
+    }
 
     return NextResponse.json({
       messages, leadId, displayName, instanceName, assignment: assignmentData,
-      links: ident?.links ?? [], companyName: ident?.companyName ?? null,
+      links: ident?.links ?? [], companyName: ident?.companyName ?? null, central,
     })
   } catch (e: any) {
     console.error('[api/whatsapp/conversation]', e?.message)

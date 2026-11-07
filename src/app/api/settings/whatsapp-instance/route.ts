@@ -1,5 +1,5 @@
 // src/app/api/settings/whatsapp-instance/route.ts
-// PATCH { instance, bot_enabled?, private? } — altera as chaves de uma instância
+// PATCH { instance, bot_enabled?, private?, user_id?, purpose?, area?, transfer_message? } — altera as chaves de uma instância
 // em organization_settings.evo_instance_aliases. Só administradores.
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -59,7 +59,21 @@ export async function PATCH(request: Request) {
     if (hasUserId && userId !== null && typeof userId !== 'string') {
       return NextResponse.json({ ok: false, error: 'user_id deve ser texto ou null' }, { status: 400 })
     }
-    if (bot_enabled === undefined && isPrivate === undefined && !hasUserId) {
+    // Central de atendimento: finalidade do número, área padrão da fila e aviso de transferência
+    const purpose: unknown = body.purpose
+    const hasArea = Object.prototype.hasOwnProperty.call(body, 'area')
+    const area: unknown = body.area
+    const transferMessage: unknown = body.transfer_message
+    if (purpose !== undefined && !['shared', 'central', 'personal'].includes(String(purpose))) {
+      return NextResponse.json({ ok: false, error: 'finalidade inválida' }, { status: 400 })
+    }
+    if (hasArea && area !== null && !(typeof area === 'string' && /^[a-z0-9_]{2,40}$/.test(area))) {
+      return NextResponse.json({ ok: false, error: 'área inválida' }, { status: 400 })
+    }
+    if (transferMessage !== undefined && typeof transferMessage !== 'string') {
+      return NextResponse.json({ ok: false, error: 'aviso inválido' }, { status: 400 })
+    }
+    if (bot_enabled === undefined && isPrivate === undefined && !hasUserId && purpose === undefined && !hasArea && transferMessage === undefined) {
       return NextResponse.json({ ok: false, error: 'nada para alterar' }, { status: 400 })
     }
 
@@ -102,6 +116,15 @@ export async function PATCH(request: Request) {
       }
     }
     if (bot_enabled !== undefined) next.bot_enabled = bot_enabled
+    if (purpose !== undefined) {
+      if (purpose === 'shared') delete next.purpose
+      else next.purpose = purpose
+    }
+    if (hasArea) { if (area) next.area = area; else delete next.area }
+    if (transferMessage !== undefined) {
+      const t = String(transferMessage).trim().slice(0, 500)
+      if (t) next.transfer_message = t; else delete next.transfer_message
+    }
     if (isPrivate !== undefined) {
       next.private = isPrivate
       if (isPrivate) next.bot_enabled = false   // privada nunca responde clientes

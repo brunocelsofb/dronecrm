@@ -130,7 +130,7 @@ export function ContractWhatsAppSection({
 
           // O texto vem cifrado do banco: abre antes de mostrar (na atualização, mantém o já aberto)
           if (payload.eventType === 'INSERT') {
-            void revealMessage(msg as WhatsAppLog & { message?: string | null }).then(m => addMessage(m as WhatsAppLog))
+            void revealMessage(msg as WhatsAppLog & { message?: string | null }).then(m => { if (m) addMessage(m as WhatsAppLog) })
           } else if (payload.eventType === 'UPDATE') {
             const { message: sealed, ...rest } = msg as WhatsAppLog & { message?: string | null }
             const patch = isSealed(sealed) ? rest : msg

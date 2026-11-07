@@ -61,9 +61,14 @@ export default async function WhatsAppInboxPage({
     })
   }
 
+  // Central de atendimento: cada pessoa só recebe as conversas/trechos que pode ver
+  const centralTenant = await resolveTenantId()
+  const { filterVisible, loadAliases } = await import('@/lib/whatsapp/central')
+  const visibleMessages = user ? await filterVisible(centralTenant, user.id, await loadAliases(centralTenant), openMessages ?? []) : []
+
   const latestByKey = new Map<string, any>()
   const msgsByKey = new Map<string, { direction: string; created_at: string }[]>()
-  for (const m of openMessages ?? []) {
+  for (const m of visibleMessages) {
     const base8 = (m.phone ?? '').replace(/\D/g, '').slice(-8)
     const key = `${m.instance_name ?? ''}-${base8}`
     if (!latestByKey.has(key)) latestByKey.set(key, m)
